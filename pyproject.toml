@@ -1,0 +1,22 @@
+[tool.poetry]
+name = "crypto-signals"
+version = "0.1.0"
+description = "Crypto Signals Project"
+authors = ["Admin <admin@example.com>"]
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.9"
+requests = "^2.31.0"
+python-dotenv = "^1.0.0"
+google-cloud-firestore = "^2.22.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[dependency-groups]
+dev = [
+    "pytest (>=8.0,<9.0)",
+    "pytest-mock (>=3.15.1,<4.0.0)"
+]
