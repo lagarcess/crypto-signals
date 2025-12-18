@@ -112,6 +112,8 @@ def test_get_latest_price_equity(provider, mock_stock_client):
     # Verify
     assert price == 150.50
     mock_stock_client.get_stock_latest_trade.assert_called_once()
+    call_args = mock_stock_client.get_stock_latest_trade.call_args[0][0]
+    assert call_args.symbol_or_symbols == "AAPL"
 
 
 def test_get_latest_price_crypto(provider, mock_crypto_client):
@@ -126,13 +128,62 @@ def test_get_latest_price_crypto(provider, mock_crypto_client):
     # Verify
     assert price == 60000.00
     mock_crypto_client.get_crypto_latest_trade.assert_called_once()
+    call_args = mock_crypto_client.get_crypto_latest_trade.call_args[0][0]
+    assert call_args.symbol_or_symbols == "BTC/USD"
 
 
 def test_invalid_asset_class(provider):
     """Test checking invalid asset class."""
-    # Using a string to bypass enumeration check if type checker allowed,
-    # or just mocking a weird enum if needed, but Python allows passing 'FOO'.
-    # usually, or just rely on type checker.
-    # Let's pass a string "COMMODITY" to trigger 'Unsupported asset class'
+    # Pass an invalid string to bypass type checking and trigger
+    # "Unsupported asset class" error
     with pytest.raises(MarketDataError, match="Unsupported asset class"):
         provider.get_latest_price("GOLD", "COMMODITY")  # type: ignore
+
+
+def test_get_daily_bars_invalid_asset_class(provider):
+    """Test checking invalid asset class in get_daily_bars."""
+    with pytest.raises(MarketDataError, match="Unsupported asset class"):
+        provider.get_daily_bars("GOLD", "COMMODITY")  # type: ignore
+
+
+def test_get_latest_price_missing_symbol(provider, mock_stock_client):
+    """Test that missing symbol in response raises MarketDataError."""
+    # Setup - Return empty dict or dict with different symbol
+    mock_stock_client.get_stock_latest_trade.return_value = {}
+
+    with pytest.raises(MarketDataError, match="Latest equity trade data"):
+        provider.get_latest_price("MSFT", AssetClass.EQUITY)
+
+
+def test_get_daily_bars_multiindex_handling(provider, mock_stock_client):
+    """Test that MultiIndex is correctly reset to single index."""
+    # Setup - Create MultiIndex DataFrame
+    dates = pd.date_range(start="2023-01-01", periods=2, name="timestamp")
+    arrays = [["AAPL", "AAPL"], dates]
+    tuples = list(zip(*arrays))
+    index = pd.MultiIndex.from_tuples(tuples, names=["symbol", "timestamp"])
+    df = pd.DataFrame({"close": [150.0, 155.0]}, index=index)
+
+    mock_bars = Mock()
+    mock_bars.df = df
+    mock_stock_client.get_stock_bars.return_value = mock_bars
+
+    # Exec
+    result = provider.get_daily_bars("AAPL", AssetClass.EQUITY)
+
+    # Verify
+    assert not isinstance(result.index, pd.MultiIndex)
+    pd.testing.assert_index_equal(result.index, dates)
+    assert result["close"].iloc[0] == 150.0
+
+
+def test_get_latest_price_api_error(provider, mock_stock_client):
+    """Test that API failures in get_latest_price are wrapped in MarketDataError."""
+    # Setup
+    mock_stock_client.get_stock_latest_trade.side_effect = Exception(
+        "API connection failed"
+    )
+
+    # Verify
+    with pytest.raises(MarketDataError, match="Failed to fetch latest price"):
+        provider.get_latest_price("AAPL", AssetClass.EQUITY)

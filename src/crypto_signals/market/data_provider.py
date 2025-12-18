@@ -124,17 +124,28 @@ class MarketDataProvider:
             if asset_class == AssetClass.CRYPTO:
                 req = CryptoLatestTradeRequest(symbol_or_symbols=symbol)
                 trade = self.crypto_client.get_crypto_latest_trade(req)
-                # Result is dict {symbol: Trade}
+                if not trade or symbol not in trade:
+                    raise MarketDataError(
+                        f"Latest crypto trade data for {symbol} "
+                        "not found in API response"
+                    )
                 return float(trade[symbol].price)
 
             elif asset_class == AssetClass.EQUITY:
                 req = StockLatestTradeRequest(symbol_or_symbols=symbol)
                 trade = self.stock_client.get_stock_latest_trade(req)
+                if not trade or symbol not in trade:
+                    raise MarketDataError(
+                        f"Latest equity trade data for {symbol} "
+                        "not found in API response"
+                    )
                 return float(trade[symbol].price)
 
             else:
                 raise MarketDataError(f"Unsupported asset class: {asset_class}")
 
+        except MarketDataError:
+            raise
         except Exception as e:
             raise MarketDataError(
                 f"Failed to fetch latest price for {symbol}: {e}"
