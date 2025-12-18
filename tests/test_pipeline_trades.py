@@ -1,7 +1,6 @@
 
 import unittest
 from unittest.mock import MagicMock, patch
-from datetime import datetime, date, timezone
 from decimal import Decimal
 
 from google.cloud import firestore
