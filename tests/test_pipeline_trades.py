@@ -1,6 +1,7 @@
 
 import unittest
 from unittest.mock import MagicMock, patch
+from decimal import Decimal
 from alpaca.trading.client import TradingClient
 from alpaca.trading.models import Order
 from alpaca.common.exceptions import APIError
@@ -104,6 +105,8 @@ class TestTradeArchivalPipeline(unittest.TestCase):
         
         # Verify PnL logic: (Exit 52k - Entry 50k) * Qty 1.0 = 2000.0
         self.assertEqual(trade["pnl_usd"], 2000.0)
+        # Verify PnL %: 2000 / 50000 * 100 = 4.0%
+        self.assertEqual(trade["pnl_pct"], 4.0)
         self.assertEqual(trade["fees_usd"], 0.0) 
         
         # Ensure Alpaca was called

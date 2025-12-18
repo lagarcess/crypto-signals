@@ -169,7 +169,10 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                     pnl_gross = (entry_price_val - exit_price_val) * qty
                     
                 pnl_usd = pnl_gross - fees_usd
-                pnl_pct = (pnl_usd / (entry_price_val * qty)) if (entry_price_val and qty) else 0.0
+                
+                # PnL % should be a percentage value (e.g. 5.0 for 5%), not a ratio
+                cost_basis = entry_price_val * qty
+                pnl_pct = (pnl_usd / cost_basis * 100.0) if cost_basis else 0.0
                 
                 duration = int((exit_time - entry_time).total_seconds())
                 
