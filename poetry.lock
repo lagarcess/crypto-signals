@@ -1028,6 +1028,38 @@ test = ["hypothesis (>=6.46.1)", "pytest (>=7.3.2)", "pytest-xdist (>=2.2.0)"]
 xml = ["lxml (>=4.9.2)"]
 
 [[package]]
+name = "pandas-ta-classic"
+version = "0.3.60.dev1"
+description = "Technical Analysis Indicators - Pandas TA Classic is an easy to use Python 3 Pandas Extension with a comprehensive collection of indicators and TA-Lib patterns."
+optional = false
+python-versions = ">=3.9"
+groups = ["main"]
+files = []
+develop = false
+
+[package.dependencies]
+numpy = ">=2.0.0"
+pandas = ">=2.0.0"
+python-dateutil = ">=2.8.1"
+pytz = ">=2021.1"
+six = ">=1.16.0"
+
+[package.extras]
+all = ["pandas-ta-classic[dev,docs,integration,optional,performance,test]"]
+dev = ["black (>=23.0.0)", "build (>=0.10.0)", "flake8 (>=6.0.0)", "isort (>=5.0.0)", "mypy (>=1.0.0)", "pandas-ta-classic[docs]", "pandas-ta-classic[test]", "pre-commit (>=3.0.0)", "twine (>=4.0.0)"]
+docs = ["matplotlib", "mplfinance", "myst-parser (>=2.0.0)", "sphinx (>=5.0.0)", "sphinx-rtd-theme (>=1.0.0)"]
+integration = ["alphaVantage-api", "backtrader", "vectorbt", "yfinance"]
+optional = ["scipy", "sklearn", "statsmodels", "stochastic", "talib", "tqdm"]
+performance = ["cython (>=3.0.0)", "numba (>=0.58.0)"]
+test = ["hypothesis (>=6.0.0)", "pytest (>=7.0.0)", "pytest-benchmark (>=4.0.0)", "pytest-cov (>=4.0.0)"]
+
+[package.source]
+type = "git"
+url = "https://github.com/xgboosted/pandas-ta-classic.git"
+reference = "main"
+resolved_reference = "589f15b13d7bc2ddab94c1559a7763b32533c8a3"
+
+[[package]]
 name = "platformdirs"
 version = "4.4.0"
 description = "A small Python package for determining appropriate platform-specific dirs, e.g. a `user data dir`."
@@ -1844,4 +1876,4 @@ files = [
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.9"
-content-hash = "fc8a0aeb246c2949ec685666b733ae0e78b7a8b0bd6bbed9fb9192abad9b4965"
+content-hash = "6b400e02c91c9335d75a096a28737cf775b6bfad69bec469358501da0f496d5b"

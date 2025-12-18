@@ -19,6 +19,9 @@ google-cloud-secret-manager = "^2.21.0"
 # HTTP Client
 requests = "^2.31.0"
 websockets = "^13.1"
+# Data Analysis
+pandas = "^2.2.0"
+pandas-ta-classic = {git = "https://github.com/xgboosted/pandas-ta-classic.git", branch = "main"}
 
 [build-system]
 requires = ["poetry-core"]
