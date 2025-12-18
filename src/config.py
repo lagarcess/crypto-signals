@@ -134,4 +134,21 @@ if __name__ == "__main__":
     cfg = get_settings()
     print(f"GCP Auth Path Set: {os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')}")
     print(f"GCP Project: {cfg.GOOGLE_CLOUD_PROJECT}")
-    print(f"Alpaca Paper Trading: {cfg.is_paper_trading}")
+
+from alpaca.trading.client import TradingClient
+
+
+def get_trading_client() -> TradingClient:
+    """
+    Get an authenticated Alpaca TradingClient.
+    
+    Returns:
+        TradingClient: Authenticated client
+    """
+    settings = get_settings()
+    return TradingClient(
+        api_key=settings.ALPACA_API_KEY,
+        secret_key=settings.ALPACA_SECRET_KEY,
+        paper=settings.is_paper_trading
+    )
+
