@@ -9,6 +9,7 @@ import os
 from functools import lru_cache
 from pathlib import Path
 
+from alpaca.data.historical import CryptoHistoricalDataClient, StockHistoricalDataClient
 from alpaca.trading.client import TradingClient
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -150,6 +151,34 @@ def get_trading_client() -> TradingClient:
         api_key=settings.ALPACA_API_KEY,
         secret_key=settings.ALPACA_SECRET_KEY,
         paper=settings.is_paper_trading,
+    )
+
+
+def get_stock_data_client() -> StockHistoricalDataClient:
+    """
+    Get an authenticated Alpaca StockHistoricalDataClient.
+
+    Returns:
+        StockHistoricalDataClient: Authenticated client
+    """
+    settings = get_settings()
+    return StockHistoricalDataClient(
+        api_key=settings.ALPACA_API_KEY,
+        secret_key=settings.ALPACA_SECRET_KEY,
+    )
+
+
+def get_crypto_data_client() -> CryptoHistoricalDataClient:
+    """
+    Get an authenticated Alpaca CryptoHistoricalDataClient.
+
+    Returns:
+        CryptoHistoricalDataClient: Authenticated client
+    """
+    settings = get_settings()
+    return CryptoHistoricalDataClient(
+        api_key=settings.ALPACA_API_KEY,
+        secret_key=settings.ALPACA_SECRET_KEY,
     )
 
 
