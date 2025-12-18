@@ -13,7 +13,7 @@ Pattern: "Enrich-Extract-Load"
 import logging
 import time
 from datetime import datetime, timezone
-from typing import Any, List, Dict
+from typing import Any, List
 
 from google.cloud import firestore
 
