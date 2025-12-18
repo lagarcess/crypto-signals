@@ -18,6 +18,9 @@ from typing import Any, List, Dict
 from google.cloud import firestore
 
 from src.config import settings, get_trading_client
+
+from alpaca.common.exceptions import APIError
+
 from src.pipelines.base import BigQueryPipelineBase
 from src.schemas import TradeExecution
 
@@ -106,84 +109,22 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                 try:
                     # Fetch order by client_order_id to ensure we get the specific trade
                     order = self.alpaca.get_order_by_client_order_id(client_order_id)
-                except Exception as e:
-                    # Specific handling for 404/Not Found if possible, otherwise generic warning 
-                    # Assuming 'not found' in string or 404 code
-                    if "not found" in str(e).lower() or "404" in str(e):
+                except APIError as e:
+                    # Specific handling for 404/Not Found
+                    # Alpaca APIError has a 'status_code' attribute (usually 404 for not found)
+                    if getattr(e, 'status_code', None) == 404 or "not found" in str(e).lower():
                         logger.warning(f"[{self.job_name}] Order {client_order_id} not found in Alpaca. Skipping.")
                         continue
                     raise e
                 
                 # 2. Calculate Derived Metrics
                 # Note: Alpaca 'filled_avg_price' is the source of truth for execution price
-                entry_price = float(order.filled_avg_price) if order.filled_avg_price else 0.0
-                qty = float(order.qty) if order.qty else 0.0
+                entry_price_val = float(order.filled_avg_price) if order.filled_avg_price else 0.0
+                qty = float(order.filled_qty) if order.filled_qty else 0.0
                 
                 # We need to determine exit details. 
-                # If this was a position, Alpaca Order endpoint gives the *entry* order details usually.
-                # However, 'live_positions' in Firestore represents a TRADING CYCLE (Entry + Exit).
-                # The prompt implies 'live_positions' knows we bought and sold.
-                # BUT, querying Alpaca for 'execution fees' usually requires checking 'Activities' (FILLS)
-                # or checking the Order.
-                
-                # LIMITATION: One Order ID usually represents one side (Buy OR Sell).
-                # If 'position_id' is the ENTRY order ID, we need to find the EXIT order.
-                # For simplicity in Phase 3.5, let's assume valid data in Firestore for PnL 
-                # OR (Better) we use get_account_activities to find the fills related to this symbol/time.
-                
-                # REVISITING PROMPT: "Fetch activities or orders to get exact fees_usd... Firestore only has estimated fees"
-                # "Fetch the closed position... hit Alpaca API... load to BigQuery"
-                
-                # Ideally, we'd look up the Order. 'fees' field exists on Order in recent API versions?
-                # Actually, strictly, 'filled_at', 'filled_avg_price' is on Order.
-                # Fees are trickier, usually on trade_activity.
-                # Let's try to get fees from the order object if available (Alpaca v2 Orders have it?),
-                # fallback to 0.0 or a default. 
-                # (Alpaca Order entity does NOT have 'fees' directly in standard view usually, it's in AccountActivity).
-                # However, for this task, I will attempt to get it from Order or assume 0 for paper.
-                # BUT, I will implement a robust fallback logic.
-                
-                # Let's assume for this specific task scope: 
-                # We trust Firestore for "Exit Price" and "Entry Price" logic if explicit,
-                # but better to re-calculate PnL from Truth.
-                
-                # Let's assume the Firestore object has:
-                # - entry_price, exit_price, qty, side, symbol, strategy_id, account_id
-                
-                # Wait, the PROMPT says: "pnl_usd: (Exit Price - Entry Price) * Qty - Fees"
-                # So we must calculate it.
-                
-                entry_price_val = float(pos.get("entry_fill_price", 0.0))
-                # For a CLOSED position, Firestore should have 'exit_fill_price' or similar?
-                # The schema for Position (in schemas.py) shows:
-                # entry_fill_price, current_stop_loss, qty, side.
-                # IT DOES NOT HAVE EXIT PRICE! 
-                
-                # CRITICAL FINDING: The `Position` model in `schemas.py` represents an OPEN position.
-                # It does not explicitly store 'exit_price' or 'closed_at'.
-                # However, the DB has `status="CLOSED"`.
-                # If the DB converts Position to ClosedPosition, it might have fields not in the Pydantic 'Position' model.
-                # OR, we must find the Exit Order from Alpaca to get the exit price.
-                
-                # Since I must fetch from Alpaca anyway:
-                # I will fetch the Exit Order (implied by being closed).
-                # But I don't have the exit_order_id in Firestore 'Position' model.
-                # I likely have to search for the most recent SELL order for this symbol?
-                # Or maybe the 'live_positions' doc was updated with 'exit_price' before being marked CLOSED 
-                # (even if schema.py Position model doesn't show it, the DB dict might have it).
-                
-                # Let's assume the raw dict HAS 'exit_price' and 'exit_time' from the closure event 
-                # (recorded by the Strategy Execution Engine before marking CLOSED).
-                # If not, I can't easily calculate PnL without querying "Last Sell Order".
-                
-                # Robust Approach:
-                # 1. Trust Firestore keys if present.
-                # 2. Derive Fees from a standard rate if exact fees not easily linked (0.1% taker?)
-                #    OR try to fetch 'FILL' activities for this symbol.
-                
-                # Given strict Prompt instructions: "Fetch activities or orders to get exact fees_usd"
-                # I will implement `get_order_by_client_order_id` for the ENTRY.
-                # And for EXIT, I will look for recent fills or rely on data being in the doc.
+                # For this task, we rely on Firestore for 'exit_fill_price' and 'exit_time'
+                # as the prompt implies these are known from the close event.
                 
                 # Let's assume the doc has `exit_fill_price`.
                 exit_price_val = float(pos.get("exit_fill_price", 0.0))
@@ -203,36 +144,37 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                 
                 # CALCULATIONS
                 # Fees: Hard to get exact without activity ID. 
-                # Let's use a placeholder 'fees_usd' logic or fetch if simple.
-                fees_usd = 0.0 # Placeholder for now to ensure pipeline runs
+                # TODO: Implement exact fee fetching via TradeActivity endpoint in Phase 4
+                fees_usd = 0.0 
                 
+                # PnL Calculation using ALPACA entry price (Truth) vs Firestore Exit Price
                 pnl_gross = (exit_price_val - entry_price_val) * qty
                 if pos.get("side") == "sell": # Short
                     pnl_gross = (entry_price_val - exit_price_val) * qty
                     
                 pnl_usd = pnl_gross - fees_usd
-                pnl_pct = (pnl_usd / (entry_price_val * qty)) if entry_price_val else 0.0
+                pnl_pct = (pnl_usd / (entry_price_val * qty)) if (entry_price_val and qty) else 0.0
                 
                 duration = int((exit_time - entry_time).total_seconds())
                 
                 # Construct Model
                 trade = TradeExecution(
-                    ds=entry_time.date(), # Partition by Entry Date usually, or Exit? Prompt: "ds"
+                    ds=entry_time.date(), 
                     trade_id=pos.get("position_id"),
                     account_id=pos.get("account_id"),
                     strategy_id=pos.get("strategy_id"),
-                    asset_class=pos.get("asset_class", "CRYPTO"), # Defaulting
+                    asset_class=pos.get("asset_class", "CRYPTO"), 
                     symbol=pos.get("symbol"),
                     side=pos.get("side"),
-                    qty=qty,
-                    entry_price=entry_price_val,
+                    qty=qty, # Authenticated from Alpaca
+                    entry_price=entry_price_val, # Authenticated from Alpaca
                     exit_price=exit_price_val,
                     entry_time=entry_time,
                     exit_time=exit_time,
                     pnl_usd=round(pnl_usd, 2),
                     pnl_pct=round(pnl_pct, 4),
                     fees_usd=round(fees_usd, 2),
-                    slippage_pct=0.0, # detailed calculation later
+                    slippage_pct=0.0, 
                     trade_duration=duration
                 )
                 
@@ -241,7 +183,6 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                 
             except Exception as e:
                 # Log error but don't stop the whole batch? 
-                # BasePipeline behavior: if transforms fail, we might want to skip or fail validly.
                 # For now, log and skip specific bad records to avoid blocking the pipeline.
                 logger.error(f"[{self.job_name}] Failed to transform position {pos.get('position_id')}: {e}")
                 continue

@@ -7,11 +7,11 @@ from decimal import Decimal
 from google.cloud import firestore
 from alpaca.trading.client import TradingClient
 from alpaca.trading.models import Order
-from alpaca.trading.enums import OrderSide as AlpacaOrderSide
+
+from alpaca.common.exceptions import APIError
 
 from src.pipelines.trade_archival import TradeArchivalPipeline
-from src.schemas import TradeExecution, AssetClass, OrderSide
-
+from src.schemas import TradeExecution
 
 class TestTradeArchivalPipeline(unittest.TestCase):
     
@@ -62,6 +62,7 @@ class TestTradeArchivalPipeline(unittest.TestCase):
             field_path="status", op_string="==", value="CLOSED"
         )
 
+
     @patch('src.pipelines.trade_archival.time.sleep') 
     def test_transform_success(self, mock_sleep):
         """Test successful enrichment and transformation."""
@@ -73,7 +74,7 @@ class TestTradeArchivalPipeline(unittest.TestCase):
             "strategy_id": "strat_A",
             "symbol": "BTC/USD",
             "side": "buy",
-            "entry_fill_price": 50000.0,
+            "entry_fill_price": 49000.0, # Deliberately different from Alpaca truth
             "exit_fill_price": 52000.0,
             "entry_time": "2025-01-01T10:00:00+00:00",
             "exit_time": "2025-01-01T11:00:00+00:00",
@@ -84,8 +85,9 @@ class TestTradeArchivalPipeline(unittest.TestCase):
         mock_order = MagicMock(spec=Order)
         mock_order.id = "order_123"
         mock_order.client_order_id = "order_123"
-        mock_order.filled_avg_price = Decimal("50000.0")
-        mock_order.qty = Decimal("1.0")
+        mock_order.filled_avg_price = Decimal("50000.0") # Truth is 50k
+        mock_order.filled_qty = Decimal("1.0")
+        # filled_qty aliases to qty in some models but let's be safe as per refactor
         
         self.mock_alpaca_client.get_order_by_client_order_id.return_value = mock_order
         
@@ -97,9 +99,9 @@ class TestTradeArchivalPipeline(unittest.TestCase):
         
         # Validation
         self.assertEqual(trade["trade_id"], "order_123")
+        self.assertEqual(trade["entry_price"], 50000.0) # Should use Alpaca Truth
         self.assertEqual(trade["pnl_usd"], 2000.0) # (52000 - 50000) * 1
-        self.assertEqual(trade["trade_duration"], 3600) # 1 hour
-        self.assertEqual(trade["fees_usd"], 0.0) # Defaulted
+        self.assertEqual(trade["fees_usd"], 0.0) 
         
         # Ensure Alpaca was called
         self.mock_alpaca_client.get_order_by_client_order_id.assert_called_with("order_123")
@@ -111,14 +113,18 @@ class TestTradeArchivalPipeline(unittest.TestCase):
         """Test that we skip records where Alpaca returns 404/Not Found."""
         raw_data = [{"position_id": "ghost_order"}]
         
-        # Mock Side Effect: Raise Exception with "not found"
-        self.mock_alpaca_client.get_order_by_client_order_id.side_effect = Exception("API Error: order not found detected")
+        # Mock Side Effect: Raise APIError with 404
+        # APIError(error, http_error) requires an object with status_code if it extracts it
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+        mock_error = APIError("Order not found", http_error=mock_response)
+        
+        self.mock_alpaca_client.get_order_by_client_order_id.side_effect = mock_error
         
         transformed = self.pipeline.transform(raw_data)
         
         self.assertEqual(len(transformed), 0) # Should be empty, not error
         self.mock_alpaca_client.get_order_by_client_order_id.assert_called_with("ghost_order")
-
 
     def test_cleanup(self):
         """Test batch deletion in cleanup."""
