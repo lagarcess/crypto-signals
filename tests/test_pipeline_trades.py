@@ -7,7 +7,6 @@ from alpaca.trading.enums import OrderSide as AlpacaOrderSide
 from alpaca.common.exceptions import APIError
 
 from src.pipelines.trade_archival import TradeArchivalPipeline
-from src.schemas import TradeExecution
 
 class TestTradeArchivalPipeline(unittest.TestCase):
     
