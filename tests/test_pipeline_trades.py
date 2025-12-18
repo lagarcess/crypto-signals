@@ -4,7 +4,6 @@ from unittest.mock import MagicMock, patch
 from decimal import Decimal
 
 from google.cloud import firestore
-from alpaca.trading.client import TradingClient
 from alpaca.trading.models import Order
 
 from alpaca.common.exceptions import APIError
