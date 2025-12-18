@@ -3,7 +3,7 @@ name = "crypto-signals"
 version = "0.1.0"
 description = "Crypto Sentinel - Automated Crypto Trading System"
 authors = ["Admin <admin@example.com>"]
-package-mode = false
+packages = [{include = "crypto_signals", from = "src"}]
 
 [tool.poetry.dependencies]
 python = "^3.9"

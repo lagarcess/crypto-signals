@@ -12,7 +12,7 @@ from datetime import date, datetime, timezone
 import pytest
 from pydantic import ValidationError
 
-from src.schemas import (
+from crypto_signals.domain.schemas import (
     AssetClass,
     OrderSide,
     Position,

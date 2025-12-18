@@ -7,7 +7,7 @@ from unittest.mock import patch
 import pytest
 from pydantic import BaseModel, Field
 
-from src.pipelines.base import BigQueryPipelineBase
+from crypto_signals.pipelines.base import BigQueryPipelineBase
 
 # --- Mocks & Fixtures ---
 
@@ -34,7 +34,7 @@ class ConcretePipeline(BigQueryPipelineBase):
 @pytest.fixture
 def mock_bq_client():
     """Mock the BigQuery Client."""
-    with patch("src.pipelines.base.bigquery.Client") as mock:
+    with patch("crypto_signals.pipelines.base.bigquery.Client") as mock:
         yield mock.return_value
 
 
@@ -42,7 +42,7 @@ def mock_bq_client():
 def pipeline(mock_bq_client):
     """Return a concrete pipeline instance with mocked clients."""
     # Mock settings to avoid loading .env
-    with patch("src.pipelines.base.settings") as mock_settings:
+    with patch("crypto_signals.pipelines.base.settings") as mock_settings:
         mock_settings.return_value.GOOGLE_CLOUD_PROJECT = "test-project"
 
         return ConcretePipeline(

@@ -1,0 +1,234 @@
+"""Unit tests for Account Snapshot Pipeline."""
+
+from unittest.mock import MagicMock, patch
+
+import pytest
+from alpaca.trading.models import PortfolioHistory, TradeAccount
+
+from crypto_signals.pipelines.account_snapshot import AccountSnapshotPipeline
+
+# -----------------------------------------------------------------------------
+# FIXTURES
+# -----------------------------------------------------------------------------
+
+
+@pytest.fixture
+def mock_settings():
+    """Mock the settings object."""
+    with patch("crypto_signals.pipelines.account_snapshot.settings") as mock:
+        mock.return_value.GOOGLE_CLOUD_PROJECT = "test-project"
+        yield mock
+
+
+@pytest.fixture
+def mock_alpaca():
+    """Mock the Alpaca trading client."""
+    with patch("crypto_signals.pipelines.account_snapshot.get_trading_client") as mock:
+        yield mock.return_value
+
+
+@pytest.fixture
+def mock_bq():
+    """Mock the BigQuery client."""
+    with patch("google.cloud.bigquery.Client") as mock:
+        yield mock.return_value
+
+
+@pytest.fixture
+def pipeline(mock_settings, mock_alpaca, mock_bq):
+    """Create an AccountSnapshotPipeline instance for testing."""
+    return AccountSnapshotPipeline()
+
+
+# -----------------------------------------------------------------------------
+# TESTS
+# -----------------------------------------------------------------------------
+
+
+def test_init(pipeline):
+    """Test pipeline initialization."""
+    assert pipeline.job_name == "account_snapshot"
+    assert (
+        pipeline.staging_table_id == "test-project.crypto_sentinel.stg_accounts_import"
+    )
+    assert pipeline.fact_table_id == "test-project.crypto_sentinel.snapshot_accounts"
+
+
+def test_extract(pipeline, mock_alpaca):
+    """Test that extract calls Alpaca with correct parameters."""
+    mock_account = MagicMock(spec=TradeAccount)
+    mock_history = MagicMock(spec=PortfolioHistory)
+
+    mock_alpaca.get_account.return_value = mock_account
+    mock_alpaca.get_portfolio_history.return_value = mock_history
+
+    result = pipeline.extract()
+
+    assert len(result) == 1
+    assert result[0]["account"] == mock_account
+    assert result[0]["history"] == mock_history
+
+    mock_alpaca.get_account.assert_called_once()
+    mock_alpaca.get_portfolio_history.assert_called_once_with(
+        period="1A", timeframe="1D", date_end=None, extended_hours=False
+    )
+
+
+def test_transform_calculation(pipeline):
+    """Test the math: Drawdown, Calmar, and Peak Equity (> 30 days coverage)."""
+    mock_account = MagicMock()
+    mock_account.id = "acc_123"
+    mock_account.equity = "100000.0"
+    mock_account.cash = "50000.0"
+
+    # Need > 30 items to trigger Calmar calculation
+    # Simulate 30 days of growth then a dip
+    # Start 80k -> Peak 120k -> Current 100k
+
+    # 29 days of flat 80k
+    equity_series = [80000.0] * 29
+    # Add peak and current structure
+    # 80k -> 120k -> 90k (MaxDD 25%) -> 100k
+    equity_series.extend([120000.0, 90000.0, 95000.0])
+
+    # Total Len = 32 (>30).
+    # Start = 80k. Current 100k.
+    # Return = 25% (0.25).
+    # Annualized (Trading 252): ( (100/80) ^ (252 / 32) ) - 1
+    # = (1.25 ^ 7.875) - 1 ... roughly 4.8 (480%)
+
+    # Max DD: Peak 120 -> 90 = 25%.
+    # Current DD: (120 - 100) / 120 = 16.67%.
+    # So denominator = 0.25.
+
+    # Calmar = Annualized / MaxDD.
+
+    expected_annual_return = ((100000.0 / 80000.0) ** (252 / 32)) - 1
+    expected_calmar = expected_annual_return / 0.25
+
+    mock_history = MagicMock()
+    mock_history.equity = equity_series
+    mock_history.timestamp = (
+        None  # Will force logic to rely on list length if I implemented that fallback
+    )
+    # In my code I assumed list length logic for "days"
+
+    raw_data = [{"account": mock_account, "history": mock_history}]
+
+    transformed = pipeline.transform(raw_data)
+    record = transformed[0]
+
+    assert record["account_id"] == "acc_123"
+    assert record["drawdown_pct"] == 16.6667
+
+    # Verify Calmar matches logic
+    assert record["calmar_ratio"] == round(expected_calmar, 2)
+
+
+def test_calmar_guardrail_new_account(pipeline):
+    """Test Guardrail: < 30 days history -> Calmar 0.0."""
+    mock_account = MagicMock()
+    mock_account.id = "acc_new"
+    mock_account.equity = "100000.0"
+    mock_account.cash = "100000.0"
+
+    # 29 days Only
+    equity_series = [100000.0] * 29
+    mock_history = MagicMock()
+    mock_history.equity = equity_series
+
+    raw_data = [{"account": mock_account, "history": mock_history}]
+
+    transformed = pipeline.transform(raw_data)
+    record = transformed[0]
+
+    assert record["calmar_ratio"] == 0.0
+    # Drawdown should still calculate (0.0 here)
+    assert record["drawdown_pct"] == 0.0
+
+
+def test_calmar_guardrail_perfect_trading(pipeline):
+    """Test Guardrail: Max Drawdown 0 -> Calmar 0.0."""
+    mock_account = MagicMock()
+    mock_account.id = "acc_perfect"
+    mock_account.equity = "150000.0"  # Up from 100k
+
+    # 35 days of pure up only
+    # Start 100k -> ... -> 150k
+    equity_series = [100000.0 + (i * 1000) for i in range(35)]
+    # Peak is 134000 (last in history) or current 150000.
+    # Current 150000. All history < 150000.
+    # Max DD = 0.
+
+    mock_history = MagicMock()
+    mock_history.equity = equity_series
+
+    raw_data = [{"account": mock_account, "history": mock_history}]
+
+    transformed = pipeline.transform(raw_data)
+    record = transformed[0]
+
+    # Return is positive, but MaxDD is 0. Calmar should be 0.0 (or capped?)
+    # My logic says guardrail sets to 0.0 if MaxDD == 0.
+    assert record["calmar_ratio"] == 0.0
+    assert record["drawdown_pct"] == 0.0
+
+
+def test_calmar_guardrail_unfunded(pipeline):
+    """Test Guardrail: Start Equity <= 0 -> Calmar 0.0."""
+    mock_account = MagicMock()
+    mock_account.id = "acc_weird"
+    mock_account.equity = "100.0"
+
+    # 35 days but start was 0 (unfunded)
+    equity_series = [0.0] * 34 + [100.0]
+
+    mock_history = MagicMock()
+    mock_history.equity = equity_series
+
+    raw_data = [{"account": mock_account, "history": mock_history}]
+
+    transformed = pipeline.transform(raw_data)
+    record = transformed[0]
+
+    assert record["calmar_ratio"] == 0.0
+
+
+def test_drawdown_zero_equity(pipeline):
+    """Test Guardrail: Peak Equity <= 0 -> Drawdown 0.0."""
+    mock_account = MagicMock()
+    mock_account.id = "acc_broke"
+    mock_account.equity = "0.0"  # Broke
+
+    # History also 0
+    mock_history = MagicMock()
+    mock_history.equity = [0.0] * 35
+
+    raw_data = [{"account": mock_account, "history": mock_history}]
+
+    transformed = pipeline.transform(raw_data)
+    record = transformed[0]
+
+    assert record["drawdown_pct"] == 0.0
+    assert record["equity"] == 0.0
+
+
+def test_pipeline_run_skip_cleanup(pipeline):
+    """Test override: cleanup is NOT called."""
+    with patch.object(pipeline, "extract") as mock_ext, patch.object(
+        pipeline, "transform"
+    ) as mock_trans, patch.object(pipeline, "_truncate_staging"), patch.object(
+        pipeline, "_load_to_staging"
+    ), patch.object(
+        pipeline, "_execute_merge"
+    ), patch.object(
+        pipeline, "cleanup"
+    ) as mock_clean:
+
+        mock_ext.return_value = ["raw"]
+        mock_trans.return_value = ["processed"]
+
+        pipeline.run()
+
+        mock_ext.assert_called_once()
+        mock_clean.assert_not_called()

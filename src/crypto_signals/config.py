@@ -100,7 +100,7 @@ class Settings(BaseSettings):
     @property
     def project_root(self) -> Path:
         """Return the project root directory."""
-        return Path(__file__).parent.parent
+        return Path(__file__).parent.parent.parent
 
     @property
     def is_paper_trading(self) -> bool:
