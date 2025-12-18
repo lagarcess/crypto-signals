@@ -97,9 +97,10 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
         
         transformed = []
         
-        for pos in raw_data:
-            # Rate Limit Safety: Sleep 100ms to avoid hitting Alpaca's 200 req/min limit
-            time.sleep(0.1)
+        for idx, pos in enumerate(raw_data):
+            # Rate Limit Safety: Sleep 100ms between requests (skip before first request)
+            if idx > 0:
+                time.sleep(0.1)
             
             try:
                 # 1. Fetch Order Details from Alpaca to get Fees and Exact Times
