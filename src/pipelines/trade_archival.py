@@ -137,9 +137,17 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                 
                 # Parse or default
                 def parse_dt(val):
-                    if isinstance(val, datetime): return val
-                    try: return datetime.fromisoformat(str(val))
-                    except: return datetime.now(timezone.utc)
+                    if isinstance(val, datetime):
+                        return val
+                    try:
+                        return datetime.fromisoformat(str(val))
+                    except (ValueError, TypeError) as exc:
+                        logger.warning(
+                            "Failed to parse datetime value '%s'; defaulting to current UTC time. Error: %s",
+                            val,
+                            exc,
+                        )
+                        return datetime.now(timezone.utc)
                 
                 entry_time = parse_dt(entry_time_str)
                 exit_time = parse_dt(exit_time_str)
