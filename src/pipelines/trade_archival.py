@@ -22,7 +22,7 @@ from src.config import settings, get_trading_client
 from alpaca.common.exceptions import APIError
 
 from src.pipelines.base import BigQueryPipelineBase
-from src.schemas import TradeExecution
+from src.schemas import TradeExecution, OrderSide
 
 logger = logging.getLogger(__name__)
 
@@ -159,7 +159,13 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                 
                 # PnL Calculation using ALPACA entry price (Truth) vs Firestore Exit Price
                 pnl_gross = (exit_price_val - entry_price_val) * qty
-                if pos.get("side") == "sell": # Short
+                
+                # Source of Truth: Alpaca Order Side (Entry Order)
+                # Validates if we opened Long (Buy) or Short (Sell)
+                # Cast to string to handle Enum or str types robustly
+                order_side_str = str(order.side).lower()
+                
+                if order_side_str == OrderSide.SELL.value: # Short
                     pnl_gross = (entry_price_val - exit_price_val) * qty
                     
                 pnl_usd = pnl_gross - fees_usd

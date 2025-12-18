@@ -78,7 +78,8 @@ class TestTradeArchivalPipeline(unittest.TestCase):
             "exit_fill_price": 52000.0,
             "entry_time": "2025-01-01T10:00:00+00:00",
             "exit_time": "2025-01-01T11:00:00+00:00",
-            "asset_class": "CRYPTO"
+            "asset_class": "CRYPTO",
+            "qty": 0.5 # Deliberately wrong qty to verify Alpaca override
         }]
         
         # Mock Alpaca Response
@@ -86,8 +87,9 @@ class TestTradeArchivalPipeline(unittest.TestCase):
         mock_order.id = "order_123"
         mock_order.client_order_id = "order_123"
         mock_order.filled_avg_price = Decimal("50000.0") # Truth is 50k
-        mock_order.filled_qty = Decimal("1.0")
-        # filled_qty aliases to qty in some models but let's be safe as per refactor
+        mock_order.filled_qty = Decimal("1.0") # Truth is 1.0
+        mock_order.side = "buy" # Mocking specific side for truth check
+        # Confirmed: filled_qty is the executed quantity in Alpaca Order model
         
         self.mock_alpaca_client.get_order_by_client_order_id.return_value = mock_order
         
@@ -97,16 +99,23 @@ class TestTradeArchivalPipeline(unittest.TestCase):
         self.assertEqual(len(transformed), 1)
         trade = transformed[0]
         
-        # Validation
+        # Validation - Source of Truth verification
         self.assertEqual(trade["trade_id"], "order_123")
-        self.assertEqual(trade["entry_price"], 50000.0) # Should use Alpaca Truth
-        self.assertEqual(trade["pnl_usd"], 2000.0) # (52000 - 50000) * 1
+        
+        # Verify Entry Price used Alpaca (50k) not Firestore (49k)
+        self.assertEqual(trade["entry_price"], 50000.0)
+        
+        # Verify Quantity used Alpaca (1.0) not Firestore (0.5)
+        self.assertEqual(trade["qty"], 1.0)
+        
+        # Verify PnL logic: (Exit 52k - Entry 50k) * Qty 1.0 = 2000.0
+        self.assertEqual(trade["pnl_usd"], 2000.0)
         self.assertEqual(trade["fees_usd"], 0.0) 
         
         # Ensure Alpaca was called
+        # Note: With new logic, sleep is skipped for the first item (idx=0)
         self.mock_alpaca_client.get_order_by_client_order_id.assert_called_with("order_123")
-        # Ensure sleep was called
-        mock_sleep.assert_called_once_with(0.1)
+        mock_sleep.assert_not_called()
 
     @patch('src.pipelines.trade_archival.time.sleep')
     def test_transform_skip_not_found(self, mock_sleep):

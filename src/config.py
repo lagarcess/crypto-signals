@@ -11,6 +11,7 @@ from functools import lru_cache
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from alpaca.trading.client import TradingClient
 
 
 class Settings(BaseSettings):
@@ -129,14 +130,6 @@ def get_settings() -> Settings:
 settings = get_settings
 
 
-if __name__ == "__main__":
-    # Debug output when run directly
-    cfg = get_settings()
-    print(f"GCP Auth Path Set: {os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')}")
-    print(f"GCP Project: {cfg.GOOGLE_CLOUD_PROJECT}")
-
-from alpaca.trading.client import TradingClient
-
 
 def get_trading_client() -> TradingClient:
     """
@@ -151,4 +144,14 @@ def get_trading_client() -> TradingClient:
         secret_key=settings.ALPACA_SECRET_KEY,
         paper=settings.is_paper_trading
     )
+
+
+if __name__ == "__main__":
+    # Debug output when run directly
+    cfg = get_settings()
+    print(f"GCP Auth Path Set: {os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')}")
+    print(f"GCP Project: {cfg.GOOGLE_CLOUD_PROJECT}")
+
+
+
 
