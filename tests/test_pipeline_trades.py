@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 from alpaca.common.exceptions import APIError
 from alpaca.trading.models import Order
 
-from src.pipelines.trade_archival import TradeArchivalPipeline
+from crypto_signals.pipelines.trade_archival import TradeArchivalPipeline
 
 
 class TestTradeArchivalPipeline(unittest.TestCase):
@@ -16,15 +16,21 @@ class TestTradeArchivalPipeline(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures and mocks."""
         # Patch dependencies before initializing the pipeline
-        self.patcher_settings = patch("src.pipelines.trade_archival.settings")
+        self.patcher_settings = patch(
+            "crypto_signals.pipelines.trade_archival.settings"
+        )
         self.mock_settings = self.patcher_settings.start()
         self.mock_settings.return_value.GOOGLE_CLOUD_PROJECT = "test-project"
 
-        self.patcher_firestore = patch("src.pipelines.trade_archival.firestore.Client")
+        self.patcher_firestore = patch(
+            "crypto_signals.pipelines.trade_archival.firestore.Client"
+        )
         self.mock_firestore_cls = self.patcher_firestore.start()
         self.mock_firestore_client = self.mock_firestore_cls.return_value
 
-        self.patcher_alpaca = patch("src.pipelines.trade_archival.get_trading_client")
+        self.patcher_alpaca = patch(
+            "crypto_signals.pipelines.trade_archival.get_trading_client"
+        )
         self.mock_get_alpaca = self.patcher_alpaca.start()
         self.mock_alpaca_client = self.mock_get_alpaca.return_value
 
@@ -64,7 +70,7 @@ class TestTradeArchivalPipeline(unittest.TestCase):
             field_path="status", op_string="==", value="CLOSED"
         )
 
-    @patch("src.pipelines.trade_archival.time.sleep")
+    @patch("crypto_signals.pipelines.trade_archival.time.sleep")
     def test_transform_success(self, mock_sleep):
         """Test successful enrichment and transformation."""
         # Input Data
@@ -124,7 +130,7 @@ class TestTradeArchivalPipeline(unittest.TestCase):
         )
         mock_sleep.assert_not_called()
 
-    @patch("src.pipelines.trade_archival.time.sleep")
+    @patch("crypto_signals.pipelines.trade_archival.time.sleep")
     def test_transform_skip_not_found(self, mock_sleep):
         """Test that we skip records where Alpaca returns 404/Not Found."""
         raw_data = [{"position_id": "ghost_order"}]

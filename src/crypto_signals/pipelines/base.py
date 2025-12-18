@@ -16,7 +16,7 @@ from typing import Any, List, Type
 from google.cloud import bigquery
 from pydantic import BaseModel
 
-from src.config import settings
+from crypto_signals.config import settings
 
 # Configure logging
 logger = logging.getLogger(__name__)

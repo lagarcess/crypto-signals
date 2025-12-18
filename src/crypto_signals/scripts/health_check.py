@@ -31,7 +31,7 @@ def load_settings():
         Settings object if successful, None if validation fails
     """
     try:
-        from src.config import get_settings
+        from crypto_signals.config import get_settings
 
         settings = get_settings()
         print("✅ [Configuration] Loaded successfully")

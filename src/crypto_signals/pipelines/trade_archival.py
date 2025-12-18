@@ -19,9 +19,9 @@ from typing import Any, List
 from alpaca.common.exceptions import APIError
 from google.cloud import firestore
 
-from src.config import get_trading_client, settings
-from src.pipelines.base import BigQueryPipelineBase
-from src.schemas import OrderSide, TradeExecution
+from crypto_signals.config import get_trading_client, settings
+from crypto_signals.domain.schemas import OrderSide, TradeExecution
+from crypto_signals.pipelines.base import BigQueryPipelineBase
 
 logger = logging.getLogger(__name__)
 
