@@ -3,7 +3,6 @@ import unittest
 from unittest.mock import MagicMock, patch
 from alpaca.trading.client import TradingClient
 from alpaca.trading.models import Order
-from alpaca.trading.enums import OrderSide as AlpacaOrderSide
 from alpaca.common.exceptions import APIError
 
 from src.pipelines.trade_archival import TradeArchivalPipeline
