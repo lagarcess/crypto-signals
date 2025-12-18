@@ -112,8 +112,9 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                     order = self.alpaca.get_order_by_client_order_id(client_order_id)
                 except APIError as e:
                     # Specific handling for 404/Not Found
-                    # Alpaca APIError has a 'status_code' attribute (usually 404 for not found)
-                    if getattr(e, 'status_code', None) == 404 or "not found" in str(e).lower():
+                    # In Alpaca, the HTTP status code may live on the nested http_error object.
+                    status_code = getattr(getattr(e, "http_error", None), "status_code", None)
+                    if status_code == 404 or "not found" in str(e).lower():
                         logger.warning(f"[{self.job_name}] Order {client_order_id} not found in Alpaca. Skipping.")
                         continue
                     raise e
