@@ -1,15 +1,23 @@
 [tool.poetry]
 name = "crypto-signals"
 version = "0.1.0"
-description = "Crypto Signals Project"
+description = "Crypto Sentinel - Automated Crypto Trading System"
 authors = ["Admin <admin@example.com>"]
 package-mode = false
 
 [tool.poetry.dependencies]
 python = "^3.9"
-requests = "^2.31.0"
+# Configuration Management
+pydantic-settings = "^2.7.0"
 python-dotenv = "^1.0.0"
+# Alpaca Trading & Market Data
+alpaca-py = "^0.38.0"
+# Google Cloud Services
 google-cloud-firestore = "^2.22.0"
+google-cloud-bigquery = "^3.27.0"
+google-cloud-secret-manager = "^2.21.0"
+# HTTP Client
+requests = "^2.31.0"
 
 [build-system]
 requires = ["poetry-core"]
