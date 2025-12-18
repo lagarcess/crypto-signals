@@ -23,10 +23,10 @@ from src.schemas import (
     get_deterministic_id,
 )
 
-
 # =============================================================================
 # P0 RISK - DETERMINISTIC IDS
 # =============================================================================
+
 
 class TestDeterministicIds:
     """Test get_deterministic_id for idempotency guarantees."""
@@ -35,29 +35,29 @@ class TestDeterministicIds:
         """Identical inputs MUST produce identical UUIDs."""
         id_1 = get_deterministic_id("A")
         id_2 = get_deterministic_id("A")
-        
+
         assert id_1 == id_2, "Same input must produce same UUID"
 
     def test_different_inputs_produce_different_outputs(self):
         """Different inputs MUST produce different UUIDs."""
         id_a = get_deterministic_id("A")
         id_b = get_deterministic_id("B")
-        
+
         assert id_a != id_b, "Different inputs must produce different UUIDs"
 
     def test_complex_key_is_deterministic(self):
         """Real-world signal key pattern must be deterministic."""
         key = "2024-01-15|momentum|BTC/USD"
-        
+
         id_1 = get_deterministic_id(key)
         id_2 = get_deterministic_id(key)
-        
+
         assert id_1 == id_2
 
     def test_returns_valid_uuid_string(self):
         """Output must be a valid UUID string format."""
         result = get_deterministic_id("test")
-        
+
         # UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
         assert len(result) == 36
         assert result.count("-") == 4
@@ -67,11 +67,12 @@ class TestDeterministicIds:
 # REFINEMENT - ASSET CLASS VALIDATION
 # =============================================================================
 
+
 class TestAssetClassValidation:
     """Test AssetClass enum validation in StrategyConfig."""
 
     def test_accepts_crypto_asset_class(self):
-        """StrategyConfig must accept AssetClass.CRYPTO."""
+        """Ensure StrategyConfig accepts AssetClass.CRYPTO."""
         config = StrategyConfig(
             strategy_id="test_strategy",
             active=True,
@@ -80,12 +81,12 @@ class TestAssetClassValidation:
             assets=["BTC/USD", "ETH/USD"],
             risk_params={"stop_loss_pct": 0.02},
         )
-        
+
         assert config.asset_class == AssetClass.CRYPTO
         assert config.asset_class.value == "CRYPTO"
 
     def test_accepts_equity_asset_class(self):
-        """StrategyConfig must accept AssetClass.EQUITY."""
+        """Ensure StrategyConfig accepts AssetClass.EQUITY."""
         config = StrategyConfig(
             strategy_id="equity_strategy",
             active=True,
@@ -94,12 +95,12 @@ class TestAssetClassValidation:
             assets=["AAPL", "GOOGL"],
             risk_params={},
         )
-        
+
         assert config.asset_class == AssetClass.EQUITY
         assert config.asset_class.value == "EQUITY"
 
     def test_accepts_string_value_for_asset_class(self):
-        """StrategyConfig must accept valid string values for asset_class."""
+        """Ensure StrategyConfig accepts valid string values for asset_class."""
         config = StrategyConfig(
             strategy_id="test_strategy",
             active=True,
@@ -108,11 +109,11 @@ class TestAssetClassValidation:
             assets=["BTC/USD"],
             risk_params={},
         )
-        
+
         assert config.asset_class == AssetClass.CRYPTO
 
     def test_rejects_invalid_asset_class(self):
-        """StrategyConfig must reject invalid asset class like 'FOREX'."""
+        """Ensure StrategyConfig rejects invalid asset class like 'FOREX'."""
         with pytest.raises(ValidationError) as exc_info:
             StrategyConfig(
                 strategy_id="invalid_strategy",
@@ -122,7 +123,7 @@ class TestAssetClassValidation:
                 assets=["EUR/USD"],
                 risk_params={},
             )
-        
+
         # Verify the error mentions the invalid value
         error_str = str(exc_info.value)
         assert "asset_class" in error_str.lower() or "FOREX" in error_str
@@ -131,6 +132,7 @@ class TestAssetClassValidation:
 # =============================================================================
 # COMPLETENESS - POSITION MODEL
 # =============================================================================
+
 
 class TestPositionModel:
     """Test Position model for required fields and validation."""
@@ -148,7 +150,7 @@ class TestPositionModel:
             qty=0.5,
             side=OrderSide.BUY,
         )
-        
+
         assert position.qty == 0.5
         assert position.side == OrderSide.BUY
 
@@ -165,7 +167,7 @@ class TestPositionModel:
             qty=1.0,
             side=OrderSide.SELL,
         )
-        
+
         assert position.side == OrderSide.SELL
         assert position.side.value == "sell"
 
@@ -183,7 +185,7 @@ class TestPositionModel:
                 # qty is missing!
                 side=OrderSide.BUY,
             )
-        
+
         error_str = str(exc_info.value)
         assert "qty" in error_str.lower()
 
@@ -201,7 +203,7 @@ class TestPositionModel:
                 qty=0.5,
                 # side is missing!
             )
-        
+
         error_str = str(exc_info.value)
         assert "side" in error_str.lower()
 
@@ -219,7 +221,7 @@ class TestPositionModel:
             side=OrderSide.BUY,
             discord_thread_id=None,  # Explicitly None
         )
-        
+
         assert position.discord_thread_id is None
 
     def test_position_accepts_discord_thread_id(self):
@@ -236,13 +238,14 @@ class TestPositionModel:
             side=OrderSide.BUY,
             discord_thread_id="1234567890",
         )
-        
+
         assert position.discord_thread_id == "1234567890"
 
 
 # =============================================================================
 # BONUS - SIGNAL MODEL TESTS
 # =============================================================================
+
 
 class TestSignalModel:
     """Additional tests for Signal model completeness."""
@@ -259,7 +262,7 @@ class TestSignalModel:
             suggested_stop=48000.00,
             expiration_at=datetime(2024, 1, 16, tzinfo=timezone.utc),
         )
-        
+
         assert signal.suggested_stop == 48000.00
 
     def test_signal_status_default(self):
@@ -272,5 +275,5 @@ class TestSignalModel:
             pattern_name="bullish_engulfing",
             suggested_stop=48000.00,
         )
-        
+
         assert signal.status == SignalStatus.WAITING

@@ -8,8 +8,10 @@ validation and serialization.
 Architecture Overview (8 Tables):
 - Firestore Configuration: dim_strategies (1 table)
 - Firestore Operational: live_signals, live_positions (2 tables)
-- BigQuery Staging: stg_trades_import, stg_accounts_import, stg_performance_import (3 tables)
-- BigQuery Analytics: fact_trades, snapshot_accounts, summary_strategy_performance (3 tables)
+- BigQuery Staging: stg_trades_import, stg_accounts_import,
+  stg_performance_import (3 tables)
+- BigQuery Analytics: fact_trades, snapshot_accounts,
+  summary_strategy_performance (3 tables)
 """
 
 import uuid
@@ -18,7 +20,6 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
-
 
 # =============================================================================
 # CONSTANTS
@@ -33,19 +34,20 @@ NAMESPACE_SENTINEL = uuid.NAMESPACE_DNS
 # HELPER FUNCTIONS
 # =============================================================================
 
+
 def get_deterministic_id(key: str) -> str:
     """
     Generate a deterministic UUID5 from a key string.
-    
+
     Uses a fixed namespace to ensure the same key always produces
     the same UUID across all executions.
-    
+
     Args:
         key: A unique string to hash (e.g., "2024-01-15|momentum|BTC/USD")
-        
+
     Returns:
         str: A deterministic UUID string
-        
+
     Example:
         >>> get_deterministic_id("2024-01-15|momentum|BTC/USD")
         'a1b2c3d4-e5f6-5a7b-8c9d-0e1f2a3b4c5d'
@@ -57,14 +59,17 @@ def get_deterministic_id(key: str) -> str:
 # ENUMS (The Vocabulary)
 # =============================================================================
 
+
 class AssetClass(str, Enum):
     """Asset class classification for trading instruments."""
+
     CRYPTO = "CRYPTO"
     EQUITY = "EQUITY"
 
 
 class SignalStatus(str, Enum):
     """Lifecycle status of a trading signal."""
+
     WAITING = "WAITING"
     CONFIRMED = "CONFIRMED"
     INVALIDATED = "INVALIDATED"
@@ -72,12 +77,14 @@ class SignalStatus(str, Enum):
 
 class TradeStatus(str, Enum):
     """Status of an open position/trade."""
+
     OPEN = "OPEN"
     CLOSED = "CLOSED"
 
 
 class OrderSide(str, Enum):
     """Side of an order (buy or sell)."""
+
     BUY = "buy"
     SELL = "sell"
 
@@ -86,12 +93,14 @@ class OrderSide(str, Enum):
 # FIRESTORE: CONFIGURATION DOMAIN (Collection: dim_strategies)
 # =============================================================================
 
+
 class StrategyConfig(BaseModel):
     """
     Strategy configuration stored in Firestore dim_strategies collection.
-    
+
     Defines the parameters and assets for a trading strategy.
     """
+
     strategy_id: str = Field(
         ...,
         description="Unique identifier for the strategy",
@@ -122,17 +131,21 @@ class StrategyConfig(BaseModel):
 # FIRESTORE: OPERATIONAL DOMAIN (Collections: live_signals, live_positions)
 # =============================================================================
 
+
 class Signal(BaseModel):
     """
     Trading signal stored in Firestore live_signals collection.
-    
+
     Represents a potential trade opportunity identified by a strategy.
-    
+
     WARNING:
-        signal_id MUST be a deterministic hash (uuid5) of ds + strategy_id + symbol.
+        signal_id MUST be a deterministic hash (uuid5) of
+        ds + strategy_id + symbol.
         Use get_deterministic_id(f"{ds}|{strategy_id}|{symbol}") to generate it.
-        This ensures idempotency - the same signal detected twice won't create duplicates.
+        This ensures idempotency - the same signal detected twice
+        won't create duplicates.
     """
+
     signal_id: str = Field(
         ...,
         description="Deterministic UUID5 hash of ds|strategy_id|symbol",
@@ -170,14 +183,15 @@ class Signal(BaseModel):
 class Position(BaseModel):
     """
     Open position/trade stored in Firestore live_positions collection.
-    
+
     Represents an actual trade executed based on a signal.
-    
+
     WARNING:
         position_id MUST match the Alpaca Client Order ID for idempotency.
         This ensures we can reconcile positions with the broker and prevent
         duplicate order submissions.
     """
+
     position_id: str = Field(
         ...,
         description="Must match Alpaca Client Order ID for idempotency",
@@ -224,13 +238,15 @@ class Position(BaseModel):
 # BIGQUERY: TRADE EXECUTION (Tables: fact_trades, stg_trades_import)
 # =============================================================================
 
+
 class TradeExecution(BaseModel):
     """
     Completed trade execution record for BigQuery analytics.
-    
-    Stored in the fact_trades table, partitioned by ds (date).
-    Used for performance analysis and reporting.
+
+    Stored in the fact_trades table, partitioned by ds (date). Used for performance
+    analysis and reporting.
     """
+
     ds: date = Field(
         ...,
         description="Partition key - date of trade execution",
@@ -304,10 +320,11 @@ class TradeExecution(BaseModel):
 class StagingTrade(BaseModel):
     """
     Staging model for trade imports to BigQuery.
-    
-    Exact mirror of TradeExecution. Validates payloads before
-    loading into the stg_trades_import table.
+
+    Exact mirror of TradeExecution. Validates payloads before loading into the
+    stg_trades_import table.
     """
+
     ds: date = Field(
         ...,
         description="Partition key - date of trade execution",
@@ -382,13 +399,15 @@ class StagingTrade(BaseModel):
 # BIGQUERY: ACCOUNT SNAPSHOTS (Tables: snapshot_accounts, stg_accounts_import)
 # =============================================================================
 
+
 class AccountSnapshot(BaseModel):
     """
     Account snapshot record for BigQuery analytics.
-    
-    Stored in the snapshot_accounts table, partitioned by ds (date).
-    Captures daily account metrics for performance tracking.
+
+    Stored in the snapshot_accounts table, partitioned by ds (date). Captures daily
+    account metrics for performance tracking.
     """
+
     ds: date = Field(
         ...,
         description="Partition key - snapshot date",
@@ -418,10 +437,11 @@ class AccountSnapshot(BaseModel):
 class StagingAccount(BaseModel):
     """
     Staging model for account snapshots to BigQuery.
-    
-    Exact mirror of AccountSnapshot. Validates payloads before
-    loading into the stg_accounts_import table.
+
+    Exact mirror of AccountSnapshot. Validates payloads before loading into the
+    stg_accounts_import table.
     """
+
     ds: date = Field(
         ...,
         description="Partition key - snapshot date",
@@ -449,16 +469,19 @@ class StagingAccount(BaseModel):
 
 
 # =============================================================================
-# BIGQUERY: STRATEGY PERFORMANCE (Tables: summary_strategy_performance, stg_performance_import)
+# BIGQUERY: STRATEGY PERFORMANCE
+# (Tables: summary_strategy_performance, stg_performance_import)
 # =============================================================================
+
 
 class StrategyPerformance(BaseModel):
     """
     Strategy performance metrics for BigQuery analytics.
-    
+
     Stored in the summary_strategy_performance table, partitioned by ds (date).
     Aggregated daily performance metrics per strategy.
     """
+
     ds: date = Field(
         ...,
         description="Partition key - performance date",
@@ -504,10 +527,11 @@ class StrategyPerformance(BaseModel):
 class StagingPerformance(BaseModel):
     """
     Staging model for strategy performance to BigQuery.
-    
-    Exact mirror of StrategyPerformance. Validates payloads before
-    loading into the stg_performance_import table.
+
+    Exact mirror of StrategyPerformance. Validates payloads before loading into the
+    stg_performance_import table.
     """
+
     ds: date = Field(
         ...,
         description="Partition key - performance date",
