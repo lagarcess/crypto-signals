@@ -18,6 +18,7 @@ google-cloud-bigquery = "^3.27.0"
 google-cloud-secret-manager = "^2.21.0"
 # HTTP Client
 requests = "^2.31.0"
+websockets = "^13.1"
 
 [build-system]
 requires = ["poetry-core"]
