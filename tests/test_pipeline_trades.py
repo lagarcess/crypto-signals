@@ -1,17 +1,11 @@
 
 import unittest
-from unittest.mock import MagicMock, patch, ANY
-from datetime import datetime, date, timezone
-from decimal import Decimal
-
-from google.cloud import firestore
+from unittest.mock import MagicMock, patch
 from alpaca.trading.client import TradingClient
 from alpaca.trading.models import Order
-
 from alpaca.common.exceptions import APIError
 
 from src.pipelines.trade_archival import TradeArchivalPipeline
-from src.schemas import TradeExecution
 
 class TestTradeArchivalPipeline(unittest.TestCase):
     
