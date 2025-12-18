@@ -108,10 +108,7 @@ def test_transform_calculation(pipeline):
 
     mock_history = MagicMock()
     mock_history.equity = equity_series
-    mock_history.timestamp = (
-        None  # Will force logic to rely on list length if I implemented that fallback
-    )
-    # In my code I assumed list length logic for "days"
+    mock_history.timestamp = None
 
     raw_data = [{"account": mock_account, "history": mock_history}]
 

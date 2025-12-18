@@ -139,7 +139,6 @@ class AccountSnapshotPipeline(BigQueryPipelineBase):
                 if start_equity > 0:
 
                     # Calculate Return
-                    (current_equity - start_equity) / start_equity
 
                     # Annualize Return
                     # ((1 + TotalReturn) ^ (365 / Days)) - 1
@@ -176,7 +175,6 @@ class AccountSnapshotPipeline(BigQueryPipelineBase):
                         max_dd = current_dd
 
                     # Debug Log
-                    # Debug Log
                     logger.info(
                         f"CALMAR DEBUG: Start={start_equity} End={current_equity} "
                         f"Days={len(equity_curve)} AnnRet={annualized_return} "
@@ -188,20 +186,6 @@ class AccountSnapshotPipeline(BigQueryPipelineBase):
                         # Calmar = Annualized Return / Max Drawdown
                         # Note: Return is 0.20 (20%), MaxDD is 0.10 (10%) -> 2.0
                         calmar_ratio = annualized_return / max_dd
-
-            # Clamping Calmar to reasonable limits?
-            # Or just let it be. 100 is effectively infinite good.
-            # Avoid complex number crash if return is negative in power?
-            # Python ** of negative base to float power returns complex.
-            # (current / start) must be positive.
-            # If current < 0 (bankruptcy), current/start < 0.
-            # Equity can assume >= 0.
-
-            # Final Validation
-            calmar_ratio = float(calmar_ratio)
-            # Handle potential complex numbers if something weird happened
-            if isinstance(calmar_ratio, complex):
-                calmar_ratio = 0.0
 
             # -----------------------------------------------------------------
             # 4. Construct Output
