@@ -119,6 +119,9 @@ class MarketDataProvider:
 
         Returns:
             float: Latest trade price
+
+        Raises:
+            MarketDataError: If data fetching fails or the asset class is unsupported.
         """
         try:
             if asset_class == AssetClass.CRYPTO:
