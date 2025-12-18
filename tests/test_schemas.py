@@ -1,0 +1,276 @@
+"""
+Tests for Crypto Sentinel Data Schemas.
+
+Verifies the data contract defined in src/schemas.py:
+- Deterministic ID generation (P0 Risk)
+- Asset class validation (Refinement)
+- Position model completeness
+"""
+
+from datetime import date, datetime, timezone
+
+import pytest
+from pydantic import ValidationError
+
+from src.schemas import (
+    AssetClass,
+    OrderSide,
+    Position,
+    Signal,
+    SignalStatus,
+    StrategyConfig,
+    TradeStatus,
+    get_deterministic_id,
+)
+
+
+# =============================================================================
+# P0 RISK - DETERMINISTIC IDS
+# =============================================================================
+
+class TestDeterministicIds:
+    """Test get_deterministic_id for idempotency guarantees."""
+
+    def test_same_input_produces_same_output(self):
+        """Identical inputs MUST produce identical UUIDs."""
+        id_1 = get_deterministic_id("A")
+        id_2 = get_deterministic_id("A")
+        
+        assert id_1 == id_2, "Same input must produce same UUID"
+
+    def test_different_inputs_produce_different_outputs(self):
+        """Different inputs MUST produce different UUIDs."""
+        id_a = get_deterministic_id("A")
+        id_b = get_deterministic_id("B")
+        
+        assert id_a != id_b, "Different inputs must produce different UUIDs"
+
+    def test_complex_key_is_deterministic(self):
+        """Real-world signal key pattern must be deterministic."""
+        key = "2024-01-15|momentum|BTC/USD"
+        
+        id_1 = get_deterministic_id(key)
+        id_2 = get_deterministic_id(key)
+        
+        assert id_1 == id_2
+
+    def test_returns_valid_uuid_string(self):
+        """Output must be a valid UUID string format."""
+        result = get_deterministic_id("test")
+        
+        # UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+        assert len(result) == 36
+        assert result.count("-") == 4
+
+
+# =============================================================================
+# REFINEMENT - ASSET CLASS VALIDATION
+# =============================================================================
+
+class TestAssetClassValidation:
+    """Test AssetClass enum validation in StrategyConfig."""
+
+    def test_accepts_crypto_asset_class(self):
+        """StrategyConfig must accept AssetClass.CRYPTO."""
+        config = StrategyConfig(
+            strategy_id="test_strategy",
+            active=True,
+            timeframe="1D",
+            asset_class=AssetClass.CRYPTO,
+            assets=["BTC/USD", "ETH/USD"],
+            risk_params={"stop_loss_pct": 0.02},
+        )
+        
+        assert config.asset_class == AssetClass.CRYPTO
+        assert config.asset_class.value == "CRYPTO"
+
+    def test_accepts_equity_asset_class(self):
+        """StrategyConfig must accept AssetClass.EQUITY."""
+        config = StrategyConfig(
+            strategy_id="equity_strategy",
+            active=True,
+            timeframe="1D",
+            asset_class=AssetClass.EQUITY,
+            assets=["AAPL", "GOOGL"],
+            risk_params={},
+        )
+        
+        assert config.asset_class == AssetClass.EQUITY
+        assert config.asset_class.value == "EQUITY"
+
+    def test_accepts_string_value_for_asset_class(self):
+        """StrategyConfig must accept valid string values for asset_class."""
+        config = StrategyConfig(
+            strategy_id="test_strategy",
+            active=True,
+            timeframe="1D",
+            asset_class="CRYPTO",  # String instead of enum
+            assets=["BTC/USD"],
+            risk_params={},
+        )
+        
+        assert config.asset_class == AssetClass.CRYPTO
+
+    def test_rejects_invalid_asset_class(self):
+        """StrategyConfig must reject invalid asset class like 'FOREX'."""
+        with pytest.raises(ValidationError) as exc_info:
+            StrategyConfig(
+                strategy_id="invalid_strategy",
+                active=True,
+                timeframe="1D",
+                asset_class="FOREX",  # Invalid!
+                assets=["EUR/USD"],
+                risk_params={},
+            )
+        
+        # Verify the error mentions the invalid value
+        error_str = str(exc_info.value)
+        assert "asset_class" in error_str.lower() or "FOREX" in error_str
+
+
+# =============================================================================
+# COMPLETENESS - POSITION MODEL
+# =============================================================================
+
+class TestPositionModel:
+    """Test Position model for required fields and validation."""
+
+    def test_position_with_qty_and_side(self):
+        """Position must accept qty and side fields."""
+        position = Position(
+            position_id="order_123",
+            ds=date(2024, 1, 15),
+            account_id="account_abc",
+            signal_id="signal_xyz",
+            status=TradeStatus.OPEN,
+            entry_fill_price=50000.00,
+            current_stop_loss=48000.00,
+            qty=0.5,
+            side=OrderSide.BUY,
+        )
+        
+        assert position.qty == 0.5
+        assert position.side == OrderSide.BUY
+
+    def test_position_accepts_sell_side(self):
+        """Position must accept OrderSide.SELL."""
+        position = Position(
+            position_id="order_456",
+            ds=date(2024, 1, 15),
+            account_id="account_abc",
+            signal_id="signal_xyz",
+            status=TradeStatus.OPEN,
+            entry_fill_price=50000.00,
+            current_stop_loss=52000.00,
+            qty=1.0,
+            side=OrderSide.SELL,
+        )
+        
+        assert position.side == OrderSide.SELL
+        assert position.side.value == "sell"
+
+    def test_position_fails_without_qty(self):
+        """Position must fail validation if qty is missing."""
+        with pytest.raises(ValidationError) as exc_info:
+            Position(
+                position_id="order_789",
+                ds=date(2024, 1, 15),
+                account_id="account_abc",
+                signal_id="signal_xyz",
+                status=TradeStatus.OPEN,
+                entry_fill_price=50000.00,
+                current_stop_loss=48000.00,
+                # qty is missing!
+                side=OrderSide.BUY,
+            )
+        
+        error_str = str(exc_info.value)
+        assert "qty" in error_str.lower()
+
+    def test_position_fails_without_side(self):
+        """Position must fail validation if side is missing."""
+        with pytest.raises(ValidationError) as exc_info:
+            Position(
+                position_id="order_789",
+                ds=date(2024, 1, 15),
+                account_id="account_abc",
+                signal_id="signal_xyz",
+                status=TradeStatus.OPEN,
+                entry_fill_price=50000.00,
+                current_stop_loss=48000.00,
+                qty=0.5,
+                # side is missing!
+            )
+        
+        error_str = str(exc_info.value)
+        assert "side" in error_str.lower()
+
+    def test_position_discord_thread_id_optional(self):
+        """Position must allow discord_thread_id to be None."""
+        position = Position(
+            position_id="order_123",
+            ds=date(2024, 1, 15),
+            account_id="account_abc",
+            signal_id="signal_xyz",
+            status=TradeStatus.OPEN,
+            entry_fill_price=50000.00,
+            current_stop_loss=48000.00,
+            qty=0.5,
+            side=OrderSide.BUY,
+            discord_thread_id=None,  # Explicitly None
+        )
+        
+        assert position.discord_thread_id is None
+
+    def test_position_accepts_discord_thread_id(self):
+        """Position must accept a valid discord_thread_id."""
+        position = Position(
+            position_id="order_123",
+            ds=date(2024, 1, 15),
+            account_id="account_abc",
+            signal_id="signal_xyz",
+            status=TradeStatus.OPEN,
+            entry_fill_price=50000.00,
+            current_stop_loss=48000.00,
+            qty=0.5,
+            side=OrderSide.BUY,
+            discord_thread_id="1234567890",
+        )
+        
+        assert position.discord_thread_id == "1234567890"
+
+
+# =============================================================================
+# BONUS - SIGNAL MODEL TESTS
+# =============================================================================
+
+class TestSignalModel:
+    """Additional tests for Signal model completeness."""
+
+    def test_signal_with_suggested_stop(self):
+        """Signal must include suggested_stop field."""
+        signal = Signal(
+            signal_id=get_deterministic_id("2024-01-15|momentum|BTC/USD"),
+            ds=date(2024, 1, 15),
+            strategy_id="momentum",
+            symbol="BTC/USD",
+            pattern_name="bullish_engulfing",
+            status=SignalStatus.WAITING,
+            suggested_stop=48000.00,
+            expiration_at=datetime(2024, 1, 16, tzinfo=timezone.utc),
+        )
+        
+        assert signal.suggested_stop == 48000.00
+
+    def test_signal_status_default(self):
+        """Signal status should default to WAITING."""
+        signal = Signal(
+            signal_id="test_signal",
+            ds=date(2024, 1, 15),
+            strategy_id="momentum",
+            symbol="BTC/USD",
+            pattern_name="bullish_engulfing",
+            suggested_stop=48000.00,
+        )
+        
+        assert signal.status == SignalStatus.WAITING
