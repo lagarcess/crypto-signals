@@ -102,6 +102,8 @@ class MarketDataProvider:
 
             return df
 
+        except MarketDataError:
+            raise
         except Exception as e:
             raise MarketDataError(
                 f"Failed to fetch daily bars for {symbol}: {e}"
