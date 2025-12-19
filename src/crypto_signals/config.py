@@ -8,6 +8,7 @@ pydantic-settings for validation and environment variable loading.
 import os
 from functools import lru_cache
 from pathlib import Path
+from typing import List
 
 from alpaca.data.historical import CryptoHistoricalDataClient, StockHistoricalDataClient
 from alpaca.trading.client import TradingClient
@@ -66,6 +67,30 @@ class Settings(BaseSettings):
     ALPACA_PAPER_TRADING: bool = Field(
         default=True,
         description="Use Alpaca paper trading environment",
+    )
+
+    # Optional: Mock Discord Notifications (defaults to False, strict validation)
+    MOCK_DISCORD: bool = Field(
+        default=False,
+        description="If True, log notifications instead of sending to Discord",
+    )
+
+    # Portfolio Configuration (Optional - defaults to hardcoded lists)
+    CRYPTO_SYMBOLS: List[str] = Field(
+        default=[
+            "BTC/USD",
+            "ETH/USD",
+            "XRP/USD",
+        ],
+        description="List of crypto pairs to analyze",
+    )
+    EQUITY_SYMBOLS: List[str] = Field(
+        default=[
+            "NVDA",
+            "QQQ",
+            "GLD",
+        ],
+        description="List of equity symbols to analyze",
     )
 
     @field_validator(

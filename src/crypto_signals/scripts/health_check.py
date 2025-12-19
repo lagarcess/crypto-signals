@@ -15,7 +15,6 @@ Run this script to validate your environment before running the main application
 import sys
 from datetime import datetime, timezone
 
-import requests
 from alpaca.data.historical.crypto import CryptoHistoricalDataClient
 from alpaca.data.requests import CryptoBarsRequest
 from alpaca.data.timeframe import TimeFrame
@@ -159,37 +158,32 @@ def verify_bigquery(settings) -> bool:
 
 def verify_discord(settings) -> bool:
     """
-    Verify Discord Webhook connectivity.
+    Verify Discord Webhook connectivity using DiscordClient.
 
     Sends a "System Online" notification to the configured webhook.
-    Includes thread_name for Forum Channel support.
+    Respects MOCK_DISCORD setting.
 
     Returns:
-        bool: True if connection successful
+        bool: True if connection successful (or mock mode active)
 
     Raises:
         Exception: If connection fails
     """
-    if not settings.DISCORD_WEBHOOK_URL:
-        print("⚠️ [Discord] Skipped (No URL set)")
-        return True
+    from crypto_signals.notifications.discord import DiscordClient
 
-    # FIX: Added 'thread_name' which is MANDATORY for Forum Channels
-    payload = {
-        "username": "Sentinel Health Check",
-        "content": "✅ System is online and connected.",
-        "thread_name": "🟢 System Status Log",
-    }
-
-    response = requests.post(
-        settings.DISCORD_WEBHOOK_URL,
-        json=payload,
-        headers={"Content-Type": "application/json"},
-        timeout=10,
+    client = DiscordClient(
+        webhook_url=settings.DISCORD_WEBHOOK_URL, mock_mode=settings.MOCK_DISCORD
     )
-    response.raise_for_status()
 
-    print("✅ [Discord] Connected (Message sent)")
+    msg = "✅ [Health Check] System is online and connected."
+    success = client.send_message(msg, thread_name="System Status")
+
+    if not success:
+        print("❌ [Discord] Failed (Check logs for details)")
+        return False
+
+    status = "Mocked" if settings.MOCK_DISCORD else "Sent"
+    print(f"✅ [Discord] Connected ({status})")
     return True
 
 
@@ -225,7 +219,9 @@ def run_all_verifications() -> bool:
 
     for service_name, verify_func in verifications:
         try:
-            verify_func(settings)
+            if not verify_func(settings):
+                print(f"❌ [{service_name}] Returned False (Check logs)")
+                all_passed = False
         except Exception as e:
             print(f"❌ [{service_name}] Failed: {e}")
             all_passed = False
