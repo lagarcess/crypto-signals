@@ -68,18 +68,17 @@ def main():
         # 1. Initialize Dependencies
         logger.info("Initializing services...")
         with log_execution_time(logger, "initialize_services"):
+            # Market Data
+            stock_client = get_stock_data_client()
+            crypto_client = get_crypto_data_client()
+            market_provider = MarketDataProvider(stock_client, crypto_client)
 
-        # Market Data
-        stock_client = get_stock_data_client()
-        crypto_client = get_crypto_data_client()
-        market_provider = MarketDataProvider(stock_client, crypto_client)
+            # Engine
+            generator = SignalGenerator(market_provider=market_provider)
 
-        # Engine
-        generator = SignalGenerator(market_provider=market_provider)
-
-        # Persistence & Notifications
-        repo = SignalRepository()
-        discord = DiscordClient()  # Config handles URL and Mock Mode automatically
+            # Persistence & Notifications
+            repo = SignalRepository()
+            discord = DiscordClient()  # Config handles URL and Mock Mode automatically
 
         # 2. Define Portfolio
         settings = get_settings()
@@ -121,32 +120,34 @@ def main():
                 )
 
                 # Generate Signals
-                signal = generator.generate_signals(symbol, asset_class)
+                trade_signal = generator.generate_signals(symbol, asset_class)
 
                 # Track metrics
                 symbol_duration = time.time() - symbol_start_time
                 symbols_processed += 1
 
-                if signal:
+                if trade_signal:
                     signals_found += 1
                     logger.info(
-                        f"SIGNAL FOUND: {signal.pattern_name} on {signal.symbol}",
+                        f"SIGNAL FOUND: {trade_signal.pattern_name} "
+                        f"on {trade_signal.symbol}",
                         extra={
-                            "symbol": signal.symbol,
-                            "pattern": signal.pattern_name,
-                            "stop_loss": signal.suggested_stop,
+                            "symbol": trade_signal.symbol,
+                            "pattern": trade_signal.pattern_name,
+                            "stop_loss": trade_signal.suggested_stop,
                         },
                     )
 
                     # Persist
-                    repo.save(signal)
+                    repo.save(trade_signal)
                     logger.info("Signal saved to Firestore.")
 
                     # Notify
-                    if not discord.send_signal(signal):
+                    if not discord.send_signal(trade_signal):
                         logger.warning(
-                            f"Failed to send Discord notification for {signal.symbol}",
-                            extra={"symbol": signal.symbol},
+                            "Failed to send Discord notification for "
+                            f"{trade_signal.symbol}",
+                            extra={"symbol": trade_signal.symbol},
                         )
 
                     metrics.record_success("signal_generation", symbol_duration)
