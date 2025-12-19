@@ -65,3 +65,31 @@ def test_save_signal(mock_settings, mock_firestore_client):
     # model_dump(mode="json") converts dates/datetimes to ISO strings
     expected_data = signal.model_dump(mode="json")
     mock_document.set.assert_called_once_with(expected_data)
+
+
+def test_save_signal_firestore_error(mock_settings, mock_firestore_client):
+    """Test that Firestore errors are propagated."""
+    # Setup mocks
+    mock_db = mock_firestore_client.return_value
+    mock_collection = mock_db.collection.return_value
+    mock_document = mock_collection.document.return_value
+
+    # Simulate Firestore error
+    mock_document.set.side_effect = RuntimeError("Firestore connection failed")
+
+    repo = SignalRepository()
+
+    # Create dummy signal
+    signal = Signal(
+        signal_id="test-error",
+        ds=date(2025, 1, 1),
+        strategy_id="strat",
+        symbol="BTC/USD",
+        pattern_name="pattern",
+        status=SignalStatus.WAITING,
+        suggested_stop=100.0,
+    )
+
+    # Verify exception is raised and not swallowed
+    with pytest.raises(RuntimeError, match="Firestore connection failed"):
+        repo.save(signal)
