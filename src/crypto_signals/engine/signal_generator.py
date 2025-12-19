@@ -32,8 +32,8 @@ class SignalGenerator:
 
         Args:
             market_provider: Provider for fetching market data.
-            indicators: Class for adding technical indicators (dependency
-                injection).
+            indicators: Class providing the `add_all_indicators` method used to
+                apply all technical indicators (dependency injection).
             pattern_analyzer_cls: Class for verifying patterns (dependency
                 injection).
         """
