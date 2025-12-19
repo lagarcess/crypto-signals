@@ -1,6 +1,7 @@
 """Unit tests for Notification Service."""
 
 import unittest
+from datetime import date
 from unittest.mock import MagicMock, patch
 
 from crypto_signals.domain.schemas import Signal, SignalStatus
@@ -15,7 +16,7 @@ class TestDiscordClient(unittest.TestCase):
         self.webhook_url = "https://discord.com/api/webhooks/test"
         self.signal = Signal(
             signal_id="test_id",
-            ds="2025-01-01",
+            ds=date(2025, 1, 1),
             strategy_id="test_strat",
             symbol="BTC/USD",
             pattern_name="bullish_engulfing",
