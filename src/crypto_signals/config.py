@@ -68,6 +68,12 @@ class Settings(BaseSettings):
         description="Use Alpaca paper trading environment",
     )
 
+    # Optional: Mock Discord Notifications (defaults to False, strict validation)
+    MOCK_DISCORD: bool = Field(
+        default=False,
+        description="If True, log notifications instead of sending to Discord",
+    )
+
     @field_validator(
         "ALPACA_API_KEY",
         "ALPACA_SECRET_KEY",
