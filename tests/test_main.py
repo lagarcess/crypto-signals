@@ -26,10 +26,12 @@ def mock_dependencies():
     ) as mock_settings:
 
         # Configure mock settings
-        mock_settings.return_value.PORTFOLIO = [
+        mock_settings.return_value.CRYPTO_SYMBOLS = [
             "BTC/USD",
             "ETH/USD",
             "XRP/USD",
+        ]
+        mock_settings.return_value.EQUITY_SYMBOLS = [
             "NVDA",
             "QQQ",
             "GLD",

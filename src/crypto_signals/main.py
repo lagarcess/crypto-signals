@@ -7,7 +7,6 @@ It orchestrates data fetching, pattern recognition, persistence, and notificatio
 
 import logging
 import sys
-from typing import List
 
 from crypto_signals.config import (
     get_crypto_data_client,
@@ -50,18 +49,18 @@ def main():
         discord = DiscordClient()  # Config handles URL and Mock Mode automatically
 
         # 2. Define Portfolio
-        portfolio: List[str] = get_settings().PORTFOLIO
+        settings = get_settings()
+        portfolio_items = []
+        for s in settings.CRYPTO_SYMBOLS:
+            portfolio_items.append((s, AssetClass.CRYPTO))
+        for s in settings.EQUITY_SYMBOLS:
+            portfolio_items.append((s, AssetClass.EQUITY))
 
-        logger.info(f"Processing portfolio: {portfolio}")
+        logger.info(f"Processing {len(portfolio_items)} symbols...")
 
         # 3. Execution Loop
-        for symbol in portfolio:
+        for symbol, asset_class in portfolio_items:
             try:
-                # Smart Asset Detection
-                if "/" in symbol:
-                    asset_class = AssetClass.CRYPTO
-                else:
-                    asset_class = AssetClass.EQUITY
 
                 logger.info(f"Analyzing {symbol} ({asset_class.value})...")
 

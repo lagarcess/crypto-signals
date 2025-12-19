@@ -75,17 +75,22 @@ class Settings(BaseSettings):
         description="If True, log notifications instead of sending to Discord",
     )
 
-    # Portfolio Configuration (Optional - defaults to hardcoded list)
-    PORTFOLIO: List[str] = Field(
+    # Portfolio Configuration (Optional - defaults to hardcoded lists)
+    CRYPTO_SYMBOLS: List[str] = Field(
         default=[
             "BTC/USD",
             "ETH/USD",
             "XRP/USD",
+        ],
+        description="List of crypto pairs to analyze",
+    )
+    EQUITY_SYMBOLS: List[str] = Field(
+        default=[
             "NVDA",
             "QQQ",
             "GLD",
         ],
-        description="List of symbols to analyze",
+        description="List of equity symbols to analyze",
     )
 
     @field_validator(
