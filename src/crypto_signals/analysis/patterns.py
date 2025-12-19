@@ -18,7 +18,7 @@ class Signal:
 
 
 class PatternAnalyzer:
-    """Logic engine for detecting technical patterns with confluence confirmation."""
+    """Engine for detecting technical patterns with confluence confirmation."""
 
     # Confluence Constants
     RSI_THRESHOLD = 45.0
@@ -49,8 +49,8 @@ class PatternAnalyzer:
         self.df["momentum_confirmed"] = self.df["RSI_14"] < self.RSI_THRESHOLD
 
         # Volume Confirmation: Check if Volume > 1.5 * VOL_SMA_20
-        # Check if 'VOL_SMA_20' exists, if we used prefix='VOL' in indicators.py
-        # Otherwise fallback or raise error. We assume indicators added 'VOL_SMA_20'.
+        # Check if 'VOL_SMA_20' exists (if prefix='VOL' in indicators.py)
+        # Otherwise fallback. We assume indicators added 'VOL_SMA_20'.
         if "VOL_SMA_20" in self.df.columns:
             self.df["volume_confirmed"] = self.df["volume"] > (
                 self.VOLUME_FACTOR * self.df["VOL_SMA_20"]
@@ -94,7 +94,7 @@ class PatternAnalyzer:
         Rules:
         1. Lower Wick >= 2.0 * Body
         2. Upper Wick <= 0.5 * Body
-        3. Body is in upper third (implied by wicks, but we can verify location)
+        3. Body in upper third (implied by wicks, verified loc)
         """
         # Rule 1 & 2
         ratio_check = (
@@ -127,7 +127,8 @@ class PatternAnalyzer:
         # Current is Green
         curr_is_green = self.df["is_green"]
 
-        # Engulfing Logic (Crypto adaptation: Open <= Prev Close due to 24/7 continuity)
+        # Engulfing Logic (Crypto adaptation: Open <= Prev Close
+        # due to 24/7 continuity)
         # Prev Red: Open is Top, Close is Bottom.
         # Curr Green: Close is Top, Open is Bottom.
         # Overlap: Curr Open <= Prev Close AND Curr Close > Prev Open
