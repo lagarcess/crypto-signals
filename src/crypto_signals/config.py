@@ -93,6 +93,14 @@ class Settings(BaseSettings):
         description="List of equity symbols to analyze",
     )
 
+    # Rate Limiting Configuration (Optional)
+    RATE_LIMIT_DELAY: float = Field(
+        default=0.5,
+        description="Delay in seconds between processing symbols (Alpaca limit: 200 req/min = 0.3s/req minimum)",
+        ge=0.0,
+        le=10.0,
+    )
+
     @field_validator(
         "ALPACA_API_KEY",
         "ALPACA_SECRET_KEY",
