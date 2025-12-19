@@ -21,7 +21,7 @@ class SecretManager:
         Initialize the SecretManager.
 
         Args:
-            project_id: Google Cloud Project ID. If None, uses GOOGLE_CLOUD_PROJECT env var.
+            project_id: GCP ID. If None, uses GOOGLE_CLOUD_PROJECT env var.
         """
         self.project_id = project_id or os.environ.get("GOOGLE_CLOUD_PROJECT")
         self._client = None
@@ -47,7 +47,8 @@ class SecretManager:
         # If we have a project ID, assume cloud deployment
         if self.project_id:
             logger.info(
-                f"No .env file found, using Secret Manager for project: {self.project_id}"
+                "No .env file found, using Secret Manager for project: "
+                f"{self.project_id}"
             )
             return True
 
@@ -66,9 +67,9 @@ class SecretManager:
                 self._client = secretmanager.SecretManagerServiceClient()
                 logger.info("Initialized Secret Manager client")
             except Exception as e:
-                logger.error(f"Failed to initialize Secret Manager client: {e}")
+                logger.error(f"Failed to load Secret Manager client: {e}")
                 raise RuntimeError(
-                    "Failed to initialize Secret Manager. Ensure google-cloud-secret-manager "
+                    "Failed to load Secret Manager. Ensure google-cloud-secret-manager"
                     "is installed and credentials are configured."
                 ) from e
         return self._client
@@ -174,6 +175,11 @@ def init_secrets() -> bool:
         bool: True if successful, False otherwise
     """
     try:
+        from dotenv import load_dotenv
+
+        # Load .env file if present
+        load_dotenv()
+
         # Get project ID from environment first
         project_id = os.environ.get("GOOGLE_CLOUD_PROJECT")
 

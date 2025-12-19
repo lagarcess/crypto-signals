@@ -8,7 +8,7 @@ pydantic-settings for validation and environment variable loading.
 import os
 from functools import lru_cache
 from pathlib import Path
-from typing import List
+from typing import Any, List
 
 from alpaca.data.historical import CryptoHistoricalDataClient, StockHistoricalDataClient
 from alpaca.trading.client import TradingClient
@@ -76,7 +76,7 @@ class Settings(BaseSettings):
     )
 
     # Portfolio Configuration (Optional - defaults to hardcoded lists)
-    CRYPTO_SYMBOLS: List[str] = Field(
+    CRYPTO_SYMBOLS: List[str] | str = Field(
         default=[
             "BTC/USD",
             "ETH/USD",
@@ -84,22 +84,29 @@ class Settings(BaseSettings):
         ],
         description="List of crypto pairs to analyze",
     )
-    EQUITY_SYMBOLS: List[str] = Field(
-        default=[
-            "NVDA",
-            "QQQ",
-            "GLD",
-        ],
+    EQUITY_SYMBOLS: List[str] | str = Field(
+        default=[],
         description="List of equity symbols to analyze",
     )
 
     # Rate Limiting Configuration (Optional)
     RATE_LIMIT_DELAY: float = Field(
         default=0.5,
-        description="Delay in seconds between processing symbols (Alpaca limit: 200 req/min = 0.3s/req minimum)",
+        description=(
+            "Delay in seconds between processing symbols "
+            "(Alpaca limit: 200 req/min = 0.3s/req minimum)"
+        ),
         ge=0.0,
         le=10.0,
     )
+
+    @field_validator("CRYPTO_SYMBOLS", "EQUITY_SYMBOLS", mode="before")
+    @classmethod
+    def parse_list_from_str(cls, v: Any) -> Any:
+        """Parse comma-separated string into list."""
+        if isinstance(v, str):
+            return [item.strip() for item in v.split(",") if item.strip()]
+        return v
 
     @field_validator(
         "ALPACA_API_KEY",
@@ -164,6 +171,10 @@ def get_settings() -> Settings:
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = (
             settings.GOOGLE_APPLICATION_CREDENTIALS
         )
+
+    # RESTRICTION: Force disable equities for Basic Alpaca Plans
+    # This overrides .env settings to prevent SIP data errors
+    settings.EQUITY_SYMBOLS = []
 
     return settings
 
