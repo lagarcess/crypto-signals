@@ -20,11 +20,14 @@ class SignalRepository:
         Save a signal to Firestore.
 
         Uses signal_id as the document ID for idempotency.
+        Serializes the signal with ``model_dump(mode="json")`` so enums and
+        datetime-like fields become JSON-compatible values suitable for
+        Firestore storage.
 
         Args:
             signal: The signal to save.
         """
-        # Convert signal to JSON-compatible dict for Firestore storage. Uses mode='json' to serialize enums and dates as strings.
+        # Convert signal to a JSON-compatible dict for Firestore storage.
         signal_data = signal.model_dump(mode="json")
 
         doc_ref = self.db.collection(self.collection_name).document(signal.signal_id)
