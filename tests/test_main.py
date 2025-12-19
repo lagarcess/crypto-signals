@@ -163,24 +163,28 @@ def test_main_notification_failure(mock_dependencies, caplog):
 
 
 def test_main_repo_failure(mock_dependencies, caplog):
-    """Test that main logs an error if repository save fails."""
+    """Test that main logs an error and continues if repository save fails."""
     mock_gen_instance = mock_dependencies["generator"].return_value
     mock_repo_instance = mock_dependencies["repo"].return_value
 
-    # Setup signal
-    mock_signal = MagicMock(spec=Signal)
-    mock_signal.symbol = "BTC/USD"
-    mock_signal.pattern_name = "test_pattern"
-
-    def side_effect(symbol, asset_class):
-        if symbol == "BTC/USD":
-            return mock_signal
+    # Setup signals
+    def gen_side_effect(symbol, asset_class):
+        if symbol in ["BTC/USD", "ETH/USD"]:
+            sig = MagicMock(spec=Signal)
+            sig.symbol = symbol
+            sig.pattern_name = "test_pattern"
+            return sig
         return None
 
-    mock_gen_instance.generate_signals.side_effect = side_effect
+    mock_gen_instance.generate_signals.side_effect = gen_side_effect
 
-    # Mock repository failure
-    mock_repo_instance.save.side_effect = RuntimeError("Firestore Unavailable")
+    # Mock repository failure ONLY for BTC/USD
+    def save_side_effect(signal):
+        if signal.symbol == "BTC/USD":
+            raise RuntimeError("Firestore Unavailable")
+        return None
+
+    mock_repo_instance.save.side_effect = save_side_effect
 
     # Execute with caplog capturing
     import logging
@@ -188,5 +192,11 @@ def test_main_repo_failure(mock_dependencies, caplog):
     with caplog.at_level(logging.ERROR):
         main()
 
-    # Verify error log
+    # Verify error log for BTC/USD
     assert "Error processing BTC/USD: Firestore Unavailable" in caplog.text
+
+    # Verify that ETH/USD was still processed (Loop continued)
+    # We check if generate_signals was called for ETH/USD
+    calls = mock_gen_instance.generate_signals.call_args_list
+    symbols_processed = [args[0] for args, _ in calls]
+    assert "ETH/USD" in symbols_processed
