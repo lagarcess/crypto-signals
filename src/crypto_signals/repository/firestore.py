@@ -13,7 +13,7 @@ class SignalRepository:
         """Initialize Firestore client."""
         settings = get_settings()
         self.db = firestore.Client(project=settings.GOOGLE_CLOUD_PROJECT)
-        self.collection_name = "generated_signals"
+        self.collection_name = "live_signals"
 
     def save(self, signal: Signal) -> None:
         """
