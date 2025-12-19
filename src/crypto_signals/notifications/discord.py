@@ -42,6 +42,9 @@ class DiscordClient:
         Args:
             signal: The signal to broadcast.
             thread_name: Optional thread name (required for Forum Channels).
+
+        Returns:
+            bool: True if the notification was sent successfully, False otherwise.
         """
         if self.mock_mode:
             logger.info(
@@ -72,6 +75,9 @@ class DiscordClient:
         Args:
             content: The message content.
             thread_name: Optional thread name (required for Forum Channels).
+
+        Returns:
+            bool: True if the message was sent successfully, False otherwise.
         """
         if self.mock_mode:
             logger.info(f"MOCK DISCORD: Would send message: {content}")
