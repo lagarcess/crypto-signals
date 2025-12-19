@@ -24,12 +24,7 @@ class SignalRepository:
         Args:
             signal: The signal to save.
         """
-        # Convert to dict, ensuring enums are strings and dates are serialized if needed
-        # mode='json' converts types to JSON-compatible (strings for dates, enums)
-        # However, for Firestore, maintaining datetime objects is often preferred for
-        # expiration_at
-        # But for 'ds' (date), string is acceptable.
-        # Let's use mode='json' to be safe with Enums and ensure compatibility.
+        # Convert signal to JSON-compatible dict for Firestore storage. Uses mode='json' to serialize enums and dates as strings.
         signal_data = signal.model_dump(mode="json")
 
         doc_ref = self.db.collection(self.collection_name).document(signal.signal_id)
