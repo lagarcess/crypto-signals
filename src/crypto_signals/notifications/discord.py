@@ -59,8 +59,8 @@ class DiscordClient:
             response.raise_for_status()
             logger.info(f"Sent signal for {signal.symbol} to Discord.")
         except requests.RequestException as e:
-            if "response" in locals() and response is not None:
-                logger.error(f"Discord Response: {response.text}")
+            if getattr(e, "response", None) is not None:
+                logger.error(f"Discord Response: {e.response.text}")
             logger.error(f"Failed to send Discord notification: {str(e)}")
 
     def send_message(self, content: str, thread_name: Optional[str] = None) -> bool:
@@ -88,8 +88,8 @@ class DiscordClient:
             logger.info("Sent generic message to Discord.")
             return True
         except requests.RequestException as e:
-            if "response" in locals() and response is not None:
-                logger.error(f"Discord Response: {response.text}")
+            if getattr(e, "response", None) is not None:
+                logger.error(f"Discord Response: {e.response.text}")
             logger.error(f"Failed to send Discord notification: {str(e)}")
             return False
 

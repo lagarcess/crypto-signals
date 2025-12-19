@@ -9,7 +9,11 @@ import logging
 import sys
 from typing import List
 
-from crypto_signals.config import get_crypto_data_client, get_stock_data_client
+from crypto_signals.config import (
+    get_crypto_data_client,
+    get_settings,
+    get_stock_data_client,
+)
 from crypto_signals.domain.schemas import AssetClass
 from crypto_signals.engine.signal_generator import SignalGenerator
 from crypto_signals.market.data_provider import MarketDataProvider
@@ -46,14 +50,7 @@ def main():
         discord = DiscordClient()  # Config handles URL and Mock Mode automatically
 
         # 2. Define Portfolio
-        portfolio: List[str] = [
-            "BTC/USD",
-            "ETH/USD",
-            "XRP/USD",
-            "NVDA",
-            "QQQ",
-            "GLD",
-        ]
+        portfolio: List[str] = get_settings().PORTFOLIO
 
         logger.info(f"Processing portfolio: {portfolio}")
 

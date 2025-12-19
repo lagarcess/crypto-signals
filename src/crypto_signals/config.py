@@ -8,6 +8,7 @@ pydantic-settings for validation and environment variable loading.
 import os
 from functools import lru_cache
 from pathlib import Path
+from typing import List
 
 from alpaca.data.historical import CryptoHistoricalDataClient, StockHistoricalDataClient
 from alpaca.trading.client import TradingClient
@@ -72,6 +73,19 @@ class Settings(BaseSettings):
     MOCK_DISCORD: bool = Field(
         default=False,
         description="If True, log notifications instead of sending to Discord",
+    )
+
+    # Portfolio Configuration (Optional - defaults to hardcoded list)
+    PORTFOLIO: List[str] = Field(
+        default=[
+            "BTC/USD",
+            "ETH/USD",
+            "XRP/USD",
+            "NVDA",
+            "QQQ",
+            "GLD",
+        ],
+        description="List of symbols to analyze",
     )
 
     @field_validator(

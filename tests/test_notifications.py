@@ -42,6 +42,21 @@ class TestDiscordClient(unittest.TestCase):
         self.assertIn("BTC/USD", kwargs["json"]["content"])
 
     @patch("crypto_signals.notifications.discord.requests.post")
+    def test_send_signal_with_thread_name(self, mock_post):
+        """Test sending a signal with a thread name."""
+        client = DiscordClient(webhook_url=self.webhook_url, mock_mode=False)
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status.return_value = None
+        mock_post.return_value = mock_response
+
+        client.send_signal(self.signal, thread_name="Test Thread")
+
+        mock_post.assert_called_once()
+        _, kwargs = mock_post.call_args
+        self.assertEqual(kwargs["json"]["thread_name"], "Test Thread")
+
+    @patch("crypto_signals.notifications.discord.requests.post")
     def test_send_signal_mocked(self, mock_post):
         """Test sending a signal in mock mode (should NOT hit API)."""
         client = DiscordClient(webhook_url=self.webhook_url, mock_mode=True)

@@ -21,7 +21,19 @@ def mock_dependencies():
         "crypto_signals.main.SignalRepository"
     ) as repo, patch(
         "crypto_signals.main.DiscordClient"
-    ) as discord:
+    ) as discord, patch(
+        "crypto_signals.main.get_settings"
+    ) as mock_settings:
+
+        # Configure mock settings
+        mock_settings.return_value.PORTFOLIO = [
+            "BTC/USD",
+            "ETH/USD",
+            "XRP/USD",
+            "NVDA",
+            "QQQ",
+            "GLD",
+        ]
 
         yield {
             "stock_client": stock_client,
@@ -30,6 +42,7 @@ def mock_dependencies():
             "generator": generator,
             "repo": repo,
             "discord": discord,
+            "settings": mock_settings,
         }
 
 
