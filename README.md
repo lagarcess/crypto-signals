@@ -26,7 +26,7 @@ Crypto Sentinel is a production-ready trading bot that:
 - ✅ **Rate Limiting**: Automatic throttling to respect API limits (200 req/min)
 - ✅ **Retry Logic**: Exponential backoff for transient failures
 - ✅ **Graceful Shutdown**: SIGTERM/SIGINT handling for clean container stops
-- ✅ **Data Cleanup**: TTL-based Firestore cleanup (30-day retention)
+- ✅ **Data Cleanup**: Automatic TTL via Firestore (30-day retention, no manual cleanup needed)
 - ✅ **Structured Logging**: Context-rich logs with timing metrics
 - ✅ **Health Checks**: Comprehensive service connectivity verification
 - ✅ **Docker Support**: Multi-stage builds with security best practices
@@ -91,7 +91,7 @@ crypto-signals/
 │   │   └── schemas.py             # Pydantic data models
 │   └── scripts/
 │       ├── health_check.py        # Service connectivity verification
-│       └── cleanup_firestore.py   # TTL cleanup job
+│       └── cleanup_firestore.py   # Manual cleanup job (optional with automatic TTL)
 ├── tests/                         # Comprehensive test suite
 ├── Dockerfile                     # Multi-stage production build
 ├── docker-compose.yml             # Local development setup

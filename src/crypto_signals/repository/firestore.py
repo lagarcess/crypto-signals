@@ -30,6 +30,8 @@ class SignalRepository:
         Firestore storage.
 
         Adds TTL field for automatic cleanup after 30 days.
+        Uses native Firestore Timestamp to enable Google's automatic TTL
+        policy at the database level.
 
         Args:
             signal: The signal to save.
@@ -38,9 +40,10 @@ class SignalRepository:
         signal_data = signal.model_dump(mode="json")
 
         # Add TTL timestamp for automatic cleanup (30 days from now)
-        # This helps prevent unlimited data accumulation and manages costs
-        ttl_timestamp = datetime.now(timezone.utc) + timedelta(days=30)
-        signal_data["ttl"] = ttl_timestamp
+        # Using datetime (not string) so Firestore stores it as a native Timestamp
+        # This enables Google's automatic TTL policy in GCP Console
+        ttl_datetime = datetime.now(timezone.utc) + timedelta(days=30)
+        signal_data["expireAt"] = ttl_datetime
 
         doc_ref = self.db.collection(self.collection_name).document(signal.signal_id)
         doc_ref.set(signal_data)

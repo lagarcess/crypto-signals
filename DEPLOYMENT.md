@@ -103,8 +103,39 @@ gcloud scheduler jobs create http crypto-signals-daily \
     --uri="https://us-central1-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/$GCP_PROJECT/jobs/crypto-signals-job:run" \
     --http-method=POST \
     --oauth-service-account-email=$GCP_PROJECT@appspot.gserviceaccount.com
+```
 
-# Create cleanup job (runs daily at 2 AM UTC)
+### 5. Configure Firestore
+
+```bash
+# Enable Firestore API
+gcloud services enable firestore.googleapis.com
+
+# Create Firestore database (if not exists)
+gcloud firestore databases create --region=us-central1
+```
+
+**Configure Automatic TTL (Recommended):**
+
+The application stores signals with an `expireAt` timestamp field. To enable Google's automatic TTL deletion:
+
+1. Go to [Firestore Console](https://console.cloud.google.com/firestore)
+2. Select your database
+3. Click on "Time-to-live" in the left menu
+4. Click "Create TTL policy"
+5. Configure:
+   - Collection ID: `live_signals`
+   - Timestamp field: `expireAt`
+6. Click "Create"
+
+With automatic TTL enabled, Google will delete expired documents at no extra cost, eliminating the need to run the `cleanup_firestore.py` script.
+
+**Alternative: Manual Cleanup**
+
+If you prefer manual control, skip the TTL policy and schedule the cleanup job:
+
+```bash
+# Create cleanup job
 gcloud run jobs create crypto-signals-cleanup \
     --image=us-central1-docker.pkg.dev/$GCP_PROJECT/crypto-signals/crypto-signals:latest \
     --region=us-central1 \
@@ -116,6 +147,7 @@ gcloud run jobs create crypto-signals-cleanup \
     --set-env-vars=GOOGLE_CLOUD_PROJECT=$GCP_PROJECT \
     --set-secrets=ALPACA_API_KEY=ALPACA_API_KEY:latest,ALPACA_SECRET_KEY=ALPACA_SECRET_KEY:latest
 
+# Schedule cleanup (daily at 2 AM UTC)
 gcloud scheduler jobs create http crypto-signals-cleanup-daily \
     --location=us-central1 \
     --schedule="0 2 * * *" \
@@ -124,20 +156,14 @@ gcloud scheduler jobs create http crypto-signals-cleanup-daily \
     --oauth-service-account-email=$GCP_PROJECT@appspot.gserviceaccount.com
 ```
 
-### 5. Configure Firestore
+**Note:** If you have an existing index for cleanup queries, you can remove it after enabling automatic TTL:
 
 ```bash
-# Enable Firestore API
-gcloud services enable firestore.googleapis.com
+# List indexes (find the cleanup index ID)
+gcloud firestore indexes composite list
 
-# Create Firestore database (if not exists)
-gcloud firestore databases create --region=us-central1
-
-# Create index for cleanup queries (if needed)
-gcloud firestore indexes composite create \
-    --collection-group=live_signals \
-    --field-config field-path=expiration_at,order=ASCENDING \
-    --field-config field-path=status,order=ASCENDING
+# Delete the index (optional, after TTL is enabled)
+gcloud firestore indexes composite delete INDEX_ID
 ```
 
 ### 6. Health Check Setup

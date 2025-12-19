@@ -98,12 +98,13 @@ Current portfolio: 6 symbols = ~3 seconds total (well under limit)
 Old signals accumulate indefinitely in Firestore, leading to storage bloat and increased costs.
 
 **Solution Implemented:**
-- ✅ Added `ttl` field (30 days from creation) to all saved signals
-- ✅ Created `cleanup_expired_signals()` method in repository
-- ✅ Standalone `cleanup_firestore.py` script for scheduled execution
-- ✅ Batch deletion with Firestore limits respected (400/batch)
+- ✅ Added `expireAt` field (30 days from creation) as native Firestore Timestamp
+- ✅ Enables Google's automatic TTL policy at database level (no cost, no manual cleanup needed)
+- ✅ Created `cleanup_expired_signals()` method for manual control (optional)
+- ✅ Standalone `cleanup_firestore.py` script available if automatic TTL not used
+- ✅ Batch deletion respects Firestore limits (400/batch)
 
-**Recommendation:** Schedule daily cleanup via Cloud Scheduler (2 AM UTC).
+**Recommendation:** Enable automatic TTL policy in Firestore Console on the `expireAt` field. Google will handle deletions automatically at no extra cost.
 
 ---
 
@@ -306,12 +307,13 @@ Benefits:
 ---
 
 ### ✅ Data Integrity (Zombie Data Risk)
-- [x] TTL field on all Firestore documents (30 days)
-- [x] Automated cleanup job (can run daily)
+- [x] Native Firestore Timestamp field (`expireAt`) on all documents (30 days)
+- [x] Google's automatic TTL policy enabled at database level (recommended)
+- [x] Manual cleanup job available if automatic TTL not used
 - [x] Batch deletion respects Firestore limits
 - [x] Cost management through data retention
 
-**Validation:** Cleanup job successfully deletes expired signals.
+**Validation:** With automatic TTL enabled in Firestore Console, Google deletes expired documents automatically at no extra cost.
 
 ---
 
