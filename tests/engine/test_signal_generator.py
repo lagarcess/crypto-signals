@@ -20,7 +20,7 @@ def mock_market_provider():
 def mock_indicators():
     """Fixture for mocking TechnicalIndicators."""
     mock = MagicMock()
-    # Mock add_all_indicators to just return the dataframe
+    # Mock add_all_indicators to return the DataFrame unchanged
     mock.add_all_indicators.side_effect = lambda df: df
     return mock
 
