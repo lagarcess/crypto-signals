@@ -21,7 +21,7 @@ class TestDiscordClient(unittest.TestCase):
             ds=date(2025, 1, 1),
             strategy_id="test_strat",
             symbol="BTC/USD",
-            pattern_name="bullish_engulfing",
+            pattern_name="BULLISH_ENGULFING",
             status=SignalStatus.WAITING,
             suggested_stop=50000.0,
         )
