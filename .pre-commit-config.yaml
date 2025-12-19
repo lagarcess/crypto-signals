@@ -7,12 +7,6 @@ repos:
       - id: check-yaml
       - id: check-added-large-files
 
-  - repo: https://github.com/myint/docformatter
-    rev: v1.7.5
-    hooks:
-      - id: docformatter
-        args: ["--in-place", "--wrap-summaries=88", "--wrap-descriptions=88", "--pre-summary-newline"]
-
   - repo: https://github.com/PyCQA/autoflake
     rev: v2.3.1
     hooks:
