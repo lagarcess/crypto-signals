@@ -30,7 +30,7 @@ def test_init(mock_settings, mock_firestore_client):
 
     mock_settings.assert_called_once()
     mock_firestore_client.assert_called_once_with(project="test-project")
-    assert repo.collection_name == "generated_signals"
+    assert repo.collection_name == "live_signals"
 
 
 def test_save_signal(mock_settings, mock_firestore_client):
@@ -58,7 +58,7 @@ def test_save_signal(mock_settings, mock_firestore_client):
     repo.save(signal)
 
     # Verify interactions
-    mock_db.collection.assert_called_once_with("generated_signals")
+    mock_db.collection.assert_called_once_with("live_signals")
     mock_collection.document.assert_called_once_with("test-signal-id")
 
     # Verify data passed to set()

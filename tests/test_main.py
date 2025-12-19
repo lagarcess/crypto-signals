@@ -193,7 +193,7 @@ def test_main_repo_failure(mock_dependencies, caplog):
         main()
 
     # Verify error log for BTC/USD
-    assert "Error processing BTC/USD: Firestore Unavailable" in caplog.text
+    assert "Error processing BTC/USD (CRYPTO): Firestore Unavailable" in caplog.text
 
     # Verify that ETH/USD was still processed (Loop continued)
     # We check if generate_signals was called for ETH/USD
