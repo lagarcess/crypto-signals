@@ -169,10 +169,6 @@ def verify_discord(settings) -> bool:
     Raises:
         Exception: If connection fails
     """
-    if not settings.DISCORD_WEBHOOK_URL and not settings.MOCK_DISCORD:
-        print("⚠️ [Discord] Skipped (No URL set)")
-        return True
-
     from crypto_signals.notifications.discord import DiscordClient
 
     client = DiscordClient(
@@ -180,7 +176,11 @@ def verify_discord(settings) -> bool:
     )
 
     msg = "✅ [Health Check] System is online and connected."
-    client.send_message(msg)
+    success = client.send_message(msg, thread_name="System Status")
+
+    if not success:
+        print("❌ [Discord] Failed (Check logs for details)")
+        return False
 
     status = "Mocked" if settings.MOCK_DISCORD else "Sent"
     print(f"✅ [Discord] Connected ({status})")
@@ -219,7 +219,9 @@ def run_all_verifications() -> bool:
 
     for service_name, verify_func in verifications:
         try:
-            verify_func(settings)
+            if not verify_func(settings):
+                print(f"❌ [{service_name}] Returned False (Check logs)")
+                all_passed = False
         except Exception as e:
             print(f"❌ [{service_name}] Failed: {e}")
             all_passed = False

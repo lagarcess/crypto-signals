@@ -35,12 +35,13 @@ class DiscordClient:
         # Explicit check for None to allow passing False
         self.mock_mode = mock_mode if mock_mode is not None else settings.MOCK_DISCORD
 
-    def send_signal(self, signal: Signal) -> None:
+    def send_signal(self, signal: Signal, thread_name: Optional[str] = None) -> None:
         """
         Send a formatted signal alert to Discord.
 
         Args:
             signal: The signal to broadcast.
+            thread_name: Optional thread name (required for Forum Channels).
         """
         if self.mock_mode:
             logger.info(
@@ -50,36 +51,47 @@ class DiscordClient:
             return
 
         message = self._format_message(signal)
+        if thread_name:
+            message["thread_name"] = thread_name
 
         try:
             response = requests.post(self.webhook_url, json=message, timeout=5.0)
             response.raise_for_status()
             logger.info(f"Sent signal for {signal.symbol} to Discord.")
         except requests.RequestException as e:
+            if "response" in locals() and response is not None:
+                logger.error(f"Discord Response: {response.text}")
             logger.error(f"Failed to send Discord notification: {str(e)}")
 
-    def send_message(self, content: str) -> None:
+    def send_message(self, content: str, thread_name: Optional[str] = None) -> bool:
         """
         Send a generic text message to Discord.
 
         Args:
             content: The message content.
+            thread_name: Optional thread name (required for Forum Channels).
         """
         if self.mock_mode:
             logger.info(f"MOCK DISCORD: Would send message: {content}")
-            return
+            return True
 
         payload = {
             "content": content,
             "username": "Crypto Sentinel",
         }
+        if thread_name:
+            payload["thread_name"] = thread_name
 
         try:
             response = requests.post(self.webhook_url, json=payload, timeout=5.0)
             response.raise_for_status()
             logger.info("Sent generic message to Discord.")
+            return True
         except requests.RequestException as e:
+            if "response" in locals() and response is not None:
+                logger.error(f"Discord Response: {response.text}")
             logger.error(f"Failed to send Discord notification: {str(e)}")
+            return False
 
     def _format_message(self, signal: Signal) -> dict:
         """
@@ -91,8 +103,10 @@ class DiscordClient:
         Returns:
             dict: JSON payload for Discord.
         """
-        # Emoji selection based on pattern name: bullish patterns get 🚀, others get 🔻
-        # This could be refined further with more explicit bullish/bearish metadata if needed.
+        # Emoji selection based on pattern name:
+        # bullish patterns get 🚀, others get 🔻
+        # This could be refined further with more explicit bullish/bearish
+        # metadata if needed.
         emoji = "🚀" if "bullish" in signal.pattern_name.lower() else "🔻"
 
         # Format the main content
