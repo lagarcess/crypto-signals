@@ -91,8 +91,8 @@ class DiscordClient:
         Returns:
             dict: JSON payload for Discord.
         """
-        # Emoji selection based on signal type (assuming bullish for now as per context)
-        # We could improve this by checking if pattern implies bullish/bearish
+        # Emoji selection based on pattern name: bullish patterns get 🚀, others get 🔻
+        # This could be refined further with more explicit bullish/bearish metadata if needed.
         emoji = "🚀" if "bullish" in signal.pattern_name.lower() else "🔻"
 
         # Format the main content
