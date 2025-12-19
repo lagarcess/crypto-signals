@@ -119,7 +119,7 @@ class SignalGenerator:
             pattern_name=pattern_name,
             status=SignalStatus.WAITING,
             suggested_stop=suggested_stop,
-            # expiration defaults to now
+            # expiration_at will be set by the Signal schema to the current UTC time at creation
         )
 
         return signal
