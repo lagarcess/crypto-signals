@@ -128,3 +128,33 @@ def test_main_fatal_error():
             main()
 
         assert excinfo.value.code == 1
+
+
+def test_main_notification_failure(mock_dependencies, caplog):
+    """Test that main logs a warning if notification fails."""
+    mock_gen_instance = mock_dependencies["generator"].return_value
+    mock_discord_instance = mock_dependencies["discord"].return_value
+
+    # Setup signal for BTC/USD only
+    mock_signal = MagicMock(spec=Signal)
+    mock_signal.symbol = "BTC/USD"
+    mock_signal.pattern_name = "test_pattern"
+
+    def side_effect(symbol, asset_class):
+        if symbol == "BTC/USD":
+            return mock_signal
+        return None
+
+    mock_gen_instance.generate_signals.side_effect = side_effect
+
+    # Mock notification failure
+    mock_discord_instance.send_signal.return_value = False
+
+    # Execute with caplog capturing
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        main()
+
+    # Verify warning
+    assert "Failed to send Discord notification for BTC/USD" in caplog.text

@@ -78,7 +78,10 @@ def main():
                     logger.info("Signal saved to Firestore.")
 
                     # Notify
-                    discord.send_signal(signal)
+                    if not discord.send_signal(signal):
+                        logger.warning(
+                            f"Failed to send Discord notification for {signal.symbol}"
+                        )
                 else:
                     logger.info(f"No signal for {symbol}.")
 

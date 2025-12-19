@@ -35,7 +35,7 @@ class DiscordClient:
         # Explicit check for None to allow passing False
         self.mock_mode = mock_mode if mock_mode is not None else settings.MOCK_DISCORD
 
-    def send_signal(self, signal: Signal, thread_name: Optional[str] = None) -> None:
+    def send_signal(self, signal: Signal, thread_name: Optional[str] = None) -> bool:
         """
         Send a formatted signal alert to Discord.
 
@@ -48,7 +48,7 @@ class DiscordClient:
                 f"MOCK DISCORD: Would send signal for {signal.symbol}: "
                 f"{signal.pattern_name}"
             )
-            return
+            return True
 
         message = self._format_message(signal)
         if thread_name:
@@ -58,10 +58,12 @@ class DiscordClient:
             response = requests.post(self.webhook_url, json=message, timeout=5.0)
             response.raise_for_status()
             logger.info(f"Sent signal for {signal.symbol} to Discord.")
+            return True
         except requests.RequestException as e:
             if getattr(e, "response", None) is not None:
                 logger.error(f"Discord Response: {e.response.text}")
             logger.error(f"Failed to send Discord notification: {str(e)}")
+            return False
 
     def send_message(self, content: str, thread_name: Optional[str] = None) -> bool:
         """

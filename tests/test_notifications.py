@@ -33,7 +33,8 @@ class TestDiscordClient(unittest.TestCase):
         mock_response.raise_for_status.return_value = None
         mock_post.return_value = mock_response
 
-        client.send_signal(self.signal)
+        success = client.send_signal(self.signal)
+        self.assertTrue(success)
 
         mock_post.assert_called_once()
         args, kwargs = mock_post.call_args
@@ -50,7 +51,8 @@ class TestDiscordClient(unittest.TestCase):
         mock_response.raise_for_status.return_value = None
         mock_post.return_value = mock_response
 
-        client.send_signal(self.signal, thread_name="Test Thread")
+        success = client.send_signal(self.signal, thread_name="Test Thread")
+        self.assertTrue(success)
 
         mock_post.assert_called_once()
         _, kwargs = mock_post.call_args
@@ -61,7 +63,8 @@ class TestDiscordClient(unittest.TestCase):
         """Test sending a signal in mock mode (should NOT hit API)."""
         client = DiscordClient(webhook_url=self.webhook_url, mock_mode=True)
 
-        client.send_signal(self.signal)
+        success = client.send_signal(self.signal)
+        self.assertTrue(success)
 
         mock_post.assert_not_called()
 
