@@ -85,7 +85,10 @@ def main():
                     logger.info(f"No signal for {symbol}.")
 
             except Exception as e:
-                logger.error(f"Error processing {symbol}: {e}", exc_info=True)
+                logger.error(
+                    f"Error processing {symbol} ({asset_class.value}): {e}",
+                    exc_info=True,
+                )
                 # Continue to next symbol despite error
                 continue
 
