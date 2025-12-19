@@ -4,6 +4,8 @@ import unittest
 from datetime import date
 from unittest.mock import MagicMock, patch
 
+import requests
+
 from crypto_signals.domain.schemas import Signal, SignalStatus
 from crypto_signals.notifications.discord import DiscordClient
 
@@ -69,10 +71,33 @@ class TestDiscordClient(unittest.TestCase):
         mock_post.assert_not_called()
 
     @patch("crypto_signals.notifications.discord.requests.post")
+    def test_send_signal_failure(self, mock_post):
+        """Test sending a signal when API fails."""
+        client = DiscordClient(webhook_url=self.webhook_url, mock_mode=False)
+
+        # Simulate network error
+        mock_post.side_effect = requests.RequestException("Network Error")
+
+        success = client.send_signal(self.signal)
+        self.assertFalse(success)
+
+    @patch("crypto_signals.notifications.discord.requests.post")
     def test_send_message_mocked(self, mock_post):
         """Test sending a message in mock mode."""
         client = DiscordClient(webhook_url=self.webhook_url, mock_mode=True)
 
-        client.send_message("Test Message")
+        success = client.send_message("Test Message")
+        self.assertTrue(success)
 
         mock_post.assert_not_called()
+
+    @patch("crypto_signals.notifications.discord.requests.post")
+    def test_send_message_failure(self, mock_post):
+        """Test sending a message when API fails."""
+        client = DiscordClient(webhook_url=self.webhook_url, mock_mode=False)
+
+        # Simulate network error
+        mock_post.side_effect = requests.RequestException("Network Error")
+
+        success = client.send_message("Test Message")
+        self.assertFalse(success)

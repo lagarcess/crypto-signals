@@ -44,7 +44,7 @@ class DiscordClient:
             thread_name: Optional thread name (required for Forum Channels).
 
         Returns:
-            bool: True if the notification was sent successfully, False otherwise.
+            bool: True if the signal was sent successfully, False otherwise.
         """
         if self.mock_mode:
             logger.info(

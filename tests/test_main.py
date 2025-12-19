@@ -160,3 +160,33 @@ def test_main_notification_failure(mock_dependencies, caplog):
 
     # Verify warning
     assert "Failed to send Discord notification for BTC/USD" in caplog.text
+
+
+def test_main_repo_failure(mock_dependencies, caplog):
+    """Test that main logs an error if repository save fails."""
+    mock_gen_instance = mock_dependencies["generator"].return_value
+    mock_repo_instance = mock_dependencies["repo"].return_value
+
+    # Setup signal
+    mock_signal = MagicMock(spec=Signal)
+    mock_signal.symbol = "BTC/USD"
+    mock_signal.pattern_name = "test_pattern"
+
+    def side_effect(symbol, asset_class):
+        if symbol == "BTC/USD":
+            return mock_signal
+        return None
+
+    mock_gen_instance.generate_signals.side_effect = side_effect
+
+    # Mock repository failure
+    mock_repo_instance.save.side_effect = RuntimeError("Firestore Unavailable")
+
+    # Execute with caplog capturing
+    import logging
+
+    with caplog.at_level(logging.ERROR):
+        main()
+
+    # Verify error log
+    assert "Error processing BTC/USD: Firestore Unavailable" in caplog.text
