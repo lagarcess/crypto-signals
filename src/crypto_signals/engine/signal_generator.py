@@ -24,7 +24,7 @@ class SignalGenerator:
     def __init__(
         self,
         market_provider: MarketDataProvider,
-        indicators: Type[TechnicalIndicators] = TechnicalIndicators,
+        indicators: Optional[TechnicalIndicators] = None,
         pattern_analyzer_cls: Type[PatternAnalyzer] = PatternAnalyzer,
     ):
         """
@@ -32,13 +32,13 @@ class SignalGenerator:
 
         Args:
             market_provider: Provider for fetching market data.
-            indicators: Class for adding technical indicators (dependency
-                injection).
+            indicators: Instance for adding technical indicators (dependency
+                injection). Defaults to new TechnicalIndicators instance.
             pattern_analyzer_cls: Class for verifying patterns (dependency
                 injection).
         """
         self.market_provider = market_provider
-        self.indicators = indicators
+        self.indicators = indicators or TechnicalIndicators()
         self.pattern_analyzer_cls = pattern_analyzer_cls
 
     def generate_signals(
@@ -75,6 +75,9 @@ class SignalGenerator:
         analyzer = self.pattern_analyzer_cls(dataframe=df)
         analyzed_df = analyzer.check_patterns()
 
+        if analyzed_df.empty:
+            return None
+
         # Check the LATEST completed candle (last row)
         latest = analyzed_df.iloc[-1]
 
@@ -107,9 +110,8 @@ class SignalGenerator:
         # Stop loss suggestion:
         # Common practice: For Hammer and Engulfing, place below the low.
         low_price = float(latest["low"])
-        # A simple buffer, maybe 1% below low? Or just the low.
-        # Let's set it to the low for now.
-        suggested_stop = low_price * 0.99  # 1% buffer
+        # Place stop 1% below the low (0.99 multiplier).
+        suggested_stop = low_price * 0.99
 
         signal = Signal(
             signal_id=sig_id,
