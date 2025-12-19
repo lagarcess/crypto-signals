@@ -422,6 +422,6 @@ gcloud firestore import gs://$BUCKET/firestore-backups/20240115
 
 ## Questions & Support
 
-For security issues, please email: security@example.com (DO NOT open public GitHub issues)
+For security issues, please contact the repository maintainers through GitHub's private vulnerability reporting feature.
 
 For general questions: Open a GitHub issue with `[SECURITY]` prefix

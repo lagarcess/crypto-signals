@@ -120,11 +120,6 @@ def main():
                     extra={"symbol": symbol, "asset_class": asset_class.value},
                 )
 
-                logger.info(
-                    f"Analyzing {symbol} ({asset_class.value})...",
-                    extra={"symbol": symbol, "asset_class": asset_class.value},
-                )
-
                 # Generate Signals
                 signal = generator.generate_signals(symbol, asset_class)
 

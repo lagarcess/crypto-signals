@@ -84,8 +84,8 @@ class SignalRepository:
                 batch = self.db.batch()
                 logger.info(f"Deleted {count} expired signals (batch)")
 
-        # Commit remaining deletes
-        if count % 400 > 0:
+        # Commit remaining deletes if any
+        if count > 0 and count % 400 != 0:
             batch.commit()
 
         logger.info(f"Cleanup complete: Deleted {count} expired signals")
