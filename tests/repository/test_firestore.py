@@ -64,7 +64,17 @@ def test_save_signal(mock_settings, mock_firestore_client):
     # Verify data passed to set()
     # model_dump(mode="json") converts dates/datetimes to ISO strings
     expected_data = signal.model_dump(mode="json")
-    mock_document.set.assert_called_once_with(expected_data)
+    # Verify data passed to set() manually to handle expireAt
+    mock_document.set.assert_called_once()
+    args, _ = mock_document.set.call_args
+    actual_data = args[0]
+
+    # Check expireAt exists then remove it for equality check
+    assert "expireAt" in actual_data
+    del actual_data["expireAt"]
+
+    expected_data = signal.model_dump(mode="json")
+    assert actual_data == expected_data
 
 
 def test_save_signal_firestore_error(mock_settings, mock_firestore_client):

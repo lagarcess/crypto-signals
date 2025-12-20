@@ -1,6 +1,38 @@
+# Environment files with secrets
 .env
+.env.*
+!.env.example
+
+# Python cache
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.Python
+
+# Testing
 .pytest_cache/
 .coverage
 htmlcov/
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+logs/
+
+# Secrets directory (for local development)
+secrets/
+*.json
+!pyproject.json
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# OS files
+.DS_Store
+Thumbs.db

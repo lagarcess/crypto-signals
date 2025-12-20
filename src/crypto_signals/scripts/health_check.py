@@ -171,9 +171,8 @@ def verify_discord(settings) -> bool:
     """
     from crypto_signals.notifications.discord import DiscordClient
 
-    client = DiscordClient(
-        webhook_url=settings.DISCORD_WEBHOOK_URL, mock_mode=settings.MOCK_DISCORD
-    )
+    # Let DiscordClient use its defaults from settings
+    client = DiscordClient()
 
     msg = "✅ [Health Check] System is online and connected."
     success = client.send_message(msg, thread_name="System Status")

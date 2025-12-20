@@ -23,7 +23,9 @@ def mock_dependencies():
         "crypto_signals.main.DiscordClient"
     ) as discord, patch(
         "crypto_signals.main.get_settings"
-    ) as mock_settings:
+    ) as mock_settings, patch(
+        "crypto_signals.main.init_secrets", return_value=True
+    ) as mock_secrets:
 
         # Configure mock settings
         mock_settings.return_value.CRYPTO_SYMBOLS = [
@@ -45,6 +47,7 @@ def mock_dependencies():
             "repo": repo,
             "discord": discord,
             "settings": mock_settings,
+            "secrets": mock_secrets,
         }
 
 
@@ -59,6 +62,7 @@ def test_main_execution_flow(mock_dependencies):
     mock_signal = MagicMock(spec=Signal)
     mock_signal.symbol = "BTC/USD"
     mock_signal.pattern_name = "bullish_engulfing"
+    mock_signal.suggested_stop = 90000.0
 
     def side_effect(symbol, asset_class):
         if symbol == "BTC/USD":
@@ -141,6 +145,7 @@ def test_main_notification_failure(mock_dependencies, caplog):
     mock_signal = MagicMock(spec=Signal)
     mock_signal.symbol = "BTC/USD"
     mock_signal.pattern_name = "test_pattern"
+    mock_signal.suggested_stop = 90000.0
 
     def side_effect(symbol, asset_class):
         if symbol == "BTC/USD":
@@ -173,6 +178,7 @@ def test_main_repo_failure(mock_dependencies, caplog):
             sig = MagicMock(spec=Signal)
             sig.symbol = symbol
             sig.pattern_name = "test_pattern"
+            sig.suggested_stop = 100.0
             return sig
         return None
 
