@@ -541,7 +541,6 @@ class PatternAnalyzer:
         2. Retracement: High(Pole) - Low(Flag) < 0.5 * Pole_Height.
         3. Volume Decay: Volume SMA(5) declining.
         """
-        import numpy as np
 
         # 1. Identify Pole candidates (rolling 5d return)
         # We look for a pole that *ended* roughly 3-10 days ago (consolidation phase)
