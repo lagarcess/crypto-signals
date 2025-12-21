@@ -249,15 +249,6 @@ class PatternAnalyzer:
             & self.df["volatility_contraction"]
         )
 
-        # INVERTED HAMMER
-        # Reversal Context (Trend or Div)
-        self.df["inverted_hammer"] = (
-            self.df["is_inverted_hammer_shape"]
-            & reversal_context
-            & self.df["volume_expansion"]
-            & self.df["volatility_contraction"]
-        )
-
         return self.df
 
     def _calculate_candle_shapes(self):
@@ -485,40 +476,19 @@ class PatternAnalyzer:
 
     def _detect_inverted_hammer(self) -> pd.Series:
         """
-        Confirmed Inverted Hammer:
-        1. Shape at t-1: Small body, Long upper wick, Small lower wick.
-        2. Confluence: MFI(t-1) < 20 (Oversold).
-        3. Confirmation: Close(t) > BodyTop(t-1).
+        Inverted Hammer Shape Detection:
+        1. Small body (< 30% of total range)
+        2. Long upper wick (>= 2x body size)
+        3. Small lower wick (< 10% of total range)
+        
+        Note: This only detects the shape. Confirmation logic is applied
+        in check_patterns() method.
         """
-        # 1. Shape at t-1
-        # Shift metrics by 1
-        body_pct = self.df["body_pct"].shift(1)
-        lower_wick = self.df["lower_wick"].shift(1)
-        upper_wick = self.df["upper_wick"].shift(1)
-        total_range = self.df["total_range"].shift(1)
-        body_size = self.df["body_size"].shift(1)
-
-        small_body = body_pct < 0.3
-        small_lower = lower_wick < (total_range * 0.1)
-        long_upper = upper_wick >= (2 * body_size)
-        is_hammer_shape = small_body & small_lower & long_upper
-
-        # 2. MFI Confluence (at t-1)
-        if "MFI_14" in self.df.columns:
-            mfi_oversold = self.df["MFI_14"].shift(1) < 20
-        else:
-            mfi_oversold = False  # Strict: require MFI
-
-        # 3. Confirmation at t
-        # BodyTop(t-1)
-        open_prev = self.df["open"].shift(1)
-        close_prev = self.df["close"].shift(1)
-        # Element-wise max
-        body_top_prev = np.maximum(open_prev, close_prev)
-
-        is_confirmed = self.df["close"] > body_top_prev
-
-        return is_hammer_shape & mfi_oversold & is_confirmed
+        small_body = self.df["body_pct"] < 0.3
+        small_lower = self.df["lower_wick"] < (self.df["total_range"] * 0.1)
+        long_upper = self.df["upper_wick"] >= (2 * self.df["body_size"])
+        
+        return small_body & small_lower & long_upper
 
     def _detect_bullish_marubozu(self) -> pd.Series:
         """
