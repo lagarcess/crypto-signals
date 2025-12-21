@@ -10,8 +10,6 @@ Verifies the data contract defined in src/schemas.py:
 from datetime import date, datetime, timezone
 
 import pytest
-from pydantic import ValidationError
-
 from crypto_signals.domain.schemas import (
     AssetClass,
     OrderSide,
@@ -22,6 +20,7 @@ from crypto_signals.domain.schemas import (
     TradeStatus,
     get_deterministic_id,
 )
+from pydantic import ValidationError
 
 # =============================================================================
 # P0 RISK - DETERMINISTIC IDS

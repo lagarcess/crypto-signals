@@ -4,7 +4,6 @@ from datetime import date, datetime, timezone
 from unittest.mock import patch
 
 import pytest
-
 from crypto_signals.domain.schemas import Signal, SignalStatus
 from crypto_signals.repository.firestore import SignalRepository
 

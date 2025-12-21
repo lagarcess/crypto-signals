@@ -3,7 +3,6 @@
 from unittest.mock import MagicMock, call, patch
 
 import pytest
-
 from crypto_signals.domain.schemas import AssetClass, Signal
 from crypto_signals.main import main
 
@@ -11,22 +10,16 @@ from crypto_signals.main import main
 @pytest.fixture
 def mock_dependencies():
     """Mock all external dependencies used in main.py."""
-    with patch("crypto_signals.main.get_stock_data_client") as stock_client, patch(
-        "crypto_signals.main.get_crypto_data_client"
-    ) as crypto_client, patch(
-        "crypto_signals.main.MarketDataProvider"
-    ) as market_provider, patch(
-        "crypto_signals.main.SignalGenerator"
-    ) as generator, patch(
-        "crypto_signals.main.SignalRepository"
-    ) as repo, patch(
-        "crypto_signals.main.DiscordClient"
-    ) as discord, patch(
-        "crypto_signals.main.get_settings"
-    ) as mock_settings, patch(
-        "crypto_signals.main.init_secrets", return_value=True
-    ) as mock_secrets:
-
+    with (
+        patch("crypto_signals.main.get_stock_data_client") as stock_client,
+        patch("crypto_signals.main.get_crypto_data_client") as crypto_client,
+        patch("crypto_signals.main.MarketDataProvider") as market_provider,
+        patch("crypto_signals.main.SignalGenerator") as generator,
+        patch("crypto_signals.main.SignalRepository") as repo,
+        patch("crypto_signals.main.DiscordClient") as discord,
+        patch("crypto_signals.main.get_settings") as mock_settings,
+        patch("crypto_signals.main.init_secrets", return_value=True) as mock_secrets,
+    ):
         # Configure mock settings
         mock_settings.return_value.CRYPTO_SYMBOLS = [
             "BTC/USD",

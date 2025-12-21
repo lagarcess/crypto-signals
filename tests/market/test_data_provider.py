@@ -6,7 +6,6 @@ import pandas as pd
 import pytest
 from alpaca.data.historical import CryptoHistoricalDataClient, StockHistoricalDataClient
 from alpaca.data.timeframe import TimeFrame
-
 from crypto_signals.domain.schemas import AssetClass
 from crypto_signals.market.data_provider import MarketDataProvider
 from crypto_signals.market.exceptions import MarketDataError

@@ -7,35 +7,35 @@ services:
       dockerfile: Dockerfile
     image: crypto-signals:latest
     container_name: crypto-signals
-    
+
     # Environment variables (for local testing)
     # In production, these should come from Google Secret Manager
     environment:
       # Cloud configuration
       - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
       - GOOGLE_APPLICATION_CREDENTIALS=/app/secrets/gcp-key.json
-      
+
       # Alpaca credentials
       - ALPACA_API_KEY=${ALPACA_API_KEY}
       - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY}
       - ALPACA_PAPER_TRADING=${ALPACA_PAPER_TRADING:-true}
-      
+
       # Discord webhook
       - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL}
       - MOCK_DISCORD=${MOCK_DISCORD:-false}
-      
+
       # Optional: Disable Secret Manager for local testing
       - DISABLE_SECRET_MANAGER=true
-      
+
       # Optional: Rate limiting
       - RATE_LIMIT_DELAY=${RATE_LIMIT_DELAY:-0.5}
-    
+
     # Mount secrets for local development
     # In production, use Google Secret Manager
     volumes:
       - ./secrets:/app/secrets:ro
       - ./logs:/app/logs
-    
+
     # Resource limits
     deploy:
       resources:
@@ -45,10 +45,10 @@ services:
         reservations:
           cpus: '0.5'
           memory: 256M
-    
+
     # Restart policy
     restart: unless-stopped
-    
+
     # Logging configuration
     logging:
       driver: "json-file"
@@ -64,7 +64,7 @@ services:
     image: crypto-signals:latest
     container_name: crypto-signals-healthcheck
     command: ["python", "-m", "crypto_signals.scripts.health_check"]
-    
+
     environment:
       - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
       - GOOGLE_APPLICATION_CREDENTIALS=/app/secrets/gcp-key.json
@@ -74,9 +74,9 @@ services:
       - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL}
       - MOCK_DISCORD=${MOCK_DISCORD:-true}
       - DISABLE_SECRET_MANAGER=true
-    
+
     volumes:
       - ./secrets:/app/secrets:ro
-    
+
     profiles:
       - healthcheck
