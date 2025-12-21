@@ -279,9 +279,6 @@ class TestMacroPatterns:
         analyzer = PatternAnalyzer(base_df)
         res = analyzer.check_patterns()
 
-        analyzer = PatternAnalyzer(base_df)
-        res = analyzer.check_patterns()
-
         # Debugging / Granular Assertions
         # 1. Pole Check (manually verify)
         # ret_5d = base_df["close"].pct_change(5)
