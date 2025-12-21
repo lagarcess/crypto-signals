@@ -396,8 +396,6 @@ class PatternAnalyzer:
         # seems to rely on variables defined in the method logic.
 
         # Fixing line lengths in _detect_piercing_line return statement
-        t0_is_green = self.df["is_green"]
-        close_below_open = self.df["close"] < self.df["open_1"]
 
         # Piercing Line Logic:
         # 1. Prev is Red
