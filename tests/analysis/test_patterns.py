@@ -279,9 +279,6 @@ class TestMacroPatterns:
         analyzer = PatternAnalyzer(base_df)
         res = analyzer.check_patterns()
 
-        analyzer = PatternAnalyzer(base_df)
-        res = analyzer.check_patterns()
-
         assert (
             bool(res.iloc[-1]["bull_flag"]) is True
         ), f"Strict Bull Flag Check. Pole: {analyzer._detect_bull_flag().iloc[-1]}"
