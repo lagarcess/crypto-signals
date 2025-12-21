@@ -156,12 +156,6 @@ class PatternAnalyzer:
             & self.df["volatility_contraction"]
         )
 
-        # INVERTED HAMMER (Needs MFI < 20)
-        if "MFI_14" in self.df.columns:
-            mfi_oversold = self.df["MFI_14"] < self.MFI_OVERSOLD
-        else:
-            mfi_oversold = False
-
         # INVERTED HAMMER
         # Requirement: MFI < 20 AND Next Day Confirmation.
         # We detect the signal on the *Confirmation Day* (t), valid for the Hammer on (t-1).
