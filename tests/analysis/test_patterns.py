@@ -282,23 +282,6 @@ class TestMacroPatterns:
         analyzer = PatternAnalyzer(base_df)
         res = analyzer.check_patterns()
 
-        # Debugging / Granular Assertions
-        # 1. Pole Check (manually verify)
-        # ret_5d = base_df["close"].pct_change(5)
-        # pole = ret_5d.shift(3).rolling(8).max()
-        # assert pole.iloc[-1] > 0.15, f"Pole strength failed: {pole.iloc[-1]}"
-
-        # 2. Retracement Check
-        # High=122, Low=112 (Breakout), Pole Low=100.
-        # Height=22. Drop=10. Ratio=0.45.
-
-        # 3. Volume Decay
-        # SMA5 at t-1 vs SMA5 at t-4
-        vol_sma_5 = base_df["volume"].rolling(5).mean()
-        v_t1 = vol_sma_5.iloc[-2]  # t-1
-        v_t4 = vol_sma_5.iloc[-5]  # t-4
-        assert v_t1 < v_t4, f"Volume Decay failed: {v_t1} >= {v_t4}"
-
         assert (
             bool(res.iloc[-1]["bull_flag"]) is True
         ), f"Strict Bull Flag Check. Pole: {analyzer._detect_bull_flag().iloc[-1]}"
