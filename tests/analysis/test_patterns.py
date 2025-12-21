@@ -80,7 +80,6 @@ class TestBasicPatterns:
         idx_curr = mock_df.index[4]
         mock_df.loc[idx_curr, "open"] = 100.0
         mock_df.loc[idx_curr, "close"] = 104.0
-        mock_df.loc[idx_curr, "close"] = 104.0
         mock_df.loc[idx_curr, "volume"] = 2000
         mock_df["EMA_50"] = 90.0  # Force Uptrend
 
