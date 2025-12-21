@@ -382,56 +382,17 @@ class PatternAnalyzer:
         t2: Gap Down (Open < Low(t-1))
         t2: Close > Midpoint(t-1) AND Close < Open(t-1)
         """
-        # t-1
+        # Previous candle conditions
         t1_is_red = self.df["is_red"].shift(1)
         t1_body_dominant = self.df["body_pct"].shift(1) > 0.6
-
-        # Close above midpoint (penetration) implies > midpoint of open/close of t-1
-        # In patterns.py logic:
-        # t1_mid = (self.df["open_1"] + self.df["close_1"]) / 2
-        # close_above_mid = self.df["close"] > t1_mid
-        # Strict definition: Close > Midpoint.
-        # But this code:
-        # (midpoint < self.df["close_1"]) & ...
-        # seems to rely on variables defined in the method logic.
-
-        # Fixing line lengths in _detect_piercing_line return statement
-        t0_is_green = self.df["is_green"]
-        close_below_open = self.df["close"] < self.df["open_1"]
-
-        # Piercing Line Logic:
-        # 1. Prev is Red
-        # 2. Prev Body Dominant
-        # 3. Close below Prev Open
-        # 4. Current is Green
-        # 5. Open < Prev Close (Gap Down) implicitly handled?
-        #    Actual definition: Open < Low? Or Open < Close?
-        #    Usually Open < Prev Close.
-        #    My logic had: (midpoint < self.df["close_1"]) & ...
-        #    Let's stick to the previous logic structure but with variables.
-
-        # Previous logic used:
-        # t1_mid = ...
-        # close_above_mid = ...
-        # close_below_open = ...
-
-        # Restoring gap_down check if it was there?
-        # The return statement had:
-        # t1_is_red & t1_body_dominant & close_below_open & t0_is_green
-        # It missed 'close_above_mid' and 'gap_down' from the original implementation!
-
-        # Original implementation (approx):
-        # return t1_is_red & t1_body_dominant & gap_down & close_above_mid & close_below_open & t0_is_green
-
-        # Re-implementing correctly:
         t1_mid = (self.df["open_1"] + self.df["close_1"]) / 2
-        close_above_mid = self.df["close"] > t1_mid
-        gap_down = self.df["open"] < self.df["close_1"]
 
+        # Current candle conditions
         t0_is_green = self.df["is_green"]
+        gap_down = self.df["open"] < self.df["close_1"]
+        close_above_mid = self.df["close"] > t1_mid
         close_below_open = self.df["close"] < self.df["open_1"]
 
-        # Piercing Line return logic fixed for line length
         return (
             t1_is_red
             & t1_body_dominant
