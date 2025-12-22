@@ -169,7 +169,12 @@ def main():
                         # Attach thread_id to signal for lifecycle updates
                         trade_signal.discord_thread_id = thread_id
                         logger.info(
-                            f"Signal saved to Firestore (thread_id: {thread_id})."
+                            "Thread ID captured for signal lifecycle tracking",
+                            extra={
+                                "signal_id": trade_signal.signal_id,
+                                "symbol": trade_signal.symbol,
+                                "thread_id": thread_id,
+                            },
                         )
                     else:
                         logger.warning(
@@ -179,7 +184,38 @@ def main():
                         )
 
                     # Persist signal (includes thread_id if available)
-                    repo.save(trade_signal)
+                    persistence_start = time.time()
+                    try:
+                        repo.save(trade_signal)
+                        persistence_duration = time.time() - persistence_start
+                        logger.info(
+                            f"Signal {trade_signal.signal_id} persisted to Firestore",
+                            extra={
+                                "signal_id": trade_signal.signal_id,
+                                "symbol": trade_signal.symbol,
+                                "thread_id": getattr(
+                                    trade_signal, "discord_thread_id", None
+                                ),
+                                "duration_seconds": round(persistence_duration, 3),
+                            },
+                        )
+                        metrics.record_success("signal_persistence", persistence_duration)
+                    except Exception as e:
+                        persistence_duration = time.time() - persistence_start
+                        logger.error(
+                            f"Failed to persist signal {trade_signal.signal_id} to Firestore: {e}",
+                            extra={
+                                "signal_id": trade_signal.signal_id,
+                                "symbol": trade_signal.symbol,
+                                "thread_id": getattr(
+                                    trade_signal, "discord_thread_id", None
+                                ),
+                                "error": str(e),
+                            },
+                        )
+                        metrics.record_failure("signal_persistence", persistence_duration)
+                        # Re-raise to allow higher-level handling if needed
+                        raise
 
                     metrics.record_success("signal_generation", symbol_duration)
                 else:
