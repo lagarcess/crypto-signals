@@ -78,6 +78,9 @@ def test_main_execution_flow(mock_dependencies):
 
     mock_gen_instance.generate_signals.side_effect = side_effect
 
+    # Mock send_signal to return a thread_id
+    mock_discord_instance.send_signal.return_value = "thread_123456"
+
     # Execute
     main()
 
@@ -99,10 +102,46 @@ def test_main_execution_flow(mock_dependencies):
     ]
     mock_gen_instance.generate_signals.assert_has_calls(expected_calls, any_order=False)
 
-    # Verify Signal Handling (Save & Notify)
+    # Verify Signal Handling (Send Discord FIRST, then Save)
     # Should be called once for BTC/USD
-    mock_repo_instance.save.assert_called_once_with(mock_signal)
     mock_discord_instance.send_signal.assert_called_once_with(mock_signal)
+    mock_repo_instance.save.assert_called_once_with(mock_signal)
+
+    # Verify thread_id was attached to signal before save
+    assert mock_signal.discord_thread_id == "thread_123456"
+
+
+def test_send_signal_captures_thread_id(mock_dependencies):
+    """Test that thread_id from send_signal is captured and persisted."""
+    mock_gen_instance = mock_dependencies["generator"].return_value
+    mock_repo_instance = mock_dependencies["repo"].return_value
+    mock_discord_instance = mock_dependencies["discord"].return_value
+
+    # Setup signal
+    mock_signal = MagicMock(spec=Signal)
+    mock_signal.symbol = "BTC/USD"
+    mock_signal.pattern_name = "test_pattern"
+    mock_signal.suggested_stop = 90000.0
+
+    def side_effect(symbol, asset_class, **kwargs):
+        if symbol == "BTC/USD":
+            return mock_signal
+        return None
+
+    mock_gen_instance.generate_signals.side_effect = side_effect
+
+    # Mock send_signal to return a thread_id
+    mock_discord_instance.send_signal.return_value = "mock_thread_98765"
+
+    # Execute
+    main()
+
+    # Verify thread_id was attached to signal
+    assert mock_signal.discord_thread_id == "mock_thread_98765"
+
+    # Verify signal was saved AFTER discord notification
+    mock_discord_instance.send_signal.assert_called_once_with(mock_signal)
+    mock_repo_instance.save.assert_called_once_with(mock_signal)
 
 
 def test_main_symbol_error_handling(mock_dependencies):

@@ -17,7 +17,12 @@ logger = logging.getLogger(__name__)
 
 
 class DiscordClient:
-    """Client for interacting with Discord Webhooks."""
+    """
+    Client for interacting with Discord Webhooks.
+
+    Supports threaded signal lifecycle where initial signals return a thread_id
+    that can be used for subsequent lifecycle updates (TP hits, invalidations, etc.).
+    """
 
     def __init__(
         self, webhook_url: Optional[str] = None, mock_mode: Optional[bool] = None
@@ -34,70 +39,107 @@ class DiscordClient:
         # Explicit check for None to allow passing False
         self.mock_mode = mock_mode if mock_mode is not None else settings.MOCK_DISCORD
 
-    def send_signal(self, signal: Signal, thread_name: Optional[str] = None) -> bool:
+    def send_signal(
+        self, signal: Signal, thread_name: Optional[str] = None
+    ) -> Optional[str]:
         """
-        Send a formatted signal alert to Discord.
+        Send a formatted signal alert to Discord and return the thread ID.
+
+        Uses Discord's ?wait=true parameter to receive the full Message object,
+        which includes the message ID that serves as the thread_id for Forum posts.
+        This enables subsequent lifecycle updates to be pinned to the same thread.
 
         Args:
             signal: The signal to broadcast.
             thread_name: Optional thread name (required for Forum Channels).
 
         Returns:
-            bool: True if the signal was sent successfully, False otherwise.
+            Optional[str]: The thread_id (message ID) if successful, None otherwise.
         """
         if self.mock_mode:
+            # Return a mock thread ID for testing purposes
+            mock_thread_id = f"mock_thread_{signal.signal_id[:8]}"
             logger.info(
                 f"MOCK DISCORD: Would send signal for {signal.symbol}: "
-                f"{signal.pattern_name}"
+                f"{signal.pattern_name} (thread_id: {mock_thread_id})"
             )
-            return True
+            return mock_thread_id
 
         message = self._format_message(signal)
         if thread_name:
             message["thread_name"] = thread_name
 
+        # Append ?wait=true to get the full Message object with ID
+        url = f"{self.webhook_url}?wait=true"
+
         try:
-            response = requests.post(self.webhook_url, json=message, timeout=5.0)
+            response = requests.post(url, json=message, timeout=5.0)
             response.raise_for_status()
-            logger.info(f"Sent signal for {signal.symbol} to Discord.")
-            return True
+
+            # Parse response to extract thread_id (message ID for Forum posts)
+            response_data = response.json()
+            thread_id = response_data.get("id")
+
+            logger.info(
+                f"Sent signal for {signal.symbol} to Discord (thread_id: {thread_id})."
+            )
+            return thread_id
         except requests.RequestException as e:
             if getattr(e, "response", None) is not None:
                 logger.error(f"Discord Response: {e.response.text}")
             logger.error(f"Failed to send Discord notification: {str(e)}")
-            return False
+            return None
 
-    def send_message(self, content: str, thread_name: Optional[str] = None) -> bool:
+    def send_message(self, content: str, thread_id: Optional[str] = None) -> bool:
         """
-        Send a generic text message to Discord.
+        Send a generic text message to Discord, optionally as a reply in a thread.
 
         Args:
             content: The message content.
-            thread_name: Optional thread name (required for Forum Channels).
+            thread_id: Optional thread ID to reply within an existing thread.
+                       If provided, the message appears as a reply in that thread.
 
         Returns:
             bool: True if the message was sent successfully, False otherwise.
         """
         if self.mock_mode:
-            logger.info(f"MOCK DISCORD: Would send message: {content}")
+            if thread_id:
+                logger.info(
+                    f"MOCK DISCORD: Replying to thread {thread_id} with: {content}"
+                )
+            else:
+                logger.info(f"MOCK DISCORD: Would send message: {content}")
             return True
 
         payload = {
             "content": content,
             "username": "Crypto Sentinel",
         }
-        if thread_name:
-            payload["thread_name"] = thread_name
+
+        # Build URL with optional thread_id query parameter
+        url = self.webhook_url
+        if thread_id:
+            url = f"{self.webhook_url}?thread_id={thread_id}"
 
         try:
-            response = requests.post(self.webhook_url, json=payload, timeout=5.0)
+            response = requests.post(url, json=payload, timeout=5.0)
             response.raise_for_status()
-            logger.info("Sent generic message to Discord.")
+            if thread_id:
+                logger.info(f"Sent reply to thread {thread_id} on Discord.")
+            else:
+                logger.info("Sent generic message to Discord.")
             return True
         except requests.RequestException as e:
             if getattr(e, "response", None) is not None:
                 logger.error(f"Discord Response: {e.response.text}")
-            logger.error(f"Failed to send Discord notification: {str(e)}")
+            # Robust fallback: log error but don't crash if thread reply fails
+            if thread_id:
+                logger.error(
+                    f"Failed to reply to thread {thread_id}: {str(e)}. "
+                    "Message not delivered but execution continues."
+                )
+            else:
+                logger.error(f"Failed to send Discord notification: {str(e)}")
             return False
 
     def _format_message(self, signal: Signal) -> dict:

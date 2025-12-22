@@ -284,6 +284,56 @@ class TestSignalModel:
 
         assert signal.status == SignalStatus.WAITING
 
+    def test_signal_discord_thread_id_optional(self):
+        """Signal must allow discord_thread_id to be None (default)."""
+        signal = Signal(
+            signal_id="test_signal",
+            ds=date(2024, 1, 15),
+            strategy_id="momentum",
+            symbol="BTC/USD",
+            asset_class=AssetClass.CRYPTO,
+            entry_price=50000.0,
+            pattern_name="bullish_engulfing",
+            suggested_stop=48000.00,
+        )
+
+        assert signal.discord_thread_id is None
+
+    def test_signal_accepts_discord_thread_id(self):
+        """Signal must accept a valid discord_thread_id for lifecycle threading."""
+        signal = Signal(
+            signal_id="test_signal",
+            ds=date(2024, 1, 15),
+            strategy_id="momentum",
+            symbol="BTC/USD",
+            asset_class=AssetClass.CRYPTO,
+            entry_price=50000.0,
+            pattern_name="bullish_engulfing",
+            suggested_stop=48000.00,
+            discord_thread_id="1234567890123456789",
+        )
+
+        assert signal.discord_thread_id == "1234567890123456789"
+
+    def test_signal_discord_thread_id_serializes_to_json(self):
+        """Signal discord_thread_id must be included in JSON serialization."""
+        signal = Signal(
+            signal_id="test_signal",
+            ds=date(2024, 1, 15),
+            strategy_id="momentum",
+            symbol="BTC/USD",
+            asset_class=AssetClass.CRYPTO,
+            entry_price=50000.0,
+            pattern_name="bullish_engulfing",
+            suggested_stop=48000.00,
+            discord_thread_id="9876543210987654321",
+        )
+
+        serialized = signal.model_dump(mode="json")
+
+        assert "discord_thread_id" in serialized
+        assert serialized["discord_thread_id"] == "9876543210987654321"
+
 
 # =============================================================================
 # TRADE EXECUTION MODEL TESTS

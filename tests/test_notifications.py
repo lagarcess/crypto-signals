@@ -30,19 +30,21 @@ class TestDiscordClient(unittest.TestCase):
 
     @patch("crypto_signals.notifications.discord.requests.post")
     def test_send_signal_real(self, mock_post):
-        """Test sending a real signal (not mocked)."""
+        """Test sending a real signal returns thread_id."""
         client = DiscordClient(webhook_url=self.webhook_url, mock_mode=False)
 
         mock_response = MagicMock()
         mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = {"id": "1234567890123456789"}
         mock_post.return_value = mock_response
 
-        success = client.send_signal(self.signal)
-        self.assertTrue(success)
+        thread_id = client.send_signal(self.signal)
+        self.assertEqual(thread_id, "1234567890123456789")
 
         mock_post.assert_called_once()
         args, kwargs = mock_post.call_args
-        self.assertEqual(args[0], self.webhook_url)
+        # Verify ?wait=true is appended to URL
+        self.assertEqual(args[0], f"{self.webhook_url}?wait=true")
         self.assertIn("🚀", kwargs["json"]["content"])
         self.assertIn("BTC/USD", kwargs["json"]["content"])
 
@@ -53,10 +55,11 @@ class TestDiscordClient(unittest.TestCase):
 
         mock_response = MagicMock()
         mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = {"id": "9876543210987654321"}
         mock_post.return_value = mock_response
 
-        success = client.send_signal(self.signal, thread_name="Test Thread")
-        self.assertTrue(success)
+        thread_id = client.send_signal(self.signal, thread_name="Test Thread")
+        self.assertEqual(thread_id, "9876543210987654321")
 
         mock_post.assert_called_once()
         _, kwargs = mock_post.call_args
@@ -64,24 +67,25 @@ class TestDiscordClient(unittest.TestCase):
 
     @patch("crypto_signals.notifications.discord.requests.post")
     def test_send_signal_mocked(self, mock_post):
-        """Test sending a signal in mock mode (should NOT hit API)."""
+        """Test sending a signal in mock mode returns mock thread_id."""
         client = DiscordClient(webhook_url=self.webhook_url, mock_mode=True)
 
-        success = client.send_signal(self.signal)
-        self.assertTrue(success)
+        thread_id = client.send_signal(self.signal)
+        # Mock mode returns a deterministic thread ID based on signal_id[:8]
+        self.assertEqual(thread_id, "mock_thread_test_id")
 
         mock_post.assert_not_called()
 
     @patch("crypto_signals.notifications.discord.requests.post")
     def test_send_signal_failure(self, mock_post):
-        """Test sending a signal when API fails."""
+        """Test sending a signal when API fails returns None."""
         client = DiscordClient(webhook_url=self.webhook_url, mock_mode=False)
 
         # Simulate network error
         mock_post.side_effect = requests.RequestException("Network Error")
 
-        success = client.send_signal(self.signal)
-        self.assertFalse(success)
+        thread_id = client.send_signal(self.signal)
+        self.assertIsNone(thread_id)
 
     @patch("crypto_signals.notifications.discord.requests.post")
     def test_send_message_mocked(self, mock_post):
@@ -94,6 +98,33 @@ class TestDiscordClient(unittest.TestCase):
         mock_post.assert_not_called()
 
     @patch("crypto_signals.notifications.discord.requests.post")
+    def test_send_message_with_thread_id_mocked(self, mock_post):
+        """Test sending a reply to a thread in mock mode."""
+        client = DiscordClient(webhook_url=self.webhook_url, mock_mode=True)
+
+        success = client.send_message("Reply content", thread_id="1234567890")
+        self.assertTrue(success)
+
+        mock_post.assert_not_called()
+
+    @patch("crypto_signals.notifications.discord.requests.post")
+    def test_send_message_with_thread_id_real(self, mock_post):
+        """Test sending a reply to a thread uses ?thread_id query param."""
+        client = DiscordClient(webhook_url=self.webhook_url, mock_mode=False)
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status.return_value = None
+        mock_post.return_value = mock_response
+
+        success = client.send_message("Reply content", thread_id="1234567890")
+        self.assertTrue(success)
+
+        mock_post.assert_called_once()
+        args, _ = mock_post.call_args
+        # Verify ?thread_id is appended to URL
+        self.assertEqual(args[0], f"{self.webhook_url}?thread_id=1234567890")
+
+    @patch("crypto_signals.notifications.discord.requests.post")
     def test_send_message_failure(self, mock_post):
         """Test sending a message when API fails."""
         client = DiscordClient(webhook_url=self.webhook_url, mock_mode=False)
@@ -102,6 +133,18 @@ class TestDiscordClient(unittest.TestCase):
         mock_post.side_effect = requests.RequestException("Network Error")
 
         success = client.send_message("Test Message")
+        self.assertFalse(success)
+
+    @patch("crypto_signals.notifications.discord.requests.post")
+    def test_send_message_thread_reply_failure_does_not_crash(self, mock_post):
+        """Test that thread reply failure logs error but doesn't crash."""
+        client = DiscordClient(webhook_url=self.webhook_url, mock_mode=False)
+
+        # Simulate network error on thread reply
+        mock_post.side_effect = requests.RequestException("Thread not found")
+
+        # Should return False but not raise exception
+        success = client.send_message("Reply content", thread_id="invalid_thread")
         self.assertFalse(success)
 
     @patch("crypto_signals.notifications.discord.requests.post")
@@ -128,10 +171,11 @@ class TestDiscordClient(unittest.TestCase):
 
         mock_response = MagicMock()
         mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = {"id": "thread_123"}
         mock_post.return_value = mock_response
 
-        success = client.send_signal(full_signal)
-        self.assertTrue(success)
+        thread_id = client.send_signal(full_signal)
+        self.assertEqual(thread_id, "thread_123")
 
         mock_post.assert_called_once()
         _, kwargs = mock_post.call_args
@@ -170,10 +214,11 @@ class TestDiscordClient(unittest.TestCase):
 
         mock_response = MagicMock()
         mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = {"id": "partial_thread_123"}
         mock_post.return_value = mock_response
 
-        success = client.send_signal(partial_signal)
-        self.assertTrue(success)
+        thread_id = client.send_signal(partial_signal)
+        self.assertEqual(thread_id, "partial_thread_123")
 
         mock_post.assert_called_once()
         _, kwargs = mock_post.call_args
