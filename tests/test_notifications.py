@@ -1,9 +1,11 @@
 """Unit tests for Notification Service."""
 
+import os
 import unittest
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
+import pytest
 import requests
 from crypto_signals.domain.schemas import AssetClass, Signal, SignalStatus
 from crypto_signals.notifications.discord import DiscordClient
@@ -229,3 +231,105 @@ class TestDiscordClient(unittest.TestCase):
         self.assertNotIn("Take Profit 2", content)
         self.assertNotIn("Take Profit 3", content)
         self.assertNotIn("Invalidation Price", content)
+
+
+# =============================================================================
+# VISUAL INTEGRATION TESTS (Skip by default, run with RUN_VISUAL_TESTS=true)
+# =============================================================================
+
+# Skip visual tests unless explicitly enabled
+SKIP_VISUAL = not os.environ.get("RUN_VISUAL_TESTS", "").lower() == "true"
+SKIP_REASON = (
+    "Visual tests require RUN_VISUAL_TESTS=true and TEST_DISCORD_WEBHOOK env vars"
+)
+
+
+@pytest.mark.visual
+@pytest.mark.skipif(SKIP_VISUAL, reason=SKIP_REASON)
+class TestVisualDiscordIntegration:
+    """
+    Visual integration tests that send real messages to Discord.
+
+    These tests are skipped by default. To run them:
+    1. Set TEST_DISCORD_WEBHOOK to your test webhook URL
+    2. Set RUN_VISUAL_TESTS=true
+    3. Run: pytest -m visual tests/test_notifications.py -v
+    """
+
+    @pytest.fixture
+    def real_client(self):
+        """Create a real DiscordClient for visual testing."""
+        from crypto_signals.notifications.discord import DiscordClient
+
+        webhook_url = os.environ.get("TEST_DISCORD_WEBHOOK")
+        if not webhook_url:
+            pytest.skip("TEST_DISCORD_WEBHOOK not set")
+
+        return DiscordClient(webhook_url=webhook_url, mock_mode=False)
+
+    @pytest.fixture
+    def test_signal(self):
+        """Create a test signal for visual verification."""
+        from crypto_signals.domain.schemas import (
+            AssetClass,
+            Signal,
+            SignalStatus,
+            get_deterministic_id,
+        )
+
+        now = datetime.now(timezone.utc)
+        return Signal(
+            signal_id=get_deterministic_id(f"visual_test_{now.isoformat()}"),
+            ds=date.today(),
+            strategy_id="visual_test",
+            symbol="BTC/USD",
+            asset_class=AssetClass.CRYPTO,
+            entry_price=95000.00,
+            pattern_name="bullish_engulfing",
+            status=SignalStatus.WAITING,
+            suggested_stop=91000.00,
+            take_profit_1=98500.00,
+            take_profit_2=102000.00,
+            take_profit_3=110000.00,
+            expiration_at=now + timedelta(hours=24),
+        )
+
+    def test_visual_threading_success_path(self, real_client, test_signal):
+        """Visual test: Verify threading works for success path."""
+        import time
+
+        # Step 1: Send initial signal (creates thread)
+        thread_id = real_client.send_signal(
+            test_signal, thread_name="🧪 Pytest Visual: Success"
+        )
+        assert thread_id is not None, "Failed to create thread"
+
+        time.sleep(2)
+
+        # Step 2: Send TP1 update to thread
+        result = real_client.send_message(
+            "🎯 **TP1 HIT** - Visual test confirmation",
+            thread_id=thread_id,
+        )
+        assert result is True, "Failed to send TP1 update"
+
+        # Verify visually in Discord
+
+    def test_visual_threading_reply(self, real_client, test_signal):
+        """Visual test: Verify reply appears in same thread."""
+        import time
+
+        # Create thread
+        thread_id = real_client.send_signal(
+            test_signal, thread_name="🧪 Pytest Visual: Reply Test"
+        )
+        assert thread_id is not None
+
+        time.sleep(1)
+
+        # Send reply
+        result = real_client.send_message(
+            "This message should appear as a reply in the same thread.",
+            thread_id=thread_id,
+        )
+        assert result is True

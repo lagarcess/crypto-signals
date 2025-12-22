@@ -21,6 +21,11 @@ Crypto Sentinel is a production-ready trading bot that:
 - **Risk Management**: Automatic stop-loss calculation and position sizing
 - **Cloud-Native**: Designed for containerized deployment on GCP
 
+### Discord Notifications
+- ✅ **Threaded Signal Lifecycle**: All updates (TP hits, invalidations, expirations) are pinned to a single thread
+- ✅ **Self-Healing**: Orphaned signals automatically create new threads for future updates
+- ✅ **Visual Integration Tests**: Real webhook testing with `scripts/visual_discord_test.py`
+
 ### Production Features
 - ✅ **Secret Management**: Google Secret Manager integration
 - ✅ **Rate Limiting**: Automatic throttling to respect API limits (200 req/min)
@@ -33,34 +38,14 @@ Crypto Sentinel is a production-ready trading bot that:
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Crypto Sentinel                          │
-│                                                                 │
-│  ┌───────────────┐     ┌─────────────┐    ┌──────────────┐      │
-│  │   main.py     │───▶│  SignalGen  │───▶│   Discord    │      │
-│  │ (Orchestrator)│     │   Engine    │    │ Notifications│      │
-│  └───────────────┘     └─────────────┘    └──────────────┘      │
-│         │                    │                                  │
-│         ▼                    ▼                                  │
-│  ┌──────────────┐    ┌─────────────┐                            │
-│  │  MarketData  │    │  Patterns & │                            │
-│  │   Provider   │    │ Indicators  │                            │
-│  └──────────────┘    └─────────────┘                            │
-│         │                    │                                  │
-│         ▼                    ▼                                  │
-│  ┌──────────────────────────────────┐                           │
-│  │      Firestore (Signals)         │                           │
-│  └──────────────────────────────────┘                           │
-└─────────────────────────────────────────────────────────────────┘
+![Crypto Sentinel Architecture](./docs/images/crypto-sentinel-architecture.png)
 
-External Services:
-- Alpaca API (Market Data & Trading)
-- Google Cloud Firestore (Signal Storage)
-- Google Cloud BigQuery (Trade Analytics)
-- Discord Webhooks (Notifications)
-- Google Secret Manager (Credentials)
-```
+**External Services:**
+- **Alpaca API**: Market data & trading
+- **Google Cloud Firestore**: Signal & position storage
+- **Google Cloud BigQuery**: Trade analytics
+- **Discord Webhooks**: Threaded notifications
+- **Google Secret Manager**: Credentials
 
 ## Project Structure
 
@@ -80,18 +65,23 @@ crypto-signals/
 │   │   ├── indicators.py          # Technical indicators (RSI, MACD, etc.)
 │   │   └── patterns.py            # Pattern detection logic
 │   ├── notifications/
-│   │   └── discord.py             # Discord webhook client
+│   │   └── discord.py             # Discord webhook client (threaded messaging)
 │   ├── repository/
 │   │   └── firestore.py           # Firestore persistence layer
 │   ├── pipelines/
 │   │   ├── base.py                # BigQuery pipeline base
 │   │   ├── trade_archival.py      # Trade archival pipeline
 │   │   └── account_snapshot.py    # Account snapshot pipeline
-│   ├── domain/
-│   │   └── schemas.py             # Pydantic data models
-│   └── scripts/
-│       ├── health_check.py        # Service connectivity verification
-│       └── cleanup_firestore.py   # Manual cleanup job (optional with automatic TTL)
+│   └── domain/
+│       └── schemas.py             # Pydantic data models
+├── scripts/
+│   ├── visual_discord_test.py     # Visual Discord integration tests
+│   └── verify_firestore_config.py # Firestore configuration verification
+├── docs/
+│   ├── discord-threading.md       # Discord threading documentation
+│   └── images/                    # Architecture diagrams
+│       ├── crypto-sentinel-architecture.png
+│       └── signal-lifecycle-architecture.png
 ├── tests/                         # Comprehensive test suite
 ├── Dockerfile                     # Multi-stage production build
 ├── docker-compose.yml             # Local development setup
@@ -251,6 +241,20 @@ poetry run pre-commit install
 # Run manually
 poetry run pre-commit run --all-files
 ```
+
+### Visual Discord Tests
+
+Test signal threading and formatting with real Discord messages:
+
+```powershell
+# Add TEST_DISCORD_WEBHOOK to your .env file, then:
+python scripts/visual_discord_test.py success      # Signal → TP1 → TP2 → TP3
+python scripts/visual_discord_test.py invalidation # Signal → Invalidation
+python scripts/visual_discord_test.py expiration   # Signal → Expiration
+python scripts/visual_discord_test.py all          # Run all paths
+```
+
+These tests verify that all lifecycle updates appear in a single thread.
 
 ## Security Considerations
 
