@@ -1,6 +1,6 @@
 """Unit tests for the main application entrypoint."""
 
-from unittest.mock import ANY, MagicMock, call, patch
+from unittest.mock import ANY, MagicMock, Mock, call, patch
 
 import pytest
 from crypto_signals.domain.schemas import AssetClass, Signal
@@ -81,6 +81,11 @@ def test_main_execution_flow(mock_dependencies):
     # Mock send_signal to return a thread_id
     mock_discord_instance.send_signal.return_value = "thread_123456"
 
+    # Create a manager to track call order across mocks
+    manager = Mock()
+    manager.attach_mock(mock_discord_instance.send_signal, 'send_signal')
+    manager.attach_mock(mock_repo_instance.save, 'save')
+
     # Execute
     main()
 
@@ -110,6 +115,14 @@ def test_main_execution_flow(mock_dependencies):
     # Verify thread_id was attached to signal before save
     assert mock_signal.discord_thread_id == "thread_123456"
 
+    # Verify explicit call order: Discord notification MUST happen before Firestore save
+    # This ensures thread_id is captured before persistence
+    expected_call_order = [
+        call.send_signal(mock_signal),
+        call.save(mock_signal),
+    ]
+    assert manager.mock_calls == expected_call_order
+
 
 def test_send_signal_captures_thread_id(mock_dependencies):
     """Test that thread_id from send_signal is captured and persisted."""
@@ -133,15 +146,27 @@ def test_send_signal_captures_thread_id(mock_dependencies):
     # Mock send_signal to return a thread_id
     mock_discord_instance.send_signal.return_value = "mock_thread_98765"
 
+    # Create a manager to track call order across mocks
+    manager = Mock()
+    manager.attach_mock(mock_discord_instance.send_signal, 'send_signal')
+    manager.attach_mock(mock_repo_instance.save, 'save')
+
     # Execute
     main()
 
     # Verify thread_id was attached to signal
     assert mock_signal.discord_thread_id == "mock_thread_98765"
 
-    # Verify signal was saved AFTER discord notification
+    # Verify signal was saved AFTER discord notification using explicit call order verification
     mock_discord_instance.send_signal.assert_called_once_with(mock_signal)
     mock_repo_instance.save.assert_called_once_with(mock_signal)
+
+    # Verify explicit call order: Discord notification MUST happen before Firestore save
+    expected_call_order = [
+        call.send_signal(mock_signal),
+        call.save(mock_signal),
+    ]
+    assert manager.mock_calls == expected_call_order
 
 
 def test_main_symbol_error_handling(mock_dependencies):
