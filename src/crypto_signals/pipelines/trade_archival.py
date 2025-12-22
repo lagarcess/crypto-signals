@@ -20,7 +20,12 @@ import pandas as pd
 from alpaca.common.exceptions import APIError
 from google.cloud import firestore
 
-from crypto_signals.config import get_trading_client, settings
+from crypto_signals.config import (
+    get_crypto_data_client,
+    get_stock_data_client,
+    get_trading_client,
+    settings,
+)
 from crypto_signals.domain.schemas import ExitReason, OrderSide, TradeExecution
 from crypto_signals.market.data_provider import MarketDataProvider
 from crypto_signals.pipelines.base import BigQueryPipelineBase
@@ -55,7 +60,11 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
         # Note: We use the project from settings, same as BQ
         self.firestore_client = firestore.Client(project=settings().GOOGLE_CLOUD_PROJECT)
         self.alpaca = get_trading_client()
-        self.market_provider = MarketDataProvider()
+
+        # Initialize MarketDataProvider with required clients
+        stock_client = get_stock_data_client()
+        crypto_client = get_crypto_data_client()
+        self.market_provider = MarketDataProvider(stock_client, crypto_client)
 
     def extract(self) -> List[Any]:
         """
