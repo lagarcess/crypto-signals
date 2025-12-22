@@ -19,9 +19,7 @@ def mock_dependencies():
         patch("crypto_signals.main.DiscordClient") as discord,
         patch("crypto_signals.main.get_settings") as mock_settings,
         patch("crypto_signals.main.init_secrets", return_value=True) as mock_secrets,
-        patch(
-            "crypto_signals.main.load_config_from_firestore"
-        ) as mock_firestore_config,
+        patch("crypto_signals.main.load_config_from_firestore") as mock_firestore_config,
     ):
         # Configure mock settings
         mock_settings.return_value.CRYPTO_SYMBOLS = [

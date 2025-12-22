@@ -47,9 +47,7 @@ def pipeline(mock_settings, mock_alpaca, mock_bq):
 def test_init(pipeline):
     """Test pipeline initialization."""
     assert pipeline.job_name == "account_snapshot"
-    assert (
-        pipeline.staging_table_id == "test-project.crypto_sentinel.stg_accounts_import"
-    )
+    assert pipeline.staging_table_id == "test-project.crypto_sentinel.stg_accounts_import"
     assert pipeline.fact_table_id == "test-project.crypto_sentinel.snapshot_accounts"
 
 

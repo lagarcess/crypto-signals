@@ -228,7 +228,9 @@ def main():
                             msg += f"**Reason**: {exited.exit_reason}\n"
 
                         if exited.status == SignalStatus.TP1_HIT:
-                            msg += "ℹ️ **Action**: Scaling Out (50%) & Stop -> **Breakeven**"
+                            msg += (
+                                "ℹ️ **Action**: Scaling Out (50%) & Stop -> **Breakeven**"
+                            )
 
                         discord.send_message(msg)
 

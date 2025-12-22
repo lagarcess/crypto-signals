@@ -165,9 +165,7 @@ def test_generate_signal_priority(
     assert signal.pattern_name == "BULLISH_ENGULFING"
 
 
-def test_generate_signal_none(
-    signal_generator, mock_market_provider, mock_analyzer_cls
-):
+def test_generate_signal_none(signal_generator, mock_market_provider, mock_analyzer_cls):
     """Test that None is returned when no patterns are detected."""
     # Setup Data: NO patterns
     df = pd.DataFrame(

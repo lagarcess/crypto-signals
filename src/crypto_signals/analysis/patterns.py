@@ -283,9 +283,7 @@ class PatternAnalyzer:
         """Lower Wick >= 2.0 * Body, Upper Wick <= 0.5 * Body, Downtrend context."""
         return (
             self.df["lower_wick"] >= self.HAMMER_LOWER_WICK_RATIO * self.df["body_size"]
-        ) & (
-            self.df["upper_wick"] <= self.HAMMER_UPPER_WICK_RATIO * self.df["body_size"]
-        )
+        ) & (self.df["upper_wick"] <= self.HAMMER_UPPER_WICK_RATIO * self.df["body_size"])
 
     def _detect_bullish_engulfing(self) -> pd.Series:
         """Current Green, Prev Red, Envelops Body."""

@@ -131,9 +131,7 @@ class DiscordClient:
 
         # Add Take Profit targets
         if signal.take_profit_1:
-            content += (
-                f"\n**Take Profit 1 (Conservative):** ${signal.take_profit_1:,.2f}"
-            )
+            content += f"\n**Take Profit 1 (Conservative):** ${signal.take_profit_1:,.2f}"
         if signal.take_profit_2:
             content += f"\n**Take Profit 2 (Structural):** ${signal.take_profit_2:,.2f}"
         if signal.take_profit_3:
