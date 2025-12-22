@@ -169,7 +169,8 @@ def main():
                         # Attach thread_id to signal for lifecycle updates
                         trade_signal.discord_thread_id = thread_id
                         logger.info(
-                            f"Signal saved to Firestore (thread_id: {thread_id})."
+                            f"Thread ID captured for signal lifecycle tracking "
+                            f"(thread_id: {thread_id})."
                         )
                     else:
                         logger.warning(
@@ -179,6 +180,8 @@ def main():
                         )
 
                     # Persist signal (includes thread_id if available)
+                    # TODO: Add confirmation log, error handling, and timing metrics
+                    # See GitHub issue: "Improve logging consistency for Firestore persistence"
                     repo.save(trade_signal)
 
                     metrics.record_success("signal_generation", symbol_duration)

@@ -140,6 +140,10 @@ def test_send_signal_captures_thread_id(mock_dependencies):
     assert mock_signal.discord_thread_id == "mock_thread_98765"
 
     # Verify signal was saved AFTER discord notification
+    # Note: thread_id assertion above implicitly verifies ordering since thread_id
+    # is attached after send_signal but before save. However, explicit order
+    # verification would be more robust.
+    # TODO: Use Mock.call_args_list or attach_mock to explicitly verify call order
     mock_discord_instance.send_signal.assert_called_once_with(mock_signal)
     mock_repo_instance.save.assert_called_once_with(mock_signal)
 
