@@ -156,12 +156,6 @@ class PatternAnalyzer:
             & self.df["volatility_contraction"]
         )
 
-        # INVERTED HAMMER (Needs MFI < 20)
-        if "MFI_14" in self.df.columns:
-            mfi_oversold = self.df["MFI_14"] < self.MFI_OVERSOLD
-        else:
-            mfi_oversold = False
-
         # INVERTED HAMMER
         # Requirement: MFI < 20 AND Next Day Confirmation.
         # We detect the signal on the *Confirmation Day* (t), valid for the Hammer on (t-1).
@@ -504,7 +498,6 @@ class PatternAnalyzer:
         2. Retracement: High(Pole) - Low(Flag) < 0.5 * Pole_Height.
         3. Volume Decay: Volume SMA(5) declining.
         """
-        import numpy as np
 
         # 1. Identify Pole candidates (rolling 5d return)
         # We look for a pole that *ended* roughly 3-10 days ago (consolidation phase)
