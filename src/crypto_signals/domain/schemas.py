@@ -222,9 +222,9 @@ class Signal(BaseModel):
         default=None,
         description="Third profit target (Runner/Moonbag)",
     )
-    exit_reason: Optional[str] = Field(
+    exit_reason: Optional[ExitReason] = Field(
         default=None,
-        description="Reason for trade exit (e.g., 'TP1 Scaling', 'Bearish Engulfing')",
+        description="Reason for trade exit (e.g., ExitReason.TP1)",
     )
 
 
@@ -355,6 +355,10 @@ class TradeExecution(BaseModel):
         ...,
         description="Profit/Loss as percentage",
     )
+    pnl_usd: float = Field(
+        ...,
+        description="Profit/Loss in USD",
+    )
     fees_usd: float = Field(
         ...,
         description="Total fees paid in USD",
@@ -436,6 +440,10 @@ class StagingTrade(BaseModel):
     pnl_pct: float = Field(
         ...,
         description="Profit/Loss as percentage",
+    )
+    pnl_usd: float = Field(
+        ...,
+        description="Profit/Loss in USD",
     )
     fees_usd: float = Field(
         ...,

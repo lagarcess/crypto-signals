@@ -21,7 +21,7 @@ from alpaca.common.exceptions import APIError
 from google.cloud import firestore
 
 from crypto_signals.config import get_trading_client, settings
-from crypto_signals.domain.schemas import OrderSide, TradeExecution
+from crypto_signals.domain.schemas import ExitReason, OrderSide, TradeExecution
 from crypto_signals.market.data_provider import MarketDataProvider
 from crypto_signals.pipelines.base import BigQueryPipelineBase
 
@@ -246,7 +246,9 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                     fees_usd=round(fees_usd, 2),
                     slippage_pct=0.0,
                     trade_duration=duration,
-                    exit_reason=pos.get("exit_reason", "TP1"),  # Default or map
+                    exit_reason=ExitReason(
+                        pos.get("exit_reason", ExitReason.TP1.value)
+                    ),
                     max_favorable_excursion=max_favorable_excursion,
                 )
 

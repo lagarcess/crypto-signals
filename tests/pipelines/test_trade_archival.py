@@ -101,6 +101,11 @@ def test_transform_mfe_long(pipeline, mock_market_provider, mock_alpaca):
     assert len(transformed) == 1
     trade = transformed[0]
     assert trade["max_favorable_excursion"] == 5000.0  # 55000 - 50000
+    # Verify pnl_usd is correctly calculated and rounded
+    # PnL = (exit_price - entry_price) * qty = (52000 - 50000) * 1.0 = 2000.0
+    assert trade["pnl_usd"] == 2000.0
+    # Verify pnl_pct is also present
+    assert "pnl_pct" in trade
 
 
 def test_transform_mfe_short(pipeline, mock_market_provider, mock_alpaca):
@@ -153,3 +158,8 @@ def test_transform_mfe_short(pipeline, mock_market_provider, mock_alpaca):
     assert len(transformed) == 1
     trade = transformed[0]
     assert trade["max_favorable_excursion"] == 5000.0  # 50000 - 45000
+    # Verify pnl_usd is correctly calculated for short position
+    # Short PnL = (entry_price - exit_price) * qty = (50000 - 48000) * 1.0 = 2000.0
+    assert trade["pnl_usd"] == 2000.0
+    # Verify pnl_pct is also present
+    assert "pnl_pct" in trade

@@ -13,6 +13,7 @@ from crypto_signals.analysis.indicators import TechnicalIndicators
 from crypto_signals.analysis.patterns import PatternAnalyzer
 from crypto_signals.domain.schemas import (
     AssetClass,
+    ExitReason,
     Signal,
     SignalStatus,
     get_deterministic_id,
@@ -321,10 +322,10 @@ class SignalGenerator:
             if chandelier_exit and current_close < chandelier_exit:
                 if current_close > signal.entry_price:
                     signal.status = SignalStatus.TP3_HIT
-                    signal.exit_reason = "TP3 Hit (Runner Chandelier)"
+                    signal.exit_reason = ExitReason.TP_HIT
                 else:
                     signal.status = SignalStatus.INVALIDATED
-                    signal.exit_reason = "Runner Trailed Out"
+                    signal.exit_reason = ExitReason.STOP_LOSS
                 exit_triggered = True
 
             # Check TP2
@@ -335,7 +336,7 @@ class SignalGenerator:
                 and signal.status != SignalStatus.TP2_HIT
             ):
                 signal.status = SignalStatus.TP2_HIT
-                signal.exit_reason = "TP2 Hit"
+                signal.exit_reason = ExitReason.TP2
                 exit_triggered = True
 
             # Check TP1
@@ -348,7 +349,7 @@ class SignalGenerator:
             ):
                 signal.status = SignalStatus.TP1_HIT
                 signal.suggested_stop = signal.entry_price
-                signal.exit_reason = "TP1 Scaling (Stop -> BE)"
+                signal.exit_reason = ExitReason.TP1
                 exit_triggered = True
 
             # --- INVALIDATION ---
@@ -359,11 +360,13 @@ class SignalGenerator:
                     and current_close < signal.invalidation_price
                 ):
                     signal.status = SignalStatus.INVALIDATED
+                    signal.exit_reason = ExitReason.STRUCTURAL_INVALIDATION
                     exit_triggered = True
 
                 # 2. Dynamic Invalidation (Color Flip / Indicators)
                 elif is_bearish_engulfing or rsi_overbought or adx_peaking:
                     signal.status = SignalStatus.INVALIDATED
+                    signal.exit_reason = ExitReason.COLOR_FLIP
                     exit_triggered = True
 
             if exit_triggered:

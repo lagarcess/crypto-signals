@@ -5,7 +5,12 @@ from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
-from crypto_signals.domain.schemas import AssetClass, Signal, SignalStatus
+from crypto_signals.domain.schemas import (
+    AssetClass,
+    ExitReason,
+    Signal,
+    SignalStatus,
+)
 from crypto_signals.engine.signal_generator import SignalGenerator
 
 
@@ -251,7 +256,7 @@ def test_check_exits_profit_hit_tp1_scaling(
     assert exited[0].status == SignalStatus.TP1_HIT
     # Stop should be moved to Breakeven
     assert exited[0].suggested_stop == 100.0
-    assert exited[0].exit_reason == "TP1 Scaling (Stop -> BE)"
+    assert exited[0].exit_reason == ExitReason.TP1
 
     # Ensure provider was NOT called because we passed dataframe
     mock_market_provider.get_daily_bars.assert_not_called()
@@ -381,7 +386,7 @@ def test_check_exits_runner_exit(
     # Verification
     assert len(exited) == 1
     assert exited[0].status == SignalStatus.TP3_HIT
-    assert exited[0].exit_reason == "TP3 Hit (Runner Chandelier)"
+    assert exited[0].exit_reason == ExitReason.TP_HIT
 
     signal.take_profit_1 = 104.0
     signal.take_profit_2 = 110.0
@@ -417,4 +422,4 @@ def test_check_exits_runner_exit(
     assert len(exited) == 1
     assert exited[0].status == SignalStatus.TP1_HIT
     assert exited[0].suggested_stop == 100.0  # Breakeven
-    assert exited[0].exit_reason == "TP1 Scaling (Stop -> BE)"
+    assert exited[0].exit_reason == ExitReason.TP1

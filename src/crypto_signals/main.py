@@ -17,7 +17,7 @@ from crypto_signals.config import (
     get_stock_data_client,
     load_config_from_firestore,
 )
-from crypto_signals.domain.schemas import AssetClass, SignalStatus
+from crypto_signals.domain.schemas import AssetClass, ExitReason, SignalStatus
 from crypto_signals.engine.signal_generator import SignalGenerator
 from crypto_signals.market.data_provider import MarketDataProvider
 from crypto_signals.notifications.discord import DiscordClient
@@ -256,7 +256,9 @@ def main():
                                 f"EXPIRING Signal {sig.signal_id} (Date: {sig.ds})",
                                 extra={"symbol": symbol, "signal_id": sig.signal_id},
                             )
-                            repo.update_status(sig.signal_id, SignalStatus.EXPIRED)
+                            sig.status = SignalStatus.EXPIRED
+                            sig.exit_reason = ExitReason.EXPIRED
+                            repo.update_signal(sig)
                             discord.send_message(
                                 f"⏳ **SIGNAL EXPIRED: {symbol}** ⏳\n"
                                 f"Signal from {sig.ds} expired (24h Limit)."
