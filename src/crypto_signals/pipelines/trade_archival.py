@@ -173,8 +173,6 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
 
                 # CALCULATIONS
                 # Fees: Hard to get exact without activity ID.
-                # TODO: Implement exact fee fetching via TradeActivity endpoint
-                # in Phase 4
                 fees_usd = 0.0
 
                 # PnL Calculation using ALPACA entry price (Truth) vs

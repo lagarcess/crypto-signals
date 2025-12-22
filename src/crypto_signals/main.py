@@ -77,35 +77,27 @@ def main():
                 repo = SignalRepository()
                 discord = DiscordClient()
 
-        # 2. Define Portfolio
+        # Define Portfolio
         settings = get_settings()
-
-        # Dynamic Config Loading
         firestore_config = load_config_from_firestore()
 
         if firestore_config:
             logger.info("Using configuration from Firestore (overriding .env)")
             if "CRYPTO_SYMBOLS" in firestore_config:
                 settings.CRYPTO_SYMBOLS = firestore_config["CRYPTO_SYMBOLS"]
-
-            # Note: Equity restriction is handled in config.py
         else:
             logger.info("Using configuration from .env")
 
-        portfolio_items = []
-        for s in settings.CRYPTO_SYMBOLS:
-            portfolio_items.append((s, AssetClass.CRYPTO))
-        for s in settings.EQUITY_SYMBOLS:
-            portfolio_items.append((s, AssetClass.EQUITY))
+        portfolio_items = [(s, AssetClass.CRYPTO) for s in settings.CRYPTO_SYMBOLS] + [
+            (s, AssetClass.EQUITY) for s in settings.EQUITY_SYMBOLS
+        ]
 
         logger.info(f"Processing {len(portfolio_items)} symbols...")
 
-        # Get rate limit delay from settings (default 0.5 seconds between requests)
-        # Alpaca has 200 req/min limit = 1 req per 0.3s minimum
-        # We use 0.5s for safety margin
+        # Rate limiting (Alpaca: 200 req/min = 0.3s minimum, use 0.5s for safety)
         rate_limit_delay = getattr(settings, "RATE_LIMIT_DELAY", 0.5)
 
-        # 3. Execution Loop
+        # Execution Loop
         signals_found = 0
         symbols_processed = 0
         errors_encountered = 0
@@ -163,7 +155,7 @@ def main():
                         },
                     )
 
-                    # Notify Discord FIRST to capture thread_id for lifecycle threading
+                    # Notify Discord FIRST to capture thread_id for lifecycle updates
                     thread_id = discord.send_signal(trade_signal)
                     if thread_id:
                         # Attach thread_id to signal for lifecycle updates
@@ -183,7 +175,7 @@ def main():
                             extra={"symbol": trade_signal.symbol},
                         )
 
-                    # Persist signal (includes thread_id if available)
+                    # Persist signal
                     persistence_start = time.time()
                     try:
                         repo.save(trade_signal)
@@ -214,8 +206,9 @@ def main():
                             },
                         )
                         metrics.record_failure("signal_persistence", persistence_duration)
-                        # Re-raise to allow higher-level handling if needed
-                        raise
+                        # Note: We intentionally do NOT re-raise here.
+                        # Signal generation succeeded - only persistence failed.
+                        # The failure is already logged and metrics recorded above.
 
                     metrics.record_success("signal_generation", symbol_duration)
                 else:

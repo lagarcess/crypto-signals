@@ -136,12 +136,6 @@ class SignalGenerator:
         sig_id: str,
     ) -> Signal:
         """Create a Signal object with all fields populated."""
-        # Ensure we have a date object (for logging context if needed)
-        # signal_date = (
-        #     latest.name.date()
-        #     if hasattr(latest.name, "date")
-        #     else latest.name
-        # )
 
         # Extract Prices
         close_price = float(latest["close"])
@@ -153,10 +147,7 @@ class SignalGenerator:
         if atr == 0.0 and "ATR_14" in latest:
             atr = float(latest["ATR_14"])
 
-        # --- Exit Logic ---
-
-        # 1. Invalidation (Stop Loss)
-        # Default: 1% below Low
+        # Stop Loss: 1% below Low by default
         suggested_stop = low_price * 0.99
         invalidation_price = None
 
@@ -189,15 +180,12 @@ class SignalGenerator:
             # Use general stop for now.
             pass
 
-        # 2. Take Profits (ATR Based)
-        # Entry assumed at Close (or next Open, but Close is known)
+        # Take Profits (ATR Based)
         entry_ref = close_price
 
         take_profit_1 = entry_ref + (2.0 * atr) if atr > 0 else None
         take_profit_2 = entry_ref + (4.0 * atr) if atr > 0 else None
-        # TP3: Runner (Moonbag) -> Chandelier Exit value at entry?
-        # Ideally, this updates dynamically, but we can store the
-        # initial trailing stop level.
+        # TP3: Runner using Chandelier Exit
         take_profit_3 = (
             float(latest["CHANDELIER_EXIT_LONG"])
             if "CHANDELIER_EXIT_LONG" in latest
@@ -210,8 +198,7 @@ class SignalGenerator:
         # DS is the date component of the timestamp
         ds = latest.name.date() if hasattr(latest.name, "date") else latest.name
 
-        # Confluence Factors: Scan for boolean flags
-        # Confluence Factors: Scan for boolean flags in whitelist
+        # Confluence Factors: boolean flags in whitelist
         CONFLUENCE_WHITELIST = [
             "rsi_bullish_divergence",
             "vcp_filter",
