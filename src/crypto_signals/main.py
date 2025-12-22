@@ -88,7 +88,7 @@ def main():
             if "CRYPTO_SYMBOLS" in firestore_config:
                 settings.CRYPTO_SYMBOLS = firestore_config["CRYPTO_SYMBOLS"]
 
-            # Note: Equity striction is handled in config.py
+            # Note: Equity restriction is handled in config.py
         else:
             logger.info("Using configuration from .env")
 
