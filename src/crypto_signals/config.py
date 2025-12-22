@@ -240,8 +240,8 @@ def load_config_from_firestore() -> dict[str, list[str]]:
     Extracts assets and asset classes to build dynamic portfolio lists.
 
     Returns:
-        dict: start_config containing 'CRYPTO_SYMBOLS' and 'EQUITY_SYMBOLS' lists.
-              Empty strings/lists if no active strategies found or error occurs.
+        dict: Configuration dict containing 'CRYPTO_SYMBOLS' and 'EQUITY_SYMBOLS' lists.
+              Empty dict if no active strategies found or error occurs.
     """
     import logging
 
