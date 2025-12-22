@@ -259,6 +259,8 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                     trade_duration=duration,
                     exit_reason=ExitReason(pos.get("exit_reason", ExitReason.TP1.value)),
                     max_favorable_excursion=max_favorable_excursion,
+                    # Propagate Discord thread_id for social context analytics
+                    discord_thread_id=pos.get("discord_thread_id"),
                 )
 
                 # Validate and Dump to JSON (BasePipeline expects dicts)

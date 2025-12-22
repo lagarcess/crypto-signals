@@ -38,6 +38,9 @@ dev = [
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+markers = [
+    "visual: marks tests as visual integration tests (require TEST_DISCORD_WEBHOOK)",
+]
 
 [tool.ruff]
 line-length = 90

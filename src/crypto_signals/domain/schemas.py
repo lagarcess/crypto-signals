@@ -154,6 +154,12 @@ class Signal(BaseModel):
 
     Represents a potential trade opportunity identified by a strategy.
 
+    The Signal model is the primary carrier of thread identity for Discord
+    notifications. The discord_thread_id links all lifecycle updates
+    (TP hits, invalidations, expirations, runner exits) back to the original
+    broadcast message, enabling traders to follow the complete narrative of
+    a single trade in one thread.
+
     WARNING:
         signal_id MUST be a deterministic hash (uuid5) of
         ds + strategy_id + symbol.
@@ -225,6 +231,10 @@ class Signal(BaseModel):
     exit_reason: Optional[ExitReason] = Field(
         default=None,
         description="Reason for trade exit (e.g., ExitReason.TP1)",
+    )
+    discord_thread_id: Optional[str] = Field(
+        default=None,
+        description="Discord thread ID for linking all lifecycle updates back to the original broadcast",
     )
 
 
@@ -371,6 +381,10 @@ class TradeExecution(BaseModel):
         ...,
         description="Trade duration in seconds",
     )
+    discord_thread_id: Optional[str] = Field(
+        default=None,
+        description="Discord thread ID for social context analytics",
+    )
 
 
 class StagingTrade(BaseModel):
@@ -456,6 +470,10 @@ class StagingTrade(BaseModel):
     trade_duration: int = Field(
         ...,
         description="Trade duration in seconds",
+    )
+    discord_thread_id: Optional[str] = Field(
+        default=None,
+        description="Discord thread ID for social context analytics",
     )
 
 

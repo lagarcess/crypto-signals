@@ -163,17 +163,26 @@ def main():
                         },
                     )
 
-                    # Persist
-                    repo.save(trade_signal)
-                    logger.info("Signal saved to Firestore.")
-
-                    # Notify
-                    if not discord.send_signal(trade_signal):
+                    # Notify Discord FIRST to capture thread_id for lifecycle threading
+                    thread_id = discord.send_signal(trade_signal)
+                    if thread_id:
+                        # Attach thread_id to signal for lifecycle updates
+                        trade_signal.discord_thread_id = thread_id
+                        logger.info(
+                            f"Thread ID captured for signal lifecycle tracking "
+                            f"(thread_id: {thread_id})."
+                        )
+                    else:
                         logger.warning(
                             "Failed to send Discord notification for "
                             f"{trade_signal.symbol}",
                             extra={"symbol": trade_signal.symbol},
                         )
+
+                    # Persist signal (includes thread_id if available)
+                    # TODO: Add confirmation log, error handling, and timing metrics
+                    # See GitHub issue: "Improve logging consistency for Firestore persistence"
+                    repo.save(trade_signal)
 
                     metrics.record_success("signal_generation", symbol_duration)
                 else:
@@ -233,7 +242,25 @@ def main():
                                 "ℹ️ **Action**: Scaling Out (50%) & Stop -> **Breakeven**"
                             )
 
-                        discord.send_message(msg)
+                        # Self-healing: If thread_id is missing (orphaned signal),
+                        # attempt to create a new thread for future lifecycle updates
+                        if not exited.discord_thread_id:
+                            logger.info(
+                                f"Self-healing: Creating thread for orphaned signal "
+                                f"{exited.signal_id}"
+                            )
+                            # Send initial message to create thread
+                            new_thread_id = discord.send_signal(exited)
+                            if new_thread_id:
+                                exited.discord_thread_id = new_thread_id
+                                repo.update_signal(exited)
+                                logger.info(
+                                    f"Self-healing: Linked signal {exited.signal_id} "
+                                    f"to thread {new_thread_id}"
+                                )
+
+                        # Reply in thread if available, fallback to main channel
+                        discord.send_message(msg, thread_id=exited.discord_thread_id)
 
                         # Remove exited signals from expiration checking
                         if exited in active_signals:
@@ -255,9 +282,11 @@ def main():
                             sig.status = SignalStatus.EXPIRED
                             sig.exit_reason = ExitReason.EXPIRED
                             repo.update_signal(sig)
+                            # Reply in thread if available, fallback to main channel
                             discord.send_message(
                                 f"⏳ **SIGNAL EXPIRED: {symbol}** ⏳\n"
-                                f"Signal from {sig.ds} expired (24h Limit)."
+                                f"Signal from {sig.ds} expired (24h Limit).",
+                                thread_id=sig.discord_thread_id,
                             )
 
             except Exception as e:
