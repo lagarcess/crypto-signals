@@ -7,6 +7,7 @@ indicators, and detection of price patterns to generate trading signals.
 
 from typing import Optional, Type
 
+import numpy as np
 import pandas as pd
 from crypto_signals.analysis.indicators import TechnicalIndicators
 from crypto_signals.analysis.patterns import PatternAnalyzer
@@ -43,13 +44,16 @@ class SignalGenerator:
         self.pattern_analyzer_cls = pattern_analyzer_cls
 
     def generate_signals(
-        self, symbol: str, asset_class: AssetClass
+        self,
+        symbol: str,
+        asset_class: AssetClass,
+        dataframe: Optional[pd.DataFrame] = None,
     ) -> Optional[Signal]:
         """
         Generate a trading signal for a given symbol if a pattern is detected.
 
         Process:
-        1. Fetch 365 days of daily bars.
+        1. Fetch 365 days of daily bars (if not provided).
         2. Add technical indicators.
         3. Analyze for patterns.
         4. Construct a Signal object if a pattern is confirmed.
@@ -57,14 +61,18 @@ class SignalGenerator:
         Args:
             symbol: Ticker symbol (e.g. "BTC/USD", "AAPL").
             asset_class: Asset class for the symbol.
+            dataframe: Optional cached dataframe to avoid redundant fetching.
 
         Returns:
             Signal: Validated signal object if a pattern is found, else None.
         """
         # 1. Fetch Data
-        df = self.market_provider.get_daily_bars(
-            symbol=symbol, asset_class=asset_class, lookback_days=365
-        )
+        if dataframe is not None:
+            df = dataframe
+        else:
+            df = self.market_provider.get_daily_bars(
+                symbol=symbol, asset_class=asset_class, lookback_days=365
+            )
 
         if df.empty:
             return None
@@ -201,11 +209,32 @@ class SignalGenerator:
         # DS is the date component of the timestamp
         ds = latest.name.date() if hasattr(latest.name, "date") else latest.name
 
+        # Confluence Factors: Scan for boolean flags
+        # Confluence Factors: Scan for boolean flags in whitelist
+        CONFLUENCE_WHITELIST = [
+            "rsi_bullish_divergence",
+            "vcp_filter",
+            "volume_confirmed",
+            "ema_cross_bullish",
+            "macd_bullish_cross",
+        ]
+
+        confluence_factors = [
+            col
+            for col in CONFLUENCE_WHITELIST
+            if col in latest.index
+            and isinstance(latest[col], (bool, np.bool_))
+            and latest[col]
+        ]
+
         return Signal(
             signal_id=sig_id,
             strategy_id=strategy_id,
             symbol=symbol,
             ds=ds,
+            asset_class=asset_class,
+            confluence_factors=confluence_factors,
+            entry_price=entry_ref,
             pattern_name=pattern_name,
             status=SignalStatus.WAITING,
             suggested_stop=suggested_stop,
@@ -215,24 +244,29 @@ class SignalGenerator:
             take_profit_3=take_profit_3,
         )
 
-    def check_invalidation(
+    def check_exits(
         self,
         active_signals: list[Signal],
         symbol: str,
         asset_class: AssetClass,
+        dataframe: Optional[pd.DataFrame] = None,
     ) -> list[Signal]:
         """
-        Check active signals for invalidation conditions.
+        Check active signals for exit conditions (Profit or Invalidation).
 
-        Invalidation Rules:
-        1. Structural Invalidation: Latest Close < Signal.invalidation_price
-        2. Color Flip: Latest candle is a Bearish Engulfing candle.
-        3. Hard Sells: RSI > 80.
+        Exit Rules:
+        1. Take Profit: Latest High >= Signal.take_profit_1/2
+        2. Structural Invalidation: Latest Close < Signal.invalidation_price
+        3. Color Flip: Latest candle is a Bearish Engulfing candle.
+        4. Hard Sells: RSI > 80 or ADX Peaking.
         """
         # 1. Fetch Data
-        df = self.market_provider.get_daily_bars(
-            symbol=symbol, asset_class=asset_class, lookback_days=365
-        )
+        if dataframe is not None:
+            df = dataframe
+        else:
+            df = self.market_provider.get_daily_bars(
+                symbol=symbol, asset_class=asset_class, lookback_days=365
+            )
         if df.empty:
             return []
 
@@ -245,18 +279,29 @@ class SignalGenerator:
             return []
 
         latest = analyzed_df.iloc[-1]
-        invalidated_signals = []
+        exited_signals = []
 
+        # Current Candle Metrics
+        current_high = float(latest["high"])
+        current_close = float(latest["close"])
+
+        # Chandelier Exit for Runner
+        chandelier_exit = (
+            float(latest["CHANDELIER_EXIT_LONG"])
+            if "CHANDELIER_EXIT_LONG" in latest
+            else None
+        )
+
+        # Invalidation triggers
         is_bearish_engulfing = latest.get("bearish_engulfing", False)
+
         # Check RSI > 80
         rsi_val = latest.get("RSI_14", 50)
-        # Handle if RSI is NaN
         if pd.isna(rsi_val):
             rsi_val = 50
         rsi_overbought = rsi_val > 80
 
-        # Check ADX Peaking (ADX > 50 and turning down)
-        # Need previous ADX
+        # Check ADX Peaking
         adx_val = latest.get("ADX_14", 0)
         # Get prev row
         if len(analyzed_df) > 1:
@@ -268,30 +313,60 @@ class SignalGenerator:
         adx_peaking = (adx_val > 50) and (adx_val < adx_prev)
 
         for signal in active_signals:
-            is_invalid = False
+            exit_triggered = False
 
-            # Confirm: Today's Close > Hammer Body (t-1).
-            # Hammer Body High = max(open, close) of t-1
-            # Note: self.df is not available here, assuming 'df' was intended
-            # This logic seems misplaced for invalidation check of active signals
-            # and contains a syntax error in the original request.
-            # The line below is syntactically corrected based on the likely intent
-            # but its logical placement might be incorrect for this method.
-            # body_high_prev = np.maximum(df["open"].shift(1), df["close"].shift(1))
-            # is_confirmed = df["close"].iloc[-1] > body_high_prev.iloc[-1] # Example correction
+            # --- PROFIT TAKING ---
 
-            # 1. Structural Invalidation
-            # If invalidation_price is set, and Close < Price
-            if (
-                signal.invalidation_price
-                and latest["close"] < signal.invalidation_price
+            # Check TP3 (Runner) - Chandelier Exit
+            if chandelier_exit and current_close < chandelier_exit:
+                if current_close > signal.entry_price:
+                    signal.status = SignalStatus.TP3_HIT
+                    signal.exit_reason = "TP3 Hit (Runner Chandelier)"
+                else:
+                    signal.status = SignalStatus.INVALIDATED
+                    signal.exit_reason = "Runner Trailed Out"
+                exit_triggered = True
+
+            # Check TP2
+            # Guard: Don't trigger if already TP2 or higher (though list filter handles TP3)
+            elif (
+                signal.take_profit_2
+                and current_high >= signal.take_profit_2
+                and signal.status != SignalStatus.TP2_HIT
             ):
-                is_invalid = True
-            # 2. Color Flip / Bearish Engulfing / Hard Sell (RSI / ADX)
-            elif is_bearish_engulfing or rsi_overbought or adx_peaking:
-                is_invalid = True
+                signal.status = SignalStatus.TP2_HIT
+                signal.exit_reason = "TP2 Hit"
+                exit_triggered = True
 
-            if is_invalid:
-                invalidated_signals.append(signal)
+            # Check TP1
+            # Guard: Only trigger if WAITING.
+            # If already TP1_HIT, we want to skip this and check TP2 (handled above).
+            elif (
+                signal.take_profit_1
+                and current_high >= signal.take_profit_1
+                and signal.status == SignalStatus.WAITING
+            ):
+                signal.status = SignalStatus.TP1_HIT
+                signal.suggested_stop = signal.entry_price
+                signal.exit_reason = "TP1 Scaling (Stop -> BE)"
+                exit_triggered = True
 
-        return invalidated_signals
+            # --- INVALIDATION ---
+            if not exit_triggered:
+                # 1. Structural Invalidation
+                if (
+                    signal.invalidation_price
+                    and current_close < signal.invalidation_price
+                ):
+                    signal.status = SignalStatus.INVALIDATED
+                    exit_triggered = True
+
+                # 2. Dynamic Invalidation (Color Flip / Indicators)
+                elif is_bearish_engulfing or rsi_overbought or adx_peaking:
+                    signal.status = SignalStatus.INVALIDATED
+                    exit_triggered = True
+
+            if exit_triggered:
+                exited_signals.append(signal)
+
+        return exited_signals

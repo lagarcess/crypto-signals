@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from crypto_signals.config import get_settings
 from crypto_signals.domain.schemas import Signal, SignalStatus
 from google.cloud import firestore
+from google.cloud.firestore import FieldFilter
 
 logger = logging.getLogger(__name__)
 
@@ -49,30 +50,53 @@ class SignalRepository:
 
     def get_active_signals(self, symbol: str) -> list[Signal]:
         """
-        Get all WAITING signals for a given symbol.
+        Get all ACTIVE signals for a given symbol.
+
+        Active statuses: WAITING, TP1_HIT, TP2_HIT.
         """
+        # Firestore 'in' query allows up to 10 values
+        active_statuses = [
+            SignalStatus.WAITING.value,
+            SignalStatus.TP1_HIT.value,
+            SignalStatus.TP2_HIT.value,
+        ]
+
         query = (
             self.db.collection(self.collection_name)
-            .where(field_path="symbol", op_string="==", value=symbol)
-            .where(
-                field_path="status",
-                op_string="==",
-                value=SignalStatus.WAITING.value,
-            )
+            .where(filter=FieldFilter("symbol", "==", symbol))
+            .where(filter=FieldFilter("status", "in", active_statuses))
         )
 
         results = []
         for doc in query.stream():
             try:
-                # Firestore returns dict, Pydantic parses it
                 results.append(Signal(**doc.to_dict()))
             except Exception as e:
                 logger.error(f"Failed to parse signal {doc.id}: {e}")
 
         return results
 
+    def update_signal(self, signal: Signal) -> None:
+        """
+        Update an existing signal in Firestore.
+
+        Updates status, suggested_stop, exit_reason, and other mutable fields.
+        """
+        doc_ref = self.db.collection(self.collection_name).document(signal.signal_id)
+
+        # Serialize and filter for update to avoid overwriting immutable fields if desired,
+        # but full update (merge=True) ensures consistency with object state.
+        signal_data = signal.model_dump(mode="json")
+
+        # Exclude creation-time fields if we want to be strict, but for now full update is safe
+        # as the object should be complete.
+        # However, we don't want to reset expireAt if we don't have to.
+        # But actually, extending expiry on active management is good.
+
+        doc_ref.set(signal_data, merge=True)
+
     def update_status(self, signal_id: str, status: SignalStatus) -> None:
-        """Update the status of a signal (e.g. to INVALIDATED)."""
+        """Update only the status of a signal (Legacy method)."""
         doc_ref = self.db.collection(self.collection_name).document(signal_id)
         doc_ref.update({"status": status.value})
 
@@ -98,7 +122,7 @@ class SignalRepository:
         # Query for old signals
         # Note: We filter on expiration_at which is when the signal was created
         query = self.db.collection(self.collection_name).where(
-            field_path="expiration_at", op_string="<", value=cutoff_date
+            filter=FieldFilter("expiration_at", "<", cutoff_date)
         )
 
         # Batch delete for efficiency

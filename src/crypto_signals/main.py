@@ -9,11 +9,13 @@ import logging
 import signal
 import sys
 import time
+from datetime import datetime, timedelta, timezone
 
 from crypto_signals.config import (
     get_crypto_data_client,
     get_settings,
     get_stock_data_client,
+    load_config_from_firestore,
 )
 from crypto_signals.domain.schemas import AssetClass, SignalStatus
 from crypto_signals.engine.signal_generator import SignalGenerator
@@ -58,30 +60,38 @@ def main():
     app_start_time = time.time()
 
     try:
-        # 0. Initialize Secrets (must be first)
+        # Initialize Secrets
         logger.info("Loading secrets...")
         with log_execution_time(logger, "load_secrets"):
             if not init_secrets():
                 logger.critical("Failed to load required secrets. Exiting.")
                 sys.exit(1)
 
-        # 1. Initialize Dependencies
-        logger.info("Initializing services...")
-        with log_execution_time(logger, "initialize_services"):
-            # Market Data
-            stock_client = get_stock_data_client()
-            crypto_client = get_crypto_data_client()
-            market_provider = MarketDataProvider(stock_client, crypto_client)
-
-            # Engine
-            generator = SignalGenerator(market_provider=market_provider)
-
-            # Persistence & Notifications
-            repo = SignalRepository()
-            discord = DiscordClient()  # Config handles URL and Mock Mode automatically
+            # Initialize Services
+            logger.info("Initializing services...")
+            with log_execution_time(logger, "initialize_services"):
+                stock_client = get_stock_data_client()
+                crypto_client = get_crypto_data_client()
+                market_provider = MarketDataProvider(stock_client, crypto_client)
+                generator = SignalGenerator(market_provider=market_provider)
+                repo = SignalRepository()
+                discord = DiscordClient()
 
         # 2. Define Portfolio
         settings = get_settings()
+
+        # Dynamic Config Loading
+        firestore_config = load_config_from_firestore()
+
+        if firestore_config:
+            logger.info("Using configuration from Firestore (overriding .env)")
+            if "CRYPTO_SYMBOLS" in firestore_config:
+                settings.CRYPTO_SYMBOLS = firestore_config["CRYPTO_SYMBOLS"]
+
+            # Note: Equity striction is handled in config.py
+        else:
+            logger.info("Using configuration from .env")
+
         portfolio_items = []
         for s in settings.CRYPTO_SYMBOLS:
             portfolio_items.append((s, AssetClass.CRYPTO))
@@ -119,8 +129,23 @@ def main():
                     extra={"symbol": symbol, "asset_class": asset_class.value},
                 )
 
+                # Fetch Data ONCE
+                try:
+                    df = market_provider.get_daily_bars(
+                        symbol, asset_class, lookback_days=365
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to fetch data for {symbol}: {e}")
+                    continue
+
+                if df.empty:
+                    logger.warning(f"No data for {symbol}")
+                    continue
+
                 # Generate Signals
-                trade_signal = generator.generate_signals(symbol, asset_class)
+                trade_signal = generator.generate_signals(
+                    symbol, asset_class, dataframe=df
+                )
 
                 # Track metrics
                 symbol_duration = time.time() - symbol_start_time
@@ -152,28 +177,90 @@ def main():
 
                     metrics.record_success("signal_generation", symbol_duration)
                 else:
-                    logger.info(f"No signal for {symbol}.")
+                    logger.debug(f"No signal for {symbol}.")
                     metrics.record_success("signal_generation", symbol_duration)
 
                 # Active Trade Validation
-                # Check for invalidation of existing WAITING signals
+                # Check for updates on existing WAITING/ACTIVE signals
                 active_signals = repo.get_active_signals(symbol)
                 if active_signals:
                     logger.info(
-                        f"Checking invalidation for {len(active_signals)} active signals..."
-                    )
-                    invalidated = generator.check_invalidation(
-                        active_signals, symbol, asset_class
+                        f"Checking active signals for {symbol} ({len(active_signals)})..."
                     )
 
-                    for inv_sig in invalidated:
+                    # 1. Run Expiration Check (24h Rule)
+                    now_utc = datetime.now(timezone.utc)
+                    today_date = now_utc.date()
+
+                    # Check exits first
+                    exited_signals = generator.check_exits(
+                        active_signals, symbol, asset_class, dataframe=df
+                    )
+
+                    # Process Exits (TP / Invalidation)
+                    for exited in exited_signals:
                         logger.info(
-                            f"INVALIDATING Signal {inv_sig.signal_id} for {symbol}",
-                            extra={"symbol": symbol, "signal_id": inv_sig.signal_id},
+                            f"SIGNAL UPDATE: {exited.signal_id} status -> {exited.status}",
+                            extra={
+                                "symbol": symbol,
+                                "signal_id": exited.signal_id,
+                                "new_status": exited.status,
+                            },
                         )
-                        repo.update_status(inv_sig.signal_id, SignalStatus.INVALIDATED)
-                        # Optionally notify Discord about invalidation?
-                        # discord.send_message(f"🚫 Signal Invalidated: {symbol}")
+                        repo.update_signal(exited)
+
+                        # Notify Discord of Status Change
+                        status_emoji = {
+                            SignalStatus.INVALIDATED: "🚫",
+                            SignalStatus.TP1_HIT: "🎯",
+                            SignalStatus.TP2_HIT: "🚀",
+                            SignalStatus.TP3_HIT: "🌕",
+                            SignalStatus.EXPIRED: "⏳",
+                        }.get(exited.status, "ℹ️")
+
+                        msg = (
+                            f"{status_emoji} **SIGNAL UPDATE: {symbol}** {status_emoji}\n"
+                            f"**Status**: {exited.status.value}\n"
+                            f"**Pattern**: {exited.pattern_name}\n"
+                        )
+
+                        if exited.exit_reason:
+                            msg += f"**Reason**: {exited.exit_reason}\n"
+
+                        if exited.status == SignalStatus.TP1_HIT:
+                            msg += "ℹ️ **Action**: Scaling Out (50%) & Stop -> **Breakeven**"
+
+                        discord.send_message(msg)
+
+                        # Remove from active_signals list if terminal status
+                        # TP1_HIT and TP2_HIT are effectively "Active" but check_exits returns them once when they hit.
+                        # Wait, check_exits checks logic based on CURRENT status.
+                        # If status is TP1_HIT, check_exits might find TP2_HIT next.
+                        # But loop below uses 'active_signals' list which contains objects.
+                        # Do we remove them from *expiration* check?
+                        # If TP1_HIT, it is NOT EXPIRED. It triggers.
+                        # So remove from expiration check list.
+                        if exited in active_signals:
+                            active_signals.remove(exited)
+
+                    # 2. Expiration Check on REMAINING Waiting signals
+                    for sig in active_signals:
+                        # Only expire WAITING signals.
+                        # If TP1_HIT, it's active.
+                        if sig.status != SignalStatus.WAITING:
+                            continue
+
+                        cutoff_date = sig.ds + timedelta(days=1)
+                        if today_date > cutoff_date:
+                            logger.info(
+                                f"EXPIRING Signal {sig.signal_id} (Date: {sig.ds})",
+                                extra={"symbol": symbol, "signal_id": sig.signal_id},
+                            )
+                            repo.update_status(sig.signal_id, SignalStatus.EXPIRED)
+                            discord.send_message(
+                                f"⏳ **SIGNAL EXPIRED: {symbol}** ⏳\n"
+                                f"Signal from {sig.ds} expired (24h Limit)."
+                            )
 
             except Exception as e:
                 errors_encountered += 1

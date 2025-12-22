@@ -82,9 +82,6 @@ class BigQueryPipelineBase(ABC):
         """
         Validate and transform raw data using the Pydantic schema.
 
-        CRITICAL: Uses mode='json' to ensure dates/datetimes are serialized
-        to ISO strings, which `client.insert_rows_json` requires.
-
         Args:
             raw_data: List of raw input data.
 
@@ -99,7 +96,6 @@ class BigQueryPipelineBase(ABC):
             else:
                 model = self.schema_model.model_validate(item)
 
-            # Dump to JSON-compatible dict (handling dates/UUIDs)
             transformed.append(model.model_dump(mode="json"))
 
         return transformed

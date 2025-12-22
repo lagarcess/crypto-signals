@@ -5,7 +5,7 @@ This module defines the strict "Data Contract" between Python logic,
 Firestore (NoSQL), and BigQuery (SQL). All models use Pydantic for
 validation and serialization.
 
-Architecture Overview (8 Tables):
+Architecture Overview (9 Tables):
 - Firestore Configuration: dim_strategies (1 table)
 - Firestore Operational: live_signals, live_positions (2 tables)
 - BigQuery Staging: stg_trades_import, stg_accounts_import,
@@ -73,6 +73,10 @@ class SignalStatus(str, Enum):
     WAITING = "WAITING"
     CONFIRMED = "CONFIRMED"
     INVALIDATED = "INVALIDATED"
+    EXPIRED = "EXPIRED"
+    TP1_HIT = "TP1_HIT"
+    TP2_HIT = "TP2_HIT"
+    TP3_HIT = "TP3_HIT"
 
 
 class TradeStatus(str, Enum):
@@ -87,6 +91,18 @@ class OrderSide(str, Enum):
 
     BUY = "buy"
     SELL = "sell"
+
+
+class ExitReason(str, Enum):
+    """Reason for trade exit."""
+
+    TP1 = "TP1"
+    TP2 = "TP2"
+    STOP_LOSS = "STOP_LOSS"
+    COLOR_FLIP = "COLOR_FLIP"
+    STRUCTURAL_INVALIDATION = "STRUCTURAL_INVALIDATION"
+    EXPIRED = "EXPIRED"
+    TP_HIT = "TP_HIT"
 
 
 # =============================================================================
@@ -162,6 +178,18 @@ class Signal(BaseModel):
         ...,
         description="Asset symbol (e.g., 'BTC/USD', 'AAPL')",
     )
+    asset_class: AssetClass = Field(
+        ...,
+        description="Asset class (CRYPTO or EQUITY)",
+    )
+    confluence_factors: List[str] = Field(
+        default_factory=list,
+        description="List of triggers/patterns (e.g., 'RSI_DIV', 'VCP_COMPRESSION')",
+    )
+    entry_price: float = Field(
+        ...,
+        description="Price at the time signal was triggered (candle close)",
+    )
     pattern_name: str = Field(
         ...,
         description="Name of the pattern detected (e.g., 'bullish_engulfing')",
@@ -193,6 +221,10 @@ class Signal(BaseModel):
     take_profit_3: Optional[float] = Field(
         default=None,
         description="Third profit target (Runner/Moonbag)",
+    )
+    exit_reason: Optional[str] = Field(
+        default=None,
+        description="Reason for trade exit (e.g., 'TP1 Scaling', 'Bearish Engulfing')",
     )
 
 
@@ -311,9 +343,13 @@ class TradeExecution(BaseModel):
         ...,
         description="UTC timestamp of exit fill",
     )
-    pnl_usd: float = Field(
+    exit_reason: ExitReason = Field(
         ...,
-        description="Profit/Loss in USD",
+        description="Reason for trade exit (e.g., 'TP1', 'COLOR_FLIP')",
+    )
+    max_favorable_excursion: Optional[float] = Field(
+        default=None,
+        description="Highest price reached during trade",
     )
     pnl_pct: float = Field(
         ...,
@@ -389,9 +425,13 @@ class StagingTrade(BaseModel):
         ...,
         description="UTC timestamp of exit fill",
     )
-    pnl_usd: float = Field(
+    exit_reason: ExitReason = Field(
         ...,
-        description="Profit/Loss in USD",
+        description="Reason for trade exit (e.g., 'TP1', 'COLOR_FLIP')",
+    )
+    max_favorable_excursion: Optional[float] = Field(
+        default=None,
+        description="Highest price reached during trade",
     )
     pnl_pct: float = Field(
         ...,

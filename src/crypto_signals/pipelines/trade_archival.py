@@ -16,11 +16,13 @@ import time
 from datetime import datetime, timezone
 from typing import Any, List
 
+import pandas as pd
 from alpaca.common.exceptions import APIError
 from google.cloud import firestore
 
 from crypto_signals.config import get_trading_client, settings
 from crypto_signals.domain.schemas import OrderSide, TradeExecution
+from crypto_signals.market.data_provider import MarketDataProvider
 from crypto_signals.pipelines.base import BigQueryPipelineBase
 
 logger = logging.getLogger(__name__)
@@ -55,6 +57,7 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
             project=settings().GOOGLE_CLOUD_PROJECT
         )
         self.alpaca = get_trading_client()
+        self.market_provider = MarketDataProvider()
 
     def extract(self) -> List[Any]:
         """
@@ -142,12 +145,7 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                 )
                 qty = float(order.filled_qty) if order.filled_qty else 0.0
 
-                # We need to determine exit details.
-                # For this task, we rely on Firestore for 'exit_fill_price'
-                # and 'exit_time'
-                # as the prompt implies these are known from the close event.
-
-                # Let's assume the doc has `exit_fill_price`.
+                # Get exit price from Firestore document, default to 0.0 if missing
                 exit_price_val = float(pos.get("exit_fill_price", 0.0))
 
                 # Timestamps
@@ -162,10 +160,7 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                         return datetime.fromisoformat(str(val))
                     except (ValueError, TypeError) as exc:
                         logger.warning(
-                            "Failed to parse datetime value '%s'; defaulting "
-                            "to now. Error: %s",
-                            val,
-                            exc,
+                            f"Failed to parse datetime value '{val}'; defaulting to now. Error: {exc}"
                         )
                         return datetime.now(timezone.utc)
 
@@ -189,6 +184,40 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
 
                 if order_side_str == OrderSide.SELL.value:  # Short
                     pnl_gross = (entry_price_val - exit_price_val) * qty
+
+                pnl_usd = pnl_gross - fees_usd
+
+                # --- MFE Calculation ---
+                max_favorable_excursion = None
+                try:
+                    # Fetch bars for MFE calculation
+                    bars_df = self.market_provider.get_daily_bars(
+                        symbol=pos.get("symbol"),
+                        asset_class=pos.get("asset_class", "CRYPTO"),
+                        lookback_days=None,
+                    )
+
+                    if not bars_df.empty:
+                        # Filter for trade window
+                        trade_window = bars_df[
+                            (bars_df.index >= pd.Timestamp(entry_time).floor("D"))
+                            & (bars_df.index <= pd.Timestamp(exit_time).ceil("D"))
+                        ]
+
+                        if not trade_window.empty:
+                            if order_side_str == OrderSide.BUY.value:
+                                highest_price = trade_window["high"].max()
+                                max_favorable_excursion = (
+                                    highest_price - entry_price_val
+                                )
+                            else:  # Short
+                                lowest_price = trade_window["low"].min()
+                                max_favorable_excursion = entry_price_val - lowest_price
+
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to calculate MFE for {pos.get('position_id')}: {e}"
+                    )
 
                 pnl_usd = pnl_gross - fees_usd
 
@@ -217,6 +246,8 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                     fees_usd=round(fees_usd, 2),
                     slippage_pct=0.0,
                     trade_duration=duration,
+                    exit_reason=pos.get("exit_reason", "TP1"),  # Default or map
+                    max_favorable_excursion=max_favorable_excursion,
                 )
 
                 # Validate and Dump to JSON (BasePipeline expects dicts)

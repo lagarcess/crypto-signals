@@ -256,6 +256,9 @@ class TestSignalModel:
             ds=date(2024, 1, 15),
             strategy_id="momentum",
             symbol="BTC/USD",
+            asset_class=AssetClass.CRYPTO,
+            confluence_factors=[],
+            entry_price=50000.0,
             pattern_name="bullish_engulfing",
             status=SignalStatus.WAITING,
             suggested_stop=48000.00,
@@ -271,6 +274,8 @@ class TestSignalModel:
             ds=date(2024, 1, 15),
             strategy_id="momentum",
             symbol="BTC/USD",
+            asset_class=AssetClass.CRYPTO,
+            entry_price=50000.0,
             pattern_name="bullish_engulfing",
             suggested_stop=48000.00,
         )
