@@ -53,9 +53,7 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
 
         # Initialize Source Clients
         # Note: We use the project from settings, same as BQ
-        self.firestore_client = firestore.Client(
-            project=settings().GOOGLE_CLOUD_PROJECT
-        )
+        self.firestore_client = firestore.Client(project=settings().GOOGLE_CLOUD_PROJECT)
         self.alpaca = get_trading_client()
         self.market_provider = MarketDataProvider()
 
@@ -189,8 +187,6 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                 if order_side_str == OrderSide.SELL.value:  # Short
                     pnl_gross = (entry_price_val - exit_price_val) * qty
 
-                pnl_usd = pnl_gross - fees_usd
-
                 # --- MFE Calculation ---
                 max_favorable_excursion = None
                 try:
@@ -221,9 +217,7 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                         if not trade_window.empty:
                             if order_side_str == OrderSide.BUY.value:
                                 highest_price = trade_window["high"].max()
-                                max_favorable_excursion = (
-                                    highest_price - entry_price_val
-                                )
+                                max_favorable_excursion = highest_price - entry_price_val
                             else:  # Short
                                 lowest_price = trade_window["low"].min()
                                 mfe = entry_price_val - lowest_price
@@ -261,9 +255,7 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                     fees_usd=round(fees_usd, 2),
                     slippage_pct=0.0,
                     trade_duration=duration,
-                    exit_reason=ExitReason(
-                        pos.get("exit_reason", ExitReason.TP1.value)
-                    ),
+                    exit_reason=ExitReason(pos.get("exit_reason", ExitReason.TP1.value)),
                     max_favorable_excursion=max_favorable_excursion,
                 )
 
