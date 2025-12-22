@@ -239,6 +239,23 @@ def main():
                                 "ℹ️ **Action**: Scaling Out (50%) & Stop -> **Breakeven**"
                             )
 
+                        # Self-healing: If thread_id is missing (orphaned signal),
+                        # attempt to create a new thread for future lifecycle updates
+                        if not exited.discord_thread_id:
+                            logger.info(
+                                f"Self-healing: Creating thread for orphaned signal "
+                                f"{exited.signal_id}"
+                            )
+                            # Send initial message to create thread
+                            new_thread_id = discord.send_signal(exited)
+                            if new_thread_id:
+                                exited.discord_thread_id = new_thread_id
+                                repo.update_signal(exited)
+                                logger.info(
+                                    f"Self-healing: Linked signal {exited.signal_id} "
+                                    f"to thread {new_thread_id}"
+                                )
+
                         # Reply in thread if available, fallback to main channel
                         discord.send_message(msg, thread_id=exited.discord_thread_id)
 

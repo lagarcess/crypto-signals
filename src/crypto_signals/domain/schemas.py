@@ -381,6 +381,10 @@ class TradeExecution(BaseModel):
         ...,
         description="Trade duration in seconds",
     )
+    discord_thread_id: Optional[str] = Field(
+        default=None,
+        description="Discord thread ID for social context analytics",
+    )
 
 
 class StagingTrade(BaseModel):
@@ -466,6 +470,10 @@ class StagingTrade(BaseModel):
     trade_duration: int = Field(
         ...,
         description="Trade duration in seconds",
+    )
+    discord_thread_id: Optional[str] = Field(
+        default=None,
+        description="Discord thread ID for social context analytics",
     )
 
 
