@@ -68,6 +68,7 @@ def test_main_execution_flow(mock_dependencies):
     # Mock signal generation to return a signal for BTC/USD only
     mock_signal = MagicMock(spec=Signal)
     mock_signal.symbol = "BTC/USD"
+    mock_signal.signal_id = "test_signal_btc_main"
     mock_signal.pattern_name = "bullish_engulfing"
     mock_signal.suggested_stop = 90000.0
 
@@ -117,9 +118,10 @@ def test_send_signal_captures_thread_id(mock_dependencies):
     mock_repo_instance = mock_dependencies["repo"].return_value
     mock_discord_instance = mock_dependencies["discord"].return_value
 
-    # Setup signal
+    # Setup signal with required attributes for structured logging
     mock_signal = MagicMock(spec=Signal)
     mock_signal.symbol = "BTC/USD"
+    mock_signal.signal_id = "test_signal_btc"
     mock_signal.pattern_name = "test_pattern"
     mock_signal.suggested_stop = 90000.0
 
@@ -191,6 +193,7 @@ def test_main_notification_failure(mock_dependencies, caplog):
     # Setup signal for BTC/USD only
     mock_signal = MagicMock(spec=Signal)
     mock_signal.symbol = "BTC/USD"
+    mock_signal.signal_id = "test_signal_notification"
     mock_signal.pattern_name = "test_pattern"
     mock_signal.suggested_stop = 90000.0
 
@@ -219,11 +222,12 @@ def test_main_repo_failure(mock_dependencies, caplog):
     mock_gen_instance = mock_dependencies["generator"].return_value
     mock_repo_instance = mock_dependencies["repo"].return_value
 
-    # Setup signals
+    # Setup signals with proper signal_id
     def gen_side_effect(symbol, asset_class, **kwargs):
         if symbol in ["BTC/USD", "ETH/USD"]:
             sig = MagicMock(spec=Signal)
             sig.symbol = symbol
+            sig.signal_id = f"test_id_{symbol.replace('/', '_')}"
             sig.pattern_name = "test_pattern"
             sig.suggested_stop = 100.0
             return sig
@@ -245,8 +249,9 @@ def test_main_repo_failure(mock_dependencies, caplog):
     with caplog.at_level(logging.ERROR):
         main()
 
-    # Verify error log for BTC/USD
-    assert "Error processing BTC/USD (CRYPTO): Firestore Unavailable" in caplog.text
+    # Verify error log for persistence failure (new structured logging)
+    assert "Failed to persist signal" in caplog.text
+    assert "Firestore Unavailable" in caplog.text
 
     # Verify that ETH/USD was still processed (Loop continued)
     calls = mock_gen_instance.generate_signals.call_args_list
