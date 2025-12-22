@@ -163,3 +163,85 @@ def test_transform_mfe_short(pipeline, mock_market_provider, mock_alpaca):
     assert trade["pnl_usd"] == 2000.0
     # Verify pnl_pct is also present
     assert "pnl_pct" in trade
+
+
+def test_transform_caches_market_data_per_symbol(
+    pipeline, mock_market_provider, mock_alpaca
+):
+    """Test that multiple trades on the same symbol only fetch data once."""
+    entry_time = datetime(2023, 1, 1, 10, 0, 0, tzinfo=timezone.utc)
+    exit_time = datetime(2023, 1, 3, 10, 0, 0, tzinfo=timezone.utc)
+
+    # Create 3 trades for BTC/USD (same symbol)
+    btc_trades = [
+        {
+            "position_id": f"btc_trade_{i}",
+            "symbol": "BTC/USD",
+            "asset_class": "CRYPTO",
+            "entry_time": entry_time.isoformat(),
+            "exit_time": exit_time.isoformat(),
+            "exit_fill_price": 52000.0,
+            "qty": 1.0,
+            "side": "buy",
+            "account_id": "acc_1",
+            "strategy_id": "strat_1",
+        }
+        for i in range(3)
+    ]
+
+    # Create 2 trades for ETH/USD (different symbol)
+    eth_trades = [
+        {
+            "position_id": f"eth_trade_{i}",
+            "symbol": "ETH/USD",
+            "asset_class": "CRYPTO",
+            "entry_time": entry_time.isoformat(),
+            "exit_time": exit_time.isoformat(),
+            "exit_fill_price": 2000.0,
+            "qty": 1.0,
+            "side": "buy",
+            "account_id": "acc_1",
+            "strategy_id": "strat_1",
+        }
+        for i in range(2)
+    ]
+
+    # Combine all trades (5 total: 3 BTC + 2 ETH)
+    all_trades = btc_trades + eth_trades
+
+    # Mock Alpaca Order
+    mock_order = MagicMock()
+    mock_order.filled_avg_price = "50000.0"
+    mock_order.filled_qty = "1.0"
+    mock_order.side = "buy"
+    mock_alpaca.get_order_by_client_order_id.return_value = mock_order
+
+    # Mock Market Data
+    dates = pd.date_range("2023-01-01", periods=3, freq="D", tz="UTC")
+    df = pd.DataFrame(
+        {
+            "high": [51000.0, 55000.0, 52000.0],
+            "low": [49000.0, 50000.0, 51000.0],
+            "close": [50500.0, 54000.0, 52000.0],
+            "open": [50000.0, 50500.0, 54000.0],
+            "volume": [100.0, 200.0, 150.0],
+        },
+        index=dates,
+    )
+    mock_market_provider.get_daily_bars.return_value = df
+
+    # Execute - process 5 trades
+    transformed = pipeline.transform(all_trades)
+
+    # Verify all 5 trades were processed
+    assert len(transformed) == 5
+
+    # CRITICAL ASSERTION: Verify get_daily_bars was called only 2 times
+    # (once for BTC/USD, once for ETH/USD) - NOT 5 times!
+    assert mock_market_provider.get_daily_bars.call_count == 2
+
+    # Verify the calls were for the expected symbols
+    calls = mock_market_provider.get_daily_bars.call_args_list
+    called_symbols = [call.kwargs.get("symbol") for call in calls]
+    assert "BTC/USD" in called_symbols
+    assert "ETH/USD" in called_symbols

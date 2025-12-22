@@ -107,6 +107,10 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
 
         transformed = []
 
+        # Symbol-based cache to prevent redundant API calls
+        # Key: f"{symbol}_{asset_class}", Value: DataFrame of daily bars
+        symbol_bars_cache: dict = {}
+
         for idx, pos in enumerate(raw_data):
             # Rate Limit Safety: Sleep 100ms between requests
             # (skip before first request)
@@ -190,12 +194,22 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                 # --- MFE Calculation ---
                 max_favorable_excursion = None
                 try:
-                    # Fetch bars for MFE calculation
-                    bars_df = self.market_provider.get_daily_bars(
-                        symbol=pos.get("symbol"),
-                        asset_class=pos.get("asset_class", "CRYPTO"),
-                        lookback_days=None,
-                    )
+                    # Build cache key from symbol and asset class
+                    symbol = pos.get("symbol")
+                    asset_class = pos.get("asset_class", "CRYPTO")
+                    cache_key = f"{symbol}_{asset_class}"
+
+                    # Check cache before fetching
+                    if cache_key in symbol_bars_cache:
+                        bars_df = symbol_bars_cache[cache_key]
+                    else:
+                        # Fetch bars and store in cache
+                        bars_df = self.market_provider.get_daily_bars(
+                            symbol=symbol,
+                            asset_class=asset_class,
+                            lookback_days=None,
+                        )
+                        symbol_bars_cache[cache_key] = bars_df
 
                     if not bars_df.empty:
                         # Filter for trade window
@@ -212,7 +226,8 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                                 )
                             else:  # Short
                                 lowest_price = trade_window["low"].min()
-                                max_favorable_excursion = entry_price_val - lowest_price
+                                mfe = entry_price_val - lowest_price
+                                max_favorable_excursion = mfe
 
                 except Exception as e:
                     logger.warning(
