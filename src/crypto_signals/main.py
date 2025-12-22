@@ -200,7 +200,8 @@ def main():
                     # Process Exits (TP / Invalidation)
                     for exited in exited_signals:
                         logger.info(
-                            f"SIGNAL UPDATE: {exited.signal_id} status -> {exited.status}",
+                            f"SIGNAL UPDATE: {exited.signal_id} "
+                            f"status -> {exited.status}",
                             extra={
                                 "symbol": symbol,
                                 "signal_id": exited.signal_id,
@@ -234,14 +235,7 @@ def main():
 
                         discord.send_message(msg)
 
-                        # Remove from active_signals list if terminal status
-                        # TP1_HIT and TP2_HIT are effectively "Active" but check_exits returns them once when they hit.
-                        # Wait, check_exits checks logic based on CURRENT status.
-                        # If status is TP1_HIT, check_exits might find TP2_HIT next.
-                        # But loop below uses 'active_signals' list which contains objects.
-                        # Do we remove them from *expiration* check?
-                        # If TP1_HIT, it is NOT EXPIRED. It triggers.
-                        # So remove from expiration check list.
+                        # Remove exited signals from expiration checking
                         if exited in active_signals:
                             active_signals.remove(exited)
 

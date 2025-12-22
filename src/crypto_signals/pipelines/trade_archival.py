@@ -75,23 +75,16 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
         """
         logger.info(f"[{self.job_name}] extracting CLOSED positions from Firestore...")
 
-        # Query: status == 'CLOSED'
-        # We scan live_positions for any trade that is marked closed
-        # The Cleanup step will delete them after successful load,
-        # ensuring we don't re-process forever.
+        # Query CLOSED positions (deleted after successful merge via cleanup)
         docs = (
             self.firestore_client.collection("live_positions")
             .where(field_path="status", op_string="==", value="CLOSED")
             .stream()
         )
 
-        # Convert to list of dicts, keeping the ID if needed
-        # (though position_id is in body)
         raw_data = []
         for doc in docs:
             data = doc.to_dict()
-            # Ensure we strictly follow what's in the DB,
-            # but Firestore might return None for missing fields if not careful.
             if data:
                 raw_data.append(data)
 
