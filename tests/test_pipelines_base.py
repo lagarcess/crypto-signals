@@ -5,9 +5,8 @@ from typing import Any, List
 from unittest.mock import patch
 
 import pytest
-from pydantic import BaseModel, Field
-
 from crypto_signals.pipelines.base import BigQueryPipelineBase
+from pydantic import BaseModel, Field
 
 # --- Mocks & Fixtures ---
 
@@ -126,18 +125,14 @@ def test_execute_merge_constructs_correct_sql(pipeline, mock_bq_client):
 def test_run_orchestrates_flow(pipeline):
     """Test that run calls all steps in order."""
     # Mock methods to verify order
-    with patch.object(pipeline, "extract") as mock_extract, patch.object(
-        pipeline, "transform"
-    ) as mock_transform, patch.object(
-        pipeline, "_truncate_staging"
-    ) as mock_trunc, patch.object(
-        pipeline, "_load_to_staging"
-    ) as mock_load, patch.object(
-        pipeline, "_execute_merge"
-    ) as mock_merge, patch.object(
-        pipeline, "cleanup"
-    ) as mock_cleanup:
-
+    with (
+        patch.object(pipeline, "extract") as mock_extract,
+        patch.object(pipeline, "transform") as mock_transform,
+        patch.object(pipeline, "_truncate_staging") as mock_trunc,
+        patch.object(pipeline, "_load_to_staging") as mock_load,
+        patch.object(pipeline, "_execute_merge") as mock_merge,
+        patch.object(pipeline, "cleanup") as mock_cleanup,
+    ):
         mock_extract.return_value = [{"id": "1", "ds": date(2024, 1, 1), "value": 100}]
         mock_transform.return_value = [{"id": "1", "ds": "2024-01-01", "value": 100}]
 

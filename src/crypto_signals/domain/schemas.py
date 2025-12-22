@@ -178,6 +178,22 @@ class Signal(BaseModel):
         default_factory=lambda: datetime.now(timezone.utc),
         description="UTC timestamp when this signal expires",
     )
+    invalidation_price: Optional[float] = Field(
+        default=None,
+        description="Structure-based invalidation level (early exit)",
+    )
+    take_profit_1: Optional[float] = Field(
+        default=None,
+        description="First profit target (Conservative, e.g., 2*ATR)",
+    )
+    take_profit_2: Optional[float] = Field(
+        default=None,
+        description="Second profit target (Structural, e.g., 4*ATR)",
+    )
+    take_profit_3: Optional[float] = Field(
+        default=None,
+        description="Third profit target (Runner/Moonbag)",
+    )
 
 
 class Position(BaseModel):

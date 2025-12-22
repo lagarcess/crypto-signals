@@ -4,7 +4,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from alpaca.trading.models import PortfolioHistory, TradeAccount
-
 from crypto_signals.pipelines.account_snapshot import AccountSnapshotPipeline
 
 # -----------------------------------------------------------------------------
@@ -212,16 +211,14 @@ def test_drawdown_zero_equity(pipeline):
 
 def test_pipeline_run_skip_cleanup(pipeline):
     """Test override: cleanup is NOT called."""
-    with patch.object(pipeline, "extract") as mock_ext, patch.object(
-        pipeline, "transform"
-    ) as mock_trans, patch.object(pipeline, "_truncate_staging"), patch.object(
-        pipeline, "_load_to_staging"
-    ), patch.object(
-        pipeline, "_execute_merge"
-    ), patch.object(
-        pipeline, "cleanup"
-    ) as mock_clean:
-
+    with (
+        patch.object(pipeline, "extract") as mock_ext,
+        patch.object(pipeline, "transform") as mock_trans,
+        patch.object(pipeline, "_truncate_staging"),
+        patch.object(pipeline, "_load_to_staging"),
+        patch.object(pipeline, "_execute_merge"),
+        patch.object(pipeline, "cleanup") as mock_clean,
+    ):
         mock_ext.return_value = ["raw"]
         mock_trans.return_value = ["processed"]
 

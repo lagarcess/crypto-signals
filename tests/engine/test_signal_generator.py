@@ -5,7 +5,6 @@ from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
-
 from crypto_signals.domain.schemas import AssetClass
 from crypto_signals.engine.signal_generator import SignalGenerator
 from crypto_signals.market.exceptions import MarketDataError
@@ -80,7 +79,9 @@ def test_generate_signal_bullish_engulfing(
     assert signal.pattern_name == "BULLISH_ENGULFING"
     assert signal.ds == today
     assert signal.strategy_id == "BULLISH_ENGULFING"
-    assert signal.suggested_stop == 90.0 * 0.99
+    assert signal.strategy_id == "BULLISH_ENGULFING"
+    # Engulfing invalidation is Open (100.0). Stop is 100.0 * 0.99 = 99.0
+    assert signal.suggested_stop == 100.0 * 0.99
 
 
 def test_generate_signal_bullish_hammer(
@@ -129,7 +130,14 @@ def test_generate_signal_priority(
     """Test that Bullish Engulfing is prioritized over Bullish Hammer."""
     # Setup Data: BOTH patterns are True
     df = pd.DataFrame(
-        {"close": [100.0], "low": [90.0]}, index=[pd.Timestamp("2023-01-01")]
+        {
+            "open": [100.0],
+            "high": [110.0],
+            "low": [90.0],
+            "close": [100.0],
+            "volume": [1000.0],
+        },
+        index=[pd.Timestamp("2023-01-01")],
     )
     mock_market_provider.get_daily_bars.return_value = df
 

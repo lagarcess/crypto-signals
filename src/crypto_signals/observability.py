@@ -27,7 +27,9 @@ class StructuredLogger:
         self.logger = logging.getLogger(name)
         self.context = context or {}
 
-    def _format_message(self, msg: str, extra_context: Optional[Dict[str, Any]] = None) -> str:
+    def _format_message(
+        self, msg: str, extra_context: Optional[Dict[str, Any]] = None
+    ) -> str:
         """Format message with context."""
         context = {**self.context, **(extra_context or {})}
         if context:

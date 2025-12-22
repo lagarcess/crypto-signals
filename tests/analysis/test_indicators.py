@@ -1,7 +1,6 @@
 """Unit tests for the indicators module."""
 
 import pandas as pd
-
 from crypto_signals.analysis.indicators import TechnicalIndicators
 
 

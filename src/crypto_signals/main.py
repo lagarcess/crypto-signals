@@ -15,7 +15,7 @@ from crypto_signals.config import (
     get_settings,
     get_stock_data_client,
 )
-from crypto_signals.domain.schemas import AssetClass
+from crypto_signals.domain.schemas import AssetClass, SignalStatus
 from crypto_signals.engine.signal_generator import SignalGenerator
 from crypto_signals.market.data_provider import MarketDataProvider
 from crypto_signals.notifications.discord import DiscordClient
@@ -154,6 +154,26 @@ def main():
                 else:
                     logger.info(f"No signal for {symbol}.")
                     metrics.record_success("signal_generation", symbol_duration)
+
+                # Active Trade Validation
+                # Check for invalidation of existing WAITING signals
+                active_signals = repo.get_active_signals(symbol)
+                if active_signals:
+                    logger.info(
+                        f"Checking invalidation for {len(active_signals)} active signals..."
+                    )
+                    invalidated = generator.check_invalidation(
+                        active_signals, symbol, asset_class
+                    )
+
+                    for inv_sig in invalidated:
+                        logger.info(
+                            f"INVALIDATING Signal {inv_sig.signal_id} for {symbol}",
+                            extra={"symbol": symbol, "signal_id": inv_sig.signal_id},
+                        )
+                        repo.update_status(inv_sig.signal_id, SignalStatus.INVALIDATED)
+                        # Optionally notify Discord about invalidation?
+                        # discord.send_message(f"🚫 Signal Invalidated: {symbol}")
 
             except Exception as e:
                 errors_encountered += 1

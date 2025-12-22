@@ -18,7 +18,6 @@ from alpaca.data.requests import (
     StockLatestTradeRequest,
 )
 from alpaca.data.timeframe import TimeFrame
-
 from crypto_signals.domain.schemas import AssetClass
 from crypto_signals.market.exceptions import MarketDataError
 

@@ -10,7 +10,6 @@ import logging
 from typing import Optional
 
 import requests
-
 from crypto_signals.config import get_settings
 from crypto_signals.domain.schemas import Signal
 

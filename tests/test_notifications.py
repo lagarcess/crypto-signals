@@ -5,7 +5,6 @@ from datetime import date
 from unittest.mock import MagicMock, patch
 
 import requests
-
 from crypto_signals.domain.schemas import Signal, SignalStatus
 from crypto_signals.notifications.discord import DiscordClient
 

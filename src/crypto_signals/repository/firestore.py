@@ -3,10 +3,9 @@
 import logging
 from datetime import datetime, timedelta, timezone
 
-from google.cloud import firestore
-
 from crypto_signals.config import get_settings
-from crypto_signals.domain.schemas import Signal
+from crypto_signals.domain.schemas import Signal, SignalStatus
+from google.cloud import firestore
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +46,35 @@ class SignalRepository:
 
         doc_ref = self.db.collection(self.collection_name).document(signal.signal_id)
         doc_ref.set(signal_data)
+
+    def get_active_signals(self, symbol: str) -> list[Signal]:
+        """
+        Get all WAITING signals for a given symbol.
+        """
+        query = (
+            self.db.collection(self.collection_name)
+            .where(field_path="symbol", op_string="==", value=symbol)
+            .where(
+                field_path="status",
+                op_string="==",
+                value=SignalStatus.WAITING.value,
+            )
+        )
+
+        results = []
+        for doc in query.stream():
+            try:
+                # Firestore returns dict, Pydantic parses it
+                results.append(Signal(**doc.to_dict()))
+            except Exception as e:
+                logger.error(f"Failed to parse signal {doc.id}: {e}")
+
+        return results
+
+    def update_status(self, signal_id: str, status: SignalStatus) -> None:
+        """Update the status of a signal (e.g. to INVALIDATED)."""
+        doc_ref = self.db.collection(self.collection_name).document(signal_id)
+        doc_ref.update({"status": status.value})
 
     def cleanup_expired_signals(self, days_old: int = 30) -> int:
         """

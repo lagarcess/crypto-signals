@@ -133,11 +133,9 @@ class AccountSnapshotPipeline(BigQueryPipelineBase):
             # 20-22 biz days? User specified "If history length < 30 days".
             # We'll stick to literal length of the list (days of data).
             if len(equity_curve) >= 30:
-
                 # Check 2: Start Equity
                 start_equity = equity_curve[0]
                 if start_equity > 0:
-
                     # Calculate Return
 
                     # Annualize Return
