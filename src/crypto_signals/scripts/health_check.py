@@ -90,9 +90,7 @@ def verify_alpaca_market_data(settings) -> bool:
 
     if bars and "BTC/USD" in bars.data:
         latest_bar = bars.data["BTC/USD"][-1]
-        print(
-            f"✅ [Alpaca Market] Connected (Latest BTC/USD: ${latest_bar.close:,.2f})"
-        )
+        print(f"✅ [Alpaca Market] Connected (Latest BTC/USD: ${latest_bar.close:,.2f})")
     else:
         print("✅ [Alpaca Market] Connected (No recent bars available)")
 

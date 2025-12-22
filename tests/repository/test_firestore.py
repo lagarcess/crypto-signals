@@ -4,7 +4,7 @@ from datetime import date, datetime, timezone
 from unittest.mock import patch
 
 import pytest
-from crypto_signals.domain.schemas import Signal, SignalStatus
+from crypto_signals.domain.schemas import AssetClass, Signal, SignalStatus
 from crypto_signals.repository.firestore import SignalRepository
 
 
@@ -47,6 +47,8 @@ def test_save_signal(mock_settings, mock_firestore_client):
         ds=date(2025, 1, 1),
         strategy_id="test-strategy",
         symbol="BTC/USD",
+        asset_class=AssetClass.CRYPTO,
+        entry_price=48000.0,
         pattern_name="bullish_engulfing",
         status=SignalStatus.WAITING,
         suggested_stop=45000.0,
@@ -94,6 +96,8 @@ def test_save_signal_firestore_error(mock_settings, mock_firestore_client):
         ds=date(2025, 1, 1),
         strategy_id="strat",
         symbol="BTC/USD",
+        asset_class=AssetClass.CRYPTO,
+        entry_price=105.0,
         pattern_name="pattern",
         status=SignalStatus.WAITING,
         suggested_stop=100.0,

@@ -16,11 +16,18 @@ import time
 from datetime import datetime, timezone
 from typing import Any, List
 
+import pandas as pd
 from alpaca.common.exceptions import APIError
 from google.cloud import firestore
 
-from crypto_signals.config import get_trading_client, settings
-from crypto_signals.domain.schemas import OrderSide, TradeExecution
+from crypto_signals.config import (
+    get_crypto_data_client,
+    get_stock_data_client,
+    get_trading_client,
+    settings,
+)
+from crypto_signals.domain.schemas import ExitReason, OrderSide, TradeExecution
+from crypto_signals.market.data_provider import MarketDataProvider
 from crypto_signals.pipelines.base import BigQueryPipelineBase
 
 logger = logging.getLogger(__name__)
@@ -51,10 +58,13 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
 
         # Initialize Source Clients
         # Note: We use the project from settings, same as BQ
-        self.firestore_client = firestore.Client(
-            project=settings().GOOGLE_CLOUD_PROJECT
-        )
+        self.firestore_client = firestore.Client(project=settings().GOOGLE_CLOUD_PROJECT)
         self.alpaca = get_trading_client()
+
+        # Initialize MarketDataProvider with required clients
+        stock_client = get_stock_data_client()
+        crypto_client = get_crypto_data_client()
+        self.market_provider = MarketDataProvider(stock_client, crypto_client)
 
     def extract(self) -> List[Any]:
         """
@@ -65,23 +75,16 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
         """
         logger.info(f"[{self.job_name}] extracting CLOSED positions from Firestore...")
 
-        # Query: status == 'CLOSED'
-        # We scan live_positions for any trade that is marked closed
-        # The Cleanup step will delete them after successful load,
-        # ensuring we don't re-process forever.
+        # Query CLOSED positions (deleted after successful merge via cleanup)
         docs = (
             self.firestore_client.collection("live_positions")
             .where(field_path="status", op_string="==", value="CLOSED")
             .stream()
         )
 
-        # Convert to list of dicts, keeping the ID if needed
-        # (though position_id is in body)
         raw_data = []
         for doc in docs:
             data = doc.to_dict()
-            # Ensure we strictly follow what's in the DB,
-            # but Firestore might return None for missing fields if not careful.
             if data:
                 raw_data.append(data)
 
@@ -103,6 +106,10 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
         )
 
         transformed = []
+
+        # Symbol-based cache to prevent redundant API calls
+        # Key: f"{symbol}_{asset_class}", Value: DataFrame of daily bars
+        symbol_bars_cache: dict = {}
 
         for idx, pos in enumerate(raw_data):
             # Rate Limit Safety: Sleep 100ms between requests
@@ -142,12 +149,7 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                 )
                 qty = float(order.filled_qty) if order.filled_qty else 0.0
 
-                # We need to determine exit details.
-                # For this task, we rely on Firestore for 'exit_fill_price'
-                # and 'exit_time'
-                # as the prompt implies these are known from the close event.
-
-                # Let's assume the doc has `exit_fill_price`.
+                # Get exit price from Firestore document, default to 0.0 if missing
                 exit_price_val = float(pos.get("exit_fill_price", 0.0))
 
                 # Timestamps
@@ -162,10 +164,7 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                         return datetime.fromisoformat(str(val))
                     except (ValueError, TypeError) as exc:
                         logger.warning(
-                            "Failed to parse datetime value '%s'; defaulting "
-                            "to now. Error: %s",
-                            val,
-                            exc,
+                            f"Failed to parse datetime value '{val}'; defaulting to now. Error: {exc}"
                         )
                         return datetime.now(timezone.utc)
 
@@ -189,6 +188,47 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
 
                 if order_side_str == OrderSide.SELL.value:  # Short
                     pnl_gross = (entry_price_val - exit_price_val) * qty
+
+                # --- MFE Calculation ---
+                max_favorable_excursion = None
+                try:
+                    # Build cache key from symbol and asset class
+                    symbol = pos.get("symbol")
+                    asset_class = pos.get("asset_class", "CRYPTO")
+                    cache_key = f"{symbol}_{asset_class}"
+
+                    # Check cache before fetching
+                    if cache_key in symbol_bars_cache:
+                        bars_df = symbol_bars_cache[cache_key]
+                    else:
+                        # Fetch bars and store in cache
+                        bars_df = self.market_provider.get_daily_bars(
+                            symbol=symbol,
+                            asset_class=asset_class,
+                            lookback_days=None,
+                        )
+                        symbol_bars_cache[cache_key] = bars_df
+
+                    if not bars_df.empty:
+                        # Filter for trade window
+                        trade_window = bars_df[
+                            (bars_df.index >= pd.Timestamp(entry_time).floor("D"))
+                            & (bars_df.index <= pd.Timestamp(exit_time).ceil("D"))
+                        ]
+
+                        if not trade_window.empty:
+                            if order_side_str == OrderSide.BUY.value:
+                                highest_price = trade_window["high"].max()
+                                max_favorable_excursion = highest_price - entry_price_val
+                            else:  # Short
+                                lowest_price = trade_window["low"].min()
+                                mfe = entry_price_val - lowest_price
+                                max_favorable_excursion = mfe
+
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to calculate MFE for {pos.get('position_id')}: {e}"
+                    )
 
                 pnl_usd = pnl_gross - fees_usd
 
@@ -217,6 +257,8 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                     fees_usd=round(fees_usd, 2),
                     slippage_pct=0.0,
                     trade_duration=duration,
+                    exit_reason=ExitReason(pos.get("exit_reason", ExitReason.TP1.value)),
+                    max_favorable_excursion=max_favorable_excursion,
                 )
 
                 # Validate and Dump to JSON (BasePipeline expects dicts)

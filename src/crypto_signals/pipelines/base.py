@@ -82,9 +82,6 @@ class BigQueryPipelineBase(ABC):
         """
         Validate and transform raw data using the Pydantic schema.
 
-        CRITICAL: Uses mode='json' to ensure dates/datetimes are serialized
-        to ISO strings, which `client.insert_rows_json` requires.
-
         Args:
             raw_data: List of raw input data.
 
@@ -94,12 +91,7 @@ class BigQueryPipelineBase(ABC):
         logger.info(f"[{self.job_name}] Transforming {len(raw_data)} records...")
         transformed = []
         for item in raw_data:
-            if isinstance(item, dict):
-                model = self.schema_model.model_validate(item)
-            else:
-                model = self.schema_model.model_validate(item)
-
-            # Dump to JSON-compatible dict (handling dates/UUIDs)
+            model = self.schema_model.model_validate(item)
             transformed.append(model.model_dump(mode="json"))
 
         return transformed
@@ -201,11 +193,6 @@ class BigQueryPipelineBase(ABC):
                 return
 
             # 2. Transform
-            # Note: We need the Pydantic models for Cleanup later, but dicts for BQ
-            # So we might validate twice or store both.
-            # Optimization: self.transform returns dicts.
-            # We reconstruct models for cleanup if needed, or extract returns models.
-            # Let's assume extract returns models or dicts, and transform returns dicts.
             transformed_data = self.transform(raw_data)
 
             # 3. Truncate Staging
@@ -217,21 +204,7 @@ class BigQueryPipelineBase(ABC):
             # 5. Execute Merge
             self._execute_merge()
 
-            # 6. Cleanup (Optional: passed validated models effectively)
-            # Since raw_data might be dicts, we might want to pass the raw_data
-            # or reconstruct models. Calling cleanup with raw_data for now
-            # as the interface defines `data: List[BaseModel]`.
-            # If raw_data matches the signature, great. If not, we should probably
-            # pass the validated models.
-            # Let's create a list of models for cleanup to ensure type safety.
-            # We re-validate briefly or keep them from transform loop.
-            # To avoid double validation overhead, let's simply assume
-            # raw_data is sufficient for cleanup if it has IDs,
-            # OR better: in transform loop we could allow returning a tuple.
-            # But to keep it simple and abide by strict type hints:
-
-            # Re-creating models for cleanup to ensure type safety if raw_data was dicts
-            # This is cheap compared to BQ/Network ops.
+            # 6. Cleanup - Re-validate for type safety (cheap vs BQ/Network ops)
             cleanup_models = [self.schema_model.model_validate(d) for d in raw_data]
             self.cleanup(cleanup_models)
 

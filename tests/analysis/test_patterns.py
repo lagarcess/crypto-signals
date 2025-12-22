@@ -260,9 +260,7 @@ class TestMacroPatterns:
             base_df.iloc[i, base_df.columns.get_loc("low")] = 114.0  # > 110
             base_df.iloc[i, base_df.columns.get_loc("close")] = 116.0
             # Volume Decay
-            base_df.iloc[i, base_df.columns.get_loc("volume")] = 1000.0 - (
-                100 * (4 + i)
-            )
+            base_df.iloc[i, base_df.columns.get_loc("volume")] = 1000.0 - (100 * (4 + i))
 
         # Breakout at t
         base_df.iloc[-1, base_df.columns.get_loc("close")] = 112.0

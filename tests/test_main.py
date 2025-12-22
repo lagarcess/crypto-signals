@@ -1,6 +1,6 @@
 """Unit tests for the main application entrypoint."""
 
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import ANY, MagicMock, call, patch
 
 import pytest
 from crypto_signals.domain.schemas import AssetClass, Signal
@@ -19,6 +19,7 @@ def mock_dependencies():
         patch("crypto_signals.main.DiscordClient") as discord,
         patch("crypto_signals.main.get_settings") as mock_settings,
         patch("crypto_signals.main.init_secrets", return_value=True) as mock_secrets,
+        patch("crypto_signals.main.load_config_from_firestore") as mock_firestore_config,
     ):
         # Configure mock settings
         mock_settings.return_value.CRYPTO_SYMBOLS = [
@@ -26,11 +27,23 @@ def mock_dependencies():
             "ETH/USD",
             "XRP/USD",
         ]
-        mock_settings.return_value.EQUITY_SYMBOLS = [
-            "NVDA",
-            "QQQ",
-            "GLD",
-        ]
+        # Simulate Basic Plan: Empty equities by default
+        mock_settings.return_value.EQUITY_SYMBOLS = []
+
+        # Default: No Firestore config (fallback behavior)
+        mock_firestore_config.return_value = {}
+
+        # Configure MarketDataProvider to return non-empty DataFrame by default
+        # This prevents main.py from skipping processing due to "No data" check
+        # Use side_effect to ensure a fresh clean mock (or consistent one) with empty=False
+        def get_daily_bars_side_effect(*args, **kwargs):
+            m = MagicMock()
+            m.empty = False
+            return m
+
+        market_provider.return_value.get_daily_bars.side_effect = (
+            get_daily_bars_side_effect
+        )
 
         yield {
             "stock_client": stock_client,
@@ -41,6 +54,7 @@ def mock_dependencies():
             "discord": discord,
             "settings": mock_settings,
             "secrets": mock_secrets,
+            "firestore_config": mock_firestore_config,
         }
 
 
@@ -57,7 +71,7 @@ def test_main_execution_flow(mock_dependencies):
     mock_signal.pattern_name = "bullish_engulfing"
     mock_signal.suggested_stop = 90000.0
 
-    def side_effect(symbol, asset_class):
+    def side_effect(symbol, asset_class, **kwargs):
         if symbol == "BTC/USD":
             return mock_signal
         return None
@@ -76,13 +90,12 @@ def test_main_execution_flow(mock_dependencies):
     mock_dependencies["discord"].assert_called_once()
 
     # Verify Portfolio Iteration & Asset Class Detection
+    # Verify Portfolio Iteration & Asset Class Detection
     expected_calls = [
-        call("BTC/USD", AssetClass.CRYPTO),
-        call("ETH/USD", AssetClass.CRYPTO),
-        call("XRP/USD", AssetClass.CRYPTO),
-        call("NVDA", AssetClass.EQUITY),
-        call("QQQ", AssetClass.EQUITY),
-        call("GLD", AssetClass.EQUITY),
+        call("BTC/USD", AssetClass.CRYPTO, dataframe=ANY),
+        call("ETH/USD", AssetClass.CRYPTO, dataframe=ANY),
+        call("XRP/USD", AssetClass.CRYPTO, dataframe=ANY),
+        # Note: Equities are NOT tested here because fixture defaults to empty
     ]
     mock_gen_instance.generate_signals.assert_has_calls(expected_calls, any_order=False)
 
@@ -97,7 +110,7 @@ def test_main_symbol_error_handling(mock_dependencies):
     mock_gen_instance = mock_dependencies["generator"].return_value
 
     # Make ETH/USD raise an exception
-    def side_effect(symbol, asset_class):
+    def side_effect(symbol, asset_class, **kwargs):
         if symbol == "ETH/USD":
             raise ValueError("Simulated Analysis Error")
         return None
@@ -107,15 +120,13 @@ def test_main_symbol_error_handling(mock_dependencies):
     # Execute (should not raise exception)
     main()
 
-    # Verify that subsequent symbols (e.g., NVDA) were still processed
-    # We check if generate_signals was called for NVDA
+    # Verify that subsequent symbols (e.g., XRP/USD) were still processed
     calls = mock_gen_instance.generate_signals.call_args_list
     symbols_processed = [args[0] for args, _ in calls]
 
     assert "BTC/USD" in symbols_processed
     assert "ETH/USD" in symbols_processed
-    assert "NVDA" in symbols_processed
-    assert "GLD" in symbols_processed
+    assert "XRP/USD" in symbols_processed
 
 
 def test_main_fatal_error():
@@ -140,7 +151,7 @@ def test_main_notification_failure(mock_dependencies, caplog):
     mock_signal.pattern_name = "test_pattern"
     mock_signal.suggested_stop = 90000.0
 
-    def side_effect(symbol, asset_class):
+    def side_effect(symbol, asset_class, **kwargs):
         if symbol == "BTC/USD":
             return mock_signal
         return None
@@ -166,7 +177,7 @@ def test_main_repo_failure(mock_dependencies, caplog):
     mock_repo_instance = mock_dependencies["repo"].return_value
 
     # Setup signals
-    def gen_side_effect(symbol, asset_class):
+    def gen_side_effect(symbol, asset_class, **kwargs):
         if symbol in ["BTC/USD", "ETH/USD"]:
             sig = MagicMock(spec=Signal)
             sig.symbol = symbol
@@ -195,7 +206,99 @@ def test_main_repo_failure(mock_dependencies, caplog):
     assert "Error processing BTC/USD (CRYPTO): Firestore Unavailable" in caplog.text
 
     # Verify that ETH/USD was still processed (Loop continued)
-    # We check if generate_signals was called for ETH/USD
     calls = mock_gen_instance.generate_signals.call_args_list
     symbols_processed = [args[0] for args, _ in calls]
     assert "ETH/USD" in symbols_processed
+
+
+def test_main_uses_firestore_config(mock_dependencies):
+    """Test that Firestore configuration overrides .env settings."""
+    mock_gen_instance = mock_dependencies["generator"].return_value
+    mock_firestore_config = mock_dependencies["firestore_config"]
+    mock_settings = mock_dependencies["settings"].return_value
+
+    # Setup Firestore returns
+    mock_firestore_config.return_value = {
+        "CRYPTO_SYMBOLS": ["SOL/USD"],
+        # NOTE: Equities intentionally omitted in this test to verify simple crypto override
+    }
+
+    # Mock signal generation to avoid side effects
+    mock_gen_instance.generate_signals.return_value = None
+
+    # Execute
+    main()
+
+    # Verify Logic
+    # 1. Check if settings were updated
+    assert mock_settings.CRYPTO_SYMBOLS == ["SOL/USD"]
+
+    # 2. Verify iteration happened on NEW symbols
+    expected_calls = [
+        call("SOL/USD", AssetClass.CRYPTO, dataframe=ANY),
+    ]
+    mock_gen_instance.generate_signals.assert_has_calls(expected_calls, any_order=True)
+
+    # 3. Ensure OLD symbols were NOT processed
+    assert mock_gen_instance.generate_signals.call_count == 1
+
+
+def test_main_fallback_to_env_on_empty(mock_dependencies):
+    """Test fallback to .env when Firestore returns empty config."""
+    mock_gen_instance = mock_dependencies["generator"].return_value
+    mock_firestore_config = mock_dependencies["firestore_config"]
+    mock_settings = mock_dependencies["settings"].return_value
+
+    # Setup Firestore returns empty
+    mock_firestore_config.return_value = {}
+
+    # Mock signal generation
+    mock_gen_instance.generate_signals.return_value = None
+
+    # Execute
+    main()
+
+    # Verify Logic
+    # Settings should remain as default (from fixture)
+    assert mock_settings.CRYPTO_SYMBOLS == ["BTC/USD", "ETH/USD", "XRP/USD"]
+
+    # Should process default symbols
+    mock_gen_instance.generate_signals.assert_any_call(
+        "BTC/USD", AssetClass.CRYPTO, dataframe=ANY
+    )
+
+
+def test_guardrail_ignores_firestore_equities(mock_dependencies, caplog):
+    """
+    Risk Verification: Ensure that if Firestore returns equities,
+    the system respects the hardcoded restriction and IGNORES them.
+    """
+    mock_gen_instance = mock_dependencies["generator"].return_value
+    mock_firestore_config = mock_dependencies["firestore_config"]
+    mock_settings = mock_dependencies["settings"].return_value
+
+    # 1. Simulate Firestore returning Equities
+    mock_firestore_config.return_value = {
+        "CRYPTO_SYMBOLS": ["BTC/USD"],
+        "EQUITY_SYMBOLS": ["AAPL", "TSLA"],
+    }
+
+    # 2. Simulate "Basic Plan" Restriction (default is empty)
+    mock_settings.EQUITY_SYMBOLS = []
+
+    mock_gen_instance.generate_signals.return_value = None
+
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        main()
+
+    # Asset: Equities should still be EMPTY because the guardrail ignored them.
+    assert mock_settings.EQUITY_SYMBOLS == []
+
+    # Verify equities were NOT processed
+    calls = mock_gen_instance.generate_signals.call_args_list
+    symbols = [args[0] for args, _ in calls]
+    assert "AAPL" not in symbols
+    assert "TSLA" not in symbols
+    assert "BTC/USD" in symbols

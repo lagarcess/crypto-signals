@@ -19,7 +19,10 @@ def mock_generator():
 
 @pytest.fixture
 def mock_market_provider():
-    return MagicMock()
+    mp = MagicMock()
+    # Ensure dataframe is not empty so main loop proceeds
+    mp.get_daily_bars.return_value.empty = False
+    return mp
 
 
 @pytest.fixture
@@ -54,11 +57,12 @@ def test_active_trade_validation_loop(
         # Mock Repo to return one active signal
         active_sig = MagicMock(spec=Signal)
         active_sig.signal_id = "sig_123"
+        active_sig.status = SignalStatus.INVALIDATED
         mock_repo.get_active_signals.return_value = [active_sig]
 
         # Mock Generator to return this signal as invalidated
-        # check_invalidation returns list of invalidated signals
-        mock_generator.check_invalidation.return_value = [active_sig]
+        # check_exits returns list of invalidated signals
+        mock_generator.check_exits.return_value = [active_sig]
 
         # Mock Generator to NOT return new signals
         # (to simplify test of invalidation)
@@ -73,8 +77,8 @@ def test_active_trade_validation_loop(
         # 1. repo.get_active_signals should be called with "BTC/USD"
         mock_repo.get_active_signals.assert_called_with("BTC/USD")
 
-        # 2. generator.check_invalidation should be called
-        mock_generator.check_invalidation.assert_called()
+        # 2. generator.check_exits should be called
+        mock_generator.check_exits.assert_called()
 
-        # 3. repo.update_status should be called with INVALIDATED
-        mock_repo.update_status.assert_called_with("sig_123", SignalStatus.INVALIDATED)
+        # 3. repo.update_signal should be called with active_sig
+        mock_repo.update_signal.assert_called_with(active_sig)

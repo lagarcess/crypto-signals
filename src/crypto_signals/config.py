@@ -229,5 +229,80 @@ def get_crypto_data_client() -> CryptoHistoricalDataClient:
 if __name__ == "__main__":
     # Debug output when run directly
     cfg = get_settings()
-    print(f"GCP Auth Path Set: {os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')}")
     print(f"GCP Project: {cfg.GOOGLE_CLOUD_PROJECT}")
+
+
+def load_config_from_firestore() -> dict[str, list[str]]:
+    """
+    Load active strategy configuration from Firestore.
+
+    Queries the 'dim_strategies' collection for strategies marked active=True.
+    Extracts assets and asset classes to build dynamic portfolio lists.
+
+    Returns:
+        dict: Configuration dict containing 'CRYPTO_SYMBOLS' and 'EQUITY_SYMBOLS' lists.
+              Empty dict if no active strategies found or error occurs.
+    """
+    import logging
+
+    from google.cloud import firestore
+    from google.cloud.firestore import FieldFilter
+
+    logger = logging.getLogger(__name__)
+
+    try:
+        settings = get_settings()
+        # Ensure we have a project ID
+        if not settings.GOOGLE_CLOUD_PROJECT:
+            logger.warning("No Google Cloud Project ID set. Skipping Firestore config.")
+            return {}
+
+        db = firestore.Client(project=settings.GOOGLE_CLOUD_PROJECT)
+        collection_ref = db.collection("dim_strategies")
+
+        # Query for active strategies
+        query = collection_ref.where(filter=FieldFilter("active", "==", True))
+
+        crypto_symbols = set()
+        equity_symbols = set()
+
+        logger.info("Querying Firestore for active strategies...")
+
+        docs = list(query.stream())
+        if not docs:
+            logger.info("No active strategies found in Firestore.")
+            return {}
+
+        for doc in docs:
+            data = doc.to_dict()
+            assets = data.get("assets", [])
+            asset_class = data.get("asset_class")
+
+            if not assets:
+                continue
+
+            # Standardize asset class string check
+            if asset_class == "CRYPTO":
+                crypto_symbols.update(assets)
+            elif asset_class == "EQUITY":
+                equity_symbols.update(assets)
+            else:
+                logger.warning(
+                    f"Unknown asset class '{asset_class}' in strategy {doc.id}"
+                )
+
+        result = {
+            "CRYPTO_SYMBOLS": list(crypto_symbols),
+            "EQUITY_SYMBOLS": list(equity_symbols),
+        }
+
+        logger.info(
+            f"Loaded config from Firestore: "
+            f"{len(crypto_symbols)} Crypto, {len(equity_symbols)} Equity"
+        )
+        return result
+
+    except Exception as e:
+        logger.error(f"Failed to load configuration from Firestore: {e}")
+        # Return empty to trigger fallback or empty state
+        return {}

@@ -158,9 +158,7 @@ class MarketDataProvider:
         except MarketDataError:
             raise
         except Exception as e:
-            raise MarketDataError(
-                f"Failed to fetch daily bars for {symbol}: {e}"
-            ) from e
+            raise MarketDataError(f"Failed to fetch daily bars for {symbol}: {e}") from e
 
     @retry_with_backoff(max_retries=3, initial_delay=1.0, backoff_factor=2.0)
     def get_latest_price(self, symbol: str, asset_class: AssetClass) -> float:

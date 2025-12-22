@@ -12,11 +12,13 @@ from datetime import date, datetime, timezone
 import pytest
 from crypto_signals.domain.schemas import (
     AssetClass,
+    ExitReason,
     OrderSide,
     Position,
     Signal,
     SignalStatus,
     StrategyConfig,
+    TradeExecution,
     TradeStatus,
     get_deterministic_id,
 )
@@ -256,6 +258,9 @@ class TestSignalModel:
             ds=date(2024, 1, 15),
             strategy_id="momentum",
             symbol="BTC/USD",
+            asset_class=AssetClass.CRYPTO,
+            confluence_factors=[],
+            entry_price=50000.0,
             pattern_name="bullish_engulfing",
             status=SignalStatus.WAITING,
             suggested_stop=48000.00,
@@ -271,8 +276,100 @@ class TestSignalModel:
             ds=date(2024, 1, 15),
             strategy_id="momentum",
             symbol="BTC/USD",
+            asset_class=AssetClass.CRYPTO,
+            entry_price=50000.0,
             pattern_name="bullish_engulfing",
             suggested_stop=48000.00,
         )
 
         assert signal.status == SignalStatus.WAITING
+
+
+# =============================================================================
+# TRADE EXECUTION MODEL TESTS
+# =============================================================================
+
+
+class TestTradeExecutionModel:
+    """Test TradeExecution model for pnl_usd field validation."""
+
+    def test_trade_execution_requires_pnl_usd(self):
+        """TradeExecution must require pnl_usd field."""
+        with pytest.raises(ValidationError) as exc_info:
+            TradeExecution(
+                ds=date(2024, 1, 15),
+                trade_id="trade_123",
+                account_id="account_abc",
+                strategy_id="momentum",
+                asset_class=AssetClass.CRYPTO,
+                symbol="BTC/USD",
+                side=OrderSide.BUY,
+                qty=1.0,
+                entry_price=50000.0,
+                exit_price=52000.0,
+                entry_time=datetime(2024, 1, 15, 10, 0, tzinfo=timezone.utc),
+                exit_time=datetime(2024, 1, 16, 10, 0, tzinfo=timezone.utc),
+                exit_reason=ExitReason.TP1,
+                pnl_pct=4.0,
+                # pnl_usd is missing!
+                fees_usd=10.0,
+                slippage_pct=0.1,
+                trade_duration=86400,
+            )
+
+        error_str = str(exc_info.value)
+        assert "pnl_usd" in error_str.lower()
+
+    def test_trade_execution_accepts_pnl_usd(self):
+        """TradeExecution must accept pnl_usd alongside pnl_pct."""
+        trade = TradeExecution(
+            ds=date(2024, 1, 15),
+            trade_id="trade_123",
+            account_id="account_abc",
+            strategy_id="momentum",
+            asset_class=AssetClass.CRYPTO,
+            symbol="BTC/USD",
+            side=OrderSide.BUY,
+            qty=1.0,
+            entry_price=50000.0,
+            exit_price=52000.0,
+            entry_time=datetime(2024, 1, 15, 10, 0, tzinfo=timezone.utc),
+            exit_time=datetime(2024, 1, 16, 10, 0, tzinfo=timezone.utc),
+            exit_reason=ExitReason.TP1,
+            pnl_pct=4.0,
+            pnl_usd=2000.0,
+            fees_usd=10.0,
+            slippage_pct=0.1,
+            trade_duration=86400,
+        )
+
+        assert trade.pnl_usd == 2000.0
+        assert trade.pnl_pct == 4.0
+
+    def test_trade_execution_both_pnl_fields_required(self):
+        """TradeExecution must have both pnl_pct and pnl_usd."""
+        # Missing pnl_pct
+        with pytest.raises(ValidationError) as exc_info:
+            TradeExecution(
+                ds=date(2024, 1, 15),
+                trade_id="trade_123",
+                account_id="account_abc",
+                strategy_id="momentum",
+                asset_class=AssetClass.CRYPTO,
+                symbol="BTC/USD",
+                side=OrderSide.BUY,
+                qty=1.0,
+                entry_price=50000.0,
+                exit_price=52000.0,
+                entry_time=datetime(2024, 1, 15, 10, 0, tzinfo=timezone.utc),
+                exit_time=datetime(2024, 1, 16, 10, 0, tzinfo=timezone.utc),
+                exit_reason=ExitReason.TP1,
+                # pnl_pct is missing!
+                pnl_usd=2000.0,
+                fees_usd=10.0,
+                slippage_pct=0.1,
+                trade_duration=86400,
+            )
+
+        error_str = str(exc_info.value)
+        assert "pnl_pct" in error_str.lower()

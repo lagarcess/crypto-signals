@@ -112,16 +112,30 @@ class DiscordClient:
         """
         # Emoji selection based on pattern name:
         # bullish patterns get 🚀, others get 🔻
-        # This could be refined further with more explicit bullish/bearish
-        # metadata if needed.
         emoji = "🚀" if "bullish" in signal.pattern_name.lower() else "🔻"
 
         # Format the main content
         content = (
             f"{emoji} **{signal.pattern_name.replace('_', ' ').upper()}** "
-            f"detected on **{signal.symbol}**\n"
+            f"detected on **{signal.symbol}**\n\n"
+            f"**Entry Price:** ${signal.entry_price:,.2f}\n"
             f"**Stop Loss:** ${signal.suggested_stop:,.2f}"
         )
+
+        # Add Invalidation Price if it exists and is different from suggested_stop
+        if (
+            signal.invalidation_price is not None
+            and signal.invalidation_price != signal.suggested_stop
+        ):
+            content += f"\n**Invalidation Price:** ${signal.invalidation_price:,.2f}"
+
+        # Add Take Profit targets
+        if signal.take_profit_1:
+            content += f"\n**Take Profit 1 (Conservative):** ${signal.take_profit_1:,.2f}"
+        if signal.take_profit_2:
+            content += f"\n**Take Profit 2 (Structural):** ${signal.take_profit_2:,.2f}"
+        if signal.take_profit_3:
+            content += f"\n**Take Profit 3 (Runner):** ${signal.take_profit_3:,.2f}"
 
         # We can add more fields if needed, like timestamp or status
         payload = {

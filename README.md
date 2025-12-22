@@ -233,10 +233,10 @@ poetry run pytest tests/test_main.py
 
 ```bash
 # Format code
-poetry run black src/ tests/
+poetry run ruff format src/ tests/
 
 # Lint code
-poetry run flake8 src/ tests/
+poetry run ruff check src/ tests/
 
 # Type checking
 poetry run mypy src/
