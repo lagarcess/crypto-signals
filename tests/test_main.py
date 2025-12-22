@@ -1,6 +1,6 @@
 """Unit tests for the main application entrypoint."""
 
-from unittest.mock import ANY, MagicMock, call, patch
+from unittest.mock import ANY, MagicMock, Mock, call, patch
 
 import pytest
 from crypto_signals.domain.schemas import AssetClass, Signal
@@ -68,6 +68,7 @@ def test_main_execution_flow(mock_dependencies):
     # Mock signal generation to return a signal for BTC/USD only
     mock_signal = MagicMock(spec=Signal)
     mock_signal.symbol = "BTC/USD"
+    mock_signal.signal_id = "test_signal_btc_main"
     mock_signal.pattern_name = "bullish_engulfing"
     mock_signal.suggested_stop = 90000.0
 
@@ -81,6 +82,11 @@ def test_main_execution_flow(mock_dependencies):
     # Mock send_signal to return a thread_id
     mock_discord_instance.send_signal.return_value = "thread_123456"
 
+    # Create a manager to track call order across mocks
+    manager = Mock()
+    manager.attach_mock(mock_discord_instance.send_signal, "send_signal")
+    manager.attach_mock(mock_repo_instance.save, "save")
+
     # Execute
     main()
 
@@ -93,12 +99,10 @@ def test_main_execution_flow(mock_dependencies):
     mock_dependencies["discord"].assert_called_once()
 
     # Verify Portfolio Iteration & Asset Class Detection
-    # Verify Portfolio Iteration & Asset Class Detection
     expected_calls = [
         call("BTC/USD", AssetClass.CRYPTO, dataframe=ANY),
         call("ETH/USD", AssetClass.CRYPTO, dataframe=ANY),
         call("XRP/USD", AssetClass.CRYPTO, dataframe=ANY),
-        # Note: Equities are NOT tested here because fixture defaults to empty
     ]
     mock_gen_instance.generate_signals.assert_has_calls(expected_calls, any_order=False)
 
@@ -110,6 +114,13 @@ def test_main_execution_flow(mock_dependencies):
     # Verify thread_id was attached to signal before save
     assert mock_signal.discord_thread_id == "thread_123456"
 
+    # Verify explicit call order: Discord -> Firestore
+    expected_call_order = [
+        call.send_signal(mock_signal),
+        call.save(mock_signal),
+    ]
+    assert manager.mock_calls == expected_call_order
+
 
 def test_send_signal_captures_thread_id(mock_dependencies):
     """Test that thread_id from send_signal is captured and persisted."""
@@ -117,9 +128,10 @@ def test_send_signal_captures_thread_id(mock_dependencies):
     mock_repo_instance = mock_dependencies["repo"].return_value
     mock_discord_instance = mock_dependencies["discord"].return_value
 
-    # Setup signal
+    # Setup signal with required attributes for structured logging
     mock_signal = MagicMock(spec=Signal)
     mock_signal.symbol = "BTC/USD"
+    mock_signal.signal_id = "test_signal_btc"
     mock_signal.pattern_name = "test_pattern"
     mock_signal.suggested_stop = 90000.0
 
@@ -133,19 +145,23 @@ def test_send_signal_captures_thread_id(mock_dependencies):
     # Mock send_signal to return a thread_id
     mock_discord_instance.send_signal.return_value = "mock_thread_98765"
 
+    # Create a manager to track call order across mocks
+    manager = Mock()
+    manager.attach_mock(mock_discord_instance.send_signal, "send_signal")
+    manager.attach_mock(mock_repo_instance.save, "save")
+
     # Execute
     main()
 
     # Verify thread_id was attached to signal
     assert mock_signal.discord_thread_id == "mock_thread_98765"
 
-    # Verify signal was saved AFTER discord notification
-    # Note: thread_id assertion above implicitly verifies ordering since thread_id
-    # is attached after send_signal but before save. However, explicit order
-    # verification would be more robust.
-    # TODO: Use Mock.call_args_list or attach_mock to explicitly verify call order
-    mock_discord_instance.send_signal.assert_called_once_with(mock_signal)
-    mock_repo_instance.save.assert_called_once_with(mock_signal)
+    # Verify explicit call order: Discord -> Firestore
+    expected_call_order = [
+        call.send_signal(mock_signal),
+        call.save(mock_signal),
+    ]
+    assert manager.mock_calls == expected_call_order
 
 
 def test_main_symbol_error_handling(mock_dependencies):
@@ -191,6 +207,7 @@ def test_main_notification_failure(mock_dependencies, caplog):
     # Setup signal for BTC/USD only
     mock_signal = MagicMock(spec=Signal)
     mock_signal.symbol = "BTC/USD"
+    mock_signal.signal_id = "test_signal_notification"
     mock_signal.pattern_name = "test_pattern"
     mock_signal.suggested_stop = 90000.0
 
@@ -219,11 +236,12 @@ def test_main_repo_failure(mock_dependencies, caplog):
     mock_gen_instance = mock_dependencies["generator"].return_value
     mock_repo_instance = mock_dependencies["repo"].return_value
 
-    # Setup signals
+    # Setup signals with proper signal_id
     def gen_side_effect(symbol, asset_class, **kwargs):
         if symbol in ["BTC/USD", "ETH/USD"]:
             sig = MagicMock(spec=Signal)
             sig.symbol = symbol
+            sig.signal_id = f"test_id_{symbol.replace('/', '_')}"
             sig.pattern_name = "test_pattern"
             sig.suggested_stop = 100.0
             return sig
@@ -245,8 +263,9 @@ def test_main_repo_failure(mock_dependencies, caplog):
     with caplog.at_level(logging.ERROR):
         main()
 
-    # Verify error log for BTC/USD
-    assert "Error processing BTC/USD (CRYPTO): Firestore Unavailable" in caplog.text
+    # Verify error log for persistence failure (new structured logging)
+    assert "Failed to persist signal" in caplog.text
+    assert "Firestore Unavailable" in caplog.text
 
     # Verify that ETH/USD was still processed (Loop continued)
     calls = mock_gen_instance.generate_signals.call_args_list

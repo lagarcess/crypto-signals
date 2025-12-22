@@ -77,35 +77,27 @@ def main():
                 repo = SignalRepository()
                 discord = DiscordClient()
 
-        # 2. Define Portfolio
+        # Define Portfolio
         settings = get_settings()
-
-        # Dynamic Config Loading
         firestore_config = load_config_from_firestore()
 
         if firestore_config:
             logger.info("Using configuration from Firestore (overriding .env)")
             if "CRYPTO_SYMBOLS" in firestore_config:
                 settings.CRYPTO_SYMBOLS = firestore_config["CRYPTO_SYMBOLS"]
-
-            # Note: Equity restriction is handled in config.py
         else:
             logger.info("Using configuration from .env")
 
-        portfolio_items = []
-        for s in settings.CRYPTO_SYMBOLS:
-            portfolio_items.append((s, AssetClass.CRYPTO))
-        for s in settings.EQUITY_SYMBOLS:
-            portfolio_items.append((s, AssetClass.EQUITY))
+        portfolio_items = [(s, AssetClass.CRYPTO) for s in settings.CRYPTO_SYMBOLS] + [
+            (s, AssetClass.EQUITY) for s in settings.EQUITY_SYMBOLS
+        ]
 
         logger.info(f"Processing {len(portfolio_items)} symbols...")
 
-        # Get rate limit delay from settings (default 0.5 seconds between requests)
-        # Alpaca has 200 req/min limit = 1 req per 0.3s minimum
-        # We use 0.5s for safety margin
+        # Rate limiting (Alpaca: 200 req/min = 0.3s minimum, use 0.5s for safety)
         rate_limit_delay = getattr(settings, "RATE_LIMIT_DELAY", 0.5)
 
-        # 3. Execution Loop
+        # Execution Loop
         signals_found = 0
         symbols_processed = 0
         errors_encountered = 0
@@ -163,14 +155,18 @@ def main():
                         },
                     )
 
-                    # Notify Discord FIRST to capture thread_id for lifecycle threading
+                    # Notify Discord FIRST to capture thread_id for lifecycle updates
                     thread_id = discord.send_signal(trade_signal)
                     if thread_id:
                         # Attach thread_id to signal for lifecycle updates
                         trade_signal.discord_thread_id = thread_id
                         logger.info(
-                            f"Thread ID captured for signal lifecycle tracking "
-                            f"(thread_id: {thread_id})."
+                            "Thread ID captured for signal lifecycle tracking",
+                            extra={
+                                "signal_id": trade_signal.signal_id,
+                                "symbol": trade_signal.symbol,
+                                "thread_id": thread_id,
+                            },
                         )
                     else:
                         logger.warning(
@@ -179,10 +175,40 @@ def main():
                             extra={"symbol": trade_signal.symbol},
                         )
 
-                    # Persist signal (includes thread_id if available)
-                    # TODO: Add confirmation log, error handling, and timing metrics
-                    # See GitHub issue: "Improve logging consistency for Firestore persistence"
-                    repo.save(trade_signal)
+                    # Persist signal
+                    persistence_start = time.time()
+                    try:
+                        repo.save(trade_signal)
+                        persistence_duration = time.time() - persistence_start
+                        logger.info(
+                            f"Signal {trade_signal.signal_id} persisted to Firestore",
+                            extra={
+                                "signal_id": trade_signal.signal_id,
+                                "symbol": trade_signal.symbol,
+                                "thread_id": getattr(
+                                    trade_signal, "discord_thread_id", None
+                                ),
+                                "duration_seconds": round(persistence_duration, 3),
+                            },
+                        )
+                        metrics.record_success("signal_persistence", persistence_duration)
+                    except Exception as e:
+                        persistence_duration = time.time() - persistence_start
+                        logger.error(
+                            f"Failed to persist signal {trade_signal.signal_id} to Firestore: {e}",
+                            extra={
+                                "signal_id": trade_signal.signal_id,
+                                "symbol": trade_signal.symbol,
+                                "thread_id": getattr(
+                                    trade_signal, "discord_thread_id", None
+                                ),
+                                "error": str(e),
+                            },
+                        )
+                        metrics.record_failure("signal_persistence", persistence_duration)
+                        # Note: We intentionally do NOT re-raise here.
+                        # Signal generation succeeded - only persistence failed.
+                        # The failure is already logged and metrics recorded above.
 
                     metrics.record_success("signal_generation", symbol_duration)
                 else:
@@ -243,24 +269,23 @@ def main():
                             )
 
                         # Self-healing: If thread_id is missing (orphaned signal),
-                        # attempt to create a new thread for future lifecycle updates
+                        # send recovery message to main channel instead of creating
+                        # a confusing new entry thread
                         if not exited.discord_thread_id:
                             logger.info(
-                                f"Self-healing: Creating thread for orphaned signal "
-                                f"{exited.signal_id}"
+                                f"Self-healing: Orphaned signal {exited.signal_id} - "
+                                "sending update to main channel"
                             )
-                            # Send initial message to create thread
-                            new_thread_id = discord.send_signal(exited)
-                            if new_thread_id:
-                                exited.discord_thread_id = new_thread_id
-                                repo.update_signal(exited)
-                                logger.info(
-                                    f"Self-healing: Linked signal {exited.signal_id} "
-                                    f"to thread {new_thread_id}"
-                                )
-
-                        # Reply in thread if available, fallback to main channel
-                        discord.send_message(msg, thread_id=exited.discord_thread_id)
+                            # Prepend recovery notice to the message
+                            recovery_msg = (
+                                f"🔄 **THREAD RECOVERY: {symbol}** 🔄\n"
+                                f"*(Original thread unavailable)*\n\n"
+                                f"{msg}"
+                            )
+                            discord.send_message(recovery_msg)
+                        else:
+                            # Reply in thread if available
+                            discord.send_message(msg, thread_id=exited.discord_thread_id)
 
                         # Remove exited signals from expiration checking
                         if exited in active_signals:
