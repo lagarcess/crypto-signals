@@ -126,9 +126,14 @@ crypto-signals/
    GOOGLE_CLOUD_PROJECT=your-gcp-project-id
    GOOGLE_APPLICATION_CREDENTIALS=./path/to/service-account.json
 
-   # Discord
-   DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/your-webhook-url
-   MOCK_DISCORD=false  # Set to true for testing without sending
+   # Discord Webhooks (Multi-destination Routing)
+   # Test webhook - always required (used for dev/test and system messages)
+   TEST_DISCORD_WEBHOOK=https://discord.com/api/webhooks/your-test-webhook
+   TEST_MODE=true  # When true, all traffic goes to test webhook (safe default)
+
+   # Production webhooks (uncomment when TEST_MODE=false)
+   # LIVE_CRYPTO_DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/crypto-channel
+   # LIVE_STOCK_DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/stock-channel
 
    # Optional
    RATE_LIMIT_DELAY=0.5  # Seconds between API requests
@@ -172,8 +177,10 @@ crypto-signals/
 | `ALPACA_PAPER_TRADING` | No | `true` | Use paper trading account |
 | `GOOGLE_CLOUD_PROJECT` | Yes | - | GCP project ID |
 | `GOOGLE_APPLICATION_CREDENTIALS` | No* | - | Path to service account JSON (*auto in cloud) |
-| `DISCORD_WEBHOOK_URL` | Yes | - | Discord webhook URL |
-| `MOCK_DISCORD` | No | `false` | Mock Discord notifications |
+| `TEST_DISCORD_WEBHOOK` | Yes | - | Discord webhook for test/dev messages |
+| `TEST_MODE` | No | `true` | Route all traffic to test webhook (safe default) |
+| `LIVE_CRYPTO_DISCORD_WEBHOOK_URL` | No** | - | Live webhook for CRYPTO signals (**required if TEST_MODE=false) |
+| `LIVE_STOCK_DISCORD_WEBHOOK_URL` | No** | - | Live webhook for EQUITY signals (**required if TEST_MODE=false) |
 | `RATE_LIMIT_DELAY` | No | `0.5` | Delay between API requests (seconds) |
 | `DISABLE_SECRET_MANAGER` | No | `false` | Disable Secret Manager (local dev) |
 
@@ -247,11 +254,15 @@ poetry run pre-commit run --all-files
 Test signal threading and formatting with real Discord messages:
 
 ```powershell
-# Add TEST_DISCORD_WEBHOOK to your .env file, then:
-python scripts/visual_discord_test.py success      # Signal → TP1 → TP2 → TP3
-python scripts/visual_discord_test.py invalidation # Signal → Invalidation
-python scripts/visual_discord_test.py expiration   # Signal → Expiration
-python scripts/visual_discord_test.py all          # Run all paths
+# Ensure TEST_DISCORD_WEBHOOK is set in .env, then:
+poetry run python scripts/visual_discord_test.py success      # Signal → TP1 → TP2 → TP3
+poetry run python scripts/visual_discord_test.py invalidation # Signal → Invalidation
+poetry run python scripts/visual_discord_test.py expiration   # Signal → Expiration
+poetry run python scripts/visual_discord_test.py trail        # Runner trail path
+poetry run python scripts/visual_discord_test.py all          # Run all paths
+
+# Test live mode routing (requires LIVE_CRYPTO_DISCORD_WEBHOOK_URL)
+poetry run python scripts/visual_discord_test.py all --mode live
 ```
 
 These tests verify that all lifecycle updates appear in a single thread.

@@ -1,14 +1,32 @@
-"""Unit tests for Notification Service."""
-
 import os
 import unittest
-from datetime import date, datetime, timedelta, timezone
+from datetime import date
 from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
 from crypto_signals.domain.schemas import AssetClass, Signal, SignalStatus
 from crypto_signals.notifications.discord import DiscordClient
+from pydantic import SecretStr
+
+
+def create_mock_settings(
+    test_mode: bool = True,
+    test_webhook: str = "https://discord.com/api/webhooks/test",
+    crypto_webhook: str | None = None,
+    stock_webhook: str | None = None,
+):
+    """Create a mock Settings object for testing."""
+    mock_settings = MagicMock()
+    mock_settings.TEST_MODE = test_mode
+    mock_settings.TEST_DISCORD_WEBHOOK = SecretStr(test_webhook)
+    mock_settings.LIVE_CRYPTO_DISCORD_WEBHOOK_URL = (
+        SecretStr(crypto_webhook) if crypto_webhook else None
+    )
+    mock_settings.LIVE_STOCK_DISCORD_WEBHOOK_URL = (
+        SecretStr(stock_webhook) if stock_webhook else None
+    )
+    return mock_settings
 
 
 class TestDiscordClient(unittest.TestCase):
@@ -16,7 +34,9 @@ class TestDiscordClient(unittest.TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.webhook_url = "https://discord.com/api/webhooks/test"
+        self.test_webhook = "https://discord.com/api/webhooks/test"
+        self.crypto_webhook = "https://discord.com/api/webhooks/crypto"
+        self.stock_webhook = "https://discord.com/api/webhooks/stock"
         self.signal = Signal(
             signal_id="test_id",
             ds=date(2025, 1, 1),
@@ -30,10 +50,78 @@ class TestDiscordClient(unittest.TestCase):
             suggested_stop=50000.0,
         )
 
+    # =========================================================================
+    # Routing Tests (TEST_MODE behavior)
+    # =========================================================================
+
+    def test_routing_test_mode_routes_to_test_webhook(self):
+        """In TEST_MODE, all traffic routes to TEST_DISCORD_WEBHOOK regardless of asset_class."""
+        settings = create_mock_settings(test_mode=True)
+        client = DiscordClient(settings=settings)
+
+        # All asset classes should route to test webhook
+        self.assertEqual(client._get_webhook_url(AssetClass.CRYPTO), self.test_webhook)
+        self.assertEqual(client._get_webhook_url(AssetClass.EQUITY), self.test_webhook)
+        self.assertEqual(
+            client._get_webhook_url(None),
+            self.test_webhook,  # System messages
+        )
+
+    def test_routing_live_mode_crypto(self):
+        """In LIVE mode, CRYPTO signals route to LIVE_CRYPTO_DISCORD_WEBHOOK_URL."""
+        settings = create_mock_settings(
+            test_mode=False,
+            crypto_webhook=self.crypto_webhook,
+            stock_webhook=self.stock_webhook,
+        )
+        client = DiscordClient(settings=settings)
+
+        self.assertEqual(client._get_webhook_url(AssetClass.CRYPTO), self.crypto_webhook)
+
+    def test_routing_live_mode_equity(self):
+        """In LIVE mode, EQUITY signals route to LIVE_STOCK_DISCORD_WEBHOOK_URL."""
+        settings = create_mock_settings(
+            test_mode=False,
+            crypto_webhook=self.crypto_webhook,
+            stock_webhook=self.stock_webhook,
+        )
+        client = DiscordClient(settings=settings)
+
+        self.assertEqual(client._get_webhook_url(AssetClass.EQUITY), self.stock_webhook)
+
+    def test_routing_live_mode_system_messages_to_test_webhook(self):
+        """In LIVE mode, system messages (no asset_class) route to TEST_DISCORD_WEBHOOK."""
+        settings = create_mock_settings(
+            test_mode=False,
+            crypto_webhook=self.crypto_webhook,
+            stock_webhook=self.stock_webhook,
+        )
+        client = DiscordClient(settings=settings)
+
+        # No asset class means system message - routes to test webhook
+        self.assertEqual(client._get_webhook_url(None), self.test_webhook)
+
+    def test_routing_live_mode_missing_webhook_returns_none(self):
+        """In LIVE mode, missing webhook for asset class returns None."""
+        settings = create_mock_settings(
+            test_mode=False,
+            crypto_webhook=None,  # No crypto webhook configured
+            stock_webhook=self.stock_webhook,
+        )
+        client = DiscordClient(settings=settings)
+
+        # CRYPTO without webhook should return None
+        self.assertIsNone(client._get_webhook_url(AssetClass.CRYPTO))
+
+    # =========================================================================
+    # send_signal Tests
+    # =========================================================================
+
     @patch("crypto_signals.notifications.discord.requests.post")
-    def test_send_signal_real(self, mock_post):
-        """Test sending a real signal returns thread_id."""
-        client = DiscordClient(webhook_url=self.webhook_url, mock_mode=False)
+    def test_send_signal_success(self, mock_post):
+        """Test sending a signal returns thread_id."""
+        settings = create_mock_settings(test_mode=True)
+        client = DiscordClient(settings=settings)
 
         mock_response = MagicMock()
         mock_response.raise_for_status.return_value = None
@@ -46,14 +134,15 @@ class TestDiscordClient(unittest.TestCase):
         mock_post.assert_called_once()
         args, kwargs = mock_post.call_args
         # Verify ?wait=true is appended to URL
-        self.assertEqual(args[0], f"{self.webhook_url}?wait=true")
+        self.assertEqual(args[0], f"{self.test_webhook}?wait=true")
         self.assertIn("🚀", kwargs["json"]["content"])
         self.assertIn("BTC/USD", kwargs["json"]["content"])
 
     @patch("crypto_signals.notifications.discord.requests.post")
     def test_send_signal_with_thread_name(self, mock_post):
         """Test sending a signal with a thread name."""
-        client = DiscordClient(webhook_url=self.webhook_url, mock_mode=False)
+        settings = create_mock_settings(test_mode=True)
+        client = DiscordClient(settings=settings)
 
         mock_response = MagicMock()
         mock_response.raise_for_status.return_value = None
@@ -68,20 +157,10 @@ class TestDiscordClient(unittest.TestCase):
         self.assertEqual(kwargs["json"]["thread_name"], "Test Thread")
 
     @patch("crypto_signals.notifications.discord.requests.post")
-    def test_send_signal_mocked(self, mock_post):
-        """Test sending a signal in mock mode returns mock thread_id."""
-        client = DiscordClient(webhook_url=self.webhook_url, mock_mode=True)
-
-        thread_id = client.send_signal(self.signal)
-        # Mock mode returns a deterministic thread ID based on signal_id[:8]
-        self.assertEqual(thread_id, "mock_thread_test_id")
-
-        mock_post.assert_not_called()
-
-    @patch("crypto_signals.notifications.discord.requests.post")
     def test_send_signal_failure(self, mock_post):
         """Test sending a signal when API fails returns None."""
-        client = DiscordClient(webhook_url=self.webhook_url, mock_mode=False)
+        settings = create_mock_settings(test_mode=True)
+        client = DiscordClient(settings=settings)
 
         # Simulate network error
         mock_post.side_effect = requests.RequestException("Network Error")
@@ -89,30 +168,40 @@ class TestDiscordClient(unittest.TestCase):
         thread_id = client.send_signal(self.signal)
         self.assertIsNone(thread_id)
 
+    def test_send_signal_no_webhook_returns_none(self):
+        """Test sending a signal with no configured webhook returns None."""
+        settings = create_mock_settings(
+            test_mode=False,
+            crypto_webhook=None,  # No webhook for CRYPTO
+        )
+        client = DiscordClient(settings=settings)
+
+        # Should return None and log critical error
+        thread_id = client.send_signal(self.signal)
+        self.assertIsNone(thread_id)
+
+    # =========================================================================
+    # send_message Tests
+    # =========================================================================
+
     @patch("crypto_signals.notifications.discord.requests.post")
-    def test_send_message_mocked(self, mock_post):
-        """Test sending a message in mock mode."""
-        client = DiscordClient(webhook_url=self.webhook_url, mock_mode=True)
+    def test_send_message_success(self, mock_post):
+        """Test sending a message successfully."""
+        settings = create_mock_settings(test_mode=True)
+        client = DiscordClient(settings=settings)
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status.return_value = None
+        mock_post.return_value = mock_response
 
         success = client.send_message("Test Message")
         self.assertTrue(success)
 
-        mock_post.assert_not_called()
-
     @patch("crypto_signals.notifications.discord.requests.post")
-    def test_send_message_with_thread_id_mocked(self, mock_post):
-        """Test sending a reply to a thread in mock mode."""
-        client = DiscordClient(webhook_url=self.webhook_url, mock_mode=True)
-
-        success = client.send_message("Reply content", thread_id="1234567890")
-        self.assertTrue(success)
-
-        mock_post.assert_not_called()
-
-    @patch("crypto_signals.notifications.discord.requests.post")
-    def test_send_message_with_thread_id_real(self, mock_post):
+    def test_send_message_with_thread_id(self, mock_post):
         """Test sending a reply to a thread uses ?thread_id query param."""
-        client = DiscordClient(webhook_url=self.webhook_url, mock_mode=False)
+        settings = create_mock_settings(test_mode=True)
+        client = DiscordClient(settings=settings)
 
         mock_response = MagicMock()
         mock_response.raise_for_status.return_value = None
@@ -124,12 +213,35 @@ class TestDiscordClient(unittest.TestCase):
         mock_post.assert_called_once()
         args, _ = mock_post.call_args
         # Verify ?thread_id is appended to URL
-        self.assertEqual(args[0], f"{self.webhook_url}?thread_id=1234567890")
+        self.assertEqual(args[0], f"{self.test_webhook}?thread_id=1234567890")
+
+    @patch("crypto_signals.notifications.discord.requests.post")
+    def test_send_message_with_asset_class_routing(self, mock_post):
+        """Test send_message routes correctly based on asset_class."""
+        settings = create_mock_settings(
+            test_mode=False,
+            crypto_webhook=self.crypto_webhook,
+            stock_webhook=self.stock_webhook,
+        )
+        client = DiscordClient(settings=settings)
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status.return_value = None
+        mock_post.return_value = mock_response
+
+        # Send with CRYPTO asset class
+        success = client.send_message("Test", asset_class=AssetClass.CRYPTO)
+        self.assertTrue(success)
+
+        args, _ = mock_post.call_args
+        # Should route to crypto webhook
+        self.assertEqual(args[0], self.crypto_webhook)
 
     @patch("crypto_signals.notifications.discord.requests.post")
     def test_send_message_failure(self, mock_post):
         """Test sending a message when API fails."""
-        client = DiscordClient(webhook_url=self.webhook_url, mock_mode=False)
+        settings = create_mock_settings(test_mode=True)
+        client = DiscordClient(settings=settings)
 
         # Simulate network error
         mock_post.side_effect = requests.RequestException("Network Error")
@@ -140,7 +252,8 @@ class TestDiscordClient(unittest.TestCase):
     @patch("crypto_signals.notifications.discord.requests.post")
     def test_send_message_thread_reply_failure_does_not_crash(self, mock_post):
         """Test that thread reply failure logs error but doesn't crash."""
-        client = DiscordClient(webhook_url=self.webhook_url, mock_mode=False)
+        settings = create_mock_settings(test_mode=True)
+        client = DiscordClient(settings=settings)
 
         # Simulate network error on thread reply
         mock_post.side_effect = requests.RequestException("Thread not found")
@@ -149,10 +262,15 @@ class TestDiscordClient(unittest.TestCase):
         success = client.send_message("Reply content", thread_id="invalid_thread")
         self.assertFalse(success)
 
+    # =========================================================================
+    # send_signal with all targets Tests
+    # =========================================================================
+
     @patch("crypto_signals.notifications.discord.requests.post")
     def test_send_signal_with_targets(self, mock_post):
         """Test sending a signal with all targets and invalidation price."""
-        client = DiscordClient(webhook_url=self.webhook_url, mock_mode=False)
+        settings = create_mock_settings(test_mode=True)
+        client = DiscordClient(settings=settings)
 
         full_signal = Signal(
             signal_id="test_id_full",
@@ -194,7 +312,8 @@ class TestDiscordClient(unittest.TestCase):
     @patch("crypto_signals.notifications.discord.requests.post")
     def test_send_signal_partial_targets(self, mock_post):
         """Test sending a signal with missing targets (conditional rendering)."""
-        client = DiscordClient(webhook_url=self.webhook_url, mock_mode=False)
+        settings = create_mock_settings(test_mode=True)
+        client = DiscordClient(settings=settings)
 
         # Signal with only TP1 defined, TP2 and TP3 are None
         partial_signal = Signal(
@@ -234,102 +353,91 @@ class TestDiscordClient(unittest.TestCase):
 
 
 # =============================================================================
-# VISUAL INTEGRATION TESTS (Skip by default, run with RUN_VISUAL_TESTS=true)
+# Config Validation Tests
 # =============================================================================
 
-# Skip visual tests unless explicitly enabled
-SKIP_VISUAL = not os.environ.get("RUN_VISUAL_TESTS", "").lower() == "true"
-SKIP_REASON = (
-    "Visual tests require RUN_VISUAL_TESTS=true and TEST_DISCORD_WEBHOOK env vars"
-)
 
+class TestConfigValidation(unittest.TestCase):
+    """Test configuration validation for webhook routing."""
 
-@pytest.mark.visual
-@pytest.mark.skipif(SKIP_VISUAL, reason=SKIP_REASON)
-class TestVisualDiscordIntegration:
-    """
-    Visual integration tests that send real messages to Discord.
+    def test_config_validation_live_mode_requires_webhooks(self):
+        """ValidationError should be raised when TEST_MODE=false without live webhooks."""
+        from crypto_signals.config import Settings, get_settings
 
-    These tests are skipped by default. To run them:
-    1. Set TEST_DISCORD_WEBHOOK to your test webhook URL
-    2. Set RUN_VISUAL_TESTS=true
-    3. Run: pytest -m visual tests/test_notifications.py -v
-    """
+        # Clear the lru_cache to ensure fresh settings instantiation
+        get_settings.cache_clear()
 
-    @pytest.fixture
-    def real_client(self):
-        """Create a real DiscordClient for visual testing."""
-        from crypto_signals.notifications.discord import DiscordClient
+        # Set up minimal env vars for testing config validation
+        # Use clear=True to fully isolate environment from .env file influence
+        test_env = {
+            "ALPACA_API_KEY": "test_key",
+            "ALPACA_SECRET_KEY": "test_secret",
+            "GOOGLE_CLOUD_PROJECT": "test-project",
+            "TEST_DISCORD_WEBHOOK": "https://discord.com/api/webhooks/test",
+            "TEST_MODE": "false",
+            # Missing LIVE_CRYPTO_DISCORD_WEBHOOK_URL and LIVE_STOCK_DISCORD_WEBHOOK_URL
+        }
 
-        webhook_url = os.environ.get("TEST_DISCORD_WEBHOOK")
-        if not webhook_url:
-            pytest.skip("TEST_DISCORD_WEBHOOK not set")
+        try:
+            with patch.dict(os.environ, test_env, clear=True):
+                with pytest.raises(ValueError) as exc_info:
+                    Settings(_env_file=None)
 
-        return DiscordClient(webhook_url=webhook_url, mock_mode=False)
+                # Validator checks LIVE_CRYPTO first, so that error is raised
+                assert "LIVE_CRYPTO_DISCORD_WEBHOOK_URL" in str(exc_info.value)
+        finally:
+            # Re-clear cache so other tests get fresh settings
+            get_settings.cache_clear()
 
-    @pytest.fixture
-    def test_signal(self):
-        """Create a test signal for visual verification."""
-        from crypto_signals.domain.schemas import (
-            AssetClass,
-            Signal,
-            SignalStatus,
-            get_deterministic_id,
-        )
+    def test_config_validation_live_mode_requires_stock_webhook(self):
+        """ValidationError for missing LIVE_STOCK when LIVE_CRYPTO is set."""
+        from crypto_signals.config import Settings, get_settings
 
-        now = datetime.now(timezone.utc)
-        return Signal(
-            signal_id=get_deterministic_id(f"visual_test_{now.isoformat()}"),
-            ds=date.today(),
-            strategy_id="visual_test",
-            symbol="BTC/USD",
-            asset_class=AssetClass.CRYPTO,
-            entry_price=95000.00,
-            pattern_name="bullish_engulfing",
-            status=SignalStatus.WAITING,
-            suggested_stop=91000.00,
-            take_profit_1=98500.00,
-            take_profit_2=102000.00,
-            take_profit_3=110000.00,
-            expiration_at=now + timedelta(hours=24),
-        )
+        get_settings.cache_clear()
 
-    def test_visual_threading_success_path(self, real_client, test_signal):
-        """Visual test: Verify threading works for success path."""
-        import time
+        # LIVE_CRYPTO is set, but LIVE_STOCK is missing
+        test_env = {
+            "ALPACA_API_KEY": "test_key",
+            "ALPACA_SECRET_KEY": "test_secret",
+            "GOOGLE_CLOUD_PROJECT": "test-project",
+            "TEST_DISCORD_WEBHOOK": "https://discord.com/api/webhooks/test",
+            "TEST_MODE": "false",
+            "LIVE_CRYPTO_DISCORD_WEBHOOK_URL": "https://discord.com/api/webhooks/crypto",
+            # Missing LIVE_STOCK_DISCORD_WEBHOOK_URL
+        }
 
-        # Step 1: Send initial signal (creates thread)
-        thread_id = real_client.send_signal(
-            test_signal, thread_name="🧪 Pytest Visual: Success"
-        )
-        assert thread_id is not None, "Failed to create thread"
+        try:
+            with patch.dict(os.environ, test_env, clear=True):
+                with pytest.raises(ValueError) as exc_info:
+                    Settings(_env_file=None)
 
-        time.sleep(2)
+                assert "LIVE_STOCK_DISCORD_WEBHOOK_URL" in str(exc_info.value)
+        finally:
+            get_settings.cache_clear()
 
-        # Step 2: Send TP1 update to thread
-        result = real_client.send_message(
-            "🎯 **TP1 HIT** - Visual test confirmation",
-            thread_id=thread_id,
-        )
-        assert result is True, "Failed to send TP1 update"
+    def test_config_validation_live_mode_succeeds_with_all_webhooks(self):
+        """Settings should load successfully when all required webhooks are configured."""
+        from crypto_signals.config import Settings, get_settings
 
-        # Verify visually in Discord
+        get_settings.cache_clear()
 
-    def test_visual_threading_reply(self, real_client, test_signal):
-        """Visual test: Verify reply appears in same thread."""
-        import time
+        # All webhooks configured - should succeed
+        test_env = {
+            "ALPACA_API_KEY": "test_key",
+            "ALPACA_SECRET_KEY": "test_secret",
+            "GOOGLE_CLOUD_PROJECT": "test-project",
+            "TEST_DISCORD_WEBHOOK": "https://discord.com/api/webhooks/test",
+            "TEST_MODE": "false",
+            "LIVE_CRYPTO_DISCORD_WEBHOOK_URL": "https://discord.com/api/webhooks/crypto",
+            "LIVE_STOCK_DISCORD_WEBHOOK_URL": "https://discord.com/api/webhooks/stock",
+        }
 
-        # Create thread
-        thread_id = real_client.send_signal(
-            test_signal, thread_name="🧪 Pytest Visual: Reply Test"
-        )
-        assert thread_id is not None
-
-        time.sleep(1)
-
-        # Send reply
-        result = real_client.send_message(
-            "This message should appear as a reply in the same thread.",
-            thread_id=thread_id,
-        )
-        assert result is True
+        try:
+            with patch.dict(os.environ, test_env, clear=True):
+                # Should not raise - all required webhooks are present
+                settings = Settings(_env_file=None)
+                assert settings.TEST_MODE is False
+                assert settings.LIVE_CRYPTO_DISCORD_WEBHOOK_URL is not None
+                assert settings.LIVE_STOCK_DISCORD_WEBHOOK_URL is not None
+        finally:
+            get_settings.cache_clear()

@@ -266,6 +266,7 @@ def main():
                                 discord.send_trail_update(
                                     exited,
                                     old_stop=old_tp3,
+                                    asset_class=asset_class,
                                 )
 
                             # Clean up private attributes
@@ -328,10 +329,14 @@ def main():
                                 f"*(Original thread unavailable)*\n\n"
                                 f"{msg}"
                             )
-                            discord.send_message(recovery_msg)
+                            discord.send_message(recovery_msg, asset_class=asset_class)
                         else:
                             # Reply in thread if available
-                            discord.send_message(msg, thread_id=exited.discord_thread_id)
+                            discord.send_message(
+                                msg,
+                                thread_id=exited.discord_thread_id,
+                                asset_class=asset_class,
+                            )
 
                         # Remove exited signals from expiration checking
                         if exited in active_signals:
@@ -358,6 +363,7 @@ def main():
                                 f"⏳ **SIGNAL EXPIRED: {symbol}** ⏳\n"
                                 f"Signal from {sig.ds} expired (24h Limit).",
                                 thread_id=sig.discord_thread_id,
+                                asset_class=asset_class,
                             )
 
             except Exception as e:

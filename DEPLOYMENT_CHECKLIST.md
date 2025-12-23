@@ -33,10 +33,12 @@ Use this checklist before deploying Crypto Sentinel to production.
 
 - [ ] Created ALPACA_API_KEY secret
 - [ ] Created ALPACA_SECRET_KEY secret
-- [ ] Created DISCORD_WEBHOOK_URL secret
+- [ ] Created TEST_DISCORD_WEBHOOK secret
 - [ ] Created GOOGLE_CLOUD_PROJECT secret
 - [ ] Created ALPACA_PAPER_TRADING secret
-- [ ] Created MOCK_DISCORD secret
+- [ ] Created TEST_MODE secret
+- [ ] (Optional) Created LIVE_CRYPTO_DISCORD_WEBHOOK_URL secret (for production)
+- [ ] (Optional) Created LIVE_STOCK_DISCORD_WEBHOOK_URL secret (for production)
 - [ ] Verified all secrets accessible via gcloud
 
 ## ✅ Local Testing

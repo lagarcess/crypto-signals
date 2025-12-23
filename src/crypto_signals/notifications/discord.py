@@ -1,17 +1,16 @@
 """
 Discord Notification Service.
 
-This module handles sending formatted trade signals to a Discord Webhook.
-It supports a mock mode for local development and testing to prevent spamming
-real channels.
+This module handles sending formatted trade signals to Discord Webhooks.
+It supports multi-webhook routing based on TEST_MODE and asset class.
 """
 
 import logging
 from typing import Optional
 
 import requests
-from crypto_signals.config import get_settings
-from crypto_signals.domain.schemas import Signal
+from crypto_signals.config import Settings, get_settings
+from crypto_signals.domain.schemas import AssetClass, Signal
 
 logger = logging.getLogger(__name__)
 
@@ -20,24 +19,51 @@ class DiscordClient:
     """
     Client for interacting with Discord Webhooks.
 
-    Supports threaded signal lifecycle where initial signals return a thread_id
-    that can be used for subsequent lifecycle updates (TP hits, invalidations, etc.).
+    Supports context-aware routing based on TEST_MODE and asset class:
+    - TEST_MODE=True: All traffic routes to TEST_DISCORD_WEBHOOK
+    - TEST_MODE=False: Routes by asset class to LIVE_CRYPTO/LIVE_STOCK webhooks
+    - System messages (no asset_class): Always route to TEST_DISCORD_WEBHOOK
     """
 
-    def __init__(
-        self, webhook_url: Optional[str] = None, mock_mode: Optional[bool] = None
-    ):
+    def __init__(self, settings: Settings | None = None):
         """
         Initialize the DiscordClient.
 
         Args:
-            webhook_url: Optional override for webhook URL. Defaults to config settings.
-            mock_mode: Optional override for mock mode. Defaults to config settings.
+            settings: Optional Settings object for routing. Defaults to get_settings().
         """
-        settings = get_settings()
-        self.webhook_url = webhook_url or settings.DISCORD_WEBHOOK_URL
-        # Explicit check for None to allow passing False
-        self.mock_mode = mock_mode if mock_mode is not None else settings.MOCK_DISCORD
+        self.settings = settings or get_settings()
+
+    def _get_webhook_url(self, asset_class: AssetClass | None = None) -> str | None:
+        """
+        Determine the correct webhook URL based on TEST_MODE and asset class.
+
+        Routing Matrix:
+        - TEST_MODE=True: Always returns TEST_DISCORD_WEBHOOK
+        - TEST_MODE=False + CRYPTO: Returns LIVE_CRYPTO_DISCORD_WEBHOOK_URL
+        - TEST_MODE=False + EQUITY: Returns LIVE_STOCK_DISCORD_WEBHOOK_URL
+        - No asset_class (system messages): Returns TEST_DISCORD_WEBHOOK
+
+        Args:
+            asset_class: Optional asset class for routing (CRYPTO or EQUITY)
+
+        Returns:
+            Webhook URL string, or None if not configured
+        """
+        # TEST_MODE: All traffic goes to test webhook
+        if self.settings.TEST_MODE:
+            return self.settings.TEST_DISCORD_WEBHOOK.get_secret_value()
+
+        # LIVE MODE: Route by asset class
+        if asset_class == AssetClass.CRYPTO:
+            webhook = self.settings.LIVE_CRYPTO_DISCORD_WEBHOOK_URL
+            return webhook.get_secret_value() if webhook else None
+        elif asset_class == AssetClass.EQUITY:
+            webhook = self.settings.LIVE_STOCK_DISCORD_WEBHOOK_URL
+            return webhook.get_secret_value() if webhook else None
+
+        # Fallback for system messages (no asset class) - use test webhook
+        return self.settings.TEST_DISCORD_WEBHOOK.get_secret_value()
 
     def send_signal(
         self, signal: Signal, thread_name: Optional[str] = None
@@ -56,21 +82,20 @@ class DiscordClient:
         Returns:
             Optional[str]: The thread_id (message ID) if successful, None otherwise.
         """
-        if self.mock_mode:
-            # Return a mock thread ID for testing purposes
-            mock_thread_id = f"mock_thread_{signal.signal_id[:8]}"
-            logger.info(
-                f"MOCK DISCORD: Would send signal for {signal.symbol}: "
-                f"{signal.pattern_name} (thread_id: {mock_thread_id})"
+        webhook_url = self._get_webhook_url(signal.asset_class)
+        if not webhook_url:
+            logger.critical(
+                f"CRITICAL: Routing failed for {signal.asset_class}. "
+                "No webhook configured for this path."
             )
-            return mock_thread_id
+            return None
 
         message = self._format_message(signal)
         if thread_name:
             message["thread_name"] = thread_name
 
         # Append ?wait=true to get the full Message object with ID
-        url = f"{self.webhook_url}?wait=true"
+        url = f"{webhook_url}?wait=true"
 
         try:
             response = requests.post(url, json=message, timeout=5.0)
@@ -90,7 +115,13 @@ class DiscordClient:
             logger.error(f"Failed to send Discord notification: {str(e)}")
             return None
 
-    def send_message(self, content: str, thread_id: Optional[str] = None) -> bool:
+    def send_message(
+        self,
+        content: str,
+        thread_id: Optional[str] = None,
+        thread_name: Optional[str] = None,
+        asset_class: AssetClass | None = None,
+    ) -> bool:
         """
         Send a generic text message to Discord, optionally as a reply in a thread.
 
@@ -98,34 +129,42 @@ class DiscordClient:
             content: The message content.
             thread_id: Optional thread ID to reply within an existing thread.
                        If provided, the message appears as a reply in that thread.
+            thread_name: Optional thread name for Forum channels. Creates a new thread
+                         with this name. Ignored if thread_id is provided.
+            asset_class: Optional asset class for routing. If None, routes to test webhook.
 
         Returns:
             bool: True if the message was sent successfully, False otherwise.
         """
-        if self.mock_mode:
-            if thread_id:
-                logger.info(
-                    f"MOCK DISCORD: Replying to thread {thread_id} with: {content}"
-                )
-            else:
-                logger.info(f"MOCK DISCORD: Would send message: {content}")
-            return True
+        webhook_url = self._get_webhook_url(asset_class)
+        if not webhook_url:
+            logger.critical(
+                f"CRITICAL: Routing failed for {asset_class}. "
+                "No webhook configured for this path."
+            )
+            return False
 
         payload = {
             "content": content,
             "username": "Crypto Sentinel",
         }
 
+        # For Forum channels: add thread_name to create a new thread
+        if thread_name and not thread_id:
+            payload["thread_name"] = thread_name
+
         # Build URL with optional thread_id query parameter
-        url = self.webhook_url
+        url = webhook_url
         if thread_id:
-            url = f"{self.webhook_url}?thread_id={thread_id}"
+            url = f"{webhook_url}?thread_id={thread_id}"
 
         try:
             response = requests.post(url, json=payload, timeout=5.0)
             response.raise_for_status()
             if thread_id:
                 logger.info(f"Sent reply to thread {thread_id} on Discord.")
+            elif thread_name:
+                logger.info(f"Created new thread '{thread_name}' on Discord.")
             else:
                 logger.info("Sent generic message to Discord.")
             return True
@@ -142,13 +181,19 @@ class DiscordClient:
                 logger.error(f"Failed to send Discord notification: {str(e)}")
             return False
 
-    def send_trail_update(self, signal: Signal, old_stop: float) -> bool:
+    def send_trail_update(
+        self,
+        signal: Signal,
+        old_stop: float,
+        asset_class: AssetClass | None = None,
+    ) -> bool:
         """
         Send a trail update notification when the Runner stop moves significantly.
 
         Args:
             signal: Signal with updated take_profit_3 (new trailing stop)
             old_stop: Previous trailing stop value (last notified value for UX continuity)
+            asset_class: Optional asset class for routing. Defaults to signal.asset_class.
 
         Returns:
             bool: True if the message was sent successfully, False otherwise.
@@ -167,7 +212,17 @@ class DiscordClient:
             f"New Stop: ${new_stop:,.2f} {direction}\n"
             f"Previous: ${old_stop:,.2f}"
         )
-        return self.send_message(content, thread_id=signal.discord_thread_id)
+
+        # Use provided asset_class, or fall back to signal's asset_class
+        effective_asset_class = (
+            asset_class if asset_class is not None else signal.asset_class
+        )
+
+        return self.send_message(
+            content,
+            thread_id=signal.discord_thread_id,
+            asset_class=effective_asset_class,
+        )
 
     def _format_message(self, signal: Signal) -> dict:
         """

@@ -36,10 +36,16 @@ gcloud config set project $GCP_PROJECT
 # Create secrets in Secret Manager
 echo -n "your-alpaca-api-key" | gcloud secrets create ALPACA_API_KEY --data-file=-
 echo -n "your-alpaca-secret-key" | gcloud secrets create ALPACA_SECRET_KEY --data-file=-
-echo -n "your-discord-webhook-url" | gcloud secrets create DISCORD_WEBHOOK_URL --data-file=-
 echo -n "$GCP_PROJECT" | gcloud secrets create GOOGLE_CLOUD_PROJECT --data-file=-
 echo -n "true" | gcloud secrets create ALPACA_PAPER_TRADING --data-file=-
-echo -n "false" | gcloud secrets create MOCK_DISCORD --data-file=-
+
+# Discord Webhooks (Multi-destination Routing)
+echo -n "your-test-discord-webhook" | gcloud secrets create TEST_DISCORD_WEBHOOK --data-file=-
+echo -n "true" | gcloud secrets create TEST_MODE --data-file=-  # Set to 'false' for production
+
+# Production webhooks (required when TEST_MODE=false)
+# echo -n "your-crypto-discord-webhook" | gcloud secrets create LIVE_CRYPTO_DISCORD_WEBHOOK_URL --data-file=-
+# echo -n "your-stock-discord-webhook" | gcloud secrets create LIVE_STOCK_DISCORD_WEBHOOK_URL --data-file=-
 
 # Verify secrets
 gcloud secrets list
@@ -84,7 +90,10 @@ gcloud run jobs create crypto-signals-job \
     --memory=1Gi \
     --cpu=1 \
     --set-env-vars=GOOGLE_CLOUD_PROJECT=$GCP_PROJECT \
-    --set-secrets=ALPACA_API_KEY=ALPACA_API_KEY:latest,ALPACA_SECRET_KEY=ALPACA_SECRET_KEY:latest,DISCORD_WEBHOOK_URL=DISCORD_WEBHOOK_URL:latest,ALPACA_PAPER_TRADING=ALPACA_PAPER_TRADING:latest,MOCK_DISCORD=MOCK_DISCORD:latest
+    --set-secrets=ALPACA_API_KEY=ALPACA_API_KEY:latest,ALPACA_SECRET_KEY=ALPACA_SECRET_KEY:latest,TEST_DISCORD_WEBHOOK=TEST_DISCORD_WEBHOOK:latest,TEST_MODE=TEST_MODE:latest,ALPACA_PAPER_TRADING=ALPACA_PAPER_TRADING:latest
+
+# For production with separate crypto/stock webhooks, add:
+# --set-secrets=...,LIVE_CRYPTO_DISCORD_WEBHOOK_URL=LIVE_CRYPTO_DISCORD_WEBHOOK_URL:latest,LIVE_STOCK_DISCORD_WEBHOOK_URL=LIVE_STOCK_DISCORD_WEBHOOK_URL:latest
 
 # Test the job manually
 gcloud run jobs execute crypto-signals-job --region=us-central1
@@ -179,7 +188,7 @@ gcloud run jobs create crypto-signals-healthcheck \
     --memory=256Mi \
     --cpu=0.5 \
     --set-env-vars=GOOGLE_CLOUD_PROJECT=$GCP_PROJECT \
-    --set-secrets=ALPACA_API_KEY=ALPACA_API_KEY:latest,ALPACA_SECRET_KEY=ALPACA_SECRET_KEY:latest,DISCORD_WEBHOOK_URL=DISCORD_WEBHOOK_URL:latest,MOCK_DISCORD=MOCK_DISCORD:latest
+    --set-secrets=ALPACA_API_KEY=ALPACA_API_KEY:latest,ALPACA_SECRET_KEY=ALPACA_SECRET_KEY:latest,TEST_DISCORD_WEBHOOK=TEST_DISCORD_WEBHOOK:latest,TEST_MODE=TEST_MODE:latest
 
 # Test health check
 gcloud run jobs execute crypto-signals-healthcheck --region=us-central1
@@ -202,9 +211,9 @@ GOOGLE_CLOUD_PROJECT=your-project-id
 GOOGLE_APPLICATION_CREDENTIALS=./secrets/gcp-key.json
 ALPACA_API_KEY=your-key
 ALPACA_SECRET_KEY=your-secret
-DISCORD_WEBHOOK_URL=your-webhook-url
+TEST_DISCORD_WEBHOOK=your-test-webhook-url
+TEST_MODE=true
 ALPACA_PAPER_TRADING=true
-MOCK_DISCORD=true
 DISABLE_SECRET_MANAGER=true
 EOF
 
