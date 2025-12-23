@@ -1,23 +1,334 @@
 """
-Structured Logging Utilities.
+Observability Module with Rich Integration.
 
-This module provides structured logging capabilities for better observability
-in cloud environments. It adds contextual information and timing metrics
-to all log messages.
+This module provides structured logging, metrics collection, and terminal UI
+capabilities using Rich for beautiful, readable output. It transforms the
+terminal from a "wall of text" into a real-time dashboard.
+
+Key Features:
+- Color-coded log levels via RichHandler
+- Rich tracebacks with local variable inspection
+- Progress bars for portfolio processing
+- Structured tables for execution summaries
 """
 
 import time
 from contextlib import contextmanager
 from functools import wraps
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
 from loguru import logger
+from rich import traceback as rich_traceback
+from rich.console import Console
+from rich.panel import Panel
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TaskProgressColumn,
+    TextColumn,
+    TimeElapsedColumn,
+)
+from rich.table import Table
+from rich.theme import Theme
 
-# Remove default handler and add a new one that directs to stdout/stderr as appropriate
-# Note: In a library or shared module, we might want to avoid configuring sink globally,
-# but this looks like an application module.
-# For now, we will rely on default loguru configuration or let main.py configure it.
-# However, to ensure `logger` is available and works as expected, we import it.
+# =============================================================================
+# RICH CONFIGURATION
+# =============================================================================
+
+# Custom theme for consistent branding
+SENTINEL_THEME = Theme(
+    {
+        "info": "cyan",
+        "warning": "yellow",
+        "error": "bold red",
+        "critical": "bold white on red",
+        "success": "bold green",
+        "symbol": "bold magenta",
+        "signal": "bold cyan",
+    }
+)
+
+# Global console instance for UI elements
+console = Console(theme=SENTINEL_THEME)
+
+# Install rich tracebacks globally (show_locals=True for debugging "God Mode")
+rich_traceback.install(console=console, show_locals=True, width=120)
+
+
+def configure_logging(level: str = "INFO") -> None:
+    """
+    Configure loguru to use Rich for beautiful terminal output.
+
+    This function should be called at application startup to enable
+    color-coded logs with automatic column sizing.
+
+    Args:
+        level: Minimum log level to display (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+    """
+    # Remove all existing handlers
+    logger.remove()
+
+    # Add Rich-formatted handler
+    logger.add(
+        _rich_sink,
+        format="{message}",
+        level=level,
+        colorize=False,  # Rich handles colors
+    )
+
+
+def _rich_sink(message) -> None:
+    """
+    Custom sink function for loguru that formats output through Rich.
+
+    This provides color-coded log levels and automatic column sizing.
+    """
+    record = message.record
+    level = record["level"].name
+
+    # Map loguru levels to Rich styles
+    level_styles = {
+        "TRACE": "dim",
+        "DEBUG": "dim cyan",
+        "INFO": "green",
+        "SUCCESS": "bold green",
+        "WARNING": "yellow",
+        "ERROR": "bold red",
+        "CRITICAL": "bold white on red",
+    }
+
+    style = level_styles.get(level, "")
+    timestamp = record["time"].strftime("%Y-%m-%d %H:%M:%S")
+
+    # Format: timestamp | level | message
+    console.print(
+        f"[dim]{timestamp}[/dim] | [{style}]{level:8}[/{style}] | {record['message']}"
+    )
+
+
+# =============================================================================
+# PROGRESS VISUALIZATION
+# =============================================================================
+
+
+@contextmanager
+def create_portfolio_progress(
+    total: int, description: str = "Processing portfolio..."
+) -> Iterator[Tuple[Progress, Any]]:
+    """
+    Create a Rich progress bar for portfolio processing.
+
+    Args:
+        total: Total number of items to process
+        description: Initial description text
+
+    Yields:
+        Tuple of (Progress instance, task_id) for updating progress
+
+    Example:
+        with create_portfolio_progress(len(portfolio)) as (progress, task):
+            for symbol in portfolio:
+                progress.update(task, description=f"Analyzing {symbol}...")
+                # ... process symbol ...
+                progress.advance(task)
+    """
+    progress = Progress(
+        SpinnerColumn(),
+        TextColumn("[bold blue]{task.description}"),
+        BarColumn(bar_width=40),
+        TaskProgressColumn(),
+        TimeElapsedColumn(),
+        console=console,
+        transient=False,  # Keep progress bar visible after completion
+    )
+
+    with progress:
+        task = progress.add_task(description, total=total)
+        yield progress, task
+
+
+def create_status_spinner(description: str = "Processing...") -> Progress:
+    """
+    Create a simple status spinner for indeterminate operations.
+
+    Returns:
+        Progress instance configured as a spinner
+    """
+    return Progress(
+        SpinnerColumn(),
+        TextColumn("[bold cyan]{task.description}"),
+        console=console,
+        transient=True,
+    )
+
+
+# =============================================================================
+# EXECUTION SUMMARY TABLE
+# =============================================================================
+
+
+def create_execution_summary_table(
+    total_duration: float,
+    symbols_processed: int,
+    total_symbols: int,
+    signals_found: int,
+    errors_encountered: int,
+    symbol_results: Optional[List[Dict[str, Any]]] = None,
+) -> Table:
+    """
+    Create a Rich table for the execution summary.
+
+    Args:
+        total_duration: Total execution time in seconds
+        symbols_processed: Number of symbols successfully processed
+        total_symbols: Total number of symbols in portfolio
+        signals_found: Number of trading signals detected
+        errors_encountered: Number of error occurrences
+        symbol_results: Optional list of per-symbol results for detailed table
+
+    Returns:
+        Rich Table object ready to be printed
+    """
+    # Summary statistics table
+    summary_table = Table(
+        title="📊 EXECUTION SUMMARY",
+        title_style="bold cyan",
+        show_header=True,
+        header_style="bold magenta",
+    )
+
+    summary_table.add_column("Metric", style="cyan", width=25)
+    summary_table.add_column("Value", justify="right", style="green", width=20)
+
+    # Calculate success rate
+    success_rate = (
+        (symbols_processed - errors_encountered) / symbols_processed * 100
+        if symbols_processed > 0
+        else 0
+    )
+
+    summary_table.add_row("⏱️  Total Duration", f"{total_duration:.2f}s")
+    summary_table.add_row("📈 Symbols Processed", f"{symbols_processed}/{total_symbols}")
+    summary_table.add_row("🎯 Signals Found", str(signals_found))
+    summary_table.add_row(
+        "❌ Errors Encountered",
+        f"[red]{errors_encountered}[/red]" if errors_encountered > 0 else "0",
+    )
+    summary_table.add_row("✅ Success Rate", f"{success_rate:.1f}%")
+
+    return summary_table
+
+
+def create_symbol_results_table(
+    results: List[Dict[str, Any]],
+) -> Table:
+    """
+    Create a detailed table of per-symbol processing results.
+
+    Args:
+        results: List of dicts with keys: symbol, asset_class, status, pattern, duration
+
+    Returns:
+        Rich Table with symbol-level details
+    """
+    table = Table(
+        title="📋 Symbol Processing Details",
+        title_style="bold blue",
+        show_header=True,
+        header_style="bold white",
+    )
+
+    table.add_column("Symbol", style="magenta", width=12)
+    table.add_column("Asset Class", style="cyan", width=10)
+    table.add_column("Status", width=12)
+    table.add_column("Pattern", style="yellow", width=20)
+    table.add_column("Duration", justify="right", width=10)
+
+    for r in results:
+        status = r.get("status", "OK")
+        status_styled = (
+            f"[green]✅ {status}[/green]" if status == "OK" else f"[red]❌ {status}[/red]"
+        )
+        pattern = r.get("pattern", "-")
+        pattern_styled = f"[bold cyan]{pattern}[/bold cyan]" if pattern != "-" else "-"
+
+        table.add_row(
+            r.get("symbol", ""),
+            r.get("asset_class", ""),
+            status_styled,
+            pattern_styled,
+            f"{r.get('duration', 0):.2f}s",
+        )
+
+    return table
+
+
+# =============================================================================
+# ERROR HIGHLIGHTING
+# =============================================================================
+
+
+def log_critical_situation(
+    situation: str,
+    details: str,
+    suggestion: Optional[str] = None,
+) -> None:
+    """
+    Display a highlighted panel for critical error situations.
+
+    Args:
+        situation: Short description (e.g., "DATABASE DRIFT DETECTED")
+        details: Detailed error information
+        suggestion: Optional suggestion for resolution
+    """
+    content = f"[bold red]{situation}[/bold red]\n\n{details}"
+
+    if suggestion:
+        content += f"\n\n[dim]💡 Suggestion: {suggestion}[/dim]"
+
+    panel = Panel(
+        content,
+        title="⚠️ CRITICAL SITUATION",
+        border_style="red",
+        padding=(1, 2),
+    )
+    console.print(panel)
+
+
+def log_validation_error(doc_id: str, error: Exception) -> None:
+    """
+    Display highlighted panel for validation errors (database drift).
+
+    Args:
+        doc_id: Document ID that failed validation
+        error: The validation error that occurred
+    """
+    log_critical_situation(
+        situation="DATABASE DRIFT DETECTED",
+        details=f"Document: [bold]{doc_id}[/bold]\n\nError: {error}",
+        suggestion="Legacy document will be auto-deleted. Check data migration status.",
+    )
+
+
+def log_api_error(endpoint: str, error: Exception) -> None:
+    """
+    Display highlighted panel for API errors.
+
+    Args:
+        endpoint: API endpoint that failed
+        error: The API error that occurred
+    """
+    log_critical_situation(
+        situation="API ERROR",
+        details=f"Endpoint: [bold]{endpoint}[/bold]\n\nError: {error}",
+        suggestion="Check API credentials and rate limits.",
+    )
+
+
+# =============================================================================
+# STRUCTURED LOGGER (Legacy Compatibility)
+# =============================================================================
 
 
 class StructuredLogger:
@@ -28,23 +339,16 @@ class StructuredLogger:
         Initialize structured logger.
 
         Args:
-            name: Logger name (typically __name__) - Ignored by loguru generally,
-                  but kept for compatibility.
+            name: Logger name (typically __name__)
             context: Default context to include in all log messages
         """
         self.context = context or {}
-        # Bind the initial context
         self.logger = logger.bind(**self.context)
 
     def _format_message(
         self, msg: str, extra_context: Optional[Dict[str, Any]] = None
     ) -> str:
         """Format message with context."""
-        # Loguru handles structure via .bind(), but to preserve the existing
-        # "msg | k=v" text format in the message itself (which the user might rely on),
-        # we can still do this formatting.
-        # Alternatively, we could trust loguru's sink formatting, but that changes output.
-        # We will maintain existing behavior of modifying the message string.
         context = {**self.context, **(extra_context or {})}
         if context:
             context_str = " | ".join(f"{k}={v}" for k, v in context.items())
@@ -53,7 +357,6 @@ class StructuredLogger:
 
     def debug(self, msg: str, **context):
         """Log debug message with context."""
-        # We use the bound logger, but also format the message to keep compat
         self.logger.debug(self._format_message(msg, context))
 
     def info(self, msg: str, **context):
@@ -66,8 +369,6 @@ class StructuredLogger:
 
     def error(self, msg: str, exc_info=False, **context):
         """Log error message with context."""
-        # Loguru handles exceptions with opt(exception=True) or just passing exception object
-        # but exc_info=True is standard logging. Loguru supports it via .opt(exception=...)
         if exc_info:
             self.logger.opt(exception=True).error(self._format_message(msg, context))
         else:
@@ -83,7 +384,6 @@ class StructuredLogger:
     def add_context(self, **context):
         """Add persistent context to this logger."""
         self.context.update(context)
-        # Re-bind logger with new context
         self.logger = logger.bind(**self.context)
 
     def remove_context(self, *keys):
@@ -91,6 +391,11 @@ class StructuredLogger:
         for key in keys:
             self.context.pop(key, None)
         self.logger = logger.bind(**self.context)
+
+
+# =============================================================================
+# TIMING UTILITIES
+# =============================================================================
 
 
 @contextmanager
@@ -107,8 +412,6 @@ def log_execution_time(logger_instance: Any, operation: str, **context):
     full_context = f" | {context_str}" if context_str else ""
 
     start_time = time.time()
-    # Support both our StructuredLogger and raw loguru/logging loggers
-    # StructuredLogger has .info(), loguru has .info()
     logger_instance.info(f"Starting: {operation}{full_context}")
 
     try:
@@ -120,15 +423,12 @@ def log_execution_time(logger_instance: Any, operation: str, **context):
         if hasattr(logger_instance, "opt"):  # Loguru
             logger_instance.opt(exception=True).error(msg)
         elif hasattr(logger_instance, "error"):
-            # Check if it accepts exc_info (std logging or StructuredLogger)
-            # StructuredLogger.error signature: (msg, exc_info=False, **context)
             try:
                 logger_instance.error(msg, exc_info=True)
             except TypeError:
-                # Fallback if logger doesn't support exc_info arg (unlikely for std/wrapper)
                 logger_instance.error(msg)
         else:
-            print(f"ERROR: {msg}")  # Fallback
+            print(f"ERROR: {msg}")
 
         raise
     else:
@@ -138,7 +438,7 @@ def log_execution_time(logger_instance: Any, operation: str, **context):
         )
 
 
-def timed(operation_name: Optional[str] = None):
+def timed(operation_name: Optional[str] = None) -> Callable:
     """
     Decorator to automatically log execution time of a function.
     """
@@ -148,7 +448,6 @@ def timed(operation_name: Optional[str] = None):
 
         @wraps(func)
         def wrapper(*args, **kwargs):
-            # Use loguru logger directly
             start_time = time.time()
 
             try:
@@ -167,6 +466,11 @@ def timed(operation_name: Optional[str] = None):
         return wrapper
 
     return decorator
+
+
+# =============================================================================
+# METRICS COLLECTOR
+# =============================================================================
 
 
 class MetricsCollector:
@@ -239,19 +543,38 @@ class MetricsCollector:
         return summary
 
     def log_summary(self, logger_instance: Any):
-        """Log metrics summary."""
+        """Log metrics summary using Rich table."""
         summary = self.get_summary()
         if not summary:
             logger_instance.info("No metrics recorded")
             return
 
-        logger_instance.info("=== METRICS SUMMARY ===")
+        # Create Rich table for metrics
+        table = Table(
+            title="📈 METRICS SUMMARY",
+            title_style="bold green",
+            show_header=True,
+            header_style="bold white",
+        )
+
+        table.add_column("Operation", style="cyan", width=20)
+        table.add_column("Total", justify="right", width=8)
+        table.add_column("Success", justify="right", style="green", width=8)
+        table.add_column("Failed", justify="right", style="red", width=8)
+        table.add_column("Rate", justify="right", width=10)
+        table.add_column("Avg Time", justify="right", width=10)
+
         for operation, stats in summary.items():
-            logger_instance.info(
-                f"{operation}: {stats['total_operations']} ops, "
-                f"{stats['success_rate']:.1f}% success, "
-                f"avg {stats['avg_duration_seconds']}s"
+            table.add_row(
+                operation,
+                str(stats["total_operations"]),
+                str(stats["success_count"]),
+                str(stats["failure_count"]),
+                f"{stats['success_rate']:.1f}%",
+                f"{stats['avg_duration_seconds']}s",
             )
+
+        console.print(table)
 
 
 # Global metrics collector instance

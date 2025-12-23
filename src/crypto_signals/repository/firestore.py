@@ -4,9 +4,11 @@ from datetime import datetime, timedelta, timezone
 
 from crypto_signals.config import get_settings
 from crypto_signals.domain.schemas import Signal, SignalStatus
+from crypto_signals.observability import log_validation_error
 from google.cloud import firestore
 from google.cloud.firestore import FieldFilter
 from loguru import logger
+from pydantic import ValidationError
 
 
 class SignalRepository:
@@ -49,8 +51,12 @@ class SignalRepository:
         for doc in query.stream():
             try:
                 results.append(Signal(**doc.to_dict()))
-            except Exception as e:
-                logger.error(f"Failed to parse signal {doc.id}: {e}")
+            except ValidationError as e:
+                # Display Rich error panel for database drift
+                log_validation_error(doc.id, e)
+                # Auto-delete invalid legacy document
+                doc.reference.delete()
+                logger.info(f"Deleted invalid legacy signal: {doc.id}")
 
         return results
 
@@ -93,4 +99,33 @@ class SignalRepository:
             batch.commit()
 
         logger.info(f"Cleanup complete: Deleted {count} expired signals")
+        return count
+
+    def flush_all_signals(self) -> int:
+        """Delete ALL signals in the collection. Use with caution!
+
+        Returns:
+            int: Number of documents deleted.
+        """
+        logger.warning("FLUSH ALL: Deleting all documents from live_signals collection")
+
+        # Batch delete for efficiency
+        batch = self.db.batch()
+        count = 0
+
+        for doc in self.db.collection(self.collection_name).stream():
+            batch.delete(doc.reference)
+            count += 1
+
+            # Firestore batch limit is 500 operations
+            if count >= 400:
+                batch.commit()
+                batch = self.db.batch()
+                logger.info(f"Flushed {count} signals (batch)")
+
+        # Commit remaining deletes if any
+        if count > 0 and count % 400 != 0:
+            batch.commit()
+
+        logger.warning(f"FLUSH ALL complete: Deleted {count} total signals")
         return count
