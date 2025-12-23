@@ -8,6 +8,7 @@ import pytest
 from crypto_signals.domain.schemas import (
     AssetClass,
     ExitReason,
+    OrderSide,
     Signal,
     SignalStatus,
 )
@@ -587,3 +588,186 @@ def test_check_exits_trail_not_updated_for_waiting_status(
     # Verification: No exit, no trail update (WAITING status doesn't get trailing)
     assert len(result) == 0
     assert signal.take_profit_3 == 105.0  # Unchanged
+
+
+# =============================================================================
+# SHORT POSITION TRAILING STOP TESTS
+# =============================================================================
+
+
+def test_check_exits_short_trail_update_lower(
+    signal_generator, mock_market_provider, mock_analyzer_cls
+):
+    """Test that Short position take_profit_3 is updated when Chandelier Exit moves LOWER."""
+    # Setup Active SHORT Signal in Runner phase (TP1_HIT)
+    signal = Signal(
+        signal_id="sig_short_trail_1",
+        ds=date(2023, 1, 1),
+        strategy_id="strat_1",
+        symbol="BTC/USD",
+        asset_class=AssetClass.CRYPTO,
+        entry_price=100.0,  # Shorted at $100
+        pattern_name="TEST",
+        suggested_stop=110.0,  # Stop loss ABOVE entry for short
+        status=SignalStatus.TP1_HIT,
+        take_profit_1=90.0,  # TP1 for short is BELOW entry
+        take_profit_2=80.0,
+        take_profit_3=95.0,  # Current trailing stop (above current price)
+        invalidation_price=None,  # Avoid Long-biased invalidation check triggering
+        side=OrderSide.SELL,  # SHORT position
+    )
+
+    # Setup Market Data: Chandelier Exit Short is LOWER than current TP3
+    # Price is still below Chandelier (no exit triggered for short)
+    # IMPORTANT: For Short TP test isolation:
+    # - low must be > take_profit_2 (80) to avoid directional TP2 trigger
+    # - close must be < chandelier_exit_short (92) to avoid TP3 exit
+    # - close must be < invalidation_price (if set) to avoid Short invalidation
+    df = pd.DataFrame(
+        {
+            "open": [85.0],
+            "high": [88.0],
+            "low": [82.0],  # Above take_profit_2 (80) - no Short TP2 trigger
+            "close": [85.0],  # Below Chandelier Exit Short (92) - no TP3 exit
+            "volume": [1000.0],
+            "bearish_engulfing": [False],
+            "RSI_14": [50.0],
+            "ADX_14": [20.0],
+            "CHANDELIER_EXIT_LONG": [80.0],  # Not used for short
+            "CHANDELIER_EXIT_SHORT": [92.0],  # Lower than current TP3 (95)
+        },
+        index=[pd.Timestamp("2023-01-02")],
+    )
+
+    mock_analyzer_instance = MagicMock()
+    mock_analyzer_cls.return_value = mock_analyzer_instance
+    mock_analyzer_instance.check_patterns.return_value = df
+
+    # Execution
+    result = signal_generator.check_exits(
+        [signal], "BTC/USD", AssetClass.CRYPTO, dataframe=df
+    )
+
+    # Verification
+    assert len(result) == 1
+    assert result[0].take_profit_3 == 92.0  # Updated to new (lower) Chandelier Exit
+    assert hasattr(result[0], "_trail_updated")
+    assert result[0]._trail_updated is True
+    assert hasattr(result[0], "_previous_tp3")
+    assert result[0]._previous_tp3 == 95.0  # Previous value stored
+    assert result[0].status == SignalStatus.TP1_HIT  # Status unchanged
+
+
+def test_check_exits_short_trail_not_updated_when_higher(
+    signal_generator, mock_market_provider, mock_analyzer_cls
+):
+    """Test that Short position take_profit_3 is NOT updated when Chandelier Exit is HIGHER."""
+    # Setup Active SHORT Signal in Runner phase (TP2_HIT)
+    signal = Signal(
+        signal_id="sig_short_trail_2",
+        ds=date(2023, 1, 1),
+        strategy_id="strat_1",
+        symbol="BTC/USD",
+        asset_class=AssetClass.CRYPTO,
+        entry_price=100.0,
+        pattern_name="TEST",
+        suggested_stop=110.0,
+        status=SignalStatus.TP2_HIT,
+        take_profit_1=90.0,
+        take_profit_2=80.0,
+        take_profit_3=85.0,  # Current trailing stop
+        invalidation_price=None,  # Avoid Long-biased invalidation check
+        side=OrderSide.SELL,  # SHORT position
+    )
+
+    # Setup Market Data: Chandelier Exit Short is HIGHER than current TP3
+    # For shorts, higher stop is unfavorable (would lock in less profit)
+    # IMPORTANT: For Short TP test isolation:
+    # - low must be > take_profit_2 (80) to avoid directional TP2 trigger
+    df = pd.DataFrame(
+        {
+            "open": [82.0],
+            "high": [84.0],
+            "low": [81.0],  # Above take_profit_2 (80) - no Short TP2 trigger
+            "close": [83.0],  # Below Chandelier (no exit)
+            "volume": [1000.0],
+            "bearish_engulfing": [False],
+            "RSI_14": [50.0],
+            "ADX_14": [20.0],
+            "CHANDELIER_EXIT_LONG": [78.0],
+            "CHANDELIER_EXIT_SHORT": [88.0],  # Higher than current TP3 (85) - unfavorable
+        },
+        index=[pd.Timestamp("2023-01-02")],
+    )
+
+    mock_analyzer_instance = MagicMock()
+    mock_analyzer_cls.return_value = mock_analyzer_instance
+    mock_analyzer_instance.check_patterns.return_value = df
+
+    # Execution
+    result = signal_generator.check_exits(
+        [signal], "BTC/USD", AssetClass.CRYPTO, dataframe=df
+    )
+
+    # Verification: No signals should be returned (no exit, no trail update)
+    assert len(result) == 0
+    assert signal.take_profit_3 == 85.0  # Unchanged
+
+
+def test_check_exits_short_trail_initialization(
+    signal_generator, mock_market_provider, mock_analyzer_cls
+):
+    """Test that Short position initializes trailing stop when current TP3 is 0."""
+    # Setup Active SHORT Signal in Runner phase with NO trailing stop yet
+    signal = Signal(
+        signal_id="sig_short_trail_3",
+        ds=date(2023, 1, 1),
+        strategy_id="strat_1",
+        symbol="BTC/USD",
+        asset_class=AssetClass.CRYPTO,
+        entry_price=100.0,
+        pattern_name="TEST",
+        suggested_stop=110.0,
+        status=SignalStatus.TP1_HIT,
+        take_profit_1=90.0,
+        take_profit_2=80.0,
+        take_profit_3=None,  # No trailing stop set yet
+        invalidation_price=None,  # Avoid Long-biased invalidation check
+        side=OrderSide.SELL,  # SHORT position
+    )
+
+    # Setup Market Data: First Chandelier Exit value to initialize
+    # IMPORTANT: For Short TP test isolation:
+    # - low must be > take_profit_2 (80) to avoid directional TP2 trigger
+    # - close must be < chandelier_exit_short (93) to avoid TP3 exit
+    df = pd.DataFrame(
+        {
+            "open": [85.0],
+            "high": [87.0],
+            "low": [82.0],  # Above take_profit_2 (80) - no Short TP2 trigger
+            "close": [85.0],  # Below Chandelier Exit Short (93) - no TP3 exit
+            "volume": [1000.0],
+            "bearish_engulfing": [False],
+            "RSI_14": [50.0],
+            "ADX_14": [20.0],
+            "CHANDELIER_EXIT_LONG": [80.0],
+            "CHANDELIER_EXIT_SHORT": [93.0],  # Initial trailing stop value
+        },
+        index=[pd.Timestamp("2023-01-02")],
+    )
+
+    mock_analyzer_instance = MagicMock()
+    mock_analyzer_cls.return_value = mock_analyzer_instance
+    mock_analyzer_instance.check_patterns.return_value = df
+
+    # Execution
+    result = signal_generator.check_exits(
+        [signal], "BTC/USD", AssetClass.CRYPTO, dataframe=df
+    )
+
+    # Verification: Should initialize trailing stop
+    assert len(result) == 1
+    assert result[0].take_profit_3 == 93.0  # Initialized to Chandelier Exit Short
+    assert hasattr(result[0], "_trail_updated")
+    assert result[0]._trail_updated is True
+    assert result[0]._previous_tp3 == 0.0  # Previous was None/0
