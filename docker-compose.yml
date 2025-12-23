@@ -20,9 +20,12 @@ services:
       - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY}
       - ALPACA_PAPER_TRADING=${ALPACA_PAPER_TRADING:-true}
 
-      # Discord webhook
-      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL}
-      - MOCK_DISCORD=${MOCK_DISCORD:-false}
+      # Discord webhooks (Multi-destination routing)
+      - TEST_DISCORD_WEBHOOK=${TEST_DISCORD_WEBHOOK}
+      - TEST_MODE=${TEST_MODE:-true}
+      # Production webhooks (uncomment when TEST_MODE=false)
+      # - LIVE_CRYPTO_DISCORD_WEBHOOK_URL=${LIVE_CRYPTO_DISCORD_WEBHOOK_URL}
+      # - LIVE_STOCK_DISCORD_WEBHOOK_URL=${LIVE_STOCK_DISCORD_WEBHOOK_URL}
 
       # Optional: Disable Secret Manager for local testing
       - DISABLE_SECRET_MANAGER=true
@@ -71,8 +74,8 @@ services:
       - ALPACA_API_KEY=${ALPACA_API_KEY}
       - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY}
       - ALPACA_PAPER_TRADING=${ALPACA_PAPER_TRADING:-true}
-      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL}
-      - MOCK_DISCORD=${MOCK_DISCORD:-true}
+      - TEST_DISCORD_WEBHOOK=${TEST_DISCORD_WEBHOOK}
+      - TEST_MODE=${TEST_MODE:-true}
       - DISABLE_SECRET_MANAGER=true
 
     volumes:

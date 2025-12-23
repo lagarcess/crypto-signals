@@ -47,8 +47,7 @@ class SecretManager:
         # If we have a project ID, assume cloud deployment
         if self.project_id:
             logger.info(
-                "No .env file found, using Secret Manager for project: "
-                f"{self.project_id}"
+                f"No .env file found, using Secret Manager for project: {self.project_id}"
             )
             return True
 
@@ -136,7 +135,7 @@ class SecretManager:
 
         Args:
             secret_names: Dict mapping secret names to default values
-                         e.g., {"ALPACA_API_KEY": None, "MOCK_DISCORD": "false"}
+                         e.g., {"ALPACA_API_KEY": None, "TEST_MODE": "true"}
 
         Returns:
             bool: True if all required secrets loaded, False otherwise
@@ -191,10 +190,13 @@ def init_secrets() -> bool:
             "ALPACA_API_KEY": None,
             "ALPACA_SECRET_KEY": None,
             "GOOGLE_CLOUD_PROJECT": None,
-            "DISCORD_WEBHOOK_URL": None,
+            "TEST_DISCORD_WEBHOOK": None,
             # Optional secrets with defaults
             "ALPACA_PAPER_TRADING": "true",
-            "MOCK_DISCORD": "false",
+            "TEST_MODE": "true",
+            # Production webhooks (optional - required when TEST_MODE=false)
+            "LIVE_CRYPTO_DISCORD_WEBHOOK_URL": None,
+            "LIVE_STOCK_DISCORD_WEBHOOK_URL": None,
         }
 
         success = secret_manager.load_secrets_to_env(secrets)

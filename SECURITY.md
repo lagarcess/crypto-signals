@@ -28,7 +28,7 @@ This document outlines security considerations, best practices, and operational 
 **DO:**
 - ✅ Use `.env` files (git-ignored)
 - ✅ Set `DISABLE_SECRET_MANAGER=true`
-- ✅ Use mock mode for Discord (`MOCK_DISCORD=true`)
+- ✅ Use test mode for Discord (`TEST_MODE=true`)
 - ✅ Use paper trading account (`ALPACA_PAPER_TRADING=true`)
 
 **DON'T:**
@@ -50,7 +50,7 @@ This document outlines security considerations, best practices, and operational 
 # Store secrets
 gcloud secrets create ALPACA_API_KEY --data-file=-
 gcloud secrets create ALPACA_SECRET_KEY --data-file=-
-gcloud secrets create DISCORD_WEBHOOK_URL --data-file=-
+gcloud secrets create TEST_DISCORD_WEBHOOK --data-file=-
 
 # Grant access to service account
 gcloud secrets add-iam-policy-binding ALPACA_API_KEY \
@@ -85,7 +85,7 @@ RATE_LIMIT_DELAY=0.5       # Conservative rate limiting
 
 **Best Practices:**
 1. **Use Dedicated Webhook**: Create separate webhook for bot
-2. **Mock Mode**: Enable in development (`MOCK_DISCORD=true`)
+2. **Test Mode**: Enable in development (`TEST_MODE=true`)
 3. **Webhook Rotation**: Change webhook URL if compromised
 4. **Content Validation**: Never include sensitive data in messages
 
@@ -96,12 +96,11 @@ RATE_LIMIT_DELAY=0.5       # Conservative rate limiting
 
 **Mitigation:**
 ```python
-# health_check.py - FIXED
-# BAD: Exposes webhook URL in function signature
-client = DiscordClient(webhook_url=settings.DISCORD_WEBHOOK_URL)
+# BAD: Exposes webhook URL in code
+client = DiscordClient()  # Old pattern without settings
 
-# GOOD: Uses defaults from config
-client = DiscordClient()
+# GOOD: Uses Settings for routing
+client = DiscordClient(settings=settings)
 ```
 
 ## Container Security

@@ -156,32 +156,108 @@ def verify_bigquery(settings) -> bool:
 
 def verify_discord(settings) -> bool:
     """
-    Verify Discord Webhook connectivity using DiscordClient.
+    Verify Discord Webhook connectivity for all configured channels.
 
-    Sends a "System Online" notification to the configured webhook.
-    Respects MOCK_DISCORD setting.
+    Health check strategy (institutional-grade):
+    1. Validate URL format for all configured webhooks
+    2. Test actual connectivity to each webhook (GET request - no message sent to live)
+    3. Send comprehensive status report ONLY to TEST_DISCORD_WEBHOOK
+    4. Never send messages to production/live channels
+
+    This ensures health checks never pollute live/production channels while
+    still verifying they are operational.
 
     Returns:
-        bool: True if connection successful (or mock mode active)
+        bool: True if all configured webhooks are operational
 
     Raises:
         Exception: If connection fails
     """
+    import requests
+
     from crypto_signals.notifications.discord import DiscordClient
 
-    # Let DiscordClient use its defaults from settings
-    client = DiscordClient()
+    webhook_status = {}
 
-    msg = "✅ [Health Check] System is online and connected."
-    success = client.send_message(msg, thread_name="System Status")
+    # --- Step 1: Validate and test TEST_DISCORD_WEBHOOK ---
+    test_webhook_url = settings.TEST_DISCORD_WEBHOOK.get_secret_value()
+    try:
+        # GET request validates webhook exists without sending a message
+        response = requests.get(test_webhook_url, timeout=5.0)
+        if response.status_code == 200:
+            webhook_status["TEST_DISCORD_WEBHOOK"] = ("✅", "Operational")
+        else:
+            webhook_status["TEST_DISCORD_WEBHOOK"] = ("⚠️", f"HTTP {response.status_code}")
+    except requests.RequestException as e:
+        webhook_status["TEST_DISCORD_WEBHOOK"] = ("❌", f"Error: {str(e)[:50]}")
+
+    # --- Step 2: Validate LIVE_CRYPTO_DISCORD_WEBHOOK_URL (if configured) ---
+    if settings.LIVE_CRYPTO_DISCORD_WEBHOOK_URL:
+        crypto_url = settings.LIVE_CRYPTO_DISCORD_WEBHOOK_URL.get_secret_value()
+        try:
+            response = requests.get(crypto_url, timeout=5.0)
+            if response.status_code == 200:
+                webhook_status["LIVE_CRYPTO_WEBHOOK"] = ("✅", "Operational")
+            else:
+                webhook_status["LIVE_CRYPTO_WEBHOOK"] = (
+                    "⚠️",
+                    f"HTTP {response.status_code}",
+                )
+        except requests.RequestException as e:
+            webhook_status["LIVE_CRYPTO_WEBHOOK"] = ("❌", f"Error: {str(e)[:50]}")
+    else:
+        webhook_status["LIVE_CRYPTO_WEBHOOK"] = ("➖", "Not configured")
+
+    # --- Step 3: Validate LIVE_STOCK_DISCORD_WEBHOOK_URL (if configured) ---
+    if settings.LIVE_STOCK_DISCORD_WEBHOOK_URL:
+        stock_url = settings.LIVE_STOCK_DISCORD_WEBHOOK_URL.get_secret_value()
+        try:
+            response = requests.get(stock_url, timeout=5.0)
+            if response.status_code == 200:
+                webhook_status["LIVE_STOCK_WEBHOOK"] = ("✅", "Operational")
+            else:
+                webhook_status["LIVE_STOCK_WEBHOOK"] = (
+                    "⚠️",
+                    f"HTTP {response.status_code}",
+                )
+        except requests.RequestException as e:
+            webhook_status["LIVE_STOCK_WEBHOOK"] = ("❌", f"Error: {str(e)[:50]}")
+    else:
+        webhook_status["LIVE_STOCK_WEBHOOK"] = ("➖", "Not configured")
+
+    # --- Step 4: Build comprehensive status message ---
+    mode_str = "TEST" if settings.TEST_MODE else "LIVE"
+    status_lines = [
+        "✅ **[Health Check]** System is online",
+        f"**Mode:** {mode_str}",
+        "",
+        "**Webhook Status:**",
+    ]
+    for webhook_name, (emoji, status) in webhook_status.items():
+        status_lines.append(f"{emoji} `{webhook_name}`: {status}")
+
+    msg = "\n".join(status_lines)
+
+    # --- Step 5: Send report to TEST_DISCORD_WEBHOOK only ---
+    client = DiscordClient(settings=settings)
+    success = client.send_message(
+        msg,
+        thread_name="System Health Check",  # Required for Forum channels
+    )
 
     if not success:
-        print("❌ [Discord] Failed (Check logs for details)")
+        print("❌ [Discord] Failed to send health report to TEST_DISCORD_WEBHOOK")
         return False
 
-    status = "Mocked" if settings.MOCK_DISCORD else "Sent"
-    print(f"✅ [Discord] Connected ({status})")
-    return True
+    # --- Step 6: Print console status ---
+    print("✅ [Discord] Health report sent to TEST_DISCORD_WEBHOOK")
+    for webhook_name, (emoji, status) in webhook_status.items():
+        print(f"   {emoji} {webhook_name}: {status}")
+
+    # Check if any operational webhooks failed
+    all_operational = all(emoji in ("✅", "➖") for emoji, _ in webhook_status.values())
+
+    return all_operational
 
 
 def run_all_verifications() -> bool:

@@ -119,6 +119,7 @@ class DiscordClient:
         self,
         content: str,
         thread_id: Optional[str] = None,
+        thread_name: Optional[str] = None,
         asset_class: AssetClass | None = None,
     ) -> bool:
         """
@@ -128,6 +129,8 @@ class DiscordClient:
             content: The message content.
             thread_id: Optional thread ID to reply within an existing thread.
                        If provided, the message appears as a reply in that thread.
+            thread_name: Optional thread name for Forum channels. Creates a new thread
+                         with this name. Ignored if thread_id is provided.
             asset_class: Optional asset class for routing. If None, routes to test webhook.
 
         Returns:
@@ -146,6 +149,10 @@ class DiscordClient:
             "username": "Crypto Sentinel",
         }
 
+        # For Forum channels: add thread_name to create a new thread
+        if thread_name and not thread_id:
+            payload["thread_name"] = thread_name
+
         # Build URL with optional thread_id query parameter
         url = webhook_url
         if thread_id:
@@ -156,6 +163,8 @@ class DiscordClient:
             response.raise_for_status()
             if thread_id:
                 logger.info(f"Sent reply to thread {thread_id} on Discord.")
+            elif thread_name:
+                logger.info(f"Created new thread '{thread_name}' on Discord.")
             else:
                 logger.info("Sent generic message to Discord.")
             return True
