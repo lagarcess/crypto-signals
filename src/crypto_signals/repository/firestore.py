@@ -1,14 +1,12 @@
 """Firestore Repository for persisting signals."""
 
-import logging
 from datetime import datetime, timedelta, timezone
 
 from crypto_signals.config import get_settings
 from crypto_signals.domain.schemas import Signal, SignalStatus
 from google.cloud import firestore
 from google.cloud.firestore import FieldFilter
-
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 
 class SignalRepository:

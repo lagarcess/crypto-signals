@@ -7,19 +7,20 @@ data accumulation and manage storage costs. It should be run periodically
 (e.g., daily via cron or Cloud Scheduler).
 """
 
-import logging
 import sys
+
+from loguru import logger
 
 from crypto_signals.repository.firestore import SignalRepository
 from crypto_signals.secrets_manager import init_secrets
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout)],
+# Configure logging (optional if main configures it, but this is a script)
+logger.remove()
+logger.add(
+    sys.stdout,
+    format="{time:YYYY-MM-DD HH:mm:ss,SSS} - {name} - {level} - {message}",
+    level="INFO",
 )
-logger = logging.getLogger(__name__)
 
 
 def main():

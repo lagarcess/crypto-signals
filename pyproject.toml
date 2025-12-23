@@ -12,6 +12,7 @@ pydantic-settings = "^2.7.0"
 python-dotenv = "^1.0.0"
 # Alpaca Trading & Market Data
 alpaca-py = "^0.38.0"
+loguru = "^0.7.3"
 # Google Cloud Services
 google-cloud-firestore = "^2.22.0"
 google-cloud-bigquery = "^3.27.0"
@@ -34,7 +35,6 @@ dev = [
     "pytest-mock (>=3.15.1,<4.0.0)",
     "pre-commit (<4.0)",
     "ruff (>=0.4.0,<0.5.0)",
-    "loguru (>=0.7.3,<0.8.0)"
 ]
 
 [tool.pytest.ini_options]

@@ -5,9 +5,10 @@ This script attempts to call `load_config_from_firestore` and prints the result.
 It validates that we can connect to Firestore and parse the `dim_strategies` collection.
 """
 
-import logging
 import os
 import sys
+
+from loguru import logger
 
 # Add src to path
 sys.path.append(os.path.join(os.path.dirname(__file__), "../src"))
@@ -16,8 +17,8 @@ from crypto_signals.config import get_settings, load_config_from_firestore
 from crypto_signals.secrets_manager import init_secrets
 
 # Configure logging to stdout
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger.remove()
+logger.add(sys.stdout, format="{time} - {level} - {message}", level="INFO")
 
 
 def verify_firestore_config():

@@ -11,7 +11,6 @@ Pattern: "Enrich-Extract-Load"
 3. Load: Push to BigQuery via BasePipeline (Truncate->Staging->Merge).
 """
 
-import logging
 import time
 from datetime import datetime, timezone
 from typing import Any, List
@@ -19,6 +18,7 @@ from typing import Any, List
 import pandas as pd
 from alpaca.common.exceptions import APIError
 from google.cloud import firestore
+from loguru import logger
 
 from crypto_signals.config import (
     get_crypto_data_client,
@@ -29,8 +29,6 @@ from crypto_signals.config import (
 from crypto_signals.domain.schemas import ExitReason, OrderSide, TradeExecution
 from crypto_signals.market.data_provider import MarketDataProvider
 from crypto_signals.pipelines.base import BigQueryPipelineBase
-
-logger = logging.getLogger(__name__)
 
 
 class TradeArchivalPipeline(BigQueryPipelineBase):

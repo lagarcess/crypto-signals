@@ -6,11 +6,18 @@ in cloud environments. It adds contextual information and timing metrics
 to all log messages.
 """
 
-import logging
 import time
 from contextlib import contextmanager
 from functools import wraps
 from typing import Any, Dict, Optional
+
+from loguru import logger
+
+# Remove default handler and add a new one that directs to stdout/stderr as appropriate
+# Note: In a library or shared module, we might want to avoid configuring sink globally,
+# but this looks like an application module.
+# For now, we will rely on default loguru configuration or let main.py configure it.
+# However, to ensure `logger` is available and works as expected, we import it.
 
 
 class StructuredLogger:
@@ -21,16 +28,23 @@ class StructuredLogger:
         Initialize structured logger.
 
         Args:
-            name: Logger name (typically __name__)
+            name: Logger name (typically __name__) - Ignored by loguru generally,
+                  but kept for compatibility.
             context: Default context to include in all log messages
         """
-        self.logger = logging.getLogger(name)
         self.context = context or {}
+        # Bind the initial context
+        self.logger = logger.bind(**self.context)
 
     def _format_message(
         self, msg: str, extra_context: Optional[Dict[str, Any]] = None
     ) -> str:
         """Format message with context."""
+        # Loguru handles structure via .bind(), but to preserve the existing
+        # "msg | k=v" text format in the message itself (which the user might rely on),
+        # we can still do this formatting.
+        # Alternatively, we could trust loguru's sink formatting, but that changes output.
+        # We will maintain existing behavior of modifying the message string.
         context = {**self.context, **(extra_context or {})}
         if context:
             context_str = " | ".join(f"{k}={v}" for k, v in context.items())
@@ -39,6 +53,7 @@ class StructuredLogger:
 
     def debug(self, msg: str, **context):
         """Log debug message with context."""
+        # We use the bound logger, but also format the message to keep compat
         self.logger.debug(self._format_message(msg, context))
 
     def info(self, msg: str, **context):
@@ -51,67 +66,81 @@ class StructuredLogger:
 
     def error(self, msg: str, exc_info=False, **context):
         """Log error message with context."""
-        self.logger.error(self._format_message(msg, context), exc_info=exc_info)
+        # Loguru handles exceptions with opt(exception=True) or just passing exception object
+        # but exc_info=True is standard logging. Loguru supports it via .opt(exception=...)
+        if exc_info:
+            self.logger.opt(exception=True).error(self._format_message(msg, context))
+        else:
+            self.logger.error(self._format_message(msg, context))
 
     def critical(self, msg: str, exc_info=False, **context):
         """Log critical message with context."""
-        self.logger.critical(self._format_message(msg, context), exc_info=exc_info)
+        if exc_info:
+            self.logger.opt(exception=True).critical(self._format_message(msg, context))
+        else:
+            self.logger.critical(self._format_message(msg, context))
 
     def add_context(self, **context):
         """Add persistent context to this logger."""
         self.context.update(context)
+        # Re-bind logger with new context
+        self.logger = logger.bind(**self.context)
 
     def remove_context(self, *keys):
         """Remove keys from persistent context."""
         for key in keys:
             self.context.pop(key, None)
+        self.logger = logger.bind(**self.context)
 
 
 @contextmanager
-def log_execution_time(logger: logging.Logger, operation: str, **context):
+def log_execution_time(logger_instance: Any, operation: str, **context):
     """
     Context manager to log execution time of an operation.
 
     Args:
-        logger: Logger instance
+        logger_instance: Logger instance (StructuredLogger, loguru logger, or std logger)
         operation: Name of the operation being timed
         **context: Additional context to include in log messages
-
-    Example:
-        with log_execution_time(logger, "fetch_market_data", symbol="BTC/USD"):
-            data = fetch_data()
     """
     context_str = " | ".join(f"{k}={v}" for k, v in context.items()) if context else ""
     full_context = f" | {context_str}" if context_str else ""
 
     start_time = time.time()
-    logger.info(f"Starting: {operation}{full_context}")
+    # Support both our StructuredLogger and raw loguru/logging loggers
+    # StructuredLogger has .info(), loguru has .info()
+    logger_instance.info(f"Starting: {operation}{full_context}")
 
     try:
         yield
     except Exception as e:
         elapsed = time.time() - start_time
-        logger.error(
-            f"Failed: {operation} | duration={elapsed:.2f}s{full_context} | error={str(e)}",
-            exc_info=True,
-        )
+        msg = f"Failed: {operation} | duration={elapsed:.2f}s{full_context} | error={str(e)}"
+
+        if hasattr(logger_instance, "opt"):  # Loguru
+            logger_instance.opt(exception=True).error(msg)
+        elif hasattr(logger_instance, "error"):
+            # Check if it accepts exc_info (std logging or StructuredLogger)
+            # StructuredLogger.error signature: (msg, exc_info=False, **context)
+            try:
+                logger_instance.error(msg, exc_info=True)
+            except TypeError:
+                # Fallback if logger doesn't support exc_info arg (unlikely for std/wrapper)
+                logger_instance.error(msg)
+        else:
+            print(f"ERROR: {msg}")  # Fallback
+
         raise
     else:
         elapsed = time.time() - start_time
-        logger.info(f"Completed: {operation} | duration={elapsed:.2f}s{full_context}")
+        logger_instance.info(
+            f"Completed: {operation} | duration={elapsed:.2f}s{full_context}"
+        )
 
 
 def timed(operation_name: Optional[str] = None):
     """
     Decorator to automatically log execution time of a function.
-
-    Args:
-        operation_name: Optional name for the operation (defaults to function name)
-
-    Example:
-        @timed("fetch_data")
-        def fetch_market_data(symbol):
-            ...
     """
 
     def decorator(func):
@@ -119,7 +148,7 @@ def timed(operation_name: Optional[str] = None):
 
         @wraps(func)
         def wrapper(*args, **kwargs):
-            logger = logging.getLogger(func.__module__)
+            # Use loguru logger directly
             start_time = time.time()
 
             try:
@@ -130,9 +159,8 @@ def timed(operation_name: Optional[str] = None):
                 return result
             except Exception as e:
                 elapsed = time.time() - start_time
-                logger.error(
-                    f"Failed: {op_name} | duration={elapsed:.2f}s | error={str(e)}",
-                    exc_info=True,
+                logger.opt(exception=True).error(
+                    f"Failed: {op_name} | duration={elapsed:.2f}s | error={str(e)}"
                 )
                 raise
 
@@ -210,16 +238,16 @@ class MetricsCollector:
 
         return summary
 
-    def log_summary(self, logger: logging.Logger):
+    def log_summary(self, logger_instance: Any):
         """Log metrics summary."""
         summary = self.get_summary()
         if not summary:
-            logger.info("No metrics recorded")
+            logger_instance.info("No metrics recorded")
             return
 
-        logger.info("=== METRICS SUMMARY ===")
+        logger_instance.info("=== METRICS SUMMARY ===")
         for operation, stats in summary.items():
-            logger.info(
+            logger_instance.info(
                 f"{operation}: {stats['total_operations']} ops, "
                 f"{stats['success_rate']:.1f}% success, "
                 f"avg {stats['avg_duration_seconds']}s"

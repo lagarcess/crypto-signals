@@ -9,17 +9,14 @@ It implements the strict "Truncate -> Load (Staging) -> Merge (Fact)" pattern
 to ensure idempotency and data consistency.
 """
 
-import logging
 from abc import ABC, abstractmethod
 from typing import Any, List, Type
 
 from google.cloud import bigquery
+from loguru import logger
 from pydantic import BaseModel
 
 from crypto_signals.config import settings
-
-# Configure logging
-logger = logging.getLogger(__name__)
 
 
 class BigQueryPipelineBase(ABC):
