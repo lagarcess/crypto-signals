@@ -1,9 +1,9 @@
-"""Firestore Repository for persisting signals."""
+"""Firestore Repository for persisting signals and positions."""
 
 from datetime import datetime, timedelta, timezone
 
 from crypto_signals.config import get_settings
-from crypto_signals.domain.schemas import Signal, SignalStatus
+from crypto_signals.domain.schemas import Position, Signal, SignalStatus, TradeStatus
 from crypto_signals.observability import log_validation_error
 from google.cloud import firestore
 from google.cloud.firestore import FieldFilter
@@ -129,3 +129,73 @@ class SignalRepository:
 
         logger.warning(f"FLUSH ALL complete: Deleted {count} total signals")
         return count
+
+
+class PositionRepository:
+    """Repository for storing positions in Firestore."""
+
+    def __init__(self):
+        """Initialize Firestore client."""
+        settings = get_settings()
+        self.db = firestore.Client(project=settings.GOOGLE_CLOUD_PROJECT)
+        self.collection_name = "live_positions"
+
+    def save(self, position: Position) -> None:
+        """
+        Save a position to Firestore.
+
+        Uses position_id as document ID for idempotency with Alpaca order IDs.
+        """
+        position_data = position.model_dump(mode="json")
+        position_data["created_at"] = datetime.now(timezone.utc)
+
+        doc_ref = self.db.collection(self.collection_name).document(position.position_id)
+        doc_ref.set(position_data)
+        logger.info(
+            f"Position {position.position_id} saved to Firestore",
+            extra={
+                "position_id": position.position_id,
+                "signal_id": position.signal_id,
+                "status": position.status.value,
+            },
+        )
+
+    def get_open_positions(self) -> list[Position]:
+        """Get all OPEN positions."""
+        query = self.db.collection(self.collection_name).where(
+            filter=FieldFilter("status", "==", TradeStatus.OPEN.value)
+        )
+
+        results = []
+        for doc in query.stream():
+            try:
+                results.append(Position(**doc.to_dict()))
+            except ValidationError as e:
+                log_validation_error(doc.id, e)
+                logger.warning(f"Skipped invalid position document: {doc.id}")
+
+        return results
+
+    def get_position_by_signal(self, signal_id: str) -> Position | None:
+        """Get position by its originating signal ID."""
+        query = (
+            self.db.collection(self.collection_name)
+            .where(filter=FieldFilter("signal_id", "==", signal_id))
+            .limit(1)
+        )
+
+        for doc in query.stream():
+            try:
+                return Position(**doc.to_dict())
+            except ValidationError as e:
+                log_validation_error(doc.id, e)
+                return None
+
+        return None
+
+    def update_position(self, position: Position) -> None:
+        """Update an existing position in Firestore."""
+        doc_ref = self.db.collection(self.collection_name).document(position.position_id)
+        position_data = position.model_dump(mode="json")
+        position_data["updated_at"] = datetime.now(timezone.utc)
+        doc_ref.set(position_data, merge=True)
