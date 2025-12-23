@@ -22,18 +22,19 @@ from crypto_signals.domain.schemas import AssetClass, ExitReason, SignalStatus
 from crypto_signals.engine.signal_generator import SignalGenerator
 from crypto_signals.market.data_provider import MarketDataProvider
 from crypto_signals.notifications.discord import DiscordClient
-from crypto_signals.observability import get_metrics_collector, log_execution_time
+from crypto_signals.observability import (
+    configure_logging,
+    console,
+    create_execution_summary_table,
+    create_portfolio_progress,
+    get_metrics_collector,
+    log_execution_time,
+)
 from crypto_signals.repository.firestore import SignalRepository
 from crypto_signals.secrets_manager import init_secrets
 
-# Configure logging
-# Remove default handler and add stdout handler to match previous behavior
-logger.remove()
-logger.add(
-    sys.stdout,
-    format="{time:YYYY-MM-DD HH:mm:ss,SSS} - {name} - {level} - {message}",
-    level="INFO",
-)
+# Configure logging with Rich integration
+configure_logging(level="INFO")
 
 
 # Global flag for graceful shutdown
@@ -100,296 +101,314 @@ def main():
         # Rate limiting (Alpaca: 200 req/min = 0.3s minimum, use 0.5s for safety)
         rate_limit_delay = getattr(settings, "RATE_LIMIT_DELAY", 0.5)
 
-        # Execution Loop
+        # Execution Loop with Rich Progress Bar
         signals_found = 0
         symbols_processed = 0
         errors_encountered = 0
 
-        for idx, (symbol, asset_class) in enumerate(portfolio_items):
-            # Check for shutdown signal
-            if shutdown_requested:
-                logger.info("Shutdown requested. Stopping processing gracefully...")
-                break
-
-            symbol_start_time = time.time()
-
-            try:
-                # Rate limiting: Add delay between symbols (except first)
-                if idx > 0:
-                    logger.debug(f"Rate limit delay: {rate_limit_delay}s")
-                    time.sleep(rate_limit_delay)
-
-                logger.info(
-                    f"Analyzing {symbol} ({asset_class.value})...",
-                    extra={"symbol": symbol, "asset_class": asset_class.value},
+        with create_portfolio_progress(len(portfolio_items)) as (progress, task):
+            for idx, (symbol, asset_class) in enumerate(portfolio_items):
+                # Update progress bar description
+                progress.update(
+                    task, description=f"[cyan]Analyzing {symbol} ({asset_class.value})..."
                 )
 
-                # Fetch Data ONCE
+                # Check for shutdown signal
+                if shutdown_requested:
+                    logger.info("Shutdown requested. Stopping processing gracefully...")
+                    break
+
+                symbol_start_time = time.time()
+
                 try:
-                    df = market_provider.get_daily_bars(
-                        symbol, asset_class, lookback_days=365
-                    )
-                except Exception as e:
-                    logger.error(f"Failed to fetch data for {symbol}: {e}")
-                    continue
+                    # Rate limiting: Add delay between symbols (except first)
+                    if idx > 0:
+                        logger.debug(f"Rate limit delay: {rate_limit_delay}s")
+                        time.sleep(rate_limit_delay)
 
-                if df.empty:
-                    logger.warning(f"No data for {symbol}")
-                    continue
-
-                # Generate Signals
-                trade_signal = generator.generate_signals(
-                    symbol, asset_class, dataframe=df
-                )
-
-                # Track metrics
-                symbol_duration = time.time() - symbol_start_time
-                symbols_processed += 1
-
-                if trade_signal:
-                    signals_found += 1
                     logger.info(
-                        f"SIGNAL FOUND: {trade_signal.pattern_name} "
-                        f"on {trade_signal.symbol}",
-                        extra={
-                            "symbol": trade_signal.symbol,
-                            "pattern": trade_signal.pattern_name,
-                            "stop_loss": trade_signal.suggested_stop,
-                        },
+                        f"Analyzing {symbol} ({asset_class.value})...",
+                        extra={"symbol": symbol, "asset_class": asset_class.value},
                     )
 
-                    # Notify Discord FIRST to capture thread_id for lifecycle updates
-                    thread_id = discord.send_signal(trade_signal)
-                    if thread_id:
-                        # Attach thread_id to signal for lifecycle updates
-                        trade_signal.discord_thread_id = thread_id
-                        logger.info(
-                            "Thread ID captured for signal lifecycle tracking",
-                            extra={
-                                "signal_id": trade_signal.signal_id,
-                                "symbol": trade_signal.symbol,
-                                "thread_id": thread_id,
-                            },
-                        )
-                    else:
-                        logger.warning(
-                            "Failed to send Discord notification for "
-                            f"{trade_signal.symbol}",
-                            extra={"symbol": trade_signal.symbol},
-                        )
-
-                    # Persist signal
-                    persistence_start = time.time()
+                    # Fetch Data ONCE
                     try:
-                        repo.save(trade_signal)
-                        persistence_duration = time.time() - persistence_start
-                        logger.info(
-                            f"Signal {trade_signal.signal_id} persisted to Firestore",
-                            extra={
-                                "signal_id": trade_signal.signal_id,
-                                "symbol": trade_signal.symbol,
-                                "thread_id": getattr(
-                                    trade_signal, "discord_thread_id", None
-                                ),
-                                "duration_seconds": round(persistence_duration, 3),
-                            },
+                        df = market_provider.get_daily_bars(
+                            symbol, asset_class, lookback_days=365
                         )
-                        metrics.record_success("signal_persistence", persistence_duration)
                     except Exception as e:
-                        persistence_duration = time.time() - persistence_start
-                        logger.error(
-                            f"Failed to persist signal {trade_signal.signal_id} to Firestore: {e}",
+                        logger.error(f"Failed to fetch data for {symbol}: {e}")
+                        continue
+
+                    if df.empty:
+                        logger.warning(f"No data for {symbol}")
+                        continue
+
+                    # Generate Signals
+                    trade_signal = generator.generate_signals(
+                        symbol, asset_class, dataframe=df
+                    )
+
+                    # Track metrics
+                    symbol_duration = time.time() - symbol_start_time
+                    symbols_processed += 1
+
+                    if trade_signal:
+                        signals_found += 1
+                        logger.info(
+                            f"SIGNAL FOUND: {trade_signal.pattern_name} "
+                            f"on {trade_signal.symbol}",
                             extra={
-                                "signal_id": trade_signal.signal_id,
                                 "symbol": trade_signal.symbol,
-                                "thread_id": getattr(
-                                    trade_signal, "discord_thread_id", None
-                                ),
-                                "error": str(e),
+                                "pattern": trade_signal.pattern_name,
+                                "stop_loss": trade_signal.suggested_stop,
                             },
                         )
-                        metrics.record_failure("signal_persistence", persistence_duration)
-                        # Note: We intentionally do NOT re-raise here.
-                        # Signal generation succeeded - only persistence failed.
-                        # The failure is already logged and metrics recorded above.
 
-                    metrics.record_success("signal_generation", symbol_duration)
-                else:
-                    logger.debug(f"No signal for {symbol}.")
-                    metrics.record_success("signal_generation", symbol_duration)
-
-                # Active Trade Validation
-                # Check for updates on existing WAITING/ACTIVE signals
-                active_signals = repo.get_active_signals(symbol)
-                if active_signals:
-                    logger.info(
-                        f"Checking active signals for {symbol} ({len(active_signals)})..."
-                    )
-
-                    # 1. Run Expiration Check (24h Rule)
-                    now_utc = datetime.now(timezone.utc)
-                    today_date = now_utc.date()
-
-                    # Check exits first
-                    exited_signals = generator.check_exits(
-                        active_signals, symbol, asset_class, dataframe=df
-                    )
-
-                    # Process Exits (TP / Invalidation) and Trail Updates
-                    for exited in exited_signals:
-                        # --- TRAIL UPDATE (not a status change) ---
-                        if getattr(exited, "_trail_updated", False):
-                            # Calculate movement percentage (absolute for Short positions)
-                            old_tp3 = getattr(exited, "_previous_tp3", 0.0)
-                            new_tp3 = exited.take_profit_3 or 0.0
-                            movement_pct = (
-                                abs((new_tp3 - old_tp3) / old_tp3 * 100)
-                                if old_tp3 > 0
-                                else 100.0
+                        # Notify Discord FIRST to capture thread_id for lifecycle updates
+                        thread_id = discord.send_signal(trade_signal)
+                        if thread_id:
+                            # Attach thread_id to signal for lifecycle updates
+                            trade_signal.discord_thread_id = thread_id
+                            logger.info(
+                                "Thread ID captured for signal lifecycle tracking",
+                                extra={
+                                    "signal_id": trade_signal.signal_id,
+                                    "symbol": trade_signal.symbol,
+                                    "thread_id": thread_id,
+                                },
+                            )
+                        else:
+                            logger.warning(
+                                "Failed to send Discord notification for "
+                                f"{trade_signal.symbol}",
+                                extra={"symbol": trade_signal.symbol},
                             )
 
+                        # Persist signal
+                        persistence_start = time.time()
+                        try:
+                            repo.save(trade_signal)
+                            persistence_duration = time.time() - persistence_start
                             logger.info(
-                                f"TRAIL UPDATE: {exited.signal_id} "
-                                f"TP3 moved from ${old_tp3:.2f} to ${new_tp3:.2f} "
-                                f"({movement_pct:.1f}%)",
+                                f"Signal {trade_signal.signal_id} persisted to Firestore",
+                                extra={
+                                    "signal_id": trade_signal.signal_id,
+                                    "symbol": trade_signal.symbol,
+                                    "thread_id": getattr(
+                                        trade_signal, "discord_thread_id", None
+                                    ),
+                                    "duration_seconds": round(persistence_duration, 3),
+                                },
+                            )
+                            metrics.record_success(
+                                "signal_persistence", persistence_duration
+                            )
+                        except Exception as e:
+                            persistence_duration = time.time() - persistence_start
+                            logger.error(
+                                f"Failed to persist signal {trade_signal.signal_id} to Firestore: {e}",
+                                extra={
+                                    "signal_id": trade_signal.signal_id,
+                                    "symbol": trade_signal.symbol,
+                                    "thread_id": getattr(
+                                        trade_signal, "discord_thread_id", None
+                                    ),
+                                    "error": str(e),
+                                },
+                            )
+                            metrics.record_failure(
+                                "signal_persistence", persistence_duration
+                            )
+                            # Note: We intentionally do NOT re-raise here.
+                            # Signal generation succeeded - only persistence failed.
+                            # The failure is already logged and metrics recorded above.
+
+                        metrics.record_success("signal_generation", symbol_duration)
+                    else:
+                        logger.debug(f"No signal for {symbol}.")
+                        metrics.record_success("signal_generation", symbol_duration)
+
+                    # Active Trade Validation
+                    # Check for updates on existing WAITING/ACTIVE signals
+                    active_signals = repo.get_active_signals(symbol)
+                    if active_signals:
+                        logger.info(
+                            f"Checking active signals for {symbol} ({len(active_signals)})..."
+                        )
+
+                        # 1. Run Expiration Check (24h Rule)
+                        now_utc = datetime.now(timezone.utc)
+                        today_date = now_utc.date()
+
+                        # Check exits first
+                        exited_signals = generator.check_exits(
+                            active_signals, symbol, asset_class, dataframe=df
+                        )
+
+                        # Process Exits (TP / Invalidation) and Trail Updates
+                        for exited in exited_signals:
+                            # --- TRAIL UPDATE (not a status change) ---
+                            if getattr(exited, "_trail_updated", False):
+                                # Calculate movement percentage (absolute for Short positions)
+                                old_tp3 = getattr(exited, "_previous_tp3", 0.0)
+                                new_tp3 = exited.take_profit_3 or 0.0
+                                movement_pct = (
+                                    abs((new_tp3 - old_tp3) / old_tp3 * 100)
+                                    if old_tp3 > 0
+                                    else 100.0
+                                )
+
+                                logger.info(
+                                    f"TRAIL UPDATE: {exited.signal_id} "
+                                    f"TP3 moved from ${old_tp3:.2f} to ${new_tp3:.2f} "
+                                    f"({movement_pct:.1f}%)",
+                                    extra={
+                                        "symbol": symbol,
+                                        "signal_id": exited.signal_id,
+                                        "old_tp3": old_tp3,
+                                        "new_tp3": new_tp3,
+                                        "movement_pct": movement_pct,
+                                    },
+                                )
+
+                                # Always persist the updated trailing value
+                                repo.update_signal(exited)
+
+                                # Notify Discord if significant movement (>1%)
+                                if movement_pct > 1.0:
+                                    discord.send_trail_update(
+                                        exited,
+                                        old_stop=old_tp3,
+                                        asset_class=asset_class,
+                                    )
+
+                                # Clean up private attributes
+                                if hasattr(exited, "_trail_updated"):
+                                    delattr(exited, "_trail_updated")
+                                if hasattr(exited, "_previous_tp3"):
+                                    delattr(exited, "_previous_tp3")
+
+                                # Remove from active_signals to skip expiration check
+                                if exited in active_signals:
+                                    active_signals.remove(exited)
+                                continue
+
+                            # --- STATUS CHANGE (Exit) ---
+                            logger.info(
+                                f"SIGNAL UPDATE: {exited.signal_id} "
+                                f"status -> {exited.status}",
                                 extra={
                                     "symbol": symbol,
                                     "signal_id": exited.signal_id,
-                                    "old_tp3": old_tp3,
-                                    "new_tp3": new_tp3,
-                                    "movement_pct": movement_pct,
+                                    "new_status": exited.status,
                                 },
                             )
-
-                            # Always persist the updated trailing value
                             repo.update_signal(exited)
 
-                            # Notify Discord if significant movement (>1%)
-                            if movement_pct > 1.0:
-                                discord.send_trail_update(
-                                    exited,
-                                    old_stop=old_tp3,
+                            # Notify Discord of Status Change
+                            status_emoji = {
+                                SignalStatus.INVALIDATED: "🚫",
+                                SignalStatus.TP1_HIT: "🎯",
+                                SignalStatus.TP2_HIT: "🚀",
+                                SignalStatus.TP3_HIT: "🌕",
+                                SignalStatus.EXPIRED: "⏳",
+                            }.get(exited.status, "ℹ️")
+
+                            msg = (
+                                f"{status_emoji} **SIGNAL UPDATE: {symbol}** {status_emoji}\n"
+                                f"**Status**: {exited.status.value}\n"
+                                f"**Pattern**: {exited.pattern_name}\n"
+                            )
+
+                            if exited.exit_reason:
+                                msg += f"**Reason**: {exited.exit_reason}\n"
+
+                            if exited.status == SignalStatus.TP1_HIT:
+                                msg += "ℹ️ **Action**: Scaling Out (50%) & Stop -> **Breakeven**"
+
+                            # Self-healing: If thread_id is missing (orphaned signal),
+                            # send recovery message to main channel instead of creating
+                            # a confusing new entry thread
+                            if not exited.discord_thread_id:
+                                logger.info(
+                                    f"Self-healing: Orphaned signal {exited.signal_id} - "
+                                    "sending update to main channel"
+                                )
+                                # Prepend recovery notice to the message
+                                recovery_msg = (
+                                    f"🔄 **THREAD RECOVERY: {symbol}** 🔄\n"
+                                    f"*(Original thread unavailable)*\n\n"
+                                    f"{msg}"
+                                )
+                                discord.send_message(
+                                    recovery_msg, asset_class=asset_class
+                                )
+                            else:
+                                # Reply in thread if available
+                                discord.send_message(
+                                    msg,
+                                    thread_id=exited.discord_thread_id,
                                     asset_class=asset_class,
                                 )
 
-                            # Clean up private attributes
-                            if hasattr(exited, "_trail_updated"):
-                                delattr(exited, "_trail_updated")
-                            if hasattr(exited, "_previous_tp3"):
-                                delattr(exited, "_previous_tp3")
-
-                            # Remove from active_signals to skip expiration check
+                            # Remove exited signals from expiration checking
                             if exited in active_signals:
                                 active_signals.remove(exited)
-                            continue
 
-                        # --- STATUS CHANGE (Exit) ---
-                        logger.info(
-                            f"SIGNAL UPDATE: {exited.signal_id} "
-                            f"status -> {exited.status}",
-                            extra={
-                                "symbol": symbol,
-                                "signal_id": exited.signal_id,
-                                "new_status": exited.status,
-                            },
-                        )
-                        repo.update_signal(exited)
+                        # 2. Expiration Check on REMAINING Waiting signals
+                        for sig in active_signals:
+                            # Only expire WAITING signals.
+                            # If TP1_HIT, it's active.
+                            if sig.status != SignalStatus.WAITING:
+                                continue
 
-                        # Notify Discord of Status Change
-                        status_emoji = {
-                            SignalStatus.INVALIDATED: "🚫",
-                            SignalStatus.TP1_HIT: "🎯",
-                            SignalStatus.TP2_HIT: "🚀",
-                            SignalStatus.TP3_HIT: "🌕",
-                            SignalStatus.EXPIRED: "⏳",
-                        }.get(exited.status, "ℹ️")
+                            cutoff_date = sig.ds + timedelta(days=1)
+                            if today_date > cutoff_date:
+                                logger.info(
+                                    f"EXPIRING Signal {sig.signal_id} (Date: {sig.ds})",
+                                    extra={"symbol": symbol, "signal_id": sig.signal_id},
+                                )
+                                sig.status = SignalStatus.EXPIRED
+                                sig.exit_reason = ExitReason.EXPIRED
+                                repo.update_signal(sig)
+                                # Reply in thread if available, fallback to main channel
+                                discord.send_message(
+                                    f"⏳ **SIGNAL EXPIRED: {symbol}** ⏳\n"
+                                    f"Signal from {sig.ds} expired (24h Limit).",
+                                    thread_id=sig.discord_thread_id,
+                                    asset_class=asset_class,
+                                )
 
-                        msg = (
-                            f"{status_emoji} **SIGNAL UPDATE: {symbol}** {status_emoji}\n"
-                            f"**Status**: {exited.status.value}\n"
-                            f"**Pattern**: {exited.pattern_name}\n"
-                        )
+                except Exception as e:
+                    errors_encountered += 1
+                    symbol_duration = time.time() - symbol_start_time
+                    metrics.record_failure("signal_generation", symbol_duration)
+                    logger.error(
+                        f"Error processing {symbol} ({asset_class.value}): {e}",
+                        exc_info=True,
+                        extra={"symbol": symbol, "asset_class": asset_class.value},
+                    )
+                    # Continue to next symbol despite error
+                    continue
+                finally:
+                    # Advance progress bar after each symbol
+                    progress.advance(task)
 
-                        if exited.exit_reason:
-                            msg += f"**Reason**: {exited.exit_reason}\n"
-
-                        if exited.status == SignalStatus.TP1_HIT:
-                            msg += (
-                                "ℹ️ **Action**: Scaling Out (50%) & Stop -> **Breakeven**"
-                            )
-
-                        # Self-healing: If thread_id is missing (orphaned signal),
-                        # send recovery message to main channel instead of creating
-                        # a confusing new entry thread
-                        if not exited.discord_thread_id:
-                            logger.info(
-                                f"Self-healing: Orphaned signal {exited.signal_id} - "
-                                "sending update to main channel"
-                            )
-                            # Prepend recovery notice to the message
-                            recovery_msg = (
-                                f"🔄 **THREAD RECOVERY: {symbol}** 🔄\n"
-                                f"*(Original thread unavailable)*\n\n"
-                                f"{msg}"
-                            )
-                            discord.send_message(recovery_msg, asset_class=asset_class)
-                        else:
-                            # Reply in thread if available
-                            discord.send_message(
-                                msg,
-                                thread_id=exited.discord_thread_id,
-                                asset_class=asset_class,
-                            )
-
-                        # Remove exited signals from expiration checking
-                        if exited in active_signals:
-                            active_signals.remove(exited)
-
-                    # 2. Expiration Check on REMAINING Waiting signals
-                    for sig in active_signals:
-                        # Only expire WAITING signals.
-                        # If TP1_HIT, it's active.
-                        if sig.status != SignalStatus.WAITING:
-                            continue
-
-                        cutoff_date = sig.ds + timedelta(days=1)
-                        if today_date > cutoff_date:
-                            logger.info(
-                                f"EXPIRING Signal {sig.signal_id} (Date: {sig.ds})",
-                                extra={"symbol": symbol, "signal_id": sig.signal_id},
-                            )
-                            sig.status = SignalStatus.EXPIRED
-                            sig.exit_reason = ExitReason.EXPIRED
-                            repo.update_signal(sig)
-                            # Reply in thread if available, fallback to main channel
-                            discord.send_message(
-                                f"⏳ **SIGNAL EXPIRED: {symbol}** ⏳\n"
-                                f"Signal from {sig.ds} expired (24h Limit).",
-                                thread_id=sig.discord_thread_id,
-                                asset_class=asset_class,
-                            )
-
-            except Exception as e:
-                errors_encountered += 1
-                symbol_duration = time.time() - symbol_start_time
-                metrics.record_failure("signal_generation", symbol_duration)
-                logger.error(
-                    f"Error processing {symbol} ({asset_class.value}): {e}",
-                    exc_info=True,
-                    extra={"symbol": symbol, "asset_class": asset_class.value},
-                )
-                # Continue to next symbol despite error
-                continue
-
-        # Log execution summary
+        # Display Rich execution summary table
         total_duration = time.time() - app_start_time
-        logger.info("=== EXECUTION SUMMARY ===")
-        logger.info(f"Total duration: {total_duration:.2f}s")
-        logger.info(f"Symbols processed: {symbols_processed}/{len(portfolio_items)}")
-        logger.info(f"Signals found: {signals_found}")
-        logger.info(f"Errors encountered: {errors_encountered}")
+        console.print()  # Empty line for spacing
+        summary_table = create_execution_summary_table(
+            total_duration=total_duration,
+            symbols_processed=symbols_processed,
+            total_symbols=len(portfolio_items),
+            signals_found=signals_found,
+            errors_encountered=errors_encountered,
+        )
+        console.print(summary_table)
+        console.print()  # Empty line for spacing
 
-        # Log detailed metrics
+        # Log detailed metrics (also uses Rich table now)
         metrics.log_summary(logger)
 
         if shutdown_requested:

@@ -20,6 +20,7 @@ from alpaca.data.requests import (
 from alpaca.data.timeframe import TimeFrame
 from crypto_signals.domain.schemas import AssetClass
 from crypto_signals.market.exceptions import MarketDataError
+from crypto_signals.observability import log_api_error
 
 
 def retry_with_backoff(max_retries=3, initial_delay=1.0, backoff_factor=2.0):
@@ -57,7 +58,11 @@ def retry_with_backoff(max_retries=3, initial_delay=1.0, backoff_factor=2.0):
                         time.sleep(delay)
                         delay *= backoff_factor
                     else:
-                        # Last attempt failed, raise the exception
+                        # Last attempt failed - display Rich API error panel
+                        log_api_error(
+                            endpoint=func.__name__,
+                            error=last_exception,
+                        )
                         raise MarketDataError(
                             f"{func.__name__} failed after {max_retries} attempts"
                         ) from last_exception
@@ -180,8 +185,7 @@ class MarketDataProvider:
                 trade = self.crypto_client.get_crypto_latest_trade(req)
                 if not trade or symbol not in trade:
                     raise MarketDataError(
-                        f"Latest crypto trade data for {symbol} "
-                        "not found in API response"
+                        f"Latest crypto trade data for {symbol} not found in API response"
                     )
                 return float(trade[symbol].price)
 
@@ -190,8 +194,7 @@ class MarketDataProvider:
                 trade = self.stock_client.get_stock_latest_trade(req)
                 if not trade or symbol not in trade:
                     raise MarketDataError(
-                        f"Latest equity trade data for {symbol} "
-                        "not found in API response"
+                        f"Latest equity trade data for {symbol} not found in API response"
                     )
                 return float(trade[symbol].price)
 
