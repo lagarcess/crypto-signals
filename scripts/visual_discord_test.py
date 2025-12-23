@@ -13,7 +13,8 @@ Usage:
     - success     : Signal → TP1 → TP2 → TP3 (full success path)
     - invalidation: Signal → Invalidation
     - expiration  : Signal → Expiration
-    - all         : Run all three paths (default)
+    - trail       : Signal → TP1 → Trail Updates → TP3 (runner trail path)
+    - all         : Run all four paths (default)
 
 Example:
     export TEST_DISCORD_WEBHOOK="https://discord.com/api/webhooks/..."
@@ -34,6 +35,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 # Project imports (after path setup)  # noqa: E402
 from crypto_signals.domain.schemas import (  # noqa: E402
     AssetClass,
+    OrderSide,
     Signal,
     SignalStatus,
     get_deterministic_id,
@@ -246,8 +248,247 @@ def test_expiration_path(client: DiscordClient) -> None:
     print("   Please verify in Discord that both messages appear in the same thread.\n")
 
 
+def test_runner_trail_path(client: DiscordClient) -> None:
+    """
+    Test the runner trail path: Signal → TP1 → Trail Updates → TP3.
+
+    This simulates a trade where the trailing stop (Chandelier Exit) moves
+    multiple times during the Runner phase, testing:
+    - Thread integrity: All updates stay in the same thread
+    - Formatting: "New vs. Previous" price context is readable
+    - Threshold respect: <1% moves are logged but not sent to Discord
+    """
+    print("\n🌕 Starting RUNNER TRAIL PATH test...")
+    print("-" * 50)
+
+    signal = create_test_signal("trail")
+    # Entry: $95,000 | TP1: $98,500 | TP2: $102,000
+    # Initial trailing stop should be above entry once in Runner phase
+    # Scenario: Price rallied to ~$100K, Chandelier Exit calculates to $96,000
+    signal.take_profit_3 = 96000.00
+
+    # Step 1: Initial Signal Alert (creates thread)
+    print("📤 Step 1: Sending initial signal alert...")
+    thread_id = client.send_signal(
+        signal, thread_name="🧪 Visual Test: Runner Trail Path"
+    )
+
+    if not thread_id:
+        print("❌ FAILED: Could not create thread (send_signal returned None)")
+        return
+
+    print(f"✅ Thread created: {thread_id}")
+    signal.discord_thread_id = thread_id  # Attach for subsequent updates
+    # Track last NOTIFIED value for UX continuity (Option B)
+    last_notified_stop = signal.take_profit_3
+    time.sleep(3)  # Longer delay for visual verification
+
+    # Step 2: TP1 Hit - Start of Runner phase
+    print("📤 Step 2: Sending TP1 Hit (Runner phase begins)...")
+    signal.status = SignalStatus.TP1_HIT
+    msg_tp1 = (
+        "🎯 **SIGNAL UPDATE: BTC/USD** 🎯\n"
+        "**Status**: TP1_HIT\n"
+        "**Pattern**: BULLISH ENGULFING\n"
+        "**Reason**: TP1\n"
+        "**Price Hit**: $98,500.00 (+3.7%)\n"
+        "ℹ️ **Action**: Scaling Out (50%) & Stop → **Breakeven** ($95,000)\n"
+        f"🏃📈 **Runner Phase Active** - Trailing stop now at ${signal.take_profit_3:,.2f}"
+    )
+    client.send_message(msg_tp1, thread_id=thread_id)
+    print("✅ TP1 update sent - Runner phase started")
+    time.sleep(3)
+
+    # Step 3: Significant Move (>1%) - $96,000 → $99,000 (+3.1%)
+    # Price continued to rally, Chandelier Exit moved up
+    print("📤 Step 3: Sending SIGNIFICANT trail update ($96,000 → $99,000)...")
+    signal.take_profit_3 = 99000.00
+    movement_pct = (
+        abs((signal.take_profit_3 - last_notified_stop) / last_notified_stop) * 100
+    )
+    print(f"   Movement: {movement_pct:.1f}% (>1% threshold → sends notification)")
+    client.send_trail_update(signal, old_stop=last_notified_stop)
+    last_notified_stop = signal.take_profit_3  # Update last notified
+    print("✅ Significant trail update sent")
+    time.sleep(3)
+
+    # Step 4: Minor Move (<1%) - $99,000 → $99,500 (+0.5%)
+    print("📤 Step 4: Simulating MINOR trail update ($99,000 → $99,500)...")
+    signal.take_profit_3 = 99500.00
+    movement_pct = (
+        abs((signal.take_profit_3 - last_notified_stop) / last_notified_stop) * 100
+    )
+    print(
+        f"   Movement: {movement_pct:.2f}% (<1% threshold → skipping Discord notification)"
+    )
+    print(f"   ℹ️  Local state updated: take_profit_3 = ${signal.take_profit_3:,.2f}")
+    print(f"   ℹ️  Last notified value stays at: ${last_notified_stop:,.2f}")
+    print("   ⏭️  No Discord message sent (threshold not met)")
+    time.sleep(3)
+
+    # Step 5: Another Significant Move (>1%) - $99,000 → $103,000 (+4.0%)
+    # Note: Using last_notified_stop ($99,000) for display, not actual previous ($99,500)
+    print("📤 Step 5: Sending SIGNIFICANT trail update ($99,000 → $103,000)...")
+    signal.take_profit_3 = 103000.00
+    movement_pct = (
+        abs((signal.take_profit_3 - last_notified_stop) / last_notified_stop) * 100
+    )
+    print(
+        f"   Movement from last notified: {movement_pct:.1f}% (>1% → sends notification)"
+    )
+    client.send_trail_update(signal, old_stop=last_notified_stop)
+    last_notified_stop = signal.take_profit_3  # Update last notified
+    print("✅ Significant trail update sent")
+    time.sleep(3)
+
+    # Step 6: Final TP3 Exit (Chandelier Exit triggered)
+    # Price pulled back and closed below the trailing stop
+    print("📤 Step 6: Sending TP3 Hit (Runner Exit)...")
+    signal.status = SignalStatus.TP3_HIT
+    msg_tp3 = (
+        "🏃📈 **SIGNAL UPDATE: BTC/USD** 🏃📈\n"
+        "**Status**: TP3_HIT\n"
+        "**Pattern**: BULLISH ENGULFING\n"
+        "**Reason**: TP_HIT (Chandelier Exit)\n"
+        f"**Exit Price**: ~${signal.take_profit_3:,.2f} (+8.4% from entry)\n"
+        "🎉 **RUNNER COMPLETE** - Profit locked via dynamic trailing!"
+    )
+    client.send_message(msg_tp3, thread_id=thread_id)
+    print("✅ TP3 (Runner Exit) update sent")
+
+    print("-" * 50)
+    print("✅ RUNNER TRAIL PATH test complete!")
+    print(f"   Thread ID: {thread_id}")
+    print("   Expected messages in thread: 5 (Initial + TP1 + 2 Trail + TP3)")
+    print(
+        "   Note: Step 4 was skipped but Discord shows continuous values ($96K→$99K→$103K)"
+    )
+    print("   Please verify in Discord that all messages appear in the same thread.\n")
+
+
+def test_short_runner_trail_path(client: DiscordClient) -> None:
+    """
+    Test the SHORT runner trail path: Signal → TP1 → Trail Updates → TP3.
+
+    This simulates a SHORT position where the trailing stop (Chandelier Exit)
+    moves DOWNWARD as price falls, testing:
+    - Thread integrity: All updates stay in the same thread
+    - Directional trailing: Stop moves DOWN (not up) for shorts
+    - Threshold respect: <1% moves are logged but not sent to Discord
+    """
+    print("\n🔻 Starting SHORT RUNNER TRAIL PATH test...")
+    print("-" * 50)
+
+    signal = create_test_signal("short_trail")
+    # Override for Short position scenario
+    signal.side = OrderSide.SELL
+    signal.entry_price = 65000.00
+    signal.take_profit_1 = 62000.00  # TP1 for short is BELOW entry
+    signal.take_profit_2 = 59000.00
+    signal.take_profit_3 = 64000.00  # Initial trailing stop (above current price)
+    signal.suggested_stop = 67000.00  # Stop loss for short is ABOVE entry
+    signal.invalidation_price = 66500.00
+
+    # Step 1: Initial Signal Alert (creates thread)
+    print("📤 Step 1: Sending initial SHORT signal alert...")
+    thread_id = client.send_signal(
+        signal, thread_name="🧪 Visual Test: Short Runner Trail Path"
+    )
+
+    if not thread_id:
+        print("❌ FAILED: Could not create thread (send_signal returned None)")
+        return
+
+    print(f"✅ Thread created: {thread_id}")
+    signal.discord_thread_id = thread_id
+    # Track last NOTIFIED value for UX continuity (Option B)
+    last_notified_stop = signal.take_profit_3
+    time.sleep(3)
+
+    # Step 2: TP1 Hit - Start of Runner phase
+    print("📤 Step 2: Sending TP1 Hit (Runner phase begins)...")
+    signal.status = SignalStatus.TP1_HIT
+    msg_tp1 = (
+        "🎯 **SIGNAL UPDATE: BTC/USD** 🎯\n"
+        "**Side**: SHORT 🔻\n"
+        "**Status**: TP1_HIT\n"
+        "**Pattern**: BULLISH ENGULFING (Reversal Play)\n"
+        "**Price Hit**: $62,000.00 (-4.6%)\n"
+        "ℹ️ **Action**: Scaling Out (50%) & Stop → **Breakeven** ($65,000)\n"
+        f"🏃📉 **Runner Phase Active** - Trailing stop now at ${signal.take_profit_3:,.2f}"
+    )
+    client.send_message(msg_tp1, thread_id=thread_id)
+    print("✅ TP1 update sent - Runner phase started")
+    time.sleep(3)
+
+    # Step 3: Significant Move (>1%) - $64,000 → $62,000 (-3.1%)
+    # For shorts, trailing stop moves DOWN as price falls
+    print("📤 Step 3: Sending SIGNIFICANT trail update ($64,000 → $62,000)...")
+    signal.take_profit_3 = 62000.00
+    movement_pct = (
+        abs((signal.take_profit_3 - last_notified_stop) / last_notified_stop) * 100
+    )
+    print(f"   Movement: {movement_pct:.1f}% (>1% threshold → sends notification)")
+    client.send_trail_update(signal, old_stop=last_notified_stop)
+    last_notified_stop = signal.take_profit_3  # Update last notified
+    print("✅ Significant trail update sent")
+    time.sleep(3)
+
+    # Step 4: Minor Move (<1%) - $62,000 → $61,800 (-0.3%)
+    print("📤 Step 4: Simulating MINOR trail update ($62,000 → $61,800)...")
+    signal.take_profit_3 = 61800.00
+    movement_pct = (
+        abs((signal.take_profit_3 - last_notified_stop) / last_notified_stop) * 100
+    )
+    print(
+        f"   Movement: {movement_pct:.2f}% (<1% threshold → skipping Discord notification)"
+    )
+    print(f"   ℹ️  Local state updated: take_profit_3 = ${signal.take_profit_3:,.2f}")
+    print(f"   ℹ️  Last notified value stays at: ${last_notified_stop:,.2f}")
+    print("   ⏭️  No Discord message sent (threshold not met)")
+    time.sleep(3)
+
+    # Step 5: Another Significant Move (>1%) - $62,000 → $60,000 (-3.2%)
+    # Note: Using last_notified_stop ($62,000) for display, not actual previous ($61,800)
+    print("📤 Step 5: Sending SIGNIFICANT trail update ($62,000 → $60,000)...")
+    signal.take_profit_3 = 60000.00
+    movement_pct = (
+        abs((signal.take_profit_3 - last_notified_stop) / last_notified_stop) * 100
+    )
+    print(
+        f"   Movement from last notified: {movement_pct:.1f}% (>1% → sends notification)"
+    )
+    client.send_trail_update(signal, old_stop=last_notified_stop)
+    last_notified_stop = signal.take_profit_3  # Update last notified
+    print("✅ Significant trail update sent")
+    time.sleep(3)
+
+    # Step 6: Final TP3 Exit (price bounced above trailing stop)
+    print("📤 Step 6: Sending TP3 Hit (Runner Exit)...")
+    signal.status = SignalStatus.TP3_HIT
+    msg_tp3 = (
+        "🏃📉 **SIGNAL UPDATE: BTC/USD** 🏃📉\n"
+        "**Side**: SHORT\n"
+        "**Status**: TP3_HIT\n"
+        "**Reason**: TP_HIT (Chandelier Exit)\n"
+        f"**Exit Price**: ~${signal.take_profit_3:,.2f} (-7.7% from entry)\n"
+        "🎉 **SHORT RUNNER COMPLETE** - Profit locked via downward trailing!"
+    )
+    client.send_message(msg_tp3, thread_id=thread_id)
+    print("✅ TP3 (Runner Exit) update sent")
+
+    print("-" * 50)
+    print("✅ SHORT RUNNER TRAIL PATH test complete!")
+    print(f"   Thread ID: {thread_id}")
+    print("   Expected messages in thread: 5 (Initial + TP1 + 2 Trail + TP3)")
+    print(
+        "   Note: Step 4 was skipped but Discord shows continuous values ($64K→$62K→$60K)"
+    )
+    print("   Trailing stop moved DOWN as price fell.\n")
+
+
 def run_all_tests(client: DiscordClient) -> None:
-    """Run all three test paths."""
+    """Run all four test paths."""
     test_success_path(client)
     print("\n" + "=" * 70 + "\n")
     time.sleep(1)
@@ -257,6 +498,14 @@ def run_all_tests(client: DiscordClient) -> None:
     time.sleep(1)
 
     test_expiration_path(client)
+    print("\n" + "=" * 70 + "\n")
+    time.sleep(1)
+
+    test_runner_trail_path(client)
+    print("\n" + "=" * 70 + "\n")
+    time.sleep(1)
+
+    test_short_runner_trail_path(client)
 
 
 def main():
@@ -286,11 +535,15 @@ def main():
         test_invalidation_path(client)
     elif test_path == "expiration":
         test_expiration_path(client)
+    elif test_path == "trail":
+        test_runner_trail_path(client)
+    elif test_path == "short":
+        test_short_runner_trail_path(client)
     elif test_path == "all":
         run_all_tests(client)
     else:
         print(f"❌ Unknown test path: {test_path}")
-        print("   Valid options: success, invalidation, expiration, all")
+        print("   Valid options: success, invalidation, expiration, trail, short, all")
         sys.exit(1)
 
     print("\n" + "=" * 70)

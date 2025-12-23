@@ -259,6 +259,8 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                     max_favorable_excursion=max_favorable_excursion,
                     # Propagate Discord thread_id for social context analytics
                     discord_thread_id=pos.get("discord_thread_id"),
+                    # Propagate final trailing stop for Runner (TP3) exit analysis
+                    trailing_stop_final=pos.get("trailing_stop_final"),
                 )
 
                 # Validate and Dump to JSON (BasePipeline expects dicts)

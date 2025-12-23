@@ -142,6 +142,33 @@ class DiscordClient:
                 logger.error(f"Failed to send Discord notification: {str(e)}")
             return False
 
+    def send_trail_update(self, signal: Signal, old_stop: float) -> bool:
+        """
+        Send a trail update notification when the Runner stop moves significantly.
+
+        Args:
+            signal: Signal with updated take_profit_3 (new trailing stop)
+            old_stop: Previous trailing stop value (last notified value for UX continuity)
+
+        Returns:
+            bool: True if the message was sent successfully, False otherwise.
+        """
+        from crypto_signals.domain.schemas import OrderSide
+
+        new_stop = signal.take_profit_3 or 0.0
+        is_long = signal.side != OrderSide.SELL
+
+        # Directional emojis: Runner (🏃) + direction indicator
+        emoji = "🏃📈" if is_long else "🏃📉"
+        direction = "▲" if is_long else "▼"
+
+        content = (
+            f"{emoji} **TRAIL UPDATE: {signal.symbol}** {emoji}\n"
+            f"New Stop: ${new_stop:,.2f} {direction}\n"
+            f"Previous: ${old_stop:,.2f}"
+        )
+        return self.send_message(content, thread_id=signal.discord_thread_id)
+
     def _format_message(self, signal: Signal) -> dict:
         """
         Format the signal into a Discord payload.

@@ -114,8 +114,11 @@ class TechnicalIndicators:
 
         if atr_col_chand in df.columns:
             high_max = df["high"].rolling(window=lookback).max()
-            # Chandelier Exit Long
+            low_min = df["low"].rolling(window=lookback).min()
+            # Chandelier Exit Long: trails up as price rises
             df["CHANDELIER_EXIT_LONG"] = high_max - (df[atr_col_chand] * 3.0)
+            # Chandelier Exit Short: trails down as price falls
+            df["CHANDELIER_EXIT_SHORT"] = low_min + (df[atr_col_chand] * 3.0)
 
         return df
 

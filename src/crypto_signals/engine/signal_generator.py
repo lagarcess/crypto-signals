@@ -14,6 +14,7 @@ from crypto_signals.analysis.patterns import PatternAnalyzer
 from crypto_signals.domain.schemas import (
     AssetClass,
     ExitReason,
+    OrderSide,
     Signal,
     SignalStatus,
     get_deterministic_id,
@@ -240,13 +241,23 @@ class SignalGenerator:
         dataframe: Optional[pd.DataFrame] = None,
     ) -> list[Signal]:
         """
-        Check active signals for exit conditions (Profit or Invalidation).
+        Check active signals for exit conditions and trailing stop updates.
+
+        Returns signals requiring persistence updates, including:
+        - Status changes (TP1/TP2/TP3 hits, invalidations)
+        - Trailing stop updates for Runner positions (TP1_HIT or TP2_HIT status)
 
         Exit Rules:
         1. Take Profit: Latest High >= Signal.take_profit_1/2
         2. Structural Invalidation: Latest Close < Signal.invalidation_price
         3. Color Flip: Latest candle is a Bearish Engulfing candle.
         4. Hard Sells: RSI > 80 or ADX Peaking.
+
+        Active Trailing (Runner Phase):
+        - For signals in TP1_HIT or TP2_HIT, updates take_profit_3 when
+          Chandelier Exit moves higher than current value.
+        - Sets _trail_updated attribute to distinguish from status exits.
+        - Sets _previous_tp3 attribute for notification threshold calculation.
         """
         # 1. Fetch Data
         if dataframe is not None:
@@ -273,10 +284,15 @@ class SignalGenerator:
         current_high = float(latest["high"])
         current_close = float(latest["close"])
 
-        # Chandelier Exit for Runner
-        chandelier_exit = (
+        # Chandelier Exit for Runner (direction-aware)
+        chandelier_exit_long = (
             float(latest["CHANDELIER_EXIT_LONG"])
             if "CHANDELIER_EXIT_LONG" in latest
+            else None
+        )
+        chandelier_exit_short = (
+            float(latest["CHANDELIER_EXIT_SHORT"])
+            if "CHANDELIER_EXIT_SHORT" in latest
             else None
         )
 
@@ -302,12 +318,53 @@ class SignalGenerator:
 
         for signal in active_signals:
             exit_triggered = False
+            trail_updated = False
+
+            # --- ACTIVE TRAILING (Runner Phase) ---
+            # For signals in TP1_HIT or TP2_HIT, update trailing stop
+            # Long: trailing stop moves UP (chandelier_exit_long > current)
+            # Short: trailing stop moves DOWN (chandelier_exit_short < current)
+            if signal.status in (SignalStatus.TP1_HIT, SignalStatus.TP2_HIT):
+                current_tp3 = signal.take_profit_3 or 0.0
+                is_long = signal.side != OrderSide.SELL
+
+                if is_long and chandelier_exit_long:
+                    # Long: update if new trailing stop is HIGHER
+                    if chandelier_exit_long > current_tp3:
+                        object.__setattr__(signal, "_previous_tp3", current_tp3)
+                        signal.take_profit_3 = chandelier_exit_long
+                        trail_updated = True
+                elif not is_long and chandelier_exit_short:
+                    # Short: update if new trailing stop is LOWER (and not zero)
+                    if current_tp3 == 0.0 or chandelier_exit_short < current_tp3:
+                        object.__setattr__(signal, "_previous_tp3", current_tp3)
+                        signal.take_profit_3 = chandelier_exit_short
+                        trail_updated = True
 
             # --- PROFIT TAKING ---
 
+            # Get appropriate chandelier exit based on side
+            is_long = signal.side != OrderSide.SELL
+            chandelier_exit = chandelier_exit_long if is_long else chandelier_exit_short
+
             # Check TP3 (Runner) - Chandelier Exit
-            if chandelier_exit and current_close < chandelier_exit:
-                if current_close > signal.entry_price:
+            # Long: exit if close < chandelier (price fell below trailing stop)
+            # Short: exit if close > chandelier (price rose above trailing stop)
+            tp3_exit_triggered = False
+            if chandelier_exit:
+                if is_long and current_close < chandelier_exit:
+                    tp3_exit_triggered = True
+                elif not is_long and current_close > chandelier_exit:
+                    tp3_exit_triggered = True
+
+            if tp3_exit_triggered:
+                # Determine if profitable
+                is_profitable = (
+                    (current_close > signal.entry_price)
+                    if is_long
+                    else (current_close < signal.entry_price)
+                )
+                if is_profitable:
                     signal.status = SignalStatus.TP3_HIT
                     signal.exit_reason = ExitReason.TP_HIT
                 else:
@@ -356,7 +413,13 @@ class SignalGenerator:
                     signal.exit_reason = ExitReason.COLOR_FLIP
                     exit_triggered = True
 
+            # Include signal if exit triggered OR if trail updated
             if exit_triggered:
+                exited_signals.append(signal)
+            elif trail_updated:
+                # Mark for main.py to distinguish from status changes
+                # Use object.__setattr__ to bypass Pydantic's validation
+                object.__setattr__(signal, "_trail_updated", True)
                 exited_signals.append(signal)
 
         return exited_signals
