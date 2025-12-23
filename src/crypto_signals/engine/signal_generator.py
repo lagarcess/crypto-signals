@@ -14,11 +14,13 @@ from crypto_signals.analysis.patterns import PatternAnalyzer
 from crypto_signals.domain.schemas import (
     AssetClass,
     ExitReason,
+    OrderSide,
     Signal,
     SignalStatus,
     get_deterministic_id,
 )
 from crypto_signals.market.data_provider import MarketDataProvider
+from loguru import logger
 
 
 class SignalGenerator:
@@ -240,13 +242,23 @@ class SignalGenerator:
         dataframe: Optional[pd.DataFrame] = None,
     ) -> list[Signal]:
         """
-        Check active signals for exit conditions (Profit or Invalidation).
+        Check active signals for exit conditions and trailing stop updates.
+
+        Returns signals requiring persistence updates, including:
+        - Status changes (TP1/TP2/TP3 hits, invalidations)
+        - Trailing stop updates for Runner positions (TP1_HIT or TP2_HIT status)
 
         Exit Rules:
         1. Take Profit: Latest High >= Signal.take_profit_1/2
         2. Structural Invalidation: Latest Close < Signal.invalidation_price
         3. Color Flip: Latest candle is a Bearish Engulfing candle.
         4. Hard Sells: RSI > 80 or ADX Peaking.
+
+        Active Trailing (Runner Phase):
+        - For signals in TP1_HIT or TP2_HIT, updates take_profit_3 when
+          Chandelier Exit moves higher than current value.
+        - Sets _trail_updated attribute to distinguish from status exits.
+        - Sets _previous_tp3 attribute for notification threshold calculation.
         """
         # 1. Fetch Data
         if dataframe is not None:
@@ -263,7 +275,13 @@ class SignalGenerator:
         analyzer = self.pattern_analyzer_cls(dataframe=df)
         analyzed_df = analyzer.check_patterns()
 
+        logger.debug(
+            f"analyzed_df type={type(analyzed_df)}, "
+            f"empty check: {getattr(analyzed_df, 'empty', 'N/A')}"
+        )
+
         if analyzed_df.empty:
+            logger.debug("analyzed_df is empty, returning early")
             return []
 
         latest = analyzed_df.iloc[-1]
@@ -271,12 +289,23 @@ class SignalGenerator:
 
         # Current Candle Metrics
         current_high = float(latest["high"])
+        current_low = float(latest["low"])
         current_close = float(latest["close"])
 
-        # Chandelier Exit for Runner
-        chandelier_exit = (
+        logger.debug(
+            f"check_exits: analyzed_df has {len(analyzed_df)} rows, "
+            f"high={current_high}, low={current_low}, close={current_close}"
+        )
+
+        # Chandelier Exit for Runner (direction-aware)
+        chandelier_exit_long = (
             float(latest["CHANDELIER_EXIT_LONG"])
             if "CHANDELIER_EXIT_LONG" in latest
+            else None
+        )
+        chandelier_exit_short = (
+            float(latest["CHANDELIER_EXIT_SHORT"])
+            if "CHANDELIER_EXIT_SHORT" in latest
             else None
         )
 
@@ -302,12 +331,70 @@ class SignalGenerator:
 
         for signal in active_signals:
             exit_triggered = False
+            trail_updated = False
+
+            # Determine side once for this signal
+            is_long = signal.side != OrderSide.SELL
+
+            logger.debug(
+                f"Processing signal {signal.signal_id}: status={signal.status}, "
+                f"side={signal.side}, is_long={is_long}, tp1={signal.take_profit_1}, "
+                f"tp2={signal.take_profit_2}, tp3={signal.take_profit_3}"
+            )
+
+            # --- ACTIVE TRAILING (Runner Phase) ---
+            # For signals in TP1_HIT or TP2_HIT, update trailing stop
+            # Long: trailing stop moves UP (chandelier_exit_long > current)
+            # Short: trailing stop moves DOWN (chandelier_exit_short < current)
+            if signal.status in (SignalStatus.TP1_HIT, SignalStatus.TP2_HIT):
+                current_tp3 = signal.take_profit_3 or 0.0
+                is_long = signal.side != OrderSide.SELL
+
+                if is_long and chandelier_exit_long:
+                    # Long: update if new trailing stop is HIGHER
+                    # (initialization when current_tp3 == 0 is handled implicitly: any positive > 0)
+                    if chandelier_exit_long > current_tp3:
+                        object.__setattr__(signal, "_previous_tp3", current_tp3)
+                        signal.take_profit_3 = chandelier_exit_long
+                        trail_updated = True
+                elif not is_long and chandelier_exit_short:
+                    # Short: update if new trailing stop is LOWER
+                    # For shorts, lower is better (locking in more profit as price falls)
+                    # Initialization: when current_tp3 == 0, always set initial stop
+                    # Trailing: only update if new stop is lower (more favorable)
+                    should_update = (
+                        current_tp3 == 0.0  # Initialization
+                        or chandelier_exit_short < current_tp3  # Trailing down
+                    )
+                    if should_update:
+                        object.__setattr__(signal, "_previous_tp3", current_tp3)
+                        signal.take_profit_3 = chandelier_exit_short
+                        trail_updated = True
 
             # --- PROFIT TAKING ---
 
+            # Get appropriate chandelier exit based on side
+            is_long = signal.side != OrderSide.SELL
+            chandelier_exit = chandelier_exit_long if is_long else chandelier_exit_short
+
             # Check TP3 (Runner) - Chandelier Exit
-            if chandelier_exit and current_close < chandelier_exit:
-                if current_close > signal.entry_price:
+            # Long: exit if close < chandelier (price fell below trailing stop)
+            # Short: exit if close > chandelier (price rose above trailing stop)
+            tp3_exit_triggered = False
+            if chandelier_exit:
+                if is_long and current_close < chandelier_exit:
+                    tp3_exit_triggered = True
+                elif not is_long and current_close > chandelier_exit:
+                    tp3_exit_triggered = True
+
+            if tp3_exit_triggered:
+                # Determine if profitable
+                is_profitable = (
+                    (current_close > signal.entry_price)
+                    if is_long
+                    else (current_close < signal.entry_price)
+                )
+                if is_profitable:
                     signal.status = SignalStatus.TP3_HIT
                     signal.exit_reason = ExitReason.TP_HIT
                 else:
@@ -317,46 +404,91 @@ class SignalGenerator:
 
             # Check TP2
             # Guard: Don't trigger if already TP2 or higher (though list filter handles TP3)
-            elif (
-                signal.take_profit_2
-                and current_high >= signal.take_profit_2
+            # Long: price rises above TP2 (high >= target)
+            # Short: price falls below TP2 (low <= target)
+            if (
+                not exit_triggered
+                and signal.take_profit_2
                 and signal.status != SignalStatus.TP2_HIT
             ):
-                signal.status = SignalStatus.TP2_HIT
-                signal.exit_reason = ExitReason.TP2
-                exit_triggered = True
+                tp2_hit = False
+                if is_long and current_high >= signal.take_profit_2:
+                    tp2_hit = True
+                elif not is_long and current_low <= signal.take_profit_2:
+                    tp2_hit = True
+
+                if tp2_hit:
+                    signal.status = SignalStatus.TP2_HIT
+                    signal.exit_reason = ExitReason.TP2
+                    exit_triggered = True
 
             # Check TP1
             # Guard: Only trigger if WAITING.
             # If already TP1_HIT, we want to skip this and check TP2 (handled above).
-            elif (
-                signal.take_profit_1
-                and current_high >= signal.take_profit_1
+            # Long: price rises above TP1 (high >= target)
+            # Short: price falls below TP1 (low <= target)
+            if (
+                not exit_triggered
+                and signal.take_profit_1
                 and signal.status == SignalStatus.WAITING
             ):
-                signal.status = SignalStatus.TP1_HIT
-                signal.suggested_stop = signal.entry_price
-                signal.exit_reason = ExitReason.TP1
-                exit_triggered = True
+                tp1_hit = False
+                if is_long and current_high >= signal.take_profit_1:
+                    tp1_hit = True
+                elif not is_long and current_low <= signal.take_profit_1:
+                    tp1_hit = True
+
+                logger.debug(
+                    f"TP1 check: is_long={is_long}, high={current_high}, "
+                    f"tp1={signal.take_profit_1}, tp1_hit={tp1_hit}"
+                )
+
+                if tp1_hit:
+                    signal.status = SignalStatus.TP1_HIT
+                    signal.suggested_stop = signal.entry_price
+                    signal.exit_reason = ExitReason.TP1
+                    exit_triggered = True
+                    logger.debug("TP1 HIT! exit_triggered=True")
 
             # --- INVALIDATION ---
             if not exit_triggered:
                 # 1. Structural Invalidation
-                if (
-                    signal.invalidation_price
-                    and current_close < signal.invalidation_price
-                ):
+                # Long: price falls below invalidation level
+                # Short: price rises above invalidation level
+                invalidation_triggered = False
+                if signal.invalidation_price:
+                    if is_long and current_close < signal.invalidation_price:
+                        invalidation_triggered = True
+                    elif not is_long and current_close > signal.invalidation_price:
+                        invalidation_triggered = True
+
+                if invalidation_triggered:
                     signal.status = SignalStatus.INVALIDATED
                     signal.exit_reason = ExitReason.STRUCTURAL_INVALIDATION
                     exit_triggered = True
 
                 # 2. Dynamic Invalidation (Color Flip / Indicators)
-                elif is_bearish_engulfing or rsi_overbought or adx_peaking:
+                # Note: bearish_engulfing, rsi_overbought, adx_peaking are Long-specific
+                # For Short positions, these would indicate favorable conditions, not invalidation
+                # TODO: Add bullish equivalents for Short invalidation when signals are generated
+                elif is_long and (is_bearish_engulfing or rsi_overbought or adx_peaking):
                     signal.status = SignalStatus.INVALIDATED
                     signal.exit_reason = ExitReason.COLOR_FLIP
                     exit_triggered = True
 
+            # Include signal if exit triggered OR if trail updated
+            logger.debug(
+                f"End of loop: exit_triggered={exit_triggered}, trail_updated={trail_updated}"
+            )
             if exit_triggered:
                 exited_signals.append(signal)
+                logger.debug("Appended signal to exited_signals (exit_triggered)")
+            elif trail_updated:
+                # Mark for main.py to distinguish from status changes
+                # Use object.__setattr__ to bypass Pydantic's validation
+                object.__setattr__(signal, "_trail_updated", True)
+                exited_signals.append(signal)
+                logger.debug("Appended signal to exited_signals (trail_updated)")
 
+        logger.debug(f"Returning {len(exited_signals)} exited signals")
         return exited_signals

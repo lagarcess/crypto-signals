@@ -226,7 +226,7 @@ class Signal(BaseModel):
     )
     take_profit_3: Optional[float] = Field(
         default=None,
-        description="Third profit target (Runner/Moonbag)",
+        description="Current volatility-adjusted trailing stop (Chandelier Exit) for Runner positions",
     )
     exit_reason: Optional[ExitReason] = Field(
         default=None,
@@ -235,6 +235,10 @@ class Signal(BaseModel):
     discord_thread_id: Optional[str] = Field(
         default=None,
         description="Discord thread ID for linking all lifecycle updates back to the original broadcast",
+    )
+    side: Optional[OrderSide] = Field(
+        default=OrderSide.BUY,
+        description="Trade direction (BUY for Long, SELL for Short). Defaults to BUY for backward compatibility.",
     )
 
 
@@ -289,6 +293,10 @@ class Position(BaseModel):
     side: OrderSide = Field(
         ...,
         description="Order side (buy or sell)",
+    )
+    trailing_stop_final: Optional[float] = Field(
+        default=None,
+        description="Final trailing stop value at exit (Chandelier Exit for TP3)",
     )
 
 
@@ -385,6 +393,10 @@ class TradeExecution(BaseModel):
         default=None,
         description="Discord thread ID for social context analytics",
     )
+    trailing_stop_final: Optional[float] = Field(
+        default=None,
+        description="Final trailing stop value at exit (Chandelier Exit for TP3)",
+    )
 
 
 class StagingTrade(BaseModel):
@@ -474,6 +486,10 @@ class StagingTrade(BaseModel):
     discord_thread_id: Optional[str] = Field(
         default=None,
         description="Discord thread ID for social context analytics",
+    )
+    trailing_stop_final: Optional[float] = Field(
+        default=None,
+        description="Final trailing stop value at exit (Chandelier Exit for TP3)",
     )
 
 

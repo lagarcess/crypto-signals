@@ -232,8 +232,54 @@ def main():
                         active_signals, symbol, asset_class, dataframe=df
                     )
 
-                    # Process Exits (TP / Invalidation)
+                    # Process Exits (TP / Invalidation) and Trail Updates
                     for exited in exited_signals:
+                        # --- TRAIL UPDATE (not a status change) ---
+                        if getattr(exited, "_trail_updated", False):
+                            # Calculate movement percentage (absolute for Short positions)
+                            old_tp3 = getattr(exited, "_previous_tp3", 0.0)
+                            new_tp3 = exited.take_profit_3 or 0.0
+                            movement_pct = (
+                                abs((new_tp3 - old_tp3) / old_tp3 * 100)
+                                if old_tp3 > 0
+                                else 100.0
+                            )
+
+                            logger.info(
+                                f"TRAIL UPDATE: {exited.signal_id} "
+                                f"TP3 moved from ${old_tp3:.2f} to ${new_tp3:.2f} "
+                                f"({movement_pct:.1f}%)",
+                                extra={
+                                    "symbol": symbol,
+                                    "signal_id": exited.signal_id,
+                                    "old_tp3": old_tp3,
+                                    "new_tp3": new_tp3,
+                                    "movement_pct": movement_pct,
+                                },
+                            )
+
+                            # Always persist the updated trailing value
+                            repo.update_signal(exited)
+
+                            # Notify Discord if significant movement (>1%)
+                            if movement_pct > 1.0:
+                                discord.send_trail_update(
+                                    exited,
+                                    old_stop=old_tp3,
+                                )
+
+                            # Clean up private attributes
+                            if hasattr(exited, "_trail_updated"):
+                                delattr(exited, "_trail_updated")
+                            if hasattr(exited, "_previous_tp3"):
+                                delattr(exited, "_previous_tp3")
+
+                            # Remove from active_signals to skip expiration check
+                            if exited in active_signals:
+                                active_signals.remove(exited)
+                            continue
+
+                        # --- STATUS CHANGE (Exit) ---
                         logger.info(
                             f"SIGNAL UPDATE: {exited.signal_id} "
                             f"status -> {exited.status}",
