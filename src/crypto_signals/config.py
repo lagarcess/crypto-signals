@@ -12,7 +12,7 @@ from typing import Any, List
 
 from alpaca.data.historical import CryptoHistoricalDataClient, StockHistoricalDataClient
 from alpaca.trading.client import TradingClient
-from pydantic import Field, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -56,23 +56,30 @@ class Settings(BaseSettings):
         description="Path to Google Cloud service account JSON file",
     )
 
-    # Discord Webhook (Required)
-    DISCORD_WEBHOOK_URL: str = Field(
+    # Discord Webhooks (Multi-destination routing)
+    TEST_DISCORD_WEBHOOK: SecretStr = Field(
         ...,
-        description="Discord Webhook URL for notifications",
-        min_length=1,
+        description="Discord Webhook URL for test/development messages (always required)",
+    )
+    LIVE_CRYPTO_DISCORD_WEBHOOK_URL: SecretStr | None = Field(
+        default=None,
+        description="Discord Webhook URL for live CRYPTO signals (required when TEST_MODE=False)",
+    )
+    LIVE_STOCK_DISCORD_WEBHOOK_URL: SecretStr | None = Field(
+        default=None,
+        description="Discord Webhook URL for live EQUITY signals (required when TEST_MODE=False)",
+    )
+
+    # Environment Mode (defaults to True for safety - all traffic goes to test webhook)
+    TEST_MODE: bool = Field(
+        default=True,
+        description="If True, all traffic routes to TEST_DISCORD_WEBHOOK",
     )
 
     # Optional: Alpaca Paper Trading (defaults to True for safety)
     ALPACA_PAPER_TRADING: bool = Field(
         default=True,
         description="Use Alpaca paper trading environment",
-    )
-
-    # Optional: Mock Discord Notifications (defaults to False, strict validation)
-    MOCK_DISCORD: bool = Field(
-        default=False,
-        description="If True, log notifications instead of sending to Discord",
     )
 
     # Portfolio Configuration (Optional - defaults to hardcoded lists)
@@ -112,7 +119,6 @@ class Settings(BaseSettings):
         "ALPACA_API_KEY",
         "ALPACA_SECRET_KEY",
         "GOOGLE_CLOUD_PROJECT",
-        "DISCORD_WEBHOOK_URL",
         mode="before",
     )
     @classmethod
@@ -122,21 +128,19 @@ class Settings(BaseSettings):
             raise ValueError(f"{info.field_name} cannot be empty")
         return v.strip() if isinstance(v, str) else v
 
-    @field_validator("DISCORD_WEBHOOK_URL", mode="after")
-    @classmethod
-    def validate_discord_url(cls, v: str) -> str:
-        """Validate Discord webhook URL format."""
-        valid_prefixes = (
-            "https://discord.com/api/webhooks/",
-            "https://discordapp.com/api/webhooks/",
-            "https://canary.discord.com/api/webhooks/",
-        )
-        if not v.startswith(valid_prefixes):
-            raise ValueError(
-                "DISCORD_WEBHOOK_URL must be a valid Discord webhook URL "
-                "(discord.com, discordapp.com, or canary.discord.com)"
-            )
-        return v
+    @model_validator(mode="after")
+    def validate_live_webhooks(self) -> "Settings":
+        """Ensure live webhooks are provided when TEST_MODE is False."""
+        if not self.TEST_MODE:
+            if not self.LIVE_CRYPTO_DISCORD_WEBHOOK_URL:
+                raise ValueError(
+                    "LIVE_CRYPTO_DISCORD_WEBHOOK_URL is required when TEST_MODE=False"
+                )
+            if not self.LIVE_STOCK_DISCORD_WEBHOOK_URL:
+                raise ValueError(
+                    "LIVE_STOCK_DISCORD_WEBHOOK_URL is required when TEST_MODE=False"
+                )
+        return self
 
     @property
     def project_root(self) -> Path:

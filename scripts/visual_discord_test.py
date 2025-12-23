@@ -6,26 +6,36 @@ This script sends real payloads to a Discord webhook to visually verify
 message threading and formatting across all signal lifecycle paths.
 
 Usage:
-    1. Set the TEST_DISCORD_WEBHOOK environment variable to your test webhook URL
-    2. Run: python scripts/visual_discord_test.py [path]
+    poetry run python scripts/visual_discord_test.py [PATH] [--mode test|live]
 
-    Where [path] is one of:
+    Where [PATH] is one of:
     - success     : Signal → TP1 → TP2 → TP3 (full success path)
     - invalidation: Signal → Invalidation
     - expiration  : Signal → Expiration
     - trail       : Signal → TP1 → Trail Updates → TP3 (runner trail path)
-    - all         : Run all four paths (default)
+    - short       : Short position trail path
+    - all         : Run all five paths (default)
 
-Example:
-    export TEST_DISCORD_WEBHOOK="https://discord.com/api/webhooks/..."
-    python scripts/visual_discord_test.py success
+    Modes:
+    - test : Routes all traffic to TEST_DISCORD_WEBHOOK (default, safe)
+    - live : Routes signals by asset class (CRYPTO → crypto webhook, EQUITY → stock webhook)
+
+Examples:
+    # Test mode (default) - all messages go to test webhook
+    poetry run python scripts/visual_discord_test.py success
+
+    # Live mode - routes to appropriate asset-class webhooks
+    poetry run python scripts/visual_discord_test.py all --mode live
 """
 
 import os
 import sys
 import time
 from datetime import date, datetime, timedelta, timezone
+from enum import Enum
+from typing import Annotated
 
+import typer
 from dotenv import load_dotenv
 
 # Setup: Load .env and add src to path BEFORE importing project modules
@@ -33,6 +43,7 @@ load_dotenv()
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 # Project imports (after path setup)  # noqa: E402
+from crypto_signals.config import get_settings  # noqa: E402
 from crypto_signals.domain.schemas import (  # noqa: E402
     AssetClass,
     OrderSide,
@@ -45,31 +56,26 @@ from crypto_signals.notifications.discord import DiscordClient  # noqa: E402
 # Configuration
 UPDATE_DELAY_SECONDS = 2.5  # Delay between updates for visual verification
 
+# Typer app
+app = typer.Typer(help="Visual Discord Integration Test Script")
 
-def get_webhook_url() -> str:
-    """Get the test webhook URL from environment variable."""
-    webhook_url = os.environ.get("TEST_DISCORD_WEBHOOK")
 
-    if not webhook_url:
-        print("\n" + "=" * 70)
-        print("ERROR: TEST_DISCORD_WEBHOOK environment variable not set!")
-        print("=" * 70)
-        print("\nTo run this visual test, you need to:")
-        print("  1. Create a test Discord channel")
-        print("  2. Create a webhook for that channel")
-        print("  3. Set the environment variable:")
-        print()
-        print("     Windows (PowerShell):")
-        print('       $env:TEST_DISCORD_WEBHOOK = "https://discord.com/api/webhooks/..."')
-        print()
-        print("     Linux/macOS:")
-        print('       export TEST_DISCORD_WEBHOOK="https://discord.com/api/webhooks/..."')
-        print()
-        print("  4. Run this script again")
-        print("=" * 70 + "\n")
-        sys.exit(1)
+class TestPath(str, Enum):
+    """Available test paths."""
 
-    return webhook_url
+    success = "success"
+    invalidation = "invalidation"
+    expiration = "expiration"
+    trail = "trail"
+    short = "short"
+    all = "all"
+
+
+class Mode(str, Enum):
+    """Environment mode for webhook routing."""
+
+    test = "test"
+    live = "live"
 
 
 def create_test_signal(scenario: str) -> Signal:
@@ -508,43 +514,60 @@ def run_all_tests(client: DiscordClient) -> None:
     test_short_runner_trail_path(client)
 
 
-def main():
-    """Main entry point for visual Discord tests."""
+@app.command()
+def main(
+    path: Annotated[
+        TestPath,
+        typer.Argument(help="Test path to run"),
+    ] = TestPath.all,
+    mode: Annotated[
+        Mode,
+        typer.Option(
+            "--mode",
+            "-m",
+            help="Routing mode: 'test' routes all to TEST_DISCORD_WEBHOOK, 'live' routes by asset class",
+        ),
+    ] = Mode.test,
+) -> None:
+    """Run visual Discord integration tests."""
     print("\n" + "=" * 70)
     print("  VISUAL DISCORD INTEGRATION TEST")
     print("  Testing Threaded Signal Lifecycle Messages")
     print("=" * 70)
 
-    # Get webhook URL
-    webhook_url = get_webhook_url()
+    # Create settings with appropriate TEST_MODE based on --mode flag
+    settings = get_settings()
 
-    # Initialize client with real mode (no mocking)
-    client = DiscordClient(webhook_url=webhook_url, mock_mode=False)
+    if mode == Mode.live:
+        # Force live mode (override TEST_MODE)
+        # Note: This requires LIVE_CRYPTO_DISCORD_WEBHOOK_URL and LIVE_STOCK_DISCORD_WEBHOOK_URL
+        # to be set in environment or .env
+        object.__setattr__(settings, "TEST_MODE", False)
+        print("\n⚠️  Mode: LIVE - Routing by asset class")
+        print("   CRYPTO signals → LIVE_CRYPTO_DISCORD_WEBHOOK_URL")
+        print("   EQUITY signals → LIVE_STOCK_DISCORD_WEBHOOK_URL")
+        print("   System messages → TEST_DISCORD_WEBHOOK")
+    else:
+        print("\n🧪 Mode: TEST - All traffic routes to TEST_DISCORD_WEBHOOK")
 
-    # Mask webhook URL for security - only show source confirmation
-    masked_url = f"...{webhook_url[-12:]}" if len(webhook_url) > 12 else "***"
-    print(f"\n📡 Webhook configured: {masked_url} (from .env or environment)")
+    # Initialize client with settings
+    client = DiscordClient(settings=settings)
+
     print(f"⏱️  Update delay: {UPDATE_DELAY_SECONDS}s between messages\n")
 
-    # Determine which test(s) to run
-    test_path = sys.argv[1].lower() if len(sys.argv) > 1 else "all"
-
-    if test_path == "success":
+    # Run the selected test path
+    if path == TestPath.success:
         test_success_path(client)
-    elif test_path == "invalidation":
+    elif path == TestPath.invalidation:
         test_invalidation_path(client)
-    elif test_path == "expiration":
+    elif path == TestPath.expiration:
         test_expiration_path(client)
-    elif test_path == "trail":
+    elif path == TestPath.trail:
         test_runner_trail_path(client)
-    elif test_path == "short":
+    elif path == TestPath.short:
         test_short_runner_trail_path(client)
-    elif test_path == "all":
+    elif path == TestPath.all:
         run_all_tests(client)
-    else:
-        print(f"❌ Unknown test path: {test_path}")
-        print("   Valid options: success, invalidation, expiration, trail, short, all")
-        sys.exit(1)
 
     print("\n" + "=" * 70)
     print("  VISUAL VERIFICATION COMPLETE")
@@ -553,4 +576,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    app()

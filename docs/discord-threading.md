@@ -36,17 +36,31 @@ If a signal lacks a `discord_thread_id` (due to initial notification failure):
 | `Position` | `discord_thread_id` | Inherited from Signal on fill |
 | `TradeExecution` | `discord_thread_id` | Propagated during archival for analytics |
 
+## Webhook Routing
+
+Messages are routed based on `TEST_MODE` and asset class:
+
+| Scenario | Mode | Asset Class | Target Webhook |
+| --- | --- | --- | --- |
+| **Development/Tests** | `TEST_MODE=true` | Any | `TEST_DISCORD_WEBHOOK` |
+| **Live Production** | `TEST_MODE=false` | `CRYPTO` | `LIVE_CRYPTO_DISCORD_WEBHOOK_URL` |
+| **Live Production** | `TEST_MODE=false` | `EQUITY` | `LIVE_STOCK_DISCORD_WEBHOOK_URL` |
+| **System Messages** | Any | None | `TEST_DISCORD_WEBHOOK` |
+
 ## Visual Testing
 
 ```powershell
-# Set webhook in .env
-TEST_DISCORD_WEBHOOK=https://discord.com/api/webhooks/...
+# Ensure TEST_DISCORD_WEBHOOK is set in .env
 
-# Run tests
-python scripts/visual_discord_test.py success      # Signal → TP1 → TP2 → TP3
-python scripts/visual_discord_test.py invalidation # Signal → Invalidation
-python scripts/visual_discord_test.py expiration   # Signal → Expiration
-python scripts/visual_discord_test.py all          # All paths
+# Test mode (default) - all messages go to test webhook
+poetry run python scripts/visual_discord_test.py success      # Signal → TP1 → TP2 → TP3
+poetry run python scripts/visual_discord_test.py invalidation # Signal → Invalidation
+poetry run python scripts/visual_discord_test.py expiration   # Signal → Expiration
+poetry run python scripts/visual_discord_test.py trail        # Runner trail path
+poetry run python scripts/visual_discord_test.py all          # All paths
+
+# Live mode - routes by asset class
+poetry run python scripts/visual_discord_test.py all --mode live
 ```
 
 | Path | Messages | Flow |
@@ -54,3 +68,4 @@ python scripts/visual_discord_test.py all          # All paths
 | **Success** | 4 | Initial → TP1 → TP2 → TP3 |
 | **Invalidation** | 2 | Initial → Invalidation |
 | **Expiration** | 2 | Initial → Expiration |
+| **Trail** | 5 | Initial → TP1 → Trail Updates → TP3 |
