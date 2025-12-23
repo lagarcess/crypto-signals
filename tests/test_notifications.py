@@ -383,10 +383,61 @@ class TestConfigValidation(unittest.TestCase):
                 with pytest.raises(ValueError) as exc_info:
                     Settings(_env_file=None)
 
-                # Should mention the missing webhook
-                assert "LIVE_CRYPTO_DISCORD_WEBHOOK_URL" in str(
-                    exc_info.value
-                ) or "LIVE_STOCK_DISCORD_WEBHOOK_URL" in str(exc_info.value)
+                # Validator checks LIVE_CRYPTO first, so that error is raised
+                assert "LIVE_CRYPTO_DISCORD_WEBHOOK_URL" in str(exc_info.value)
         finally:
             # Re-clear cache so other tests get fresh settings
+            get_settings.cache_clear()
+
+    def test_config_validation_live_mode_requires_stock_webhook(self):
+        """ValidationError for missing LIVE_STOCK when LIVE_CRYPTO is set."""
+        from crypto_signals.config import Settings, get_settings
+
+        get_settings.cache_clear()
+
+        # LIVE_CRYPTO is set, but LIVE_STOCK is missing
+        test_env = {
+            "ALPACA_API_KEY": "test_key",
+            "ALPACA_SECRET_KEY": "test_secret",
+            "GOOGLE_CLOUD_PROJECT": "test-project",
+            "TEST_DISCORD_WEBHOOK": "https://discord.com/api/webhooks/test",
+            "TEST_MODE": "false",
+            "LIVE_CRYPTO_DISCORD_WEBHOOK_URL": "https://discord.com/api/webhooks/crypto",
+            # Missing LIVE_STOCK_DISCORD_WEBHOOK_URL
+        }
+
+        try:
+            with patch.dict(os.environ, test_env, clear=True):
+                with pytest.raises(ValueError) as exc_info:
+                    Settings(_env_file=None)
+
+                assert "LIVE_STOCK_DISCORD_WEBHOOK_URL" in str(exc_info.value)
+        finally:
+            get_settings.cache_clear()
+
+    def test_config_validation_live_mode_succeeds_with_all_webhooks(self):
+        """Settings should load successfully when all required webhooks are configured."""
+        from crypto_signals.config import Settings, get_settings
+
+        get_settings.cache_clear()
+
+        # All webhooks configured - should succeed
+        test_env = {
+            "ALPACA_API_KEY": "test_key",
+            "ALPACA_SECRET_KEY": "test_secret",
+            "GOOGLE_CLOUD_PROJECT": "test-project",
+            "TEST_DISCORD_WEBHOOK": "https://discord.com/api/webhooks/test",
+            "TEST_MODE": "false",
+            "LIVE_CRYPTO_DISCORD_WEBHOOK_URL": "https://discord.com/api/webhooks/crypto",
+            "LIVE_STOCK_DISCORD_WEBHOOK_URL": "https://discord.com/api/webhooks/stock",
+        }
+
+        try:
+            with patch.dict(os.environ, test_env, clear=True):
+                # Should not raise - all required webhooks are present
+                settings = Settings(_env_file=None)
+                assert settings.TEST_MODE is False
+                assert settings.LIVE_CRYPTO_DISCORD_WEBHOOK_URL is not None
+                assert settings.LIVE_STOCK_DISCORD_WEBHOOK_URL is not None
+        finally:
             get_settings.cache_clear()

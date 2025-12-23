@@ -194,9 +194,10 @@ def init_secrets() -> bool:
             # Optional secrets with defaults
             "ALPACA_PAPER_TRADING": "true",
             "TEST_MODE": "true",
-            # Production webhooks (optional - required when TEST_MODE=false)
-            "LIVE_CRYPTO_DISCORD_WEBHOOK_URL": None,
-            "LIVE_STOCK_DISCORD_WEBHOOK_URL": None,
+            # Production webhooks - optional here, validated by Pydantic when TEST_MODE=false
+            # Empty string = optional (won't fail loading), None = required (would fail)
+            "LIVE_CRYPTO_DISCORD_WEBHOOK_URL": "",
+            "LIVE_STOCK_DISCORD_WEBHOOK_URL": "",
         }
 
         success = secret_manager.load_secrets_to_env(secrets)

@@ -243,6 +243,7 @@ def verify_discord(settings) -> bool:
     success = client.send_message(
         msg,
         thread_name="System Health Check",  # Required for Forum channels
+        asset_class=None,  # System message → always routes to TEST_DISCORD_WEBHOOK
     )
 
     if not success:
@@ -254,8 +255,20 @@ def verify_discord(settings) -> bool:
     for webhook_name, (emoji, status) in webhook_status.items():
         print(f"   {emoji} {webhook_name}: {status}")
 
-    # Check if any operational webhooks failed
-    all_operational = all(emoji in ("✅", "➖") for emoji, _ in webhook_status.values())
+    # --- Step 7: Validate operational status ---
+    # In TEST_MODE: "➖" (not configured) is acceptable for live webhooks
+    # In LIVE_MODE: Live webhooks must be "✅" (not "➖" or any error)
+    all_operational = True
+
+    for webhook_name, (emoji, _) in webhook_status.items():
+        if emoji == "❌" or emoji == "⚠️":
+            # Any error is a failure
+            all_operational = False
+        elif emoji == "➖" and not settings.TEST_MODE:
+            # In LIVE mode, unconfigured live webhooks are a failure
+            if webhook_name in ("LIVE_CRYPTO_WEBHOOK", "LIVE_STOCK_WEBHOOK"):
+                print(f"   ❌ {webhook_name}: Required in LIVE mode but not configured")
+                all_operational = False
 
     return all_operational
 

@@ -542,7 +542,7 @@ def main(
         # Force live mode (override TEST_MODE)
         # Note: This requires LIVE_CRYPTO_DISCORD_WEBHOOK_URL and LIVE_STOCK_DISCORD_WEBHOOK_URL
         # to be set in environment or .env
-        object.__setattr__(settings, "TEST_MODE", False)
+        settings.TEST_MODE = False
         print("\n⚠️  Mode: LIVE - Routing by asset class")
         print("   CRYPTO signals → LIVE_CRYPTO_DISCORD_WEBHOOK_URL")
         print("   EQUITY signals → LIVE_STOCK_DISCORD_WEBHOOK_URL")
