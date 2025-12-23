@@ -16,10 +16,12 @@ from crypto_signals.config import (
     get_crypto_data_client,
     get_settings,
     get_stock_data_client,
+    get_trading_client,
     load_config_from_firestore,
 )
 from crypto_signals.domain.schemas import AssetClass, ExitReason, SignalStatus
 from crypto_signals.engine.signal_generator import SignalGenerator
+from crypto_signals.market.asset_service import AssetValidationService
 from crypto_signals.market.data_provider import MarketDataProvider
 from crypto_signals.notifications.discord import DiscordClient
 from crypto_signals.observability import (
@@ -80,6 +82,7 @@ def main():
                 generator = SignalGenerator(market_provider=market_provider)
                 repo = SignalRepository()
                 discord = DiscordClient()
+                asset_validator = AssetValidationService(get_trading_client())
 
         # Define Portfolio
         settings = get_settings()
@@ -92,9 +95,25 @@ def main():
         else:
             logger.info("Using configuration from .env")
 
-        portfolio_items = [(s, AssetClass.CRYPTO) for s in settings.CRYPTO_SYMBOLS] + [
-            (s, AssetClass.EQUITY) for s in settings.EQUITY_SYMBOLS
+        # Pre-flight: Validate symbols against Alpaca's live asset status
+        logger.info("Validating portfolio assets...")
+        with log_execution_time(logger, "asset_validation"):
+            valid_crypto = asset_validator.get_valid_portfolio(
+                settings.CRYPTO_SYMBOLS, AssetClass.CRYPTO
+            )
+            valid_equity = asset_validator.get_valid_portfolio(
+                settings.EQUITY_SYMBOLS, AssetClass.EQUITY
+            )
+
+        portfolio_items = [(s, AssetClass.CRYPTO) for s in valid_crypto] + [
+            (s, AssetClass.EQUITY) for s in valid_equity
         ]
+
+        if not portfolio_items:
+            logger.warning(
+                "No valid symbols to process! All configured symbols were filtered out "
+                "during asset validation. Check the 'INACTIVE ASSET SKIPPED' panels above."
+            )
 
         logger.info(f"Processing {len(portfolio_items)} symbols...")
 
