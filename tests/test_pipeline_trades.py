@@ -36,6 +36,10 @@ def test_active_trade_validation_loop(
     """
     Test that the main loop checks for invalidation of active signals.
     """
+    # Create mock for asset validator that passes through symbols
+    mock_asset_validator = MagicMock()
+    mock_asset_validator.get_valid_portfolio.side_effect = lambda s, ac: list(s)
+
     # Setup
     with (
         patch("crypto_signals.main.SignalRepository", return_value=mock_repo),
@@ -44,10 +48,15 @@ def test_active_trade_validation_loop(
             "crypto_signals.main.MarketDataProvider", return_value=mock_market_provider
         ),
         patch("crypto_signals.main.DiscordClient", return_value=mock_discord),
+        patch(
+            "crypto_signals.main.AssetValidationService",
+            return_value=mock_asset_validator,
+        ),
         patch("crypto_signals.main.init_secrets", return_value=True),
         patch("crypto_signals.main.get_settings") as mock_settings,
         patch("crypto_signals.main.get_stock_data_client"),
         patch("crypto_signals.main.get_crypto_data_client"),
+        patch("crypto_signals.main.get_trading_client"),
     ):
         # Mock settings to have 1 crypto symbol
         mock_settings.return_value.CRYPTO_SYMBOLS = ["BTC/USD"]

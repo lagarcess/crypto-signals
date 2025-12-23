@@ -28,10 +28,12 @@ def mock_dependencies():
     with (
         patch("crypto_signals.main.get_stock_data_client") as stock_client,
         patch("crypto_signals.main.get_crypto_data_client") as crypto_client,
+        patch("crypto_signals.main.get_trading_client") as trading_client,
         patch("crypto_signals.main.MarketDataProvider") as market_provider,
         patch("crypto_signals.main.SignalGenerator") as generator,
         patch("crypto_signals.main.SignalRepository") as repo,
         patch("crypto_signals.main.DiscordClient") as discord,
+        patch("crypto_signals.main.AssetValidationService") as asset_validator,
         patch("crypto_signals.main.get_settings") as mock_settings,
         patch("crypto_signals.main.init_secrets", return_value=True) as mock_secrets,
         patch("crypto_signals.main.load_config_from_firestore") as mock_firestore_config,
@@ -60,13 +62,24 @@ def mock_dependencies():
             get_daily_bars_side_effect
         )
 
+        # Configure AssetValidationService to pass-through all symbols
+        # (validation is tested separately in test_asset_service.py)
+        def get_valid_portfolio_side_effect(symbols, asset_class):
+            return list(symbols)
+
+        asset_validator.return_value.get_valid_portfolio.side_effect = (
+            get_valid_portfolio_side_effect
+        )
+
         yield {
             "stock_client": stock_client,
             "crypto_client": crypto_client,
+            "trading_client": trading_client,
             "market_provider": market_provider,
             "generator": generator,
             "repo": repo,
             "discord": discord,
+            "asset_validator": asset_validator,
             "settings": mock_settings,
             "secrets": mock_secrets,
             "firestore_config": mock_firestore_config,
