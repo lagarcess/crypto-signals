@@ -10,17 +10,15 @@ Pattern: "Extract-Transform-Load"
 3. Load: Push to BigQuery via BasePipeline (Truncate->Staging->Merge).
 """
 
-import logging
 from datetime import datetime, timezone
 from typing import Any, List
 
 from alpaca.common.exceptions import APIError
+from loguru import logger
 
 from crypto_signals.config import get_trading_client, settings
 from crypto_signals.domain.schemas import StagingAccount
 from crypto_signals.pipelines.base import BigQueryPipelineBase
-
-logger = logging.getLogger(__name__)
 
 
 class AccountSnapshotPipeline(BigQueryPipelineBase):

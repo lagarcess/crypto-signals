@@ -5,6 +5,21 @@ from unittest.mock import ANY, MagicMock, Mock, call, patch
 import pytest
 from crypto_signals.domain.schemas import AssetClass, Signal
 from crypto_signals.main import main
+from loguru import logger
+
+
+@pytest.fixture
+def caplog(caplog):
+    """Override caplog fixture to capture loguru logs."""
+    handler_id = logger.add(
+        caplog.handler,
+        format="{message}",
+        level=0,
+        filter=lambda record: record["level"].no >= 0,
+        catch=False,
+    )
+    yield caplog
+    logger.remove(handler_id)
 
 
 @pytest.fixture
@@ -221,10 +236,9 @@ def test_main_notification_failure(mock_dependencies, caplog):
     # Mock notification failure
     mock_discord_instance.send_signal.return_value = False
 
-    # Execute with caplog capturing
-    import logging
+    # Execute with caplog capturing (handled by fixture)
 
-    with caplog.at_level(logging.WARNING):
+    with caplog.at_level("WARNING"):
         main()
 
     # Verify warning
@@ -257,10 +271,9 @@ def test_main_repo_failure(mock_dependencies, caplog):
 
     mock_repo_instance.save.side_effect = save_side_effect
 
-    # Execute with caplog capturing
-    import logging
+    # Execute with caplog capturing (handled by fixture)
 
-    with caplog.at_level(logging.ERROR):
+    with caplog.at_level("ERROR"):
         main()
 
     # Verify error log for persistence failure (new structured logging)
@@ -350,9 +363,9 @@ def test_guardrail_ignores_firestore_equities(mock_dependencies, caplog):
 
     mock_gen_instance.generate_signals.return_value = None
 
-    import logging
+    mock_gen_instance.generate_signals.return_value = None
 
-    with caplog.at_level(logging.WARNING):
+    with caplog.at_level("WARNING"):
         main()
 
     # Asset: Equities should still be EMPTY because the guardrail ignored them.

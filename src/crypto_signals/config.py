@@ -247,12 +247,9 @@ def load_config_from_firestore() -> dict[str, list[str]]:
         dict: Configuration dict containing 'CRYPTO_SYMBOLS' and 'EQUITY_SYMBOLS' lists.
               Empty dict if no active strategies found or error occurs.
     """
-    import logging
-
     from google.cloud import firestore
     from google.cloud.firestore import FieldFilter
-
-    logger = logging.getLogger(__name__)
+    from loguru import logger
 
     try:
         settings = get_settings()

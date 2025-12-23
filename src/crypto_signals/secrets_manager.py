@@ -6,11 +6,10 @@ for containerized deployments. It falls back to environment variables for
 local development.
 """
 
-import logging
 import os
 from typing import Dict, Optional
 
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 
 class SecretManager:

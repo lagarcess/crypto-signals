@@ -48,9 +48,8 @@ def retry_with_backoff(max_retries=3, initial_delay=1.0, backoff_factor=2.0):
                     last_exception = e
                     if attempt < max_retries - 1:
                         # Log retry attempt
-                        import logging
+                        from loguru import logger
 
-                        logger = logging.getLogger(__name__)
                         logger.warning(
                             f"Attempt {attempt + 1}/{max_retries} failed for "
                             f"{func.__name__}: {e}. Retrying in {delay}s..."

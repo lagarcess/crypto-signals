@@ -5,11 +5,12 @@ This script executes the signal generation pipeline for a defined portfolio of a
 It orchestrates data fetching, pattern recognition, persistence, and notifications.
 """
 
-import logging
 import signal
 import sys
 import time
 from datetime import datetime, timedelta, timezone
+
+from loguru import logger
 
 from crypto_signals.config import (
     get_crypto_data_client,
@@ -26,12 +27,14 @@ from crypto_signals.repository.firestore import SignalRepository
 from crypto_signals.secrets_manager import init_secrets
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout)],
+# Remove default handler and add stdout handler to match previous behavior
+logger.remove()
+logger.add(
+    sys.stdout,
+    format="{time:YYYY-MM-DD HH:mm:ss,SSS} - {name} - {level} - {message}",
+    level="INFO",
 )
-logger = logging.getLogger(__name__)
+
 
 # Global flag for graceful shutdown
 shutdown_requested = False

@@ -5,14 +5,12 @@ This module handles sending formatted trade signals to Discord Webhooks.
 It supports multi-webhook routing based on TEST_MODE and asset class.
 """
 
-import logging
 from typing import Optional
 
 import requests
 from crypto_signals.config import Settings, get_settings
 from crypto_signals.domain.schemas import AssetClass, Signal
-
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 
 class DiscordClient:
