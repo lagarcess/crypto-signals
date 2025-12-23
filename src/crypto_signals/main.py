@@ -109,6 +109,12 @@ def main():
             (s, AssetClass.EQUITY) for s in valid_equity
         ]
 
+        if not portfolio_items:
+            logger.warning(
+                "No valid symbols to process! All configured symbols were filtered out "
+                "during asset validation. Check the 'INACTIVE ASSET SKIPPED' panels above."
+            )
+
         logger.info(f"Processing {len(portfolio_items)} symbols...")
 
         # Rate limiting (Alpaca: 200 req/min = 0.3s minimum, use 0.5s for safety)

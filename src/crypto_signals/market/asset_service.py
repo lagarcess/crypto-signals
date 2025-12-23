@@ -98,11 +98,18 @@ class AssetValidationService:
 
             # Build normalized_symbol -> original_alpaca_symbol map for valid assets
             # Key: Normalized (uppercase, no slashes), Value: Alpaca's original symbol
-            valid_asset_map = {
-                self._normalize_symbol(asset.symbol): asset.symbol
-                for asset in all_assets
-                if asset.status == AssetStatus.ACTIVE and asset.tradable
-            }
+            valid_asset_map = {}
+            for asset in all_assets:
+                if asset.status == AssetStatus.ACTIVE and asset.tradable:
+                    normalized = self._normalize_symbol(asset.symbol)
+                    if normalized in valid_asset_map:
+                        logger.warning(
+                            f"Duplicate normalized symbol detected: {normalized} "
+                            f"(existing: {valid_asset_map[normalized]}, new: {asset.symbol}). "
+                            "Using first encountered."
+                        )
+                    else:
+                        valid_asset_map[normalized] = asset.symbol
 
             # Also build a map for lookup of all assets (for error reporting)
             all_asset_lookup = {self._normalize_symbol(a.symbol): a for a in all_assets}
@@ -134,7 +141,7 @@ class AssetValidationService:
                             f"Asset status is {matching_asset.status.value} (not ACTIVE)"
                         )
                     elif not matching_asset.tradable:
-                        reason = "Asset is not tradable in this region"
+                        reason = "Asset is marked as non-tradable"
                     else:
                         reason = "Unknown validation failure"
 

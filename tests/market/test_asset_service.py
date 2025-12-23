@@ -146,7 +146,7 @@ class TestGetValidPortfolio:
         call_args = mock_log.call_args
         assert call_args[1]["situation"] == "INACTIVE ASSET SKIPPED"
         assert "ADA/USD" in call_args[1]["details"]
-        assert "not tradable" in call_args[1]["details"]
+        assert "non-tradable" in call_args[1]["details"]
 
     def test_returns_alpaca_format_for_matching_symbols(
         self, service, mock_trading_client
