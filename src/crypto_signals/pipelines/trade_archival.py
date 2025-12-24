@@ -147,6 +147,13 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                 )
                 qty = float(order.filled_qty) if order.filled_qty else 0.0
 
+                # Target price from original Signal (stored in Firestore position)
+                # This is the price we *intended* to enter at
+                target_price = float(pos.get("entry_fill_price", 0.0))
+
+                # Broker's order ID for auditability (links to Alpaca dashboard)
+                alpaca_order_id = str(order.id) if order.id else None
+
                 # Get exit price from Firestore document, default to 0.0 if missing
                 exit_price_val = float(pos.get("exit_fill_price", 0.0))
 
@@ -232,6 +239,24 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                 cost_basis = entry_price_val * qty
                 pnl_pct = (pnl_usd / cost_basis * 100.0) if cost_basis else 0.0
 
+                # Slippage Calculation (Direction-Aware)
+                # For LONG: positive slippage = filled higher (unfavorable)
+                # For SHORT: positive slippage = filled lower (unfavorable)
+                if target_price:
+                    if order_side_str == OrderSide.BUY.value:  # Long
+                        # Long: filled higher than target = positive slippage (bad)
+                        slippage_pct = round(
+                            ((entry_price_val - target_price) / target_price * 100.0), 4
+                        )
+                    else:  # Short
+                        # Short: filled lower than target = positive slippage (bad)
+                        # Inverted formula: (target - actual) / target
+                        slippage_pct = round(
+                            ((target_price - entry_price_val) / target_price * 100.0), 4
+                        )
+                else:
+                    slippage_pct = 0.0
+
                 duration = int((exit_time - entry_time).total_seconds())
 
                 # Construct Model
@@ -251,7 +276,7 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                     pnl_usd=round(pnl_usd, 2),
                     pnl_pct=round(pnl_pct, 4),
                     fees_usd=round(fees_usd, 2),
-                    slippage_pct=0.0,
+                    slippage_pct=slippage_pct,
                     trade_duration=duration,
                     exit_reason=ExitReason(pos.get("exit_reason", ExitReason.TP1.value)),
                     max_favorable_excursion=max_favorable_excursion,
@@ -259,6 +284,9 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                     discord_thread_id=pos.get("discord_thread_id"),
                     # Propagate final trailing stop for Runner (TP3) exit analysis
                     trailing_stop_final=pos.get("trailing_stop_final"),
+                    # New fields for slippage analysis and broker auditability
+                    target_entry_price=target_price,
+                    alpaca_order_id=alpaca_order_id,
                 )
 
                 # Validate and Dump to JSON (BasePipeline expects dicts)

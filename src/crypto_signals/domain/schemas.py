@@ -249,15 +249,22 @@ class Position(BaseModel):
     Represents an actual trade executed based on a Signal via the ExecutionEngine.
 
     Key Relationships:
-        - position_id: Set to signal_id for idempotency. This is also used as
-          client_order_id when submitting to Alpaca, allowing reconciliation.
+        - position_id: Set to signal_id for idempotency. Also used as
+          client_order_id when submitting to Alpaca.
         - signal_id: Reference back to the originating Signal document.
-        - alpaca_order_id: The order ID returned by Alpaca after submission.
-          Use this to query order status and manage the position.
+        - alpaca_order_id: Parent bracket order ID from Alpaca.
+        - tp_order_id / sl_order_id: TP/SL leg IDs (populated after fill).
+
+    Order Management Fields:
+        - target_entry_price: Original signal price (for slippage calculation)
+        - filled_at: Precision timestamp from Alpaca API
+        - commission: Broker-reported fees
+        - failed_reason: Error message if order rejected/canceled
 
     Example:
         Signal generates -> ExecutionEngine submits bracket order ->
         Position created with position_id = signal_id, alpaca_order_id = order.id
+        -> sync_position_status() extracts tp_order_id/sl_order_id after fill
     """
 
     position_id: str = Field(
@@ -274,6 +281,10 @@ class Position(BaseModel):
     account_id: str = Field(
         ...,
         description="Alpaca account ID (e.g., 'paper' for paper trading)",
+    )
+    symbol: str = Field(
+        ...,
+        description="Trading symbol (e.g., 'BTC/USD', 'NVDA'). Required for emergency closes.",
     )
     signal_id: str = Field(
         ...,
@@ -313,6 +324,40 @@ class Position(BaseModel):
     trailing_stop_final: Optional[float] = Field(
         default=None,
         description="Final trailing stop value at exit (Chandelier Exit for TP3)",
+    )
+    # === New fields for Order Management (Managed Trade Model) ===
+    tp_order_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "Alpaca order ID for the Take Profit leg. "
+            "Populated after parent bracket order fills via sync_position_status."
+        ),
+    )
+    sl_order_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "Alpaca order ID for the Stop Loss leg. "
+            "Populated after parent bracket order fills via sync_position_status."
+        ),
+    )
+    target_entry_price: Optional[float] = Field(
+        default=None,
+        description=(
+            "Original signal's entry price (target). "
+            "Compare against entry_fill_price for slippage calculation."
+        ),
+    )
+    filled_at: Optional[datetime] = Field(
+        default=None,
+        description="UTC timestamp when entry order was filled. From Alpaca API.",
+    )
+    commission: float = Field(
+        default=0.0,
+        description="Total commission/fees reported by broker for this position.",
+    )
+    failed_reason: Optional[str] = Field(
+        default=None,
+        description="Error message if order was rejected or canceled by broker.",
     )
 
 
@@ -413,6 +458,14 @@ class TradeExecution(BaseModel):
         default=None,
         description="Final trailing stop value at exit (Chandelier Exit for TP3)",
     )
+    target_entry_price: Optional[float] = Field(
+        default=None,
+        description="Original signal's entry price (target). Compare against entry_price for slippage.",
+    )
+    alpaca_order_id: Optional[str] = Field(
+        default=None,
+        description="Alpaca broker's UUID for the entry order. Links to Alpaca dashboard for auditability.",
+    )
 
 
 class StagingTrade(BaseModel):
@@ -506,6 +559,14 @@ class StagingTrade(BaseModel):
     trailing_stop_final: Optional[float] = Field(
         default=None,
         description="Final trailing stop value at exit (Chandelier Exit for TP3)",
+    )
+    target_entry_price: Optional[float] = Field(
+        default=None,
+        description="Original signal's entry price (target). Compare against entry_price for slippage.",
+    )
+    alpaca_order_id: Optional[str] = Field(
+        default=None,
+        description="Alpaca broker's UUID for the entry order. Links to Alpaca dashboard for auditability.",
     )
 
 
