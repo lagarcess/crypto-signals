@@ -12,6 +12,7 @@ Key Capabilities:
     - get_order_details(): Retrieve order for analytics enrichment
 """
 
+from datetime import datetime, timezone
 from typing import Optional
 
 from alpaca.trading.client import TradingClient
@@ -358,12 +359,22 @@ class ExecutionEngine:
                 tp_order = self.get_order_details(position.tp_order_id)
                 if tp_order and str(tp_order.status).lower() == "filled":
                     position.status = TradeStatus.CLOSED
+                    # Capture exit details for PnL calculation
+                    if tp_order.filled_avg_price:
+                        position.exit_fill_price = float(tp_order.filled_avg_price)
+                    if tp_order.filled_at:
+                        position.exit_time = tp_order.filled_at
                     logger.info(f"Position {position.position_id} closed via TP")
 
             if position.sl_order_id and position.status != TradeStatus.CLOSED:
                 sl_order = self.get_order_details(position.sl_order_id)
                 if sl_order and str(sl_order.status).lower() == "filled":
                     position.status = TradeStatus.CLOSED
+                    # Capture exit details for PnL calculation
+                    if sl_order.filled_avg_price:
+                        position.exit_fill_price = float(sl_order.filled_avg_price)
+                    if sl_order.filled_at:
+                        position.exit_time = sl_order.filled_at
                     logger.info(f"Position {position.position_id} closed via SL")
 
         except Exception as e:
@@ -441,6 +452,145 @@ class ExecutionEngine:
         except Exception as e:
             logger.error(f"Failed to modify stop for {position.position_id}: {e}")
             return False
+
+    def scale_out_position(self, position: Position, scale_pct: float = 0.5) -> bool:
+        """
+        Partial close: Sell scale_pct of position at market.
+
+        Used for TP1 automation - scale out 50% when first target is hit.
+
+        1. Calculate scale-out quantity
+        2. Submit market order to close portion
+        3. Update position.qty with remaining
+        4. Record scale-out details for PnL calculations
+
+        Args:
+            position: The Position with an active trade
+            scale_pct: Percentage to close (default 0.5 = 50%)
+
+        Returns:
+            True if scale-out order submitted successfully
+        """
+        if not position.qty or position.qty <= 0:
+            logger.warning(f"Cannot scale out {position.position_id}: no quantity")
+            return False
+
+        try:
+            # Capture original qty BEFORE any calculations (only on first scale-out)
+            if position.original_qty is None:
+                position.original_qty = position.qty
+
+            # Calculate scale-out quantity
+            scale_qty = position.qty * scale_pct
+
+            # For crypto, qty can be fractional. Round to 8 decimal places.
+            scale_qty = round(scale_qty, 8)
+
+            if scale_qty <= 0:
+                logger.warning(f"Scale-out qty too small for {position.position_id}")
+                return False
+
+            # Determine close side (opposite of entry)
+            close_side = (
+                OrderSide.SELL if position.side == DomainOrderSide.BUY else OrderSide.BUY
+            )
+
+            # Submit market order for partial close
+            close_request = MarketOrderRequest(
+                symbol=position.symbol,
+                qty=scale_qty,
+                side=close_side,
+                time_in_force=TimeInForce.GTC,
+            )
+
+            close_order = self.client.submit_order(close_request)
+
+            # Get fill price from order (if immediate fill)
+            fill_price = None
+            if hasattr(close_order, "filled_avg_price") and close_order.filled_avg_price:
+                fill_price = float(close_order.filled_avg_price)
+
+            # Record scale-out in position
+            position.scaled_out_qty += scale_qty
+            position.scaled_out_price = fill_price  # Most recent (backward compat)
+            position.scaled_out_at = datetime.now(timezone.utc)
+
+            # Track individual scale-out for multi-stage PnL
+            if fill_price is not None:
+                position.scaled_out_prices.append(
+                    {
+                        "qty": scale_qty,
+                        "price": fill_price,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    }
+                )
+
+            # Update remaining quantity
+            position.qty = round(position.qty - scale_qty, 8)
+
+            logger.info(
+                f"SCALE OUT: {position.position_id} - {scale_pct * 100:.0f}%",
+                extra={
+                    "position_id": position.position_id,
+                    "symbol": position.symbol,
+                    "scale_qty": scale_qty,
+                    "remaining_qty": position.qty,
+                    "fill_price": fill_price,
+                    "order_id": str(close_order.id),
+                },
+            )
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Scale-out failed for {position.position_id}: {e}")
+            position.failed_reason = f"Scale-out failed: {str(e)}"
+            return False
+
+    def move_stop_to_breakeven(self, position: Position) -> bool:
+        """
+        Move stop-loss to entry price (breakeven).
+
+        Used after TP1 scale-out to protect remaining position.
+
+        Args:
+            position: The Position with an active stop-loss order
+
+        Returns:
+            True if stop moved successfully
+        """
+        if not position.entry_fill_price:
+            logger.warning(
+                f"Cannot move to breakeven {position.position_id}: no entry price"
+            )
+            return False
+
+        # Add small buffer for slippage (0.1% in favorable direction)
+        # For longs: breakeven slightly above entry
+        # For shorts: breakeven slightly below entry
+        buffer_pct = 0.001  # 0.1%
+        if position.side == DomainOrderSide.BUY:
+            breakeven_price = position.entry_fill_price * (1 + buffer_pct)
+        else:
+            breakeven_price = position.entry_fill_price * (1 - buffer_pct)
+
+        breakeven_price = round(breakeven_price, 2)
+
+        # Use existing modify_stop_loss method
+        success = self.modify_stop_loss(position, breakeven_price)
+
+        if success:
+            position.breakeven_applied = True
+            logger.info(
+                f"BREAKEVEN: {position.position_id} stop -> ${breakeven_price}",
+                extra={
+                    "position_id": position.position_id,
+                    "entry_price": position.entry_fill_price,
+                    "breakeven_price": breakeven_price,
+                },
+            )
+
+        return success
 
     def close_position_emergency(self, position: Position) -> bool:
         """

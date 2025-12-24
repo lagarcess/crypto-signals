@@ -359,6 +359,39 @@ class Position(BaseModel):
         default=None,
         description="Error message if order was rejected or canceled by broker.",
     )
+    exit_fill_price: Optional[float] = Field(
+        default=None,
+        description="Actual exit fill price from TP or SL order. From Alpaca API.",
+    )
+    exit_time: Optional[datetime] = Field(
+        default=None,
+        description="UTC timestamp when exit order was filled. From Alpaca API.",
+    )
+    # === Scale-Out Tracking (TP1 automation) ===
+    original_qty: Optional[float] = Field(
+        default=None,
+        description="Original quantity before any scale-outs. Set on entry fill.",
+    )
+    scaled_out_qty: float = Field(
+        default=0.0,
+        description="Total quantity scaled out (closed at TP1). For PnL calc.",
+    )
+    scaled_out_price: Optional[float] = Field(
+        default=None,
+        description="Average fill price of scale-out exit at TP1.",
+    )
+    scaled_out_at: Optional[datetime] = Field(
+        default=None,
+        description="UTC timestamp of scale-out execution.",
+    )
+    breakeven_applied: bool = Field(
+        default=False,
+        description="Whether stop was moved to breakeven after TP1.",
+    )
+    scaled_out_prices: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="History of scale-outs: [{qty, price, timestamp}] for multi-stage PnL.",
+    )
 
 
 # =============================================================================
