@@ -520,6 +520,116 @@ class TestSyncPositionStatus:
         # Verify
         assert updated.status == TradeStatus.CLOSED
 
+    def test_sync_captures_exit_fill_price_on_tp_fill(
+        self, execution_engine, mock_trading_client
+    ):
+        """Verify exit_fill_price is captured when TP order is filled."""
+        from datetime import datetime, timezone
+
+        from crypto_signals.domain.schemas import Position, TradeStatus
+
+        # Setup - parent and TP orders, TP is filled with price
+        mock_parent = MagicMock()
+        mock_parent.status = "filled"
+        mock_parent.filled_at = None
+        mock_parent.filled_avg_price = None
+        mock_parent.legs = []
+
+        mock_tp_order = MagicMock()
+        mock_tp_order.status = "filled"
+        mock_tp_order.filled_avg_price = "55000.0"
+        mock_tp_order.filled_at = datetime(2025, 1, 15, 14, 30, 0, tzinfo=timezone.utc)
+
+        def side_effect(order_id):
+            if order_id == "parent-id":
+                return mock_parent
+            elif order_id == "tp-order-id":
+                return mock_tp_order
+            return None
+
+        mock_trading_client.get_order_by_id.side_effect = side_effect
+
+        position = Position(
+            position_id="test-pos-exit",
+            ds=date(2025, 1, 15),
+            account_id="paper",
+            symbol="BTC/USD",
+            signal_id="test-signal-exit",
+            alpaca_order_id="parent-id",
+            tp_order_id="tp-order-id",
+            status=TradeStatus.OPEN,
+            entry_fill_price=50000.0,
+            current_stop_loss=48000.0,
+            qty=0.05,
+            side=OrderSide.BUY,
+        )
+
+        # Execute
+        updated = execution_engine.sync_position_status(position)
+
+        # Verify exit details captured
+        assert updated.status == TradeStatus.CLOSED
+        assert updated.exit_fill_price == 55000.0
+        assert updated.exit_time == datetime(2025, 1, 15, 14, 30, 0, tzinfo=timezone.utc)
+
+    def test_sync_captures_exit_details_on_sl_fill(
+        self, execution_engine, mock_trading_client
+    ):
+        """Verify exit_fill_price is captured when SL order is filled."""
+        from datetime import datetime, timezone
+
+        from crypto_signals.domain.schemas import Position, TradeStatus
+
+        # Setup - parent and SL orders, SL is filled with price
+        mock_parent = MagicMock()
+        mock_parent.status = "filled"
+        mock_parent.filled_at = None
+        mock_parent.filled_avg_price = None
+        mock_parent.legs = []
+
+        mock_tp_order = MagicMock()
+        mock_tp_order.status = "new"  # TP not filled
+
+        mock_sl_order = MagicMock()
+        mock_sl_order.status = "filled"
+        mock_sl_order.filled_avg_price = "48000.0"
+        mock_sl_order.filled_at = datetime(2025, 1, 15, 16, 0, 0, tzinfo=timezone.utc)
+
+        def side_effect(order_id):
+            if order_id == "parent-id":
+                return mock_parent
+            elif order_id == "tp-order-id":
+                return mock_tp_order
+            elif order_id == "sl-order-id":
+                return mock_sl_order
+            return None
+
+        mock_trading_client.get_order_by_id.side_effect = side_effect
+
+        position = Position(
+            position_id="test-pos-sl-exit",
+            ds=date(2025, 1, 15),
+            account_id="paper",
+            symbol="BTC/USD",
+            signal_id="test-signal-sl-exit",
+            alpaca_order_id="parent-id",
+            tp_order_id="tp-order-id",
+            sl_order_id="sl-order-id",
+            status=TradeStatus.OPEN,
+            entry_fill_price=50000.0,
+            current_stop_loss=48000.0,
+            qty=0.05,
+            side=OrderSide.BUY,
+        )
+
+        # Execute
+        updated = execution_engine.sync_position_status(position)
+
+        # Verify exit details captured
+        assert updated.status == TradeStatus.CLOSED
+        assert updated.exit_fill_price == 48000.0
+        assert updated.exit_time == datetime(2025, 1, 15, 16, 0, 0, tzinfo=timezone.utc)
+
 
 class TestModifyStopLoss:
     """Tests for the modify_stop_loss method."""

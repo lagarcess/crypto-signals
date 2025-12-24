@@ -19,7 +19,13 @@ from crypto_signals.config import (
     get_trading_client,
     load_config_from_firestore,
 )
-from crypto_signals.domain.schemas import AssetClass, ExitReason, SignalStatus
+from crypto_signals.domain.schemas import (
+    AssetClass,
+    ExitReason,
+    OrderSide,
+    SignalStatus,
+    TradeStatus,
+)
 from crypto_signals.engine.execution import ExecutionEngine
 from crypto_signals.engine.signal_generator import SignalGenerator
 from crypto_signals.market.asset_service import AssetValidationService
@@ -388,50 +394,112 @@ def main():
                             repo.update_signal(exited)
 
                             # Notify Discord of Status Change
-                            status_emoji = {
-                                SignalStatus.INVALIDATED: "🚫",
-                                SignalStatus.TP1_HIT: "🎯",
-                                SignalStatus.TP2_HIT: "🚀",
-                                SignalStatus.TP3_HIT: "🌕",
-                                SignalStatus.EXPIRED: "⏳",
-                            }.get(exited.status, "ℹ️")
-
-                            msg = (
-                                f"{status_emoji} **SIGNAL UPDATE: {symbol}** {status_emoji}\n"
-                                f"**Status**: {exited.status.value}\n"
-                                f"**Pattern**: {exited.pattern_name}\n"
-                            )
-
-                            if exited.exit_reason:
-                                msg += f"**Reason**: {exited.exit_reason}\n"
-
-                            if exited.status == SignalStatus.TP1_HIT:
-                                msg += "ℹ️ **Action**: Scaling Out (50%) & Stop -> **Breakeven**"
-
-                            # Self-healing: If thread_id is missing (orphaned signal),
-                            # send recovery message to main channel instead of creating
-                            # a confusing new entry thread
+                            # Uses send_signal_update for consistent formatting
+                            # (TEST/LIVE mode labels, pattern name formatting, etc.)
                             if not exited.discord_thread_id:
+                                # Self-healing: Orphaned signal - send recovery msg
                                 logger.info(
                                     f"Self-healing: Orphaned signal {exited.signal_id} - "
                                     "sending update to main channel"
                                 )
-                                # Prepend recovery notice to the message
-                                recovery_msg = (
+                                # For orphaned signals, prepend recovery notice
+                                recovery_prefix = (
                                     f"🔄 **THREAD RECOVERY: {symbol}** 🔄\n"
                                     f"*(Original thread unavailable)*\n\n"
-                                    f"{msg}"
                                 )
+                                # Build inline message for recovery case
+                                status_emoji = {
+                                    SignalStatus.INVALIDATED: "🚫",
+                                    SignalStatus.TP1_HIT: "🎯",
+                                    SignalStatus.TP2_HIT: "🚀",
+                                    SignalStatus.TP3_HIT: "🌕",
+                                    SignalStatus.EXPIRED: "⏳",
+                                }.get(exited.status, "ℹ️")
+                                msg = (
+                                    f"{status_emoji} **SIGNAL UPDATE: {symbol}** "
+                                    f"{status_emoji}\n"
+                                    f"**Status**: {exited.status.value}\n"
+                                    f"**Pattern**: {exited.pattern_name}\n"
+                                )
+                                if exited.exit_reason:
+                                    msg += f"**Reason**: {exited.exit_reason}\n"
+                                if exited.status == SignalStatus.TP1_HIT:
+                                    msg += (
+                                        "ℹ️ **Action**: Scaling Out (50%) "
+                                        "& Stop -> **Breakeven**"
+                                    )
                                 discord.send_message(
-                                    recovery_msg, asset_class=asset_class
+                                    recovery_prefix + msg, asset_class=asset_class
                                 )
                             else:
-                                # Reply in thread if available
-                                discord.send_message(
-                                    msg,
-                                    thread_id=exited.discord_thread_id,
-                                    asset_class=asset_class,
+                                # Normal case: use dedicated method
+                                discord.send_signal_update(
+                                    exited, asset_class=asset_class
                                 )
+
+                            # === TP AUTOMATION ===
+                            # Progressive stop management on each TP stage
+                            if settings.ENABLE_EXECUTION:
+                                # Find position linked to this signal
+                                positions = position_repo.get_by_signal_id(
+                                    exited.signal_id
+                                )
+                                for pos in positions:
+                                    if pos.status != TradeStatus.OPEN:
+                                        continue
+
+                                    # TP1: Scale out 50% + move stop to breakeven
+                                    if exited.status == SignalStatus.TP1_HIT:
+                                        # 1. Scale out 50%
+                                        if execution_engine.scale_out_position(pos, 0.5):
+                                            logger.info(
+                                                f"TP1 AUTO: Scaled out 50% of "
+                                                f"{pos.position_id}"
+                                            )
+
+                                        # 2. Move stop to breakeven
+                                        if execution_engine.move_stop_to_breakeven(pos):
+                                            logger.info(
+                                                f"TP1 AUTO: Stop -> breakeven for "
+                                                f"{pos.position_id}"
+                                            )
+
+                                    # TP2: Scale out 50% of remaining + move stop to TP1
+                                    elif exited.status == SignalStatus.TP2_HIT:
+                                        # 1. Scale out 50% of remaining (25% of original)
+                                        if execution_engine.scale_out_position(pos, 0.5):
+                                            logger.info(
+                                                f"TP2 AUTO: Scaled out 50% remaining "
+                                                f"of {pos.position_id}"
+                                            )
+
+                                        # 2. Move stop to TP1 level
+                                        tp1_level = exited.take_profit_1
+                                        if tp1_level:
+                                            if execution_engine.modify_stop_loss(
+                                                pos, tp1_level
+                                            ):
+                                                logger.info(
+                                                    f"TP2 AUTO: Stop -> TP1 level "
+                                                    f"${tp1_level:.2f} for "
+                                                    f"{pos.position_id}"
+                                                )
+
+                                    # TP3: Move stop to TP2 level (trailing continues)
+                                    elif exited.status == SignalStatus.TP3_HIT:
+                                        tp2_level = exited.take_profit_2
+                                        if tp2_level:
+                                            if execution_engine.modify_stop_loss(
+                                                pos, tp2_level
+                                            ):
+                                                logger.info(
+                                                    f"TP3 AUTO: Stop -> TP2 level "
+                                                    f"${tp2_level:.2f} for "
+                                                    f"{pos.position_id}"
+                                                )
+
+                                    # Persist position updates
+                                    position_repo.update_position(pos)
 
                             # Remove exited signals from expiration checking
                             if exited in active_signals:
@@ -511,6 +579,53 @@ def main():
                                     "status": updated_pos.status.value,
                                 },
                             )
+
+                            # Send trade close notification with PnL
+                            if (
+                                updated_pos.status == TradeStatus.CLOSED
+                                and updated_pos.exit_fill_price
+                            ):
+                                # Fetch associated signal for thread_id
+                                signal_for_pos = repo.get_by_id(updated_pos.signal_id)
+                                if signal_for_pos:
+                                    # Calculate PnL (explicit snapshots for accuracy)
+                                    entry = updated_pos.entry_fill_price
+                                    exit_price = updated_pos.exit_fill_price
+                                    qty = updated_pos.qty
+                                    is_long = updated_pos.side == OrderSide.BUY
+
+                                    if is_long:
+                                        pnl_usd = (exit_price - entry) * qty
+                                    else:
+                                        pnl_usd = (entry - exit_price) * qty
+
+                                    pnl_pct = (pnl_usd / (entry * qty)) * 100
+
+                                    # Calculate duration
+                                    duration_str = "N/A"
+                                    if updated_pos.filled_at and updated_pos.exit_time:
+                                        duration = (
+                                            updated_pos.exit_time - updated_pos.filled_at
+                                        )
+                                        hours, remainder = divmod(
+                                            duration.total_seconds(), 3600
+                                        )
+                                        minutes = remainder // 60
+                                        duration_str = f"{int(hours)}h {int(minutes)}m"
+
+                                    # Determine exit reason based on PnL
+                                    exit_reason = (
+                                        "Take Profit" if pnl_usd >= 0 else "Stop Loss"
+                                    )
+
+                                    discord.send_trade_close(
+                                        signal=signal_for_pos,
+                                        position=updated_pos,
+                                        pnl_usd=pnl_usd,
+                                        pnl_pct=pnl_pct,
+                                        duration_str=duration_str,
+                                        exit_reason=exit_reason,
+                                    )
                         elif updated_pos != pos:
                             # Any field changed (leg IDs, filled_at, entry_fill_price, etc.)
                             position_repo.update_position(updated_pos)

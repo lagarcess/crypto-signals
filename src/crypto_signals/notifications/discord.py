@@ -9,8 +9,20 @@ from typing import Optional
 
 import requests
 from crypto_signals.config import Settings, get_settings
-from crypto_signals.domain.schemas import AssetClass, Signal
+from crypto_signals.domain.schemas import AssetClass, Position, Signal
 from loguru import logger
+
+# =============================================================================
+# EMOJI PALETTE - Trader's Visual Language
+# =============================================================================
+EMOJI_ROCKET = "🚀"  # Entry/Confirmed signal
+EMOJI_DIAMOND = "💎"  # Active trade (diamond hands)
+EMOJI_STOP = "🛑"  # Stop loss / Invalidated
+EMOJI_MONEY = "💰"  # Profit / Win
+EMOJI_SKULL = "💀"  # Loss / Rekt
+EMOJI_GHOST = "👻"  # Expired signal
+EMOJI_TARGET = "🎯"  # Take profit hit
+EMOJI_RUNNER = "🏃"  # Trail update
 
 
 class DiscordClient:
@@ -205,10 +217,137 @@ class DiscordClient:
         emoji = "🏃📈" if is_long else "🏃📉"
         direction = "▲" if is_long else "▼"
 
+        # Test mode label for differentiating test messages
+        test_label = "[TEST] " if self.settings.TEST_MODE else ""
+
         content = (
-            f"{emoji} **TRAIL UPDATE: {signal.symbol}** {emoji}\n"
+            f"{emoji} **{test_label}TRAIL UPDATE: {signal.symbol}** {emoji}\n"
             f"New Stop: ${new_stop:,.2f} {direction}\n"
             f"Previous: ${old_stop:,.2f}"
+        )
+
+        # Use provided asset_class, or fall back to signal's asset_class
+        effective_asset_class = (
+            asset_class if asset_class is not None else signal.asset_class
+        )
+
+        return self.send_message(
+            content,
+            thread_id=signal.discord_thread_id,
+            asset_class=effective_asset_class,
+        )
+
+    def send_signal_update(
+        self,
+        signal: Signal,
+        asset_class: AssetClass | None = None,
+    ) -> bool:
+        """
+        Send signal status update notification.
+
+        Handles TP1_HIT, TP2_HIT, TP3_HIT, INVALIDATED, EXPIRED status updates.
+        Includes action hints for position resizing when TP1_HIT.
+
+        Args:
+            signal: Signal with updated status and exit_reason
+            asset_class: Optional asset class for routing
+
+        Returns:
+            bool: True if message sent successfully
+        """
+        from crypto_signals.domain.schemas import SignalStatus
+
+        # Status-specific emoji mapping
+        status_emoji = {
+            SignalStatus.INVALIDATED: "🚫",
+            SignalStatus.TP1_HIT: "🎯",
+            SignalStatus.TP2_HIT: "🚀",
+            SignalStatus.TP3_HIT: "🌕",
+            SignalStatus.EXPIRED: "⏳",
+        }.get(signal.status, "ℹ️")
+
+        # Test mode label
+        test_label = "[TEST] " if self.settings.TEST_MODE else ""
+
+        # Build message content
+        content = (
+            f"{status_emoji} **{test_label}SIGNAL UPDATE: {signal.symbol}** {status_emoji}\n"
+            f"**Status**: {signal.status.value}\n"
+            f"**Pattern**: {signal.pattern_name.replace('_', ' ').title()}\n"
+        )
+
+        if signal.exit_reason:
+            content += f"**Reason**: {signal.exit_reason}\n"
+
+        # Action hints for position sizing (matches main.py TP automation)
+        if signal.status == SignalStatus.TP1_HIT:
+            content += "ℹ️ **Action**: Scaling Out (50%) & Stop -> **Breakeven**"
+        elif signal.status == SignalStatus.TP2_HIT:
+            content += "ℹ️ **Action**: Scaling Out (50% remaining) & Stop -> TP1"
+        elif signal.status == SignalStatus.TP3_HIT:
+            content += "🏃 **Runner Complete** - Trailing stop hit"
+
+        # Use provided asset_class, or fall back to signal's asset_class
+        effective_asset_class = (
+            asset_class if asset_class is not None else signal.asset_class
+        )
+
+        return self.send_message(
+            content,
+            thread_id=signal.discord_thread_id,
+            asset_class=effective_asset_class,
+        )
+
+    def send_trade_close(
+        self,
+        signal: Signal,
+        position: Position,
+        pnl_usd: float,
+        pnl_pct: float,
+        duration_str: str,
+        exit_reason: str,
+        asset_class: AssetClass | None = None,
+    ) -> bool:
+        """
+        Send trade close notification with PnL summary.
+
+        Uses explicit snapshots of data to guarantee message accuracy
+        even if objects are being modified by other processes.
+
+        Args:
+            signal: The signal that triggered the trade
+            position: The closed position with exit details
+            pnl_usd: Profit/Loss in USD (explicit snapshot)
+            pnl_pct: Profit/Loss as percentage (explicit snapshot)
+            duration_str: Human-readable duration (e.g., "4h 12m")
+            exit_reason: Exit reason string (e.g., "Take Profit 1", "Stop Loss")
+            asset_class: Optional asset class for routing
+
+        Returns:
+            bool: True if message sent successfully
+        """
+        # Select emoji based on win/loss
+        is_win = pnl_usd >= 0
+        result_emoji = EMOJI_MONEY if is_win else EMOJI_SKULL
+        pnl_sign = "+" if pnl_usd >= 0 else "-"
+
+        # Format exit price
+        exit_price_str = (
+            f"${position.exit_fill_price:,.2f}" if position.exit_fill_price else "N/A"
+        )
+
+        # Test mode label for differentiating test messages in Discord
+        test_label = "[TEST] " if self.settings.TEST_MODE else ""
+
+        # Use absolute values for display with explicit sign prefix
+        # Include pattern name for trade context
+        content = (
+            f"{result_emoji} **{test_label}TRADE CLOSED: {signal.symbol}** {result_emoji}\n"
+            f"**Pattern**: {signal.pattern_name.replace('_', ' ').title()}\n"
+            f"**Result**: {pnl_sign}${abs(pnl_usd):,.2f} ({pnl_sign}{abs(pnl_pct):.2f}%)\n"
+            f"**Duration**: {duration_str}\n"
+            f"**Exit**: {exit_reason} ({exit_price_str})\n"
+            f"**Entry**: ${position.entry_fill_price:,.2f} | Qty: {position.qty}"
         )
 
         # Use provided asset_class, or fall back to signal's asset_class
@@ -236,9 +375,12 @@ class DiscordClient:
         # bullish patterns get 🚀, others get 🔻
         emoji = "🚀" if "bullish" in signal.pattern_name.lower() else "🔻"
 
+        # Test mode label for differentiating test messages
+        test_label = "[TEST] " if self.settings.TEST_MODE else ""
+
         # Format the main content
         content = (
-            f"{emoji} **{signal.pattern_name.replace('_', ' ').upper()}** "
+            f"{emoji} **{test_label}{signal.pattern_name.replace('_', ' ').upper()}** "
             f"detected on **{signal.symbol}**\n\n"
             f"**Entry Price:** ${signal.entry_price:,.2f}\n"
             f"**Stop Loss:** ${signal.suggested_stop:,.2f}"

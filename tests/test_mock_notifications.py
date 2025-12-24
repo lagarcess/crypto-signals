@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
-from crypto_signals.domain.schemas import AssetClass, Signal, SignalStatus
+from crypto_signals.domain.schemas import AssetClass, ExitReason, Signal, SignalStatus
 from crypto_signals.notifications.discord import DiscordClient
 from pydantic import SecretStr
 
@@ -350,6 +350,340 @@ class TestDiscordClient(unittest.TestCase):
         self.assertNotIn("Take Profit 2", content)
         self.assertNotIn("Take Profit 3", content)
         self.assertNotIn("Invalidation Price", content)
+
+    # =========================================================================
+    # send_trade_close Tests
+    # =========================================================================
+
+    @patch("crypto_signals.notifications.discord.requests.post")
+    def test_send_trade_close_win_uses_money_emoji(self, mock_post):
+        """Test that winning trade uses 💰 emoji."""
+        from datetime import datetime, timezone
+
+        from crypto_signals.domain.schemas import OrderSide, Position, TradeStatus
+
+        settings = create_mock_settings(test_mode=True)
+        client = DiscordClient(settings=settings)
+
+        position = Position(
+            position_id="test-pos-1",
+            ds=date(2025, 1, 1),
+            account_id="paper",
+            symbol="BTC/USD",
+            signal_id="test-signal-1",
+            status=TradeStatus.CLOSED,
+            entry_fill_price=50000.0,
+            current_stop_loss=48000.0,
+            qty=0.1,
+            side=OrderSide.BUY,
+            exit_fill_price=55000.0,
+            exit_time=datetime.now(timezone.utc),
+        )
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status.return_value = None
+        mock_post.return_value = mock_response
+
+        result = client.send_trade_close(
+            signal=self.signal,
+            position=position,
+            pnl_usd=500.0,
+            pnl_pct=10.0,
+            duration_str="4h 12m",
+            exit_reason="Take Profit 1",
+        )
+
+        self.assertTrue(result)
+        _, kwargs = mock_post.call_args
+        content = kwargs["json"]["content"]
+
+        self.assertIn("💰", content)
+        self.assertIn("TRADE CLOSED: BTC/USD", content)
+        self.assertIn("+$500.00", content)
+        self.assertIn("+10.00%", content)
+        self.assertIn("4h 12m", content)
+
+    @patch("crypto_signals.notifications.discord.requests.post")
+    def test_send_trade_close_loss_uses_skull_emoji(self, mock_post):
+        """Test that losing trade uses 💀 emoji."""
+        from datetime import datetime, timezone
+
+        from crypto_signals.domain.schemas import OrderSide, Position, TradeStatus
+
+        settings = create_mock_settings(test_mode=True)
+        client = DiscordClient(settings=settings)
+
+        position = Position(
+            position_id="test-pos-2",
+            ds=date(2025, 1, 1),
+            account_id="paper",
+            symbol="BTC/USD",
+            signal_id="test-signal-2",
+            status=TradeStatus.CLOSED,
+            entry_fill_price=50000.0,
+            current_stop_loss=48000.0,
+            qty=0.1,
+            side=OrderSide.BUY,
+            exit_fill_price=48000.0,
+            exit_time=datetime.now(timezone.utc),
+        )
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status.return_value = None
+        mock_post.return_value = mock_response
+
+        result = client.send_trade_close(
+            signal=self.signal,
+            position=position,
+            pnl_usd=-200.0,
+            pnl_pct=-4.0,
+            duration_str="2h 30m",
+            exit_reason="Stop Loss",
+        )
+
+        self.assertTrue(result)
+        _, kwargs = mock_post.call_args
+        content = kwargs["json"]["content"]
+
+        self.assertIn("💀", content)
+        self.assertIn("TRADE CLOSED: BTC/USD", content)
+        self.assertIn("-$200.00", content)
+        self.assertIn("-4.00%", content)
+        self.assertIn("Stop Loss", content)
+
+    @patch("crypto_signals.notifications.discord.requests.post")
+    def test_send_trade_close_with_thread_id(self, mock_post):
+        """Test that trade close sends to existing thread."""
+
+        from crypto_signals.domain.schemas import OrderSide, Position, TradeStatus
+
+        settings = create_mock_settings(test_mode=True)
+        client = DiscordClient(settings=settings)
+
+        # Signal with thread_id
+        signal_with_thread = Signal(
+            signal_id="test_id",
+            ds=date(2025, 1, 1),
+            strategy_id="test_strat",
+            symbol="ETH/USD",
+            asset_class=AssetClass.CRYPTO,
+            confluence_factors=["trend"],
+            entry_price=3000.0,
+            pattern_name="BULLISH_ENGULFING",
+            status=SignalStatus.WAITING,
+            suggested_stop=2900.0,
+            discord_thread_id="thread_123456",
+        )
+
+        position = Position(
+            position_id="test-pos-3",
+            ds=date(2025, 1, 1),
+            account_id="paper",
+            symbol="ETH/USD",
+            signal_id="test_id",
+            status=TradeStatus.CLOSED,
+            entry_fill_price=3000.0,
+            current_stop_loss=2900.0,
+            qty=1.0,
+            side=OrderSide.BUY,
+            exit_fill_price=3300.0,
+        )
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status.return_value = None
+        mock_post.return_value = mock_response
+
+        result = client.send_trade_close(
+            signal=signal_with_thread,
+            position=position,
+            pnl_usd=300.0,
+            pnl_pct=10.0,
+            duration_str="1h 0m",
+            exit_reason="Take Profit 1",
+        )
+
+        self.assertTrue(result)
+        args, _ = mock_post.call_args
+        # Should include thread_id in URL
+        self.assertIn("thread_id=thread_123456", args[0])
+
+    # =========================================================================
+    # send_signal_update Tests
+    # =========================================================================
+
+    @patch("crypto_signals.notifications.discord.requests.post")
+    def test_send_signal_update_tp1_hit_includes_action(self, mock_post):
+        """Test TP1_HIT includes scaling out action hint."""
+        settings = create_mock_settings(test_mode=True)
+        client = DiscordClient(settings=settings)
+
+        signal = Signal(
+            signal_id="test_id",
+            ds=date(2025, 1, 1),
+            strategy_id="test_strat",
+            symbol="BTC/USD",
+            asset_class=AssetClass.CRYPTO,
+            confluence_factors=["trend"],
+            entry_price=50000.0,
+            pattern_name="BULLISH_ENGULFING",
+            status=SignalStatus.TP1_HIT,
+            suggested_stop=48000.0,
+            exit_reason=ExitReason.TP1,
+            discord_thread_id="thread_123",
+        )
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status.return_value = None
+        mock_post.return_value = mock_response
+
+        result = client.send_signal_update(signal)
+
+        self.assertTrue(result)
+        _, kwargs = mock_post.call_args
+        content = kwargs["json"]["content"]
+
+        self.assertIn("🎯", content)
+        self.assertIn("SIGNAL UPDATE: BTC/USD", content)
+        self.assertIn("Scaling Out (50%)", content)
+        self.assertIn("Breakeven", content)
+        self.assertIn("Bullish Engulfing", content)
+
+    @patch("crypto_signals.notifications.discord.requests.post")
+    def test_send_signal_update_invalidated(self, mock_post):
+        """Test INVALIDATED signal sends correctly."""
+        settings = create_mock_settings(test_mode=True)
+        client = DiscordClient(settings=settings)
+
+        signal = Signal(
+            signal_id="test_id",
+            ds=date(2025, 1, 1),
+            strategy_id="test_strat",
+            symbol="ETH/USD",
+            asset_class=AssetClass.CRYPTO,
+            confluence_factors=["trend"],
+            entry_price=3000.0,
+            pattern_name="BEARISH_ENGULFING",
+            status=SignalStatus.INVALIDATED,
+            suggested_stop=3100.0,
+            exit_reason=ExitReason.STRUCTURAL_INVALIDATION,
+            discord_thread_id="thread_456",
+        )
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status.return_value = None
+        mock_post.return_value = mock_response
+
+        result = client.send_signal_update(signal)
+
+        self.assertTrue(result)
+        _, kwargs = mock_post.call_args
+        content = kwargs["json"]["content"]
+
+        self.assertIn("🚫", content)
+        self.assertIn("INVALIDATED", content)
+        self.assertIn("STRUCTURAL_INVALIDATION", content)
+
+    @patch("crypto_signals.notifications.discord.requests.post")
+    def test_send_signal_update_expired(self, mock_post):
+        """Test EXPIRED signal sends correctly."""
+        settings = create_mock_settings(test_mode=True)
+        client = DiscordClient(settings=settings)
+
+        signal = Signal(
+            signal_id="test_id",
+            ds=date(2025, 1, 1),
+            strategy_id="test_strat",
+            symbol="SOL/USD",
+            asset_class=AssetClass.CRYPTO,
+            confluence_factors=["trend"],
+            entry_price=180.0,
+            pattern_name="BULLISH_FLAG",
+            status=SignalStatus.EXPIRED,
+            suggested_stop=170.0,
+            exit_reason=ExitReason.EXPIRED,
+            discord_thread_id="thread_789",
+        )
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status.return_value = None
+        mock_post.return_value = mock_response
+
+        result = client.send_signal_update(signal)
+
+        self.assertTrue(result)
+        _, kwargs = mock_post.call_args
+        content = kwargs["json"]["content"]
+
+        self.assertIn("⏳", content)
+        self.assertIn("EXPIRED", content)
+        self.assertIn("EXPIRED", content)
+
+    @patch("crypto_signals.notifications.discord.requests.post")
+    def test_send_signal_update_includes_test_label(self, mock_post):
+        """Test that [TEST] label appears when TEST_MODE=true."""
+        settings = create_mock_settings(test_mode=True)
+        client = DiscordClient(settings=settings)
+
+        signal = Signal(
+            signal_id="test_id",
+            ds=date(2025, 1, 1),
+            strategy_id="test_strat",
+            symbol="BTC/USD",
+            asset_class=AssetClass.CRYPTO,
+            confluence_factors=["trend"],
+            entry_price=50000.0,
+            pattern_name="BULLISH_ENGULFING",
+            status=SignalStatus.TP1_HIT,
+            suggested_stop=48000.0,
+            discord_thread_id="thread_123",
+        )
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status.return_value = None
+        mock_post.return_value = mock_response
+
+        result = client.send_signal_update(signal)
+
+        self.assertTrue(result)
+        _, kwargs = mock_post.call_args
+        content = kwargs["json"]["content"]
+
+        self.assertIn("[TEST]", content)
+
+    @patch("crypto_signals.notifications.discord.requests.post")
+    def test_send_signal_update_live_mode_no_label(self, mock_post):
+        """Test that [TEST] label is NOT present when TEST_MODE=false."""
+        settings = create_mock_settings(
+            test_mode=False,
+            crypto_webhook="https://discord.com/api/webhooks/crypto",
+        )
+        client = DiscordClient(settings=settings)
+
+        signal = Signal(
+            signal_id="test_id",
+            ds=date(2025, 1, 1),
+            strategy_id="test_strat",
+            symbol="BTC/USD",
+            asset_class=AssetClass.CRYPTO,
+            confluence_factors=["trend"],
+            entry_price=50000.0,
+            pattern_name="BULLISH_ENGULFING",
+            status=SignalStatus.TP1_HIT,
+            suggested_stop=48000.0,
+            discord_thread_id="thread_123",
+        )
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status.return_value = None
+        mock_post.return_value = mock_response
+
+        result = client.send_signal_update(signal)
+
+        self.assertTrue(result)
+        _, kwargs = mock_post.call_args
+        content = kwargs["json"]["content"]
+
+        self.assertNotIn("[TEST]", content)
 
 
 # =============================================================================
