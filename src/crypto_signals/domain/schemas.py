@@ -388,6 +388,10 @@ class Position(BaseModel):
         default=False,
         description="Whether stop was moved to breakeven after TP1.",
     )
+    scaled_out_prices: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="History of scale-outs: [{qty, price, timestamp}] for multi-stage PnL.",
+    )
 
 
 # =============================================================================

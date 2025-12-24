@@ -476,6 +476,10 @@ class ExecutionEngine:
             return False
 
         try:
+            # Capture original qty BEFORE any calculations (only on first scale-out)
+            if position.original_qty is None:
+                position.original_qty = position.qty
+
             # Calculate scale-out quantity
             scale_qty = position.qty * scale_pct
 
@@ -507,12 +511,19 @@ class ExecutionEngine:
                 fill_price = float(close_order.filled_avg_price)
 
             # Record scale-out in position
-            if position.original_qty is None:
-                position.original_qty = position.qty
-
             position.scaled_out_qty += scale_qty
-            position.scaled_out_price = fill_price
+            position.scaled_out_price = fill_price  # Most recent (backward compat)
             position.scaled_out_at = datetime.now(timezone.utc)
+
+            # Track individual scale-out for multi-stage PnL
+            if fill_price is not None:
+                position.scaled_out_prices.append(
+                    {
+                        "qty": scale_qty,
+                        "price": fill_price,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    }
+                )
 
             # Update remaining quantity
             position.qty = round(position.qty - scale_qty, 8)
