@@ -213,8 +213,8 @@ class DiscordClient:
         new_stop = signal.take_profit_3 or 0.0
         is_long = signal.side != OrderSide.SELL
 
-        # Directional emojis: Runner (🏃) + direction indicator
-        emoji = "🏃📈" if is_long else "🏃📉"
+        # Directional emojis: Runner + direction indicator
+        emoji = f"{EMOJI_RUNNER}📈" if is_long else f"{EMOJI_RUNNER}📉"
         direction = "▲" if is_long else "▼"
 
         # Test mode label for differentiating test messages
@@ -259,11 +259,11 @@ class DiscordClient:
 
         # Status-specific emoji mapping
         status_emoji = {
-            SignalStatus.INVALIDATED: "🚫",
-            SignalStatus.TP1_HIT: "🎯",
-            SignalStatus.TP2_HIT: "🚀",
+            SignalStatus.INVALIDATED: EMOJI_STOP,
+            SignalStatus.TP1_HIT: EMOJI_TARGET,
+            SignalStatus.TP2_HIT: EMOJI_ROCKET,
             SignalStatus.TP3_HIT: "🌕",
-            SignalStatus.EXPIRED: "⏳",
+            SignalStatus.EXPIRED: EMOJI_GHOST,
         }.get(signal.status, "ℹ️")
 
         # Test mode label
@@ -281,11 +281,15 @@ class DiscordClient:
 
         # Action hints for position sizing (matches main.py TP automation)
         if signal.status == SignalStatus.TP1_HIT:
-            content += "ℹ️ **Action**: Scaling Out (50%) & Stop -> **Breakeven**"
+            content += (
+                f"\n{EMOJI_DIAMOND} **Action**: Scaling Out (50%) & Stop -> **Breakeven**"
+            )
         elif signal.status == SignalStatus.TP2_HIT:
-            content += "ℹ️ **Action**: Scaling Out (50% remaining) & Stop -> TP1"
+            content += (
+                f"\n{EMOJI_DIAMOND} **Action**: Scaling Out (50% remaining) & Stop -> TP1"
+            )
         elif signal.status == SignalStatus.TP3_HIT:
-            content += "🏃 **Runner Complete** - Trailing stop hit"
+            content += f"\n{EMOJI_RUNNER} **Runner Complete** - Trailing stop hit"
 
         # Use provided asset_class, or fall back to signal's asset_class
         effective_asset_class = (
@@ -372,8 +376,8 @@ class DiscordClient:
             dict: JSON payload for Discord.
         """
         # Emoji selection based on pattern name:
-        # bullish patterns get 🚀, others get 🔻
-        emoji = "🚀" if "bullish" in signal.pattern_name.lower() else "🔻"
+        # bullish patterns get rocket, others get down arrow
+        emoji = EMOJI_ROCKET if "bullish" in signal.pattern_name.lower() else "🔻"
 
         # Test mode label for differentiating test messages
         test_label = "[TEST] " if self.settings.TEST_MODE else ""

@@ -579,7 +579,7 @@ class TestDiscordClient(unittest.TestCase):
         _, kwargs = mock_post.call_args
         content = kwargs["json"]["content"]
 
-        self.assertIn("🚫", content)
+        self.assertIn("🛑", content)  # EMOJI_STOP
         self.assertIn("INVALIDATED", content)
         self.assertIn("STRUCTURAL_INVALIDATION", content)
 
@@ -614,7 +614,7 @@ class TestDiscordClient(unittest.TestCase):
         _, kwargs = mock_post.call_args
         content = kwargs["json"]["content"]
 
-        self.assertIn("⏳", content)
+        self.assertIn("👻", content)  # EMOJI_GHOST
         self.assertIn("EXPIRED", content)
         self.assertIn("EXPIRED", content)
 
