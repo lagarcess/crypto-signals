@@ -35,7 +35,7 @@ jobs:
           pip-audit --require-hashes --strict 2>/dev/null || pip-audit
 
       - name: Test
-        run: poetry run pytest tests/ --cov=src/crypto_signals --cov-report=term-missing --cov-fail-under=60
+        run: PYTHONPATH=src poetry run pytest tests/ --cov=src/crypto_signals --cov-report=term-missing --cov-fail-under=60
 
   cd:
     needs: ci
