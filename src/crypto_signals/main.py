@@ -20,6 +20,7 @@ from crypto_signals.config import (
     load_config_from_firestore,
 )
 from crypto_signals.domain.schemas import AssetClass, ExitReason, SignalStatus
+from crypto_signals.engine.execution import ExecutionEngine
 from crypto_signals.engine.signal_generator import SignalGenerator
 from crypto_signals.market.asset_service import AssetValidationService
 from crypto_signals.market.data_provider import MarketDataProvider
@@ -31,6 +32,7 @@ from crypto_signals.observability import (
     create_portfolio_progress,
     get_metrics_collector,
     log_execution_time,
+    setup_gcp_logging,
 )
 from crypto_signals.repository.firestore import SignalRepository
 from crypto_signals.secrets_manager import init_secrets
@@ -62,6 +64,20 @@ def main():
     # Get metrics collector
     metrics = get_metrics_collector()
 
+    # Get settings early for GCP logging setup
+    settings = get_settings()
+
+    # Enable GCP Cloud Logging if configured (additive - does not disable Rich output)
+    # This is inside main() to allow graceful error handling if credentials are missing
+    if settings.ENABLE_GCP_LOGGING:
+        try:
+            setup_gcp_logging()
+        except Exception as e:
+            logger.warning(
+                f"Failed to initialize GCP Cloud Logging: {e}. "
+                "Continuing with Rich terminal logging only."
+            )
+
     logger.info("Starting Crypto Sentinel Signal Generator...")
     app_start_time = time.time()
 
@@ -83,9 +99,9 @@ def main():
                 repo = SignalRepository()
                 discord = DiscordClient()
                 asset_validator = AssetValidationService(get_trading_client())
+                execution_engine = ExecutionEngine()
 
         # Define Portfolio
-        settings = get_settings()
         firestore_config = load_config_from_firestore()
 
         if firestore_config:
@@ -242,6 +258,51 @@ def main():
                             # Note: We intentionally do NOT re-raise here.
                             # Signal generation succeeded - only persistence failed.
                             # The failure is already logged and metrics recorded above.
+
+                        # Execute trade if execution is enabled
+                        # Safety: ExecutionEngine has built-in guards for:
+                        #   1. ALPACA_PAPER_TRADING must be True
+                        #   2. ENABLE_EXECUTION must be True
+                        if settings.ENABLE_EXECUTION:
+                            execution_start = time.time()
+                            try:
+                                position = execution_engine.execute_signal(trade_signal)
+                                execution_duration = time.time() - execution_start
+                                if position:
+                                    logger.info(
+                                        f"ORDER EXECUTED: {trade_signal.symbol}",
+                                        extra={
+                                            "signal_id": trade_signal.signal_id,
+                                            "symbol": trade_signal.symbol,
+                                            "position_id": position.position_id,
+                                            "qty": position.qty,
+                                            "duration_seconds": round(
+                                                execution_duration, 3
+                                            ),
+                                        },
+                                    )
+                                    metrics.record_success(
+                                        "order_execution", execution_duration
+                                    )
+                                else:
+                                    # Execution was blocked by safety guards
+                                    logger.debug(
+                                        f"Execution skipped for {trade_signal.symbol} "
+                                        "(blocked by safety guards or validation)"
+                                    )
+                            except Exception as e:
+                                execution_duration = time.time() - execution_start
+                                logger.error(
+                                    f"Failed to execute order for {trade_signal.symbol}: {e}",
+                                    extra={
+                                        "signal_id": trade_signal.signal_id,
+                                        "symbol": trade_signal.symbol,
+                                        "error": str(e),
+                                    },
+                                )
+                                metrics.record_failure(
+                                    "order_execution", execution_duration
+                                )
 
                         metrics.record_success("signal_generation", symbol_duration)
                     else:

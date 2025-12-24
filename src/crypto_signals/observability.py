@@ -108,6 +108,156 @@ def _rich_sink(message) -> None:
 
 
 # =============================================================================
+# GCP CLOUD LOGGING
+# =============================================================================
+
+# Map Loguru levels to GCP Cloud Logging severities
+# GCP does not have SUCCESS level, so we map it to INFO
+LOGURU_TO_GCP_SEVERITY = {
+    "TRACE": "DEBUG",
+    "DEBUG": "DEBUG",
+    "INFO": "INFO",
+    "SUCCESS": "INFO",  # GCP has no SUCCESS, use INFO
+    "WARNING": "WARNING",
+    "ERROR": "ERROR",
+    "CRITICAL": "CRITICAL",
+}
+
+
+def _serialize_for_json(value: Any) -> Any:
+    """
+    Safely serialize a value for JSON logging payload.
+
+    Handles common non-JSON-serializable types like datetime, Decimal,
+    Enum, and custom objects by converting them to strings.
+
+    Args:
+        value: Any value that might be in the extra context
+
+    Returns:
+        A JSON-serializable version of the value
+    """
+    from datetime import date, datetime
+    from decimal import Decimal
+    from enum import Enum
+
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    elif isinstance(value, (datetime, date)):
+        return value.isoformat()
+    elif isinstance(value, Decimal):
+        return float(value)
+    elif isinstance(value, Enum):
+        return value.value
+    elif isinstance(value, dict):
+        return {k: _serialize_for_json(v) for k, v in value.items()}
+    elif isinstance(value, (list, tuple)):
+        return [_serialize_for_json(item) for item in value]
+    else:
+        # Fallback: convert to string representation
+        return str(value)
+
+
+def _sanitize_extra_context(extra: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Sanitize extra context dictionary for safe JSON serialization.
+
+    Args:
+        extra: The extra context dict from a Loguru record
+
+    Returns:
+        A sanitized dict with all values JSON-serializable
+    """
+    if not extra:
+        return {}
+    return {key: _serialize_for_json(value) for key, value in extra.items()}
+
+
+def setup_gcp_logging(log_name: str = "crypto-sentinel") -> bool:
+    """
+    Configure Google Cloud Logging sink for production environments.
+
+    Adds a structured JSON sink that sends logs to GCP Cloud Logging
+    while preserving the Rich terminal output for local development.
+
+    When running on GCP (Cloud Run or GKE), Google's logging agent
+    automatically parses JSON logs into jsonPayload, making every
+    field (symbol, qty, pnl_usd, etc.) searchable in Logs Explorer.
+
+    **Error Handling:**
+    - If GCP client initialization fails (missing credentials, network issues),
+      this function logs a warning and returns False. The application will
+      continue with only Rich terminal logging.
+    - If individual log writes fail, errors are silently ignored to prevent
+      logging failures from crashing the application.
+
+    **Performance Note:**
+    The google-cloud-logging library uses background threads and batching
+    by default when using the Client() API. Log messages are queued and
+    sent asynchronously, minimizing impact on application latency.
+
+    Args:
+        log_name: The log name in GCP Cloud Logging (default: "crypto-sentinel")
+
+    Returns:
+        bool: True if GCP logging was successfully initialized, False otherwise
+    """
+    try:
+        from google.cloud import logging as gcp_logging
+
+        client = gcp_logging.Client()
+        gcp_logger = client.logger(log_name)
+    except Exception as e:
+        # Log to Rich console since GCP isn't available
+        logger.warning(
+            f"Failed to initialize GCP Cloud Logging client: {e}. "
+            "Application will continue with Rich terminal logging only.",
+            extra={"error": str(e), "log_name": log_name},
+        )
+        return False
+
+    def gcp_sink(message) -> None:
+        """
+        Loguru sink that sends structured logs to GCP Cloud Logging.
+
+        Preserves all extra context fields as searchable jsonPayload fields.
+        Exceptions are caught to prevent logging failures from crashing the app.
+        """
+        try:
+            record = message.record
+            severity = LOGURU_TO_GCP_SEVERITY.get(record["level"].name, "DEFAULT")
+
+            # Build structured payload with core fields
+            payload = {
+                "message": record["message"],
+                "level": record["level"].name,
+                "timestamp": record["time"].isoformat(),
+                "module": record["module"],
+                "function": record["function"],
+                "line": record["line"],
+            }
+
+            # Merge sanitized extra context (symbol, qty, pnl_usd, asset_class, etc.)
+            # Sanitization ensures all values are JSON-serializable
+            if record["extra"]:
+                sanitized_extra = _sanitize_extra_context(record["extra"])
+                payload.update(sanitized_extra)
+
+            # Send to GCP Cloud Logging with mapped severity
+            # This uses the library's built-in background batching
+            gcp_logger.log_struct(payload, severity=severity)
+        except Exception:
+            # Silently ignore logging failures to prevent cascading errors
+            # The Rich terminal sink will still capture these logs
+            pass
+
+    # Add GCP sink - this is ADDITIVE, does NOT remove Rich sink
+    logger.add(gcp_sink, format="{message}", level="DEBUG")
+    logger.info("GCP Cloud Logging sink initialized", extra={"log_name": log_name})
+    return True
+
+
+# =============================================================================
 # PROGRESS VISUALIZATION
 # =============================================================================
 
