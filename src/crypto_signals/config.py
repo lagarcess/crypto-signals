@@ -107,6 +107,23 @@ class Settings(BaseSettings):
         le=10.0,
     )
 
+    # Execution Configuration
+    RISK_PER_TRADE: float = Field(
+        default=100.0,
+        description=(
+            "Fixed dollar amount to risk per trade. Position size is calculated as "
+            "RISK_PER_TRADE / (entry_price - stop_loss), ensuring you lose exactly "
+            "this amount if the stop is hit."
+        ),
+        ge=10.0,
+        le=10000.0,
+    )
+
+    ENABLE_EXECUTION: bool = Field(
+        default=False,
+        description="Enable order execution (requires ALPACA_PAPER_TRADING=True)",
+    )
+
     @field_validator("CRYPTO_SYMBOLS", "EQUITY_SYMBOLS", mode="before")
     @classmethod
     def parse_list_from_str(cls, v: Any) -> Any:

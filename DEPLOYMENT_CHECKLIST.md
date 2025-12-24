@@ -37,6 +37,8 @@ Use this checklist before deploying Crypto Sentinel to production.
 - [ ] Created GOOGLE_CLOUD_PROJECT secret
 - [ ] Created ALPACA_PAPER_TRADING secret
 - [ ] Created TEST_MODE secret
+- [ ] Created ENABLE_EXECUTION secret (default: false)
+- [ ] Created RISK_PER_TRADE secret (default: 100.0)
 - [ ] (Optional) Created LIVE_CRYPTO_DISCORD_WEBHOOK_URL secret (for production)
 - [ ] (Optional) Created LIVE_STOCK_DISCORD_WEBHOOK_URL secret (for production)
 - [ ] Verified all secrets accessible via gcloud
@@ -73,6 +75,7 @@ Use this checklist before deploying Crypto Sentinel to production.
 
 - [ ] Firestore database created in us-central1 (or your region)
 - [ ] Collection `live_signals` exists
+- [ ] Collection `live_positions` exists (for execution engine)
 - [ ] Test document created and read successfully
 - [ ] Cleanup query tested (expiration_at filter)
 - [ ] TTL field verified on saved signals
@@ -97,6 +100,34 @@ Use this checklist before deploying Crypto Sentinel to production.
 - [ ] IAM permissions set to least privilege
 - [ ] Rate limiting configured (RATE_LIMIT_DELAY >= 0.5)
 - [ ] Paper trading enabled for initial deployment
+
+## ✅ Execution Engine Verification (Optional)
+
+> Only complete this section if enabling automated order execution.
+
+### Risk Settings
+- [ ] `RISK_PER_TRADE` set to appropriate value (default: $100)
+- [ ] Risk per trade calculation verified: `qty = RISK_PER_TRADE / |entry - stop|`
+- [ ] Position sizing tested with sample signals
+
+### Safety Guards
+- [ ] `ALPACA_PAPER_TRADING=true` confirmed (REQUIRED for execution)
+- [ ] `ENABLE_EXECUTION=false` for initial deployment
+- [ ] Understand dual safety requirement before enabling
+
+### Alpaca Paper Trading
+- [ ] Paper trading account funded (simulated balance)
+- [ ] Paper trading API credentials verified
+- [ ] Test order submitted manually via Alpaca dashboard
+- [ ] Bracket order support confirmed for target symbols
+
+### Firestore Position Collection
+- [ ] `live_positions` collection created (auto on first save)
+- [ ] Test position document verified structure:
+  - `position_id` (matches `signal_id`)
+  - `alpaca_order_id` (Alpaca's order ID)
+  - `entry_fill_price`, `current_stop_loss`, `qty`, `side`
+  - `status` (OPEN/CLOSED)
 
 ## ✅ Documentation Review
 

@@ -246,17 +246,26 @@ class Position(BaseModel):
     """
     Open position/trade stored in Firestore live_positions collection.
 
-    Represents an actual trade executed based on a signal.
+    Represents an actual trade executed based on a Signal via the ExecutionEngine.
 
-    WARNING:
-        position_id MUST match the Alpaca Client Order ID for idempotency.
-        This ensures we can reconcile positions with the broker and prevent
-        duplicate order submissions.
+    Key Relationships:
+        - position_id: Set to signal_id for idempotency. This is also used as
+          client_order_id when submitting to Alpaca, allowing reconciliation.
+        - signal_id: Reference back to the originating Signal document.
+        - alpaca_order_id: The order ID returned by Alpaca after submission.
+          Use this to query order status and manage the position.
+
+    Example:
+        Signal generates -> ExecutionEngine submits bracket order ->
+        Position created with position_id = signal_id, alpaca_order_id = order.id
     """
 
     position_id: str = Field(
         ...,
-        description="Must match Alpaca Client Order ID for idempotency",
+        description=(
+            "Unique position identifier. Set to signal_id to ensure idempotency "
+            "and allow duplicate detection."
+        ),
     )
     ds: date = Field(
         ...,
@@ -264,11 +273,18 @@ class Position(BaseModel):
     )
     account_id: str = Field(
         ...,
-        description="Alpaca account ID",
+        description="Alpaca account ID (e.g., 'paper' for paper trading)",
     )
     signal_id: str = Field(
         ...,
-        description="Reference to the signal that triggered this position",
+        description="Reference to the Signal that triggered this position",
+    )
+    alpaca_order_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "Alpaca's order ID returned after order submission. "
+            "Used for order status queries and reconciliation."
+        ),
     )
     discord_thread_id: Optional[str] = Field(
         default=None,
