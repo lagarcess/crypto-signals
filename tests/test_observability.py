@@ -1,5 +1,6 @@
 """Unit tests for GCP Cloud Logging integration in observability module."""
 
+import importlib.util
 import sys
 from importlib import reload
 from unittest.mock import MagicMock, patch
@@ -7,12 +8,7 @@ from unittest.mock import MagicMock, patch
 from crypto_signals.observability import LOGURU_TO_GCP_SEVERITY
 
 # [Strategy Setup] Detect if the real library is installed to choose the correct patch method
-try:
-    import google.cloud.logging  # noqa: F401
-
-    HAS_GCP_LIBRARY = True
-except ImportError:
-    HAS_GCP_LIBRARY = False
+HAS_GCP_LIBRARY = importlib.util.find_spec("google.cloud.logging") is not None
 
 
 class TestGCPLevelMapping:

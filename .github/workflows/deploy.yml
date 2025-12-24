@@ -31,11 +31,15 @@ jobs:
 
       - name: Security audit
         run: |
+          set -e
           pip install pip-audit
-          pip-audit --require-hashes --strict 2>/dev/null || pip-audit
+          if ! pip-audit --require-hashes --strict; then
+            echo "pip-audit with --require-hashes failed; retrying without --require-hashes..."
+            pip-audit --strict
+          fi
 
       - name: Test
-        run: PYTHONPATH=src poetry run pytest tests/ --cov=src/crypto_signals --cov-report=term-missing --cov-fail-under=60
+        run: PYTHONPATH=src poetry run pytest tests/ --cov=src/crypto_signals --cov-report=term-missing --cov-fail-under=80
 
   cd:
     needs: ci
@@ -71,11 +75,15 @@ jobs:
       - name: Build image
         run: |
           IMAGE_TAG="${IMAGE_BASE}:${GITHUB_SHA}"
+          LATEST_TAG="${IMAGE_BASE}:latest"
           echo "IMAGE_TAG=${IMAGE_TAG}" >> "$GITHUB_ENV"
-          docker build -t "${IMAGE_TAG}" .
+          echo "LATEST_TAG=${LATEST_TAG}" >> "$GITHUB_ENV"
+          docker build -t "${IMAGE_TAG}" -t "${LATEST_TAG}" .
 
       - name: Push image
-        run: docker push "${IMAGE_TAG}"
+        run: |
+          docker push "${IMAGE_TAG}"
+          docker push "${LATEST_TAG}"
 
       - name: Deploy to Cloud Run Job
         run: |

@@ -107,16 +107,15 @@ class SignalRepository:
         doc_ref = self.db.collection(self.collection_name).document(signal_id)
 
         @firestore.transactional
-        def update_in_transaction(transaction, doc_ref):
+        def update_in_transaction(transaction):
             snapshot = doc_ref.get(transaction=transaction)
             if not snapshot.exists:
                 return False
             transaction.update(doc_ref, updates)
             return True
 
-        transaction = self.db.transaction()
         try:
-            return update_in_transaction(transaction, doc_ref)
+            return update_in_transaction(self.db.transaction())
         except Exception as e:
             logger.error(f"Atomic update failed for {signal_id}: {e}")
             return False

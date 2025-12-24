@@ -36,10 +36,10 @@ echo "✅ APIs enabled"
 # Create Artifact Registry repository
 echo ""
 echo "🗄️ Creating Artifact Registry repository..."
-if gcloud artifacts repositories describe crypto-signals \
-    --location="$REGION" &>/dev/null; then
+if gcloud artifacts repositories describe crypto-signals --location="$REGION"; then
     echo "   Repository already exists"
 else
+    echo "   Repository not found, creating..."
     gcloud artifacts repositories create crypto-signals \
         --repository-format=docker \
         --location="$REGION" \
@@ -50,9 +50,10 @@ fi
 # Create Firestore database
 echo ""
 echo "📊 Creating Firestore database..."
-if gcloud firestore databases describe &>/dev/null; then
+if gcloud firestore databases describe; then
     echo "   Firestore database already exists"
 else
+    echo "   Firestore database not found, creating..."
     gcloud firestore databases create --region="$REGION"
     echo "   Firestore database created"
 fi
