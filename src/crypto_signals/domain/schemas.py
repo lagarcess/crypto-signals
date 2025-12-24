@@ -413,6 +413,14 @@ class TradeExecution(BaseModel):
         default=None,
         description="Final trailing stop value at exit (Chandelier Exit for TP3)",
     )
+    target_entry_price: Optional[float] = Field(
+        default=None,
+        description="Original signal's entry price (target). Compare against entry_price for slippage.",
+    )
+    alpaca_order_id: Optional[str] = Field(
+        default=None,
+        description="Alpaca broker's UUID for the entry order. Links to Alpaca dashboard for auditability.",
+    )
 
 
 class StagingTrade(BaseModel):
@@ -506,6 +514,14 @@ class StagingTrade(BaseModel):
     trailing_stop_final: Optional[float] = Field(
         default=None,
         description="Final trailing stop value at exit (Chandelier Exit for TP3)",
+    )
+    target_entry_price: Optional[float] = Field(
+        default=None,
+        description="Original signal's entry price (target). Compare against entry_price for slippage.",
+    )
+    alpaca_order_id: Optional[str] = Field(
+        default=None,
+        description="Alpaca broker's UUID for the entry order. Links to Alpaca dashboard for auditability.",
     )
 
 

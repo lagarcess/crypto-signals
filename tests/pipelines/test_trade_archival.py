@@ -63,18 +63,19 @@ def test_transform_mfe_long(pipeline, mock_market_provider, mock_alpaca):
         "entry_time": entry_time.isoformat(),
         "exit_time": exit_time.isoformat(),
         "exit_fill_price": 52000.0,
-        "entry_fill_price": 50000.0,  # Will be overridden by Alpaca
+        "entry_fill_price": 50000.0,  # This is the TARGET price from Signal
         "qty": 1.0,
         "side": "buy",
         "account_id": "acc_1",
         "strategy_id": "strat_1",
     }
 
-    # Mock Alpaca Order
+    # Mock Alpaca Order - filled_avg_price is the ACTUAL execution price
     mock_order = MagicMock()
-    mock_order.filled_avg_price = "50000.0"
+    mock_order.filled_avg_price = "50100.0"  # $100 slippage from target
     mock_order.filled_qty = "1.0"
     mock_order.side = "buy"
+    mock_order.id = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"  # Mock UUID
     mock_alpaca.get_order_by_client_order_id.return_value = mock_order
 
     # Mock Market Data (3 days)
@@ -100,12 +101,20 @@ def test_transform_mfe_long(pipeline, mock_market_provider, mock_alpaca):
     # Verify
     assert len(transformed) == 1
     trade = transformed[0]
-    assert trade["max_favorable_excursion"] == 5000.0  # 55000 - 50000
+    assert trade["max_favorable_excursion"] == 4900.0  # 55000 - 50100 (actual entry)
     # Verify pnl_usd is correctly calculated and rounded
-    # PnL = (exit_price - entry_price) * qty = (52000 - 50000) * 1.0 = 2000.0
-    assert trade["pnl_usd"] == 2000.0
+    # PnL = (exit_price - entry_price) * qty = (52000 - 50100) * 1.0 = 1900.0
+    assert trade["pnl_usd"] == 1900.0
     # Verify pnl_pct is also present
     assert "pnl_pct" in trade
+
+    # NEW ASSERTIONS for Schema Evolution
+    # Verify target_entry_price is from Firestore (original Signal price)
+    assert trade["target_entry_price"] == 50000.0
+    # Verify alpaca_order_id is the broker's UUID
+    assert trade["alpaca_order_id"] == "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+    # Verify slippage calculation: ((50100 - 50000) / 50000) * 100 = 0.2%
+    assert trade["slippage_pct"] == 0.2
 
 
 def test_transform_mfe_short(pipeline, mock_market_provider, mock_alpaca):
@@ -120,7 +129,7 @@ def test_transform_mfe_short(pipeline, mock_market_provider, mock_alpaca):
         "entry_time": entry_time.isoformat(),
         "exit_time": exit_time.isoformat(),
         "exit_fill_price": 48000.0,
-        "entry_fill_price": 50000.0,
+        "entry_fill_price": 50000.0,  # Target price from Signal
         "qty": 1.0,
         "side": "sell",
         "account_id": "acc_1",
@@ -129,9 +138,10 @@ def test_transform_mfe_short(pipeline, mock_market_provider, mock_alpaca):
 
     # Mock Alpaca Order
     mock_order = MagicMock()
-    mock_order.filled_avg_price = "50000.0"
+    mock_order.filled_avg_price = "50000.0"  # Actual fill = target (no slippage)
     mock_order.filled_qty = "1.0"
     mock_order.side = "sell"
+    mock_order.id = "b2c3d4e5-f6a7-8901-bcde-f23456789012"  # Mock UUID
     mock_alpaca.get_order_by_client_order_id.return_value = mock_order
 
     # Mock Market Data
@@ -163,6 +173,12 @@ def test_transform_mfe_short(pipeline, mock_market_provider, mock_alpaca):
     assert trade["pnl_usd"] == 2000.0
     # Verify pnl_pct is also present
     assert "pnl_pct" in trade
+
+    # NEW ASSERTIONS for Schema Evolution
+    assert trade["target_entry_price"] == 50000.0
+    assert trade["alpaca_order_id"] == "b2c3d4e5-f6a7-8901-bcde-f23456789012"
+    # No slippage: ((50000 - 50000) / 50000) * 100 = 0%
+    assert trade["slippage_pct"] == 0.0
 
 
 def test_transform_caches_market_data_per_symbol(
@@ -214,6 +230,7 @@ def test_transform_caches_market_data_per_symbol(
     mock_order.filled_avg_price = "50000.0"
     mock_order.filled_qty = "1.0"
     mock_order.side = "buy"
+    mock_order.id = "cache-test-order-uuid"
     mock_alpaca.get_order_by_client_order_id.return_value = mock_order
 
     # Mock Market Data
