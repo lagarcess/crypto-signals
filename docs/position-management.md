@@ -42,8 +42,8 @@ When price moves favorably during Runner phase:
 |-------|-------------|
 | `original_qty` | Quantity before any scale-outs |
 | `scaled_out_qty` | Cumulative quantity sold |
-| `scaled_out_price` | Fill price of scale-out |
-| `scaled_out_at` | Timestamp of scale-out |
+| `scaled_out_price` | Fill price of the most recent scale-out |
+| `scaled_out_at` | Timestamp of the most recent scale-out |
 | `breakeven_applied` | Whether stop moved to breakeven |
 
 ## Discord Notifications
