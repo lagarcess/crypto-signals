@@ -24,6 +24,7 @@ from datetime import date, datetime, timezone
 
 from crypto_signals.domain.schemas import (
     AssetClass,
+    ExitReason,
     OrderSide,
     Position,
     Signal,
@@ -93,7 +94,7 @@ print(f"   {'✅ Sent!' if result else '❌ Failed'}")
 # Step 1c: Signal Update - TP1 Hit (using new method)
 print("\n3️⃣  Sending SIGNAL UPDATE (TP1 Hit + Scaling Out)...")
 long_signal.status = SignalStatus.TP1_HIT
-long_signal.exit_reason = "Price reached Conservative target"
+long_signal.exit_reason = ExitReason.TP1
 result = discord.send_signal_update(long_signal)
 print(f"   {'✅ Sent!' if result else '❌ Failed'}")
 
@@ -161,7 +162,7 @@ else:
 # Step 2b: Signal Invalidated (using new method)
 print("\n6️⃣  Sending SIGNAL UPDATE (Invalidated)...")
 short_signal.status = SignalStatus.INVALIDATED
-short_signal.exit_reason = "Price broke above invalidation level ($3,650)"
+short_signal.exit_reason = ExitReason.STRUCTURAL_INVALIDATION
 result = discord.send_signal_update(short_signal)
 print(f"   {'✅ Sent!' if result else '❌ Failed'}")
 
@@ -199,7 +200,7 @@ else:
 # Step 3b: Signal Expired (using new method)
 print("\n8️⃣  Sending SIGNAL UPDATE (Expired - Time Decay)...")
 expired_signal.status = SignalStatus.EXPIRED
-expired_signal.exit_reason = "Signal expired after 24h without entry trigger"
+expired_signal.exit_reason = ExitReason.EXPIRED
 result = discord.send_signal_update(expired_signal)
 print(f"   {'✅ Sent!' if result else '❌ Failed'}")
 

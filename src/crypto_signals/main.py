@@ -468,39 +468,66 @@ def main():
 
                                     # TP1: Scale out 50% + move stop to breakeven
                                     if exited.status == SignalStatus.TP1_HIT:
-                                        # 1. Scale out 50%
-                                        if execution_engine.scale_out_position(pos, 0.5):
-                                            logger.info(
-                                                f"TP1 AUTO: Scaled out 50% of "
-                                                f"{pos.position_id}"
+                                        # Idempotency: Skip if already scaled (restarts/retries)
+                                        if pos.scaled_out_qty > 0:
+                                            logger.debug(
+                                                f"TP1 already processed for {pos.position_id}, "
+                                                f"scaled_out_qty={pos.scaled_out_qty}"
                                             )
+                                        else:
+                                            # 1. Scale out 50%
+                                            if execution_engine.scale_out_position(
+                                                pos, 0.5
+                                            ):
+                                                logger.info(
+                                                    f"TP1 AUTO: Scaled out 50% of "
+                                                    f"{pos.position_id}"
+                                                )
 
-                                        # 2. Move stop to breakeven
-                                        if execution_engine.move_stop_to_breakeven(pos):
-                                            logger.info(
-                                                f"TP1 AUTO: Stop -> breakeven for "
-                                                f"{pos.position_id}"
-                                            )
+                                            # 2. Move stop to breakeven
+                                            if execution_engine.move_stop_to_breakeven(
+                                                pos
+                                            ):
+                                                logger.info(
+                                                    f"TP1 AUTO: Stop -> breakeven for "
+                                                    f"{pos.position_id}"
+                                                )
 
                                     # TP2: Scale out 50% of remaining + move stop to TP1
                                     elif exited.status == SignalStatus.TP2_HIT:
-                                        # 1. Scale out 50% of remaining (25% of original)
-                                        if execution_engine.scale_out_position(pos, 0.5):
-                                            logger.info(
-                                                f"TP2 AUTO: Scaled out 50% remaining "
-                                                f"of {pos.position_id}"
+                                        # Idempotency: Skip if already scaled beyond TP1
+                                        # TP1 scales 50%, TP2 scales another 25% (50% of remaining)
+                                        original = pos.original_qty or pos.qty
+                                        if pos.scaled_out_qty > original * 0.5:
+                                            logger.debug(
+                                                f"TP2 already processed for {pos.position_id}, "
+                                                f"scaled_out_qty={pos.scaled_out_qty}"
                                             )
-
-                                        # 2. Move stop to TP1 level
-                                        tp1_level = exited.take_profit_1
-                                        if tp1_level:
-                                            if execution_engine.modify_stop_loss(
-                                                pos, tp1_level
+                                        else:
+                                            # 1. Scale out 50% of remaining (25% of original)
+                                            if execution_engine.scale_out_position(
+                                                pos, 0.5
                                             ):
                                                 logger.info(
-                                                    f"TP2 AUTO: Stop -> TP1 level "
-                                                    f"${tp1_level:.2f} for "
-                                                    f"{pos.position_id}"
+                                                    f"TP2 AUTO: Scaled out 50% remaining "
+                                                    f"of {pos.position_id}"
+                                                )
+
+                                            # 2. Move stop to TP1 level
+                                            tp1_level = exited.take_profit_1
+                                            if tp1_level:
+                                                if execution_engine.modify_stop_loss(
+                                                    pos, tp1_level
+                                                ):
+                                                    logger.info(
+                                                        f"TP2 AUTO: Stop -> TP1 level "
+                                                        f"${tp1_level:.2f} for "
+                                                        f"{pos.position_id}"
+                                                    )
+                                            else:
+                                                logger.warning(
+                                                    f"TP2 AUTO: Cannot move stop to TP1 - "
+                                                    f"take_profit_1 not set for {exited.signal_id}"
                                                 )
 
                                     # TP3: Close runner position (trailing stop hit)
@@ -611,18 +638,38 @@ def main():
                                 # Fetch associated signal for thread_id
                                 signal_for_pos = repo.get_by_id(updated_pos.signal_id)
                                 if signal_for_pos:
-                                    # Calculate PnL (explicit snapshots for accuracy)
+                                    # Calculate PnL including scaled-out portions
                                     entry = updated_pos.entry_fill_price
                                     exit_price = updated_pos.exit_fill_price
-                                    qty = updated_pos.qty
                                     is_long = updated_pos.side == OrderSide.BUY
 
-                                    if is_long:
-                                        pnl_usd = (exit_price - entry) * qty
-                                    else:
-                                        pnl_usd = (entry - exit_price) * qty
+                                    # PnL from scaled-out portions (TP1, TP2)
+                                    scaled_pnl = 0.0
+                                    for scale in updated_pos.scaled_out_prices:
+                                        scale_qty = scale.get("qty", 0)
+                                        scale_price = scale.get("price", entry)
+                                        if is_long:
+                                            scaled_pnl += (
+                                                scale_price - entry
+                                            ) * scale_qty
+                                        else:
+                                            scaled_pnl += (
+                                                entry - scale_price
+                                            ) * scale_qty
 
-                                    pnl_pct = (pnl_usd / (entry * qty)) * 100
+                                    # PnL from final exit (remaining qty)
+                                    remaining_qty = updated_pos.qty
+                                    if is_long:
+                                        final_pnl = (exit_price - entry) * remaining_qty
+                                    else:
+                                        final_pnl = (entry - exit_price) * remaining_qty
+
+                                    # Total PnL
+                                    pnl_usd = scaled_pnl + final_pnl
+                                    total_qty = updated_pos.original_qty or (
+                                        remaining_qty + updated_pos.scaled_out_qty
+                                    )
+                                    pnl_pct = (pnl_usd / (entry * total_qty)) * 100
 
                                     # Calculate duration
                                     duration_str = "N/A"
