@@ -34,7 +34,7 @@ from crypto_signals.observability import (
     log_execution_time,
     setup_gcp_logging,
 )
-from crypto_signals.repository.firestore import SignalRepository
+from crypto_signals.repository.firestore import PositionRepository, SignalRepository
 from crypto_signals.secrets_manager import init_secrets
 
 # Configure logging with Rich integration
@@ -97,6 +97,7 @@ def main():
                 market_provider = MarketDataProvider(stock_client, crypto_client)
                 generator = SignalGenerator(market_provider=market_provider)
                 repo = SignalRepository()
+                position_repo = PositionRepository()
                 discord = DiscordClient()
                 asset_validator = AssetValidationService(get_trading_client())
                 execution_engine = ExecutionEngine()
@@ -474,6 +475,68 @@ def main():
                 finally:
                     # Advance progress bar after each symbol
                     progress.advance(task)
+
+        # =========================================================================
+        # POSITION SYNC LOOP
+        # Synchronize open positions with Alpaca broker state.
+        # This updates TP/SL leg IDs and detects externally closed positions.
+        # =========================================================================
+        if settings.ENABLE_EXECUTION:
+            logger.info("Syncing open positions with Alpaca...")
+            sync_start = time.time()
+            try:
+                open_positions = position_repo.get_open_positions()
+                synced_count = 0
+                closed_count = 0
+
+                for pos in open_positions:
+                    if shutdown_requested:
+                        logger.info("Shutdown requested. Stopping position sync...")
+                        break
+
+                    try:
+                        original_status = pos.status
+                        updated_pos = execution_engine.sync_position_status(pos)
+
+                        # Check if position was closed externally (TP/SL hit)
+                        if updated_pos.status != original_status:
+                            position_repo.update_position(updated_pos)
+                            closed_count += 1
+                            logger.info(
+                                f"Position {updated_pos.position_id} closed: "
+                                f"{updated_pos.status.value}",
+                                extra={
+                                    "position_id": updated_pos.position_id,
+                                    "symbol": updated_pos.symbol,
+                                    "status": updated_pos.status.value,
+                                },
+                            )
+                        elif (
+                            updated_pos.tp_order_id != pos.tp_order_id
+                            or updated_pos.sl_order_id != pos.sl_order_id
+                        ):
+                            # Leg IDs were updated (first sync after fill)
+                            position_repo.update_position(updated_pos)
+                            synced_count += 1
+
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to sync position {pos.position_id}: {e}",
+                            extra={"position_id": pos.position_id},
+                        )
+
+                sync_duration = time.time() - sync_start
+                logger.info(
+                    f"Position sync complete: {synced_count} updated, "
+                    f"{closed_count} closed",
+                    extra={
+                        "synced": synced_count,
+                        "closed": closed_count,
+                        "duration_seconds": round(sync_duration, 3),
+                    },
+                )
+            except Exception as e:
+                logger.error(f"Position sync failed: {e}", exc_info=True)
 
         # Display Rich execution summary table
         total_duration = time.time() - app_start_time
