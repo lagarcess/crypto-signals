@@ -76,10 +76,15 @@ class Settings(BaseSettings):
         description="If True, all traffic routes to TEST_DISCORD_WEBHOOK",
     )
 
-    # Optional: Alpaca Paper Trading (defaults to True for safety)
     ALPACA_PAPER_TRADING: bool = Field(
         default=True,
         description="Use Alpaca paper trading environment",
+    )
+
+    # Google Cloud Logging (for production environments)
+    ENABLE_GCP_LOGGING: bool = Field(
+        default=False,
+        description="Enable Google Cloud Logging sink (for Cloud Run/GKE)",
     )
 
     # Portfolio Configuration (Optional - defaults to hardcoded lists)

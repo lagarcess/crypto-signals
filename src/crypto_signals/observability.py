@@ -108,6 +108,74 @@ def _rich_sink(message) -> None:
 
 
 # =============================================================================
+# GCP CLOUD LOGGING
+# =============================================================================
+
+# Map Loguru levels to GCP Cloud Logging severities
+# GCP does not have SUCCESS level, so we map it to INFO
+LOGURU_TO_GCP_SEVERITY = {
+    "TRACE": "DEBUG",
+    "DEBUG": "DEBUG",
+    "INFO": "INFO",
+    "SUCCESS": "INFO",  # GCP has no SUCCESS, use INFO
+    "WARNING": "WARNING",
+    "ERROR": "ERROR",
+    "CRITICAL": "CRITICAL",
+}
+
+
+def setup_gcp_logging(log_name: str = "crypto-sentinel") -> None:
+    """
+    Configure Google Cloud Logging sink for production environments.
+
+    Adds a structured JSON sink that sends logs to GCP Cloud Logging
+    while preserving the Rich terminal output for local development.
+
+    When running on GCP (Cloud Run or GKE), Google's logging agent
+    automatically parses JSON logs into jsonPayload, making every
+    field (symbol, qty, pnl_usd, etc.) searchable in Logs Explorer.
+
+    Args:
+        log_name: The log name in GCP Cloud Logging (default: "crypto-sentinel")
+    """
+    from google.cloud import logging as gcp_logging
+
+    client = gcp_logging.Client()
+    gcp_logger = client.logger(log_name)
+
+    def gcp_sink(message) -> None:
+        """
+        Loguru sink that sends structured logs to GCP Cloud Logging.
+
+        Preserves all extra context fields as searchable jsonPayload fields.
+        """
+        record = message.record
+        severity = LOGURU_TO_GCP_SEVERITY.get(record["level"].name, "DEFAULT")
+
+        # Build structured payload with core fields
+        payload = {
+            "message": record["message"],
+            "level": record["level"].name,
+            "timestamp": record["time"].isoformat(),
+            "module": record["module"],
+            "function": record["function"],
+            "line": record["line"],
+        }
+
+        # Merge extra context (symbol, qty, pnl_usd, asset_class, etc.)
+        # These become searchable fields in GCP Logs Explorer
+        if record["extra"]:
+            payload.update(record["extra"])
+
+        # Send to GCP Cloud Logging with mapped severity
+        gcp_logger.log_struct(payload, severity=severity)
+
+    # Add GCP sink - this is ADDITIVE, does NOT remove Rich sink
+    logger.add(gcp_sink, format="{message}", level="DEBUG")
+    logger.info("GCP Cloud Logging sink initialized", extra={"log_name": log_name})
+
+
+# =============================================================================
 # PROGRESS VISUALIZATION
 # =============================================================================
 
