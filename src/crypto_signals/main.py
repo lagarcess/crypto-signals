@@ -373,20 +373,19 @@ def main():
                                 # === SYNC TRAIL TO ALPACA ===
                                 # Update broker stop-loss to match new trailing stop
                                 if settings.ENABLE_EXECUTION and new_tp3:
-                                    positions = position_repo.get_by_signal_id(
+                                    pos = position_repo.get_position_by_signal(
                                         exited.signal_id
                                     )
-                                    for pos in positions:
-                                        if pos.status == TradeStatus.OPEN:
-                                            if execution_engine.modify_stop_loss(
-                                                pos, new_tp3
-                                            ):
-                                                logger.info(
-                                                    f"TRAIL SYNC: Stop -> "
-                                                    f"${new_tp3:.2f} for "
-                                                    f"{pos.position_id}"
-                                                )
-                                                position_repo.update_position(pos)
+                                    if pos and pos.status == TradeStatus.OPEN:
+                                        if execution_engine.modify_stop_loss(
+                                            pos, new_tp3
+                                        ):
+                                            logger.info(
+                                                f"TRAIL SYNC: Stop -> "
+                                                f"${new_tp3:.2f} for "
+                                                f"{pos.position_id}"
+                                            )
+                                            position_repo.update_position(pos)
 
                                 # Clean up private attributes
                                 if hasattr(exited, "_trail_updated"):
@@ -459,13 +458,10 @@ def main():
                             # Progressive stop management on each TP stage
                             if settings.ENABLE_EXECUTION:
                                 # Find position linked to this signal
-                                positions = position_repo.get_by_signal_id(
+                                pos = position_repo.get_position_by_signal(
                                     exited.signal_id
                                 )
-                                for pos in positions:
-                                    if pos.status != TradeStatus.OPEN:
-                                        continue
-
+                                if pos and pos.status == TradeStatus.OPEN:
                                     # TP1: Scale out 50% + move stop to breakeven
                                     if exited.status == SignalStatus.TP1_HIT:
                                         # Idempotency: Skip if already scaled (restarts/retries)

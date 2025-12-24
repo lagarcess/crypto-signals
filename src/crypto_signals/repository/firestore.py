@@ -71,6 +71,56 @@ class SignalRepository:
         doc_ref = self.db.collection(self.collection_name).document(signal_id)
         doc_ref.update({"status": status.value})
 
+    def get_by_id(self, signal_id: str) -> Signal | None:
+        """
+        Get a signal by its ID.
+
+        Args:
+            signal_id: The unique signal identifier.
+
+        Returns:
+            Signal object if found, None otherwise.
+        """
+        doc = self.db.collection(self.collection_name).document(signal_id).get()
+        if doc.exists:
+            try:
+                return Signal(**doc.to_dict())
+            except ValidationError as e:
+                log_validation_error(doc.id, e)
+                return None
+        return None
+
+    def update_signal_atomic(self, signal_id: str, updates: dict) -> bool:
+        """
+        Atomically update signal fields using Firestore transaction.
+
+        Use for status changes where race conditions are possible
+        (e.g., concurrent signal processing runs).
+
+        Args:
+            signal_id: The signal ID to update.
+            updates: Dictionary of field updates.
+
+        Returns:
+            bool: True if update succeeded, False otherwise.
+        """
+        doc_ref = self.db.collection(self.collection_name).document(signal_id)
+
+        @firestore.transactional
+        def update_in_transaction(transaction, doc_ref):
+            snapshot = doc_ref.get(transaction=transaction)
+            if not snapshot.exists:
+                return False
+            transaction.update(doc_ref, updates)
+            return True
+
+        transaction = self.db.transaction()
+        try:
+            return update_in_transaction(transaction, doc_ref)
+        except Exception as e:
+            logger.error(f"Atomic update failed for {signal_id}: {e}")
+            return False
+
     def cleanup_expired_signals(self, days_old: int = 30) -> int:
         """Delete signals older than specified days. Returns count deleted."""
         cutoff_date = datetime.now(timezone.utc) - timedelta(days=days_old)

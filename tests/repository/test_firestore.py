@@ -116,8 +116,59 @@ def test_save_signal_firestore_error(mock_settings, mock_firestore_client):
 
 
 # =============================================================================
-# PositionRepository Tests
+# SignalRepository.get_by_id Tests
 # =============================================================================
+
+
+class TestSignalRepositoryGetById:
+    """Tests for SignalRepository.get_by_id method."""
+
+    def test_get_by_id_found(self, mock_settings, mock_firestore_client):
+        """Test get_by_id returns Signal when found."""
+        from unittest.mock import MagicMock
+
+        mock_db = mock_firestore_client.return_value
+        mock_collection = mock_db.collection.return_value
+        mock_doc_ref = mock_collection.document.return_value
+        mock_doc = MagicMock()
+        mock_doc.exists = True
+        mock_doc.to_dict.return_value = {
+            "signal_id": "test-signal-123",
+            "ds": "2025-01-15",
+            "strategy_id": "test-strategy",
+            "symbol": "BTC/USD",
+            "asset_class": "CRYPTO",
+            "entry_price": 50000.0,
+            "pattern_name": "bullish_engulfing",
+            "status": "WAITING",
+            "suggested_stop": 48000.0,
+        }
+        mock_doc_ref.get.return_value = mock_doc
+
+        repo = SignalRepository()
+        result = repo.get_by_id("test-signal-123")
+
+        assert result is not None
+        assert result.signal_id == "test-signal-123"
+        assert result.symbol == "BTC/USD"
+        mock_collection.document.assert_called_with("test-signal-123")
+
+    def test_get_by_id_not_found(self, mock_settings, mock_firestore_client):
+        """Test get_by_id returns None when not found."""
+        from unittest.mock import MagicMock
+
+        mock_db = mock_firestore_client.return_value
+        mock_collection = mock_db.collection.return_value
+        mock_doc_ref = mock_collection.document.return_value
+        mock_doc = MagicMock()
+        mock_doc.exists = False
+        mock_doc_ref.get.return_value = mock_doc
+
+        repo = SignalRepository()
+        result = repo.get_by_id("nonexistent-signal")
+
+        assert result is None
+        mock_collection.document.assert_called_with("nonexistent-signal")
 
 
 @pytest.fixture
