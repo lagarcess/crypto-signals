@@ -1,8 +1,15 @@
 """
-Execution Engine for Alpaca Bracket Order Management.
+Execution Engine for Alpaca Order Management.
 
 This module bridges Signal objects to live Alpaca trades using Bracket Orders
 for atomic Entry, Take-Profit, and Stop-Loss management.
+
+Key Capabilities:
+    - execute_signal(): Submit bracket orders with Entry, TP, and SL
+    - sync_position_status(): Synchronize position with broker state
+    - modify_stop_loss(): Trail stop-loss orders (for Chandelier Exits)
+    - close_position_emergency(): Cancel all legs and exit at market
+    - get_order_details(): Retrieve order for analytics enrichment
 """
 
 from typing import Optional
@@ -31,9 +38,17 @@ from rich.panel import Panel
 
 class ExecutionEngine:
     """
-    Manages the order lifecycle from Signal to live Alpaca trade.
+    Manages the complete order lifecycle from Signal to Alpaca trade.
 
-    Uses Bracket Orders to atomically set Entry, Take Profit, and Stop Loss.
+    Uses Bracket Orders for atomic Entry, Take-Profit, and Stop-Loss.
+    Supports position synchronization, stop-loss trailing, and emergency exits.
+
+    Methods:
+        execute_signal: Submit bracket order for a Signal
+        get_order_details: Retrieve order by ID for enrichment
+        sync_position_status: Sync position with Alpaca broker state
+        modify_stop_loss: Replace stop-loss order (trailing)
+        close_position_emergency: Cancel legs and exit at market
     """
 
     def __init__(self, trading_client: Optional[TradingClient] = None):

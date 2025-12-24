@@ -37,12 +37,19 @@ Crypto Sentinel is a production-ready trading bot that:
 - ✅ **Health Checks**: Comprehensive service connectivity verification
 - ✅ **Docker Support**: Multi-stage builds with security best practices
 
-### Automated Execution (New)
+### Automated Execution
 - ⚡ **Bracket Orders**: Atomic Entry + Take-Profit + Stop-Loss via Alpaca API
 - 📏 **Risk-Based Position Sizing**: `qty = RISK_PER_TRADE / |entry - stop|`
 - 🔐 **Dual Safety Guards**: Requires `ALPACA_PAPER_TRADING=True` AND `ENABLE_EXECUTION=True`
 - 🔗 **Signal-to-Position Traceability**: `signal_id` used as `client_order_id`
 - 💾 **Position Persistence**: Live positions stored in `live_positions` Firestore collection
+
+### Order Management (Managed Trade Model)
+- 🔄 **Position Sync**: Real-time synchronization with Alpaca broker state
+- 📊 **Leg Management**: Track TP/SL order IDs for targeted operations
+- 📈 **Trailing Stops**: Replace stop-loss orders via `modify_stop_loss()`
+- 🚨 **Emergency Close**: Cancel all legs and exit at market price
+- 🎯 **Slippage Analysis**: Track `target_entry_price` vs actual fill for analytics
 
 ## Architecture
 
@@ -65,7 +72,8 @@ crypto-signals/
 │   ├── secrets_manager.py         # Secret Manager integration
 │   ├── observability.py           # Structured logging & metrics
 │   ├── engine/
-│   │   └── signal_generator.py    # Signal generation orchestration
+│   │   ├── signal_generator.py    # Signal generation orchestration
+│   │   └── execution.py           # Alpaca order execution & management
 │   ├── market/
 │   │   ├── data_provider.py       # Alpaca API wrapper
 │   │   └── exceptions.py          # Custom exceptions

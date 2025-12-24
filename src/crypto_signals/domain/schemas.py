@@ -249,15 +249,22 @@ class Position(BaseModel):
     Represents an actual trade executed based on a Signal via the ExecutionEngine.
 
     Key Relationships:
-        - position_id: Set to signal_id for idempotency. This is also used as
-          client_order_id when submitting to Alpaca, allowing reconciliation.
+        - position_id: Set to signal_id for idempotency. Also used as
+          client_order_id when submitting to Alpaca.
         - signal_id: Reference back to the originating Signal document.
-        - alpaca_order_id: The order ID returned by Alpaca after submission.
-          Use this to query order status and manage the position.
+        - alpaca_order_id: Parent bracket order ID from Alpaca.
+        - tp_order_id / sl_order_id: TP/SL leg IDs (populated after fill).
+
+    Order Management Fields:
+        - target_entry_price: Original signal price (for slippage calculation)
+        - filled_at: Precision timestamp from Alpaca API
+        - commission: Broker-reported fees
+        - failed_reason: Error message if order rejected/canceled
 
     Example:
         Signal generates -> ExecutionEngine submits bracket order ->
         Position created with position_id = signal_id, alpaca_order_id = order.id
+        -> sync_position_status() extracts tp_order_id/sl_order_id after fill
     """
 
     position_id: str = Field(
