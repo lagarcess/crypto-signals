@@ -47,9 +47,18 @@ echo -n "true" | gcloud secrets create TEST_MODE --data-file=-  # Set to 'false'
 # echo -n "your-crypto-discord-webhook" | gcloud secrets create LIVE_CRYPTO_DISCORD_WEBHOOK_URL --data-file=-
 # echo -n "your-stock-discord-webhook" | gcloud secrets create LIVE_STOCK_DISCORD_WEBHOOK_URL --data-file=-
 
+# Execution Engine Configuration (Optional - Paper Trading Only)
+# IMPORTANT: ALPACA_PAPER_TRADING must be 'true' for execution to work
+echo -n "false" | gcloud secrets create ENABLE_EXECUTION --data-file=-  # Set to 'true' to enable order submission
+echo -n "100.0" | gcloud secrets create RISK_PER_TRADE --data-file=-    # Fixed dollar risk per trade
+
 # Verify secrets
 gcloud secrets list
 ```
+
+> **⚠️ SAFETY REQUIREMENT**: The execution engine will only submit orders when BOTH conditions are met:
+> 1. `ALPACA_PAPER_TRADING=true` (mandatory safety guard)
+> 2. `ENABLE_EXECUTION=true` (explicit opt-in)
 
 ### 2. Build and Push Docker Image
 
@@ -90,7 +99,7 @@ gcloud run jobs create crypto-signals-job \
     --memory=1Gi \
     --cpu=1 \
     --set-env-vars=GOOGLE_CLOUD_PROJECT=$GCP_PROJECT \
-    --set-secrets=ALPACA_API_KEY=ALPACA_API_KEY:latest,ALPACA_SECRET_KEY=ALPACA_SECRET_KEY:latest,TEST_DISCORD_WEBHOOK=TEST_DISCORD_WEBHOOK:latest,TEST_MODE=TEST_MODE:latest,ALPACA_PAPER_TRADING=ALPACA_PAPER_TRADING:latest
+    --set-secrets=ALPACA_API_KEY=ALPACA_API_KEY:latest,ALPACA_SECRET_KEY=ALPACA_SECRET_KEY:latest,TEST_DISCORD_WEBHOOK=TEST_DISCORD_WEBHOOK:latest,TEST_MODE=TEST_MODE:latest,ALPACA_PAPER_TRADING=ALPACA_PAPER_TRADING:latest,ENABLE_EXECUTION=ENABLE_EXECUTION:latest,RISK_PER_TRADE=RISK_PER_TRADE:latest
 
 # For production with separate crypto/stock webhooks, add:
 # --set-secrets=...,LIVE_CRYPTO_DISCORD_WEBHOOK_URL=LIVE_CRYPTO_DISCORD_WEBHOOK_URL:latest,LIVE_STOCK_DISCORD_WEBHOOK_URL=LIVE_STOCK_DISCORD_WEBHOOK_URL:latest

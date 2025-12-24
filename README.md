@@ -8,8 +8,9 @@ Crypto Sentinel is a production-ready trading bot that:
 - 📊 Ingests market data for stocks and cryptocurrencies via Alpaca API
 - 🔍 Analyzes technical indicators and patterns using confluence logic
 - 🚀 Generates trading signals with risk management parameters
+- ⚡ **Executes trades via Alpaca Bracket Orders** (Entry, Take-Profit, Stop-Loss)
 - 💬 Sends real-time Discord notifications
-- ☁️ Stores signals in Google Cloud Firestore for persistence
+- ☁️ Stores signals and positions in Google Cloud Firestore
 - 📈 Archives trade history to BigQuery for analytics
 
 ## Features
@@ -35,6 +36,13 @@ Crypto Sentinel is a production-ready trading bot that:
 - ✅ **Structured Logging**: Context-rich logs with timing metrics
 - ✅ **Health Checks**: Comprehensive service connectivity verification
 - ✅ **Docker Support**: Multi-stage builds with security best practices
+
+### Automated Execution (New)
+- ⚡ **Bracket Orders**: Atomic Entry + Take-Profit + Stop-Loss via Alpaca API
+- 📏 **Risk-Based Position Sizing**: `qty = RISK_PER_TRADE / |entry - stop|`
+- 🔐 **Dual Safety Guards**: Requires `ALPACA_PAPER_TRADING=True` AND `ENABLE_EXECUTION=True`
+- 🔗 **Signal-to-Position Traceability**: `signal_id` used as `client_order_id`
+- 💾 **Position Persistence**: Live positions stored in `live_positions` Firestore collection
 
 ## Architecture
 
@@ -137,6 +145,10 @@ crypto-signals/
 
    # Optional
    RATE_LIMIT_DELAY=0.5  # Seconds between API requests
+
+   # Execution Engine (Paper Trading Only)
+   ENABLE_EXECUTION=false      # Set to true to submit orders
+   RISK_PER_TRADE=100.0        # Fixed dollar risk per trade
    ```
 
 4. **Run health check**:
@@ -183,6 +195,8 @@ crypto-signals/
 | `LIVE_STOCK_DISCORD_WEBHOOK_URL` | No** | - | Live webhook for EQUITY signals (**required if TEST_MODE=false) |
 | `RATE_LIMIT_DELAY` | No | `0.5` | Delay between API requests (seconds) |
 | `DISABLE_SECRET_MANAGER` | No | `false` | Disable Secret Manager (local dev) |
+| `ENABLE_EXECUTION` | No | `false` | Enable bracket order execution |
+| `RISK_PER_TRADE` | No | `100.0` | Fixed dollar amount to risk per trade |
 
 ### Portfolio Configuration
 

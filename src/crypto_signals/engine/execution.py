@@ -134,17 +134,15 @@ class ExecutionEngine:
                 },
             )
 
-            # Create Position object for persistence
-            # Note: account_id should be fetched from TradingClient.get_account() in production
             position = Position(
-                position_id=signal.signal_id,  # Match client_order_id for idempotency
+                position_id=signal.signal_id,
                 ds=signal.ds,
-                account_id="paper",  # TODO: Fetch from self.client.get_account().id
+                account_id="paper",  # TODO: Fetch from client.get_account().id
                 signal_id=signal.signal_id,
-                alpaca_order_id=str(order.id),  # Track Alpaca order for reconciliation
+                alpaca_order_id=str(order.id),
                 discord_thread_id=signal.discord_thread_id,
                 status=TradeStatus.OPEN,
-                entry_fill_price=signal.entry_price,  # Will update on fill
+                entry_fill_price=signal.entry_price,
                 current_stop_loss=signal.suggested_stop,
                 qty=qty,
                 side=effective_side,
