@@ -667,6 +667,18 @@ grpcio = ">=1.76.0"
 protobuf = ">=6.31.1,<7.0.0"
 
 [[package]]
+name = "icdiff"
+version = "2.0.7"
+description = "improved colored diff"
+optional = false
+python-versions = "*"
+groups = ["dev"]
+files = [
+    {file = "icdiff-2.0.7-py3-none-any.whl", hash = "sha256:f05d1b3623223dd1c70f7848da7d699de3d9a2550b902a8234d9026292fb5762"},
+    {file = "icdiff-2.0.7.tar.gz", hash = "sha256:f79a318891adbf59a45e3a7694f5e1f18c5407065264637072ac8363b759866f"},
+]
+
+[[package]]
 name = "identify"
 version = "2.6.15"
 description = "File identification library for Python"
