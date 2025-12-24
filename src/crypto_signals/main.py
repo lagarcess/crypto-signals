@@ -370,6 +370,24 @@ def main():
                                         asset_class=asset_class,
                                     )
 
+                                # === SYNC TRAIL TO ALPACA ===
+                                # Update broker stop-loss to match new trailing stop
+                                if settings.ENABLE_EXECUTION and new_tp3:
+                                    positions = position_repo.get_by_signal_id(
+                                        exited.signal_id
+                                    )
+                                    for pos in positions:
+                                        if pos.status == TradeStatus.OPEN:
+                                            if execution_engine.modify_stop_loss(
+                                                pos, new_tp3
+                                            ):
+                                                logger.info(
+                                                    f"TRAIL SYNC: Stop -> "
+                                                    f"${new_tp3:.2f} for "
+                                                    f"{pos.position_id}"
+                                                )
+                                                position_repo.update_position(pos)
+
                                 # Clean up private attributes
                                 if hasattr(exited, "_trail_updated"):
                                     delattr(exited, "_trail_updated")
@@ -485,18 +503,23 @@ def main():
                                                     f"{pos.position_id}"
                                                 )
 
-                                    # TP3: Move stop to TP2 level (trailing continues)
+                                    # TP3: Close runner position (trailing stop hit)
                                     elif exited.status == SignalStatus.TP3_HIT:
-                                        tp2_level = exited.take_profit_2
-                                        if tp2_level:
-                                            if execution_engine.modify_stop_loss(
-                                                pos, tp2_level
-                                            ):
-                                                logger.info(
-                                                    f"TP3 AUTO: Stop -> TP2 level "
-                                                    f"${tp2_level:.2f} for "
-                                                    f"{pos.position_id}"
-                                                )
+                                        if execution_engine.close_position_emergency(pos):
+                                            pos.status = TradeStatus.CLOSED
+                                            logger.info(
+                                                f"TP3 AUTO: Runner closed for "
+                                                f"{pos.position_id}"
+                                            )
+
+                                    # INVALIDATED: Emergency close position
+                                    elif exited.status == SignalStatus.INVALIDATED:
+                                        if execution_engine.close_position_emergency(pos):
+                                            pos.status = TradeStatus.CLOSED
+                                            logger.info(
+                                                f"INVALIDATED: Emergency closed "
+                                                f"{pos.position_id}"
+                                            )
 
                                     # Persist position updates
                                     position_repo.update_position(pos)

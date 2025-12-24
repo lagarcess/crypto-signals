@@ -15,9 +15,26 @@ Automatic position sizing and stop-loss management when take-profit targets are 
 
 When `ENABLE_EXECUTION=True`, the system automatically manages positions:
 
-1. **TP1 Detected** → Sells 50% of position at market, moves stop to entry price
+### Take-Profit Stages
+
+1. **TP1 Detected** → Sells 50%, moves stop to breakeven
 2. **TP2 Detected** → Sells 50% of remaining (25% total), moves stop to TP1
-3. **TP3 Detected** → Runner position closes, trailing stop was at TP2+
+3. **TP3 Detected** → Closes runner position completely
+
+### Active Trailing (Chandelier Exit)
+
+When price moves favorably during Runner phase:
+- Chandelier Exit is recalculated each day
+- If new stop > current stop → Alpaca order is modified
+- Discord notified if movement > 1%
+
+### Exit Triggers
+
+| Trigger | Alpaca Action |
+|---------|---------------|
+| **TP3 Hit** | Close remaining position |
+| **Invalidation** | Emergency close |
+| **Expiration** | Auto-cancel (no action) |
 
 ## Schema Tracking Fields
 
