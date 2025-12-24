@@ -40,11 +40,6 @@ from crypto_signals.secrets_manager import init_secrets
 # Configure logging with Rich integration
 configure_logging(level="INFO")
 
-# Enable GCP Cloud Logging if configured (additive - does not disable Rich output)
-_settings = get_settings()
-if _settings.ENABLE_GCP_LOGGING:
-    setup_gcp_logging()
-
 
 # Global flag for graceful shutdown
 shutdown_requested = False
@@ -68,6 +63,20 @@ def main():
 
     # Get metrics collector
     metrics = get_metrics_collector()
+
+    # Get settings early for GCP logging setup
+    settings = get_settings()
+
+    # Enable GCP Cloud Logging if configured (additive - does not disable Rich output)
+    # This is inside main() to allow graceful error handling if credentials are missing
+    if settings.ENABLE_GCP_LOGGING:
+        try:
+            setup_gcp_logging()
+        except Exception as e:
+            logger.warning(
+                f"Failed to initialize GCP Cloud Logging: {e}. "
+                "Continuing with Rich terminal logging only."
+            )
 
     logger.info("Starting Crypto Sentinel Signal Generator...")
     app_start_time = time.time()
@@ -93,7 +102,6 @@ def main():
                 execution_engine = ExecutionEngine()
 
         # Define Portfolio
-        settings = get_settings()
         firestore_config = load_config_from_firestore()
 
         if firestore_config:

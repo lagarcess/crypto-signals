@@ -53,23 +53,49 @@ class TestGCPLevelMapping:
 class TestSetupGCPLogging:
     """Test setup_gcp_logging() function."""
 
-    @patch("crypto_signals.observability.logger")
-    def test_setup_gcp_logging_initializes_client(self, mock_logger):
-        """Test that setup_gcp_logging initializes GCP logging client."""
-        with patch(
-            "crypto_signals.observability.gcp_logging", create=True
-        ) as mock_gcp_logging:
-            # Import inside to allow patching
+    def test_setup_gcp_logging_returns_true_on_success(self):
+        """Test that setup_gcp_logging returns True when client initializes."""
+        import sys
 
-            mock_client = MagicMock()
-            mock_gcp_logging.Client.return_value = mock_client
+        # Create mock module structure
+        mock_gcp_logging = MagicMock()
+        mock_client = MagicMock()
+        mock_logger = MagicMock()
+        mock_client.logger.return_value = mock_logger
+        mock_gcp_logging.Client.return_value = mock_client
 
-            # This will fail without actual GCP credentials, so we mock at module level
-            with patch.dict("sys.modules", {"google.cloud.logging": mock_gcp_logging}):
-                with patch("crypto_signals.observability.gcp_logging", mock_gcp_logging):
-                    # We can't easily test the full setup without GCP credentials
-                    # So we verify the level mapping is correct
-                    pass
+        # Patch the module in sys.modules BEFORE the import happens
+        with patch.dict(sys.modules, {"google.cloud.logging": mock_gcp_logging}):
+            # Need to reimport to use the mocked module
+            from importlib import reload
+
+            import crypto_signals.observability as obs
+
+            reload(obs)
+
+            result = obs.setup_gcp_logging("test-log")
+
+            assert result is True
+            mock_gcp_logging.Client.assert_called_once()
+            mock_client.logger.assert_called_once_with("test-log")
+
+    def test_setup_gcp_logging_returns_false_on_client_failure(self):
+        """Test that setup_gcp_logging returns False when client init fails."""
+        import sys
+
+        mock_gcp_logging = MagicMock()
+        mock_gcp_logging.Client.side_effect = Exception("No credentials")
+
+        with patch.dict(sys.modules, {"google.cloud.logging": mock_gcp_logging}):
+            from importlib import reload
+
+            import crypto_signals.observability as obs
+
+            reload(obs)
+
+            result = obs.setup_gcp_logging()
+
+            assert result is False
 
     def test_gcp_sink_builds_structured_payload(self):
         """Test that GCP sink builds correct structured payload format."""
@@ -132,6 +158,115 @@ class TestSetupGCPLogging:
         assert payload["qty"] == 1.5
         assert payload["pnl_usd"] == 250.75
         assert payload["asset_class"] == "CRYPTO"
+
+
+class TestSerializationHelpers:
+    """Test JSON serialization helpers for GCP logging."""
+
+    def test_serialize_primitives(self):
+        """Test that primitive types pass through unchanged."""
+        from crypto_signals.observability import _serialize_for_json
+
+        assert _serialize_for_json(None) is None
+        assert _serialize_for_json("string") == "string"
+        assert _serialize_for_json(42) == 42
+        assert _serialize_for_json(3.14) == 3.14
+        assert _serialize_for_json(True) is True
+
+    def test_serialize_datetime(self):
+        """Test that datetime is converted to ISO format string."""
+        from datetime import datetime
+
+        from crypto_signals.observability import _serialize_for_json
+
+        dt = datetime(2024, 12, 23, 19, 0, 0)
+        result = _serialize_for_json(dt)
+        assert result == "2024-12-23T19:00:00"
+
+    def test_serialize_decimal(self):
+        """Test that Decimal is converted to float."""
+        from decimal import Decimal
+
+        from crypto_signals.observability import _serialize_for_json
+
+        result = _serialize_for_json(Decimal("99.95"))
+        assert result == 99.95
+        assert isinstance(result, float)
+
+    def test_serialize_enum(self):
+        """Test that Enum is converted to its value."""
+        from enum import Enum
+
+        from crypto_signals.observability import _serialize_for_json
+
+        class TestStatus(Enum):
+            ACTIVE = "active"
+            CLOSED = "closed"
+
+        result = _serialize_for_json(TestStatus.ACTIVE)
+        assert result == "active"
+
+    def test_serialize_nested_dict(self):
+        """Test that nested dicts are recursively serialized."""
+        from datetime import datetime
+        from decimal import Decimal
+
+        from crypto_signals.observability import _serialize_for_json
+
+        nested = {
+            "price": Decimal("100.50"),
+            "timestamp": datetime(2024, 12, 23, 19, 0, 0),
+            "nested": {"value": Decimal("50.25")},
+        }
+        result = _serialize_for_json(nested)
+        assert result["price"] == 100.50
+        assert result["timestamp"] == "2024-12-23T19:00:00"
+        assert result["nested"]["value"] == 50.25
+
+    def test_serialize_list(self):
+        """Test that lists are recursively serialized."""
+        from decimal import Decimal
+
+        from crypto_signals.observability import _serialize_for_json
+
+        items = [Decimal("1.5"), Decimal("2.5"), "string"]
+        result = _serialize_for_json(items)
+        assert result == [1.5, 2.5, "string"]
+
+    def test_serialize_custom_object_to_string(self):
+        """Test that unknown objects fall back to str()."""
+        from crypto_signals.observability import _serialize_for_json
+
+        class CustomObject:
+            def __str__(self):
+                return "custom_repr"
+
+        result = _serialize_for_json(CustomObject())
+        assert result == "custom_repr"
+
+    def test_sanitize_extra_context_empty(self):
+        """Test that empty extra returns empty dict."""
+        from crypto_signals.observability import _sanitize_extra_context
+
+        assert _sanitize_extra_context({}) == {}
+        assert _sanitize_extra_context(None) == {}
+
+    def test_sanitize_extra_context_complex_types(self):
+        """Test that complex types are properly sanitized."""
+        from datetime import datetime
+        from decimal import Decimal
+
+        from crypto_signals.observability import _sanitize_extra_context
+
+        extra = {
+            "symbol": "BTC/USD",
+            "qty": Decimal("0.5"),
+            "timestamp": datetime(2024, 12, 23, 19, 0, 0),
+        }
+        result = _sanitize_extra_context(extra)
+        assert result["symbol"] == "BTC/USD"
+        assert result["qty"] == 0.5
+        assert result["timestamp"] == "2024-12-23T19:00:00"
 
 
 class TestConfigIntegration:
