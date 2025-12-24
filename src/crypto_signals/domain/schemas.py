@@ -282,6 +282,10 @@ class Position(BaseModel):
         ...,
         description="Alpaca account ID (e.g., 'paper' for paper trading)",
     )
+    symbol: str = Field(
+        ...,
+        description="Trading symbol (e.g., 'BTC/USD', 'NVDA'). Required for emergency closes.",
+    )
     signal_id: str = Field(
         ...,
         description="Reference to the Signal that triggered this position",

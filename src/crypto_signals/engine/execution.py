@@ -153,6 +153,7 @@ class ExecutionEngine:
                 position_id=signal.signal_id,
                 ds=signal.ds,
                 account_id="paper",  # TODO: Fetch from client.get_account().id
+                symbol=signal.symbol,  # Required for emergency closes
                 signal_id=signal.signal_id,
                 alpaca_order_id=str(order.id),
                 discord_thread_id=signal.discord_thread_id,
@@ -352,6 +353,7 @@ class ExecutionEngine:
                 position.status = TradeStatus.CLOSED
 
             # Check if TP or SL was filled (position closed externally)
+            # Only check if leg IDs were successfully extracted to avoid unnecessary API calls
             if position.tp_order_id:
                 tp_order = self.get_order_details(position.tp_order_id)
                 if tp_order and str(tp_order.status).lower() == "filled":
@@ -445,8 +447,8 @@ class ExecutionEngine:
         Emergency close: Cancel all open orders and exit at market.
 
         Sequence:
-        1. Cancel TP order if exists
-        2. Cancel SL order if exists
+        1. Cancel TP order if exists (best effort - may already be filled)
+        2. Cancel SL order if exists (best effort - may already be filled)
         3. Submit market order to close the position
 
         Use for: Structural Invalidation, Manual Kill, System Shutdown.
@@ -455,28 +457,27 @@ class ExecutionEngine:
             position: The Position to close.
 
         Returns:
-            True if all operations succeeded, False if any failed.
+            True if market order was submitted successfully, False otherwise.
+            Note: Cancellation failures are logged but don't affect return value
+            since orders may already be filled/canceled.
         """
-        success = True
-
-        # 1. Cancel TP order
+        # 1. Cancel TP order (best effort - may already be filled/canceled)
         if position.tp_order_id:
             try:
                 self.client.cancel_order_by_id(position.tp_order_id)
                 logger.info(f"Canceled TP order {position.tp_order_id}")
             except Exception as e:
-                # May already be filled or canceled
-                logger.warning(f"Could not cancel TP order: {e}")
-                success = False
+                # Not an error - order may already be filled or canceled
+                logger.debug(f"Could not cancel TP order (may be filled): {e}")
 
-        # 2. Cancel SL order
+        # 2. Cancel SL order (best effort - may already be filled/canceled)
         if position.sl_order_id:
             try:
                 self.client.cancel_order_by_id(position.sl_order_id)
                 logger.info(f"Canceled SL order {position.sl_order_id}")
             except Exception as e:
-                logger.warning(f"Could not cancel SL order: {e}")
-                success = False
+                # Not an error - order may already be filled or canceled
+                logger.debug(f"Could not cancel SL order (may be filled): {e}")
 
         # 3. Submit market order to close position
         try:
@@ -485,28 +486,13 @@ class ExecutionEngine:
                 OrderSide.SELL if position.side == DomainOrderSide.BUY else OrderSide.BUY
             )
 
+            # Use position.symbol directly (added to Position model for this purpose)
             close_request = MarketOrderRequest(
-                symbol=position.signal_id.split("|")[-1]
-                if "|" in position.signal_id
-                else "BTC/USD",  # Fallback
+                symbol=position.symbol,
                 qty=position.qty,
                 side=close_side,
                 time_in_force=TimeInForce.GTC,
             )
-
-            # Note: We need the symbol from somewhere - ideally from Position
-            # For now, try to get from related signal via client_order_id
-            try:
-                parent_order = self.get_order_details(position.alpaca_order_id)
-                if parent_order and parent_order.symbol:
-                    close_request = MarketOrderRequest(
-                        symbol=parent_order.symbol,
-                        qty=position.qty,
-                        side=close_side,
-                        time_in_force=TimeInForce.GTC,
-                    )
-            except Exception:
-                pass  # Use fallback
 
             close_order = self.client.submit_order(close_request)
 
@@ -514,6 +500,7 @@ class ExecutionEngine:
                 f"EMERGENCY CLOSE: {position.position_id}",
                 extra={
                     "position_id": position.position_id,
+                    "symbol": position.symbol,
                     "close_order_id": str(close_order.id),
                     "qty": position.qty,
                     "side": close_side.value,
@@ -521,10 +508,9 @@ class ExecutionEngine:
             )
 
             position.status = TradeStatus.CLOSED
+            return True
 
         except Exception as e:
             logger.error(f"Emergency close failed for {position.position_id}: {e}")
             position.failed_reason = f"Emergency close failed: {str(e)}"
-            success = False
-
-        return success
+            return False

@@ -127,6 +127,7 @@ def sample_position():
         position_id="test-position-123",
         ds=date(2025, 1, 15),
         account_id="alpaca-order-456",
+        symbol="BTC/USD",
         signal_id="test-signal-123",
         status=TradeStatus.OPEN,
         entry_fill_price=50000.0,
