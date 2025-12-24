@@ -181,6 +181,142 @@ def test_transform_mfe_short(pipeline, mock_market_provider, mock_alpaca):
     assert trade["slippage_pct"] == 0.0
 
 
+def test_transform_short_slippage(pipeline, mock_market_provider, mock_alpaca):
+    """Test slippage calculation for a Short trade with UNFAVORABLE slippage.
+
+    For shorts, filling LOWER than target is unfavorable (sold at worse price).
+    Formula: (target - actual) / target = (50000 - 49900) / 50000 = +0.2%
+    """
+    entry_time = datetime(2023, 1, 1, 10, 0, 0, tzinfo=timezone.utc)
+    exit_time = datetime(2023, 1, 3, 10, 0, 0, tzinfo=timezone.utc)
+
+    raw_position = {
+        "position_id": "trade_short_slip",
+        "symbol": "BTC/USD",
+        "asset_class": "CRYPTO",
+        "entry_time": entry_time.isoformat(),
+        "exit_time": exit_time.isoformat(),
+        "exit_fill_price": 48000.0,
+        "entry_fill_price": 50000.0,  # Target price from Signal
+        "qty": 1.0,
+        "side": "sell",
+        "account_id": "acc_1",
+        "strategy_id": "strat_1",
+    }
+
+    # Mock Alpaca Order - filled LOWER than target (unfavorable for short)
+    mock_order = MagicMock()
+    mock_order.filled_avg_price = "49900.0"  # Sold at $49,900 (below target $50,000)
+    mock_order.filled_qty = "1.0"
+    mock_order.side = "sell"
+    mock_order.id = "short-slip-uuid-123"
+    mock_alpaca.get_order_by_client_order_id.return_value = mock_order
+
+    # Mock Market Data
+    dates = pd.date_range("2023-01-01", periods=3, freq="D", tz="UTC")
+    df = pd.DataFrame(
+        {
+            "high": [51000.0, 55000.0, 52000.0],
+            "low": [49000.0, 45000.0, 48000.0],
+            "close": [50500.0, 46000.0, 48000.0],
+            "open": [50000.0, 50500.0, 47000.0],
+            "volume": [100.0, 200.0, 150.0],
+        },
+        index=dates,
+    )
+    mock_market_provider.get_daily_bars.return_value = df
+
+    # Execute
+    transformed = pipeline.transform([raw_position])
+
+    # Verify
+    assert len(transformed) == 1
+    trade = transformed[0]
+
+    # Verify target and actual entry
+    assert trade["target_entry_price"] == 50000.0
+    assert trade["entry_price"] == 49900.0  # Actual fill from Alpaca
+
+    # Verify slippage calculation: (50000 - 49900) / 50000 * 100 = +0.2%
+    # POSITIVE slippage = UNFAVORABLE for SHORT (sold at worse price)
+    assert trade["slippage_pct"] == 0.2
+
+    # Verify PnL is based on ACTUAL fill, not target
+    # Short PnL = (entry - exit) * qty = (49900 - 48000) * 1.0 = 1900.0
+    assert trade["pnl_usd"] == 1900.0
+
+    # Verify MFE based on actual entry
+    # MFE = actual_entry - lowest = 49900 - 45000 = 4900
+    assert trade["max_favorable_excursion"] == 4900.0
+
+
+def test_transform_short_unfavorable_slippage(
+    pipeline, mock_market_provider, mock_alpaca
+):
+    """Test slippage calculation for a Short trade with FAVORABLE slippage.
+
+    For shorts, filling HIGHER than target is favorable (sold at better price).
+    Formula: (target - actual) / target = (50000 - 50100) / 50000 = -0.2%
+    """
+    entry_time = datetime(2023, 1, 1, 10, 0, 0, tzinfo=timezone.utc)
+    exit_time = datetime(2023, 1, 3, 10, 0, 0, tzinfo=timezone.utc)
+
+    raw_position = {
+        "position_id": "trade_short_unfav_slip",
+        "symbol": "BTC/USD",
+        "asset_class": "CRYPTO",
+        "entry_time": entry_time.isoformat(),
+        "exit_time": exit_time.isoformat(),
+        "exit_fill_price": 48000.0,
+        "entry_fill_price": 50000.0,  # Target price from Signal
+        "qty": 1.0,
+        "side": "sell",
+        "account_id": "acc_1",
+        "strategy_id": "strat_1",
+    }
+
+    # Mock Alpaca Order - filled HIGHER than target (favorable for short)
+    mock_order = MagicMock()
+    mock_order.filled_avg_price = "50100.0"  # Sold at $50,100 (above target $50,000)
+    mock_order.filled_qty = "1.0"
+    mock_order.side = "sell"
+    mock_order.id = "short-unfav-slip-uuid-456"
+    mock_alpaca.get_order_by_client_order_id.return_value = mock_order
+
+    # Mock Market Data
+    dates = pd.date_range("2023-01-01", periods=3, freq="D", tz="UTC")
+    df = pd.DataFrame(
+        {
+            "high": [51000.0, 55000.0, 52000.0],
+            "low": [49000.0, 45000.0, 48000.0],
+            "close": [50500.0, 46000.0, 48000.0],
+            "open": [50000.0, 50500.0, 47000.0],
+            "volume": [100.0, 200.0, 150.0],
+        },
+        index=dates,
+    )
+    mock_market_provider.get_daily_bars.return_value = df
+
+    # Execute
+    transformed = pipeline.transform([raw_position])
+
+    # Verify
+    assert len(transformed) == 1
+    trade = transformed[0]
+
+    # Verify target and actual entry
+    assert trade["target_entry_price"] == 50000.0
+    assert trade["entry_price"] == 50100.0  # Actual fill from Alpaca
+
+    # Verify slippage calculation: (50000 - 50100) / 50000 * 100 = -0.2%
+    # NEGATIVE slippage = FAVORABLE for SHORT (sold at better price)
+    assert trade["slippage_pct"] == -0.2
+
+    # Verify PnL is based on ACTUAL fill, not target
+    # Short PnL = (entry - exit) * qty = (50100 - 48000) * 1.0 = 2100.0
+    assert trade["pnl_usd"] == 2100.0
+
+
 def test_transform_caches_market_data_per_symbol(
     pipeline, mock_market_provider, mock_alpaca
 ):
