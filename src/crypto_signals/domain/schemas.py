@@ -270,6 +270,10 @@ class Position(BaseModel):
         ...,
         description="Reference to the signal that triggered this position",
     )
+    alpaca_order_id: Optional[str] = Field(
+        default=None,
+        description="Alpaca order ID returned from order submission",
+    )
     discord_thread_id: Optional[str] = Field(
         default=None,
         description="Discord thread ID for trade notifications",

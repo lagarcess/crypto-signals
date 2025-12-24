@@ -145,12 +145,22 @@ class PositionRepository:
         Save a position to Firestore.
 
         Uses position_id as document ID for idempotency with Alpaca order IDs.
+        Only sets created_at on new documents to preserve original timestamp.
         """
-        position_data = position.model_dump(mode="json")
-        position_data["created_at"] = datetime.now(timezone.utc)
-
         doc_ref = self.db.collection(self.collection_name).document(position.position_id)
-        doc_ref.set(position_data)
+
+        # Check if document exists to preserve created_at
+        doc = doc_ref.get()
+        position_data = position.model_dump(mode="json")
+
+        if doc.exists:
+            # Update existing document, preserve created_at
+            position_data["updated_at"] = datetime.now(timezone.utc)
+        else:
+            # New document, set created_at
+            position_data["created_at"] = datetime.now(timezone.utc)
+
+        doc_ref.set(position_data, merge=True)
         logger.info(
             f"Position {position.position_id} saved to Firestore",
             extra={

@@ -1,11 +1,18 @@
-"""Unit tests for Firestore SignalRepository."""
+"""Unit tests for Firestore SignalRepository and PositionRepository."""
 
 from datetime import date, datetime, timezone
 from unittest.mock import patch
 
 import pytest
-from crypto_signals.domain.schemas import AssetClass, Signal, SignalStatus
-from crypto_signals.repository.firestore import SignalRepository
+from crypto_signals.domain.schemas import (
+    AssetClass,
+    OrderSide,
+    Position,
+    Signal,
+    SignalStatus,
+    TradeStatus,
+)
+from crypto_signals.repository.firestore import PositionRepository, SignalRepository
 
 
 @pytest.fixture
@@ -106,3 +113,146 @@ def test_save_signal_firestore_error(mock_settings, mock_firestore_client):
     # Verify exception is raised and not swallowed
     with pytest.raises(RuntimeError, match="Firestore connection failed"):
         repo.save(signal)
+
+
+# =============================================================================
+# PositionRepository Tests
+# =============================================================================
+
+
+@pytest.fixture
+def sample_position():
+    """Create a sample position for testing."""
+    return Position(
+        position_id="test-position-123",
+        ds=date(2025, 1, 15),
+        account_id="alpaca-order-456",
+        signal_id="test-signal-123",
+        status=TradeStatus.OPEN,
+        entry_fill_price=50000.0,
+        current_stop_loss=48000.0,
+        qty=0.05,
+        side=OrderSide.BUY,
+    )
+
+
+class TestPositionRepositoryInit:
+    """Tests for PositionRepository initialization."""
+
+    def test_init(self, mock_settings, mock_firestore_client):
+        """Test repository initialization."""
+        repo = PositionRepository()
+
+        mock_firestore_client.assert_called_with(project="test-project")
+        assert repo.collection_name == "live_positions"
+
+
+class TestPositionRepositorySave:
+    """Tests for PositionRepository.save method."""
+
+    def test_save_new_position(
+        self, mock_settings, mock_firestore_client, sample_position
+    ):
+        """Test saving a new position sets created_at."""
+        mock_db = mock_firestore_client.return_value
+        mock_collection = mock_db.collection.return_value
+        mock_doc_ref = mock_collection.document.return_value
+        mock_doc_ref.get.return_value.exists = False  # New document
+
+        repo = PositionRepository()
+        repo.save(sample_position)
+
+        # Verify collection and document access
+        mock_db.collection.assert_called_with("live_positions")
+        mock_collection.document.assert_called_with("test-position-123")
+
+        # Verify set was called with merge=True
+        mock_doc_ref.set.assert_called_once()
+        call_args, call_kwargs = mock_doc_ref.set.call_args
+        assert call_kwargs.get("merge") is True
+
+        # Verify created_at was set (not updated_at for new docs)
+        saved_data = call_args[0]
+        assert "created_at" in saved_data
+
+    def test_save_existing_position_preserves_created_at(
+        self, mock_settings, mock_firestore_client, sample_position
+    ):
+        """Test saving existing position sets updated_at, not created_at."""
+        mock_db = mock_firestore_client.return_value
+        mock_collection = mock_db.collection.return_value
+        mock_doc_ref = mock_collection.document.return_value
+        mock_doc_ref.get.return_value.exists = True  # Existing document
+
+        repo = PositionRepository()
+        repo.save(sample_position)
+
+        # Verify set was called with merge=True
+        call_args, call_kwargs = mock_doc_ref.set.call_args
+        saved_data = call_args[0]
+
+        # Should have updated_at, not created_at
+        assert "updated_at" in saved_data
+        assert "created_at" not in saved_data
+
+
+class TestPositionRepositoryGetOpenPositions:
+    """Tests for PositionRepository.get_open_positions method."""
+
+    def test_get_open_positions_returns_list(self, mock_settings, mock_firestore_client):
+        """Test getting open positions returns Position objects."""
+        mock_db = mock_firestore_client.return_value
+        mock_collection = mock_db.collection.return_value
+        mock_query = mock_collection.where.return_value
+
+        # Simulate empty result
+        mock_query.stream.return_value = []
+
+        repo = PositionRepository()
+        positions = repo.get_open_positions()
+
+        assert positions == []
+        mock_collection.where.assert_called_once()
+
+
+class TestPositionRepositoryGetBySignal:
+    """Tests for PositionRepository.get_position_by_signal method."""
+
+    def test_get_position_by_signal_not_found(self, mock_settings, mock_firestore_client):
+        """Test returns None when no position found."""
+        mock_db = mock_firestore_client.return_value
+        mock_collection = mock_db.collection.return_value
+        mock_query = mock_collection.where.return_value.limit.return_value
+
+        # Simulate no results
+        mock_query.stream.return_value = []
+
+        repo = PositionRepository()
+        result = repo.get_position_by_signal("nonexistent-signal")
+
+        assert result is None
+
+
+class TestPositionRepositoryUpdate:
+    """Tests for PositionRepository.update_position method."""
+
+    def test_update_position(self, mock_settings, mock_firestore_client, sample_position):
+        """Test updating a position."""
+        mock_db = mock_firestore_client.return_value
+        mock_collection = mock_db.collection.return_value
+        mock_doc_ref = mock_collection.document.return_value
+
+        repo = PositionRepository()
+        repo.update_position(sample_position)
+
+        # Verify document access
+        mock_collection.document.assert_called_with("test-position-123")
+
+        # Verify set was called with merge=True
+        mock_doc_ref.set.assert_called_once()
+        call_args, call_kwargs = mock_doc_ref.set.call_args
+        assert call_kwargs.get("merge") is True
+
+        # Verify updated_at was set
+        saved_data = call_args[0]
+        assert "updated_at" in saved_data

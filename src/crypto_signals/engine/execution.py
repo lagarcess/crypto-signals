@@ -90,17 +90,15 @@ class ExecutionEngine:
                 logger.error(f"Invalid quantity calculated for {signal.symbol}: {qty}")
                 return None
 
-            # Determine order side
+            # Determine order side (with None fallback)
+            effective_side = signal.side or DomainOrderSide.BUY
             alpaca_side = (
-                OrderSide.BUY if signal.side == DomainOrderSide.BUY else OrderSide.SELL
+                OrderSide.BUY if effective_side == DomainOrderSide.BUY else OrderSide.SELL
             )
-
-            # Convert symbol format for Alpaca (BTC/USD -> BTCUSD for crypto)
-            alpaca_symbol = self._convert_symbol(signal.symbol, signal.asset_class)
 
             # Build the Bracket Order request
             order_request = MarketOrderRequest(
-                symbol=alpaca_symbol,
+                symbol=signal.symbol,  # Alpaca accepts BTC/USD format
                 qty=qty,
                 side=alpaca_side,
                 time_in_force=TimeInForce.GTC,
@@ -137,17 +135,19 @@ class ExecutionEngine:
             )
 
             # Create Position object for persistence
+            # Note: account_id should be fetched from TradingClient.get_account() in production
             position = Position(
                 position_id=signal.signal_id,  # Match client_order_id for idempotency
                 ds=signal.ds,
-                account_id=str(order.id),  # Store Alpaca order ID here
+                account_id="paper",  # TODO: Fetch from self.client.get_account().id
                 signal_id=signal.signal_id,
+                alpaca_order_id=str(order.id),  # Track Alpaca order for reconciliation
                 discord_thread_id=signal.discord_thread_id,
                 status=TradeStatus.OPEN,
                 entry_fill_price=signal.entry_price,  # Will update on fill
                 current_stop_loss=signal.suggested_stop,
                 qty=qty,
-                side=signal.side or DomainOrderSide.BUY,
+                side=effective_side,
             )
 
             return position
@@ -163,8 +163,8 @@ class ExecutionEngine:
         if not signal.take_profit_1:
             errors.append("take_profit_1 is required for bracket order")
 
-        if not signal.suggested_stop:
-            errors.append("suggested_stop is required for bracket order")
+        if not signal.suggested_stop or signal.suggested_stop <= 0:
+            errors.append("suggested_stop must be positive")
 
         if not signal.entry_price or signal.entry_price <= 0:
             errors.append("entry_price must be positive")
@@ -179,15 +179,31 @@ class ExecutionEngine:
 
     def _calculate_qty(self, signal: Signal) -> float:
         """
-        Calculate position size based on risk configuration.
+        Calculate position size based on fixed dollar risk.
 
-        Uses RISK_PER_TRADE divided by entry price to determine quantity.
-        For crypto, allows fractional quantities.
+        Uses the formula: qty = RISK_PER_TRADE / risk_per_share
+        where risk_per_share = |entry_price - stop_loss|
+
+        This ensures that if the stop loss is hit, you lose exactly
+        RISK_PER_TRADE dollars (before slippage/fees).
+
+        For crypto, allows fractional quantities (6 decimals).
+        For equities, uses 4 decimal precision.
         """
         risk_per_trade = getattr(self.settings, "RISK_PER_TRADE", 100.0)
 
-        # Simple calculation: risk_amount / entry_price
-        qty = risk_per_trade / signal.entry_price
+        # Calculate risk per share (distance from entry to stop)
+        risk_per_share = abs(signal.entry_price - signal.suggested_stop)
+
+        if risk_per_share <= 0:
+            logger.error(
+                f"Invalid risk distance for {signal.symbol}: "
+                f"entry={signal.entry_price}, stop={signal.suggested_stop}"
+            )
+            return 0.0
+
+        # Position size = total risk / risk per share
+        qty = risk_per_trade / risk_per_share
 
         # Round based on asset class
         if signal.asset_class == AssetClass.CRYPTO:
@@ -196,19 +212,6 @@ class ExecutionEngine:
         else:
             # Equities: Alpaca supports fractional, round to 4 decimals
             return round(qty, 4)
-
-    def _convert_symbol(self, symbol: str, asset_class: AssetClass) -> str:
-        """
-        Convert symbol format to Alpaca's expected format.
-
-        Crypto: BTC/USD -> BTCUSD (or BTC/USD depending on Alpaca version)
-        Equity: AAPL -> AAPL (no change)
-        """
-        if asset_class == AssetClass.CRYPTO:
-            # Alpaca crypto symbols can use either format, but slash is standard
-            # Keep as-is since alpaca-py handles both formats
-            return symbol
-        return symbol
 
     def _log_execution_failure(self, signal: Signal, error: Exception) -> None:
         """Display Rich error panel for execution failures."""

@@ -110,7 +110,11 @@ class Settings(BaseSettings):
     # Execution Configuration
     RISK_PER_TRADE: float = Field(
         default=100.0,
-        description="Fixed dollar amount to risk per trade",
+        description=(
+            "Fixed dollar amount to risk per trade. Position size is calculated as "
+            "RISK_PER_TRADE / (entry_price - stop_loss), ensuring you lose exactly "
+            "this amount if the stop is hit."
+        ),
         ge=10.0,
         le=10000.0,
     )

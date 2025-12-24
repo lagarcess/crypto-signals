@@ -31,10 +31,10 @@ def mock_trading_client():
 
 @pytest.fixture
 def sample_signal():
-    """Create a sample signal for testing."""
+    """Create a sample BUY signal for testing."""
     return Signal(
         signal_id="test-signal-123",
-        ds=date(2024, 1, 15),
+        ds=date(2025, 1, 15),
         strategy_id="BULLISH_ENGULFING",
         symbol="BTC/USD",
         asset_class=AssetClass.CRYPTO,
@@ -45,6 +45,25 @@ def sample_signal():
         take_profit_1=55000.0,
         take_profit_2=60000.0,
         side=OrderSide.BUY,
+    )
+
+
+@pytest.fixture
+def sample_sell_signal():
+    """Create a sample SELL signal for testing short positions."""
+    return Signal(
+        signal_id="test-signal-sell-456",
+        ds=date(2025, 1, 15),
+        strategy_id="BEARISH_ENGULFING",
+        symbol="BTC/USD",
+        asset_class=AssetClass.CRYPTO,
+        entry_price=50000.0,
+        pattern_name="BEARISH_ENGULFING",
+        suggested_stop=52000.0,  # Stop ABOVE entry for short
+        status=SignalStatus.WAITING,
+        take_profit_1=45000.0,  # TP BELOW entry for short
+        take_profit_2=40000.0,
+        side=OrderSide.SELL,
     )
 
 
@@ -157,9 +176,10 @@ class TestExecuteSignal:
         assert order_request.client_order_id == sample_signal.signal_id
 
     def test_qty_calculation(self, execution_engine, sample_signal, mock_trading_client):
-        """Verify qty calculation: RISK_PER_TRADE / entry_price."""
-        # Setup - RISK_PER_TRADE = 100, entry_price = 50000
-        # Expected qty = 100 / 50000 = 0.002
+        """Verify qty calculation: RISK_PER_TRADE / (entry_price - stop_loss)."""
+        # Setup - RISK_PER_TRADE = 100, entry = 50000, stop = 48000
+        # Risk per share = 50000 - 48000 = 2000
+        # Expected qty = 100 / 2000 = 0.05
         mock_order = MagicMock()
         mock_order.id = "alpaca-order-123"
         mock_order.client_order_id = sample_signal.signal_id
@@ -173,8 +193,8 @@ class TestExecuteSignal:
         call_args = mock_trading_client.submit_order.call_args
         order_request = call_args[0][0]
 
-        # Verify qty calculation (100 / 50000 = 0.002)
-        expected_qty = round(100.0 / 50000.0, 6)
+        # Verify qty calculation: 100 / (50000 - 48000) = 0.05
+        expected_qty = round(100.0 / 2000.0, 6)
         assert order_request.qty == expected_qty
 
     def test_execution_blocked_when_not_paper_trading(
@@ -241,6 +261,34 @@ class TestExecuteSignal:
         assert position.entry_fill_price == sample_signal.entry_price
         assert position.side == sample_signal.side
 
+    def test_sell_order_side(
+        self, execution_engine, sample_sell_signal, mock_trading_client
+    ):
+        """Verify SELL signals submit orders with OrderSide.SELL."""
+        # Setup
+        mock_order = MagicMock()
+        mock_order.id = "alpaca-order-sell-789"
+        mock_order.client_order_id = sample_sell_signal.signal_id
+        mock_order.status = "accepted"
+        mock_trading_client.submit_order.return_value = mock_order
+
+        # Execute
+        position = execution_engine.execute_signal(sample_sell_signal)
+
+        # Verify order was submitted
+        assert position is not None
+        mock_trading_client.submit_order.assert_called_once()
+
+        # Get the order request
+        call_args = mock_trading_client.submit_order.call_args
+        order_request = call_args[0][0]
+
+        # Verify SELL order side
+        from alpaca.trading.enums import OrderSide as AlpacaOrderSide
+
+        assert order_request.side == AlpacaOrderSide.SELL
+        assert position.side == OrderSide.SELL
+
 
 class TestValidateSignal:
     """Tests for signal validation."""
@@ -249,7 +297,7 @@ class TestValidateSignal:
         """Verify validation fails when take_profit_1 is missing."""
         signal = Signal(
             signal_id="test-signal",
-            ds=date(2024, 1, 15),
+            ds=date(2025, 1, 15),
             strategy_id="TEST",
             symbol="BTC/USD",
             asset_class=AssetClass.CRYPTO,
@@ -265,7 +313,7 @@ class TestValidateSignal:
         """Verify validation fails when suggested_stop is missing."""
         signal = Signal(
             signal_id="test-signal",
-            ds=date(2024, 1, 15),
+            ds=date(2025, 1, 15),
             strategy_id="TEST",
             symbol="BTC/USD",
             asset_class=AssetClass.CRYPTO,
@@ -277,22 +325,39 @@ class TestValidateSignal:
 
         assert execution_engine._validate_signal(signal) is False
 
+    def test_negative_stop_fails(self, execution_engine):
+        """Verify validation fails when suggested_stop is negative."""
+        signal = Signal(
+            signal_id="test-signal",
+            ds=date(2025, 1, 15),
+            strategy_id="TEST",
+            symbol="BTC/USD",
+            asset_class=AssetClass.CRYPTO,
+            entry_price=50000.0,
+            pattern_name="TEST",
+            suggested_stop=-100.0,  # Negative is invalid
+            take_profit_1=55000.0,
+        )
+
+        assert execution_engine._validate_signal(signal) is False
+
 
 class TestCalculateQty:
     """Tests for position size calculation."""
 
     def test_crypto_fractional_shares(self, execution_engine, sample_signal):
         """Verify crypto allows fractional shares with 6 decimals."""
+        # sample_signal: entry=50000, stop=48000, risk_distance=2000
         qty = execution_engine._calculate_qty(sample_signal)
 
-        # Crypto should be rounded to 6 decimals
-        assert qty == round(100.0 / 50000.0, 6)
+        # Crypto should be rounded to 6 decimals: 100 / 2000 = 0.05
+        assert qty == round(100.0 / 2000.0, 6)
 
     def test_equity_fractional_shares(self, execution_engine):
         """Verify equity uses 4 decimal precision."""
         signal = Signal(
             signal_id="test-signal",
-            ds=date(2024, 1, 15),
+            ds=date(2025, 1, 15),
             strategy_id="TEST",
             symbol="AAPL",
             asset_class=AssetClass.EQUITY,
@@ -304,8 +369,8 @@ class TestCalculateQty:
 
         qty = execution_engine._calculate_qty(signal)
 
-        # Equity should be rounded to 4 decimals
-        assert qty == round(100.0 / 150.0, 4)
+        # Equity should be rounded to 4 decimals: 100 / (150 - 145) = 20
+        assert qty == round(100.0 / 5.0, 4)
 
 
 class TestErrorHandling:
