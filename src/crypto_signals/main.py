@@ -614,6 +614,11 @@ def main():
 
                     if rate_limit_delay:
                         time.sleep(rate_limit_delay)
+                        if shutdown_requested:
+                            logger.info(
+                                "Shutdown requested during position sync delay. Stopping..."
+                            )
+                            break
 
                     try:
                         original_status = pos.status
@@ -654,8 +659,19 @@ def main():
                                             },
                                         )
                                         continue
-                                    entry = float(entry)
-                                    exit_price = float(exit_price)
+                                    try:
+                                        entry = float(entry)
+                                        exit_price = float(exit_price)
+                                    except (TypeError, ValueError):
+                                        logger.warning(
+                                            "Non-numeric fill prices for position PnL calculation",
+                                            extra={
+                                                "position_id": updated_pos.position_id,
+                                                "entry": entry,
+                                                "exit": exit_price,
+                                            },
+                                        )
+                                        continue
                                     is_long = updated_pos.side == OrderSide.BUY
 
                                     # PnL from scaled-out portions (TP1, TP2)
