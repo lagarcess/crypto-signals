@@ -314,6 +314,40 @@ class Position(BaseModel):
         default=None,
         description="Final trailing stop value at exit (Chandelier Exit for TP3)",
     )
+    # === New fields for Order Management (Managed Trade Model) ===
+    tp_order_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "Alpaca order ID for the Take Profit leg. "
+            "Populated after parent bracket order fills via sync_position_status."
+        ),
+    )
+    sl_order_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "Alpaca order ID for the Stop Loss leg. "
+            "Populated after parent bracket order fills via sync_position_status."
+        ),
+    )
+    target_entry_price: Optional[float] = Field(
+        default=None,
+        description=(
+            "Original signal's entry price (target). "
+            "Compare against entry_fill_price for slippage calculation."
+        ),
+    )
+    filled_at: Optional[datetime] = Field(
+        default=None,
+        description="UTC timestamp when entry order was filled. From Alpaca API.",
+    )
+    commission: float = Field(
+        default=0.0,
+        description="Total commission/fees reported by broker for this position.",
+    )
+    failed_reason: Optional[str] = Field(
+        default=None,
+        description="Error message if order was rejected or canceled by broker.",
+    )
 
 
 # =============================================================================
