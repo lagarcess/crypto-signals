@@ -137,6 +137,12 @@ Use this checklist before deploying Crypto Sentinel to production.
 - [ ] Read REVIEW_SUMMARY.md (review findings)
 - [ ] Understand cost estimates (~$0.79/month initial)
 
+## ✅ CI/CD Verification
+
+- [ ] GitHub Actions pipeline succeeded on `main`
+- [ ] Artifact pushed to Artifact Registry via workflow
+- [ ] Cloud Run job image updated by workflow
+
 ## ✅ Cloud Deployment
 
 ### Artifact Registry

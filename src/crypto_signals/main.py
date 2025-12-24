@@ -612,6 +612,9 @@ def main():
                         logger.info("Shutdown requested. Stopping position sync...")
                         break
 
+                    if rate_limit_delay:
+                        time.sleep(rate_limit_delay)
+
                     try:
                         original_status = pos.status
                         updated_pos = execution_engine.sync_position_status(pos)
@@ -641,6 +644,18 @@ def main():
                                     # Calculate PnL including scaled-out portions
                                     entry = updated_pos.entry_fill_price
                                     exit_price = updated_pos.exit_fill_price
+                                    if entry is None or exit_price is None:
+                                        logger.warning(
+                                            "Missing fill prices for position PnL calculation",
+                                            extra={
+                                                "position_id": updated_pos.position_id,
+                                                "entry": entry,
+                                                "exit": exit_price,
+                                            },
+                                        )
+                                        continue
+                                    entry = float(entry)
+                                    exit_price = float(exit_price)
                                     is_long = updated_pos.side == OrderSide.BUY
 
                                     # PnL from scaled-out portions (TP1, TP2)

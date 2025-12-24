@@ -60,32 +60,20 @@ gcloud secrets list
 > 1. `ALPACA_PAPER_TRADING=true` (mandatory safety guard)
 > 2. `ENABLE_EXECUTION=true` (explicit opt-in)
 
-### 2. Build and Push Docker Image
+### 2. Continuous Deployment (GitHub Actions)
 
-```bash
-# Enable required APIs
-gcloud services enable artifactregistry.googleapis.com
-gcloud services enable run.googleapis.com
+Deployments are now automated via `.github/workflows/deploy.yml`.
 
-# Create Artifact Registry repository
-gcloud artifacts repositories create crypto-signals \
-    --repository-format=docker \
-    --location=us-central1 \
-    --description="Crypto Sentinel Docker images"
+Configure the following GitHub Secrets:
+- `GCP_CREDENTIALS`: Service account JSON (entire JSON content)
+- `GCP_PROJECT_ID`: Target GCP project ID
+- `GAR_REPOSITORY`: Artifact Registry path (e.g., `us-central1-docker.pkg.dev/my-project/crypto-signals/crypto-signals`)
 
-# Configure Docker authentication
-gcloud auth configure-docker us-central1-docker.pkg.dev
-
-# Build the image
-docker build -t crypto-signals:latest .
-
-# Tag for Artifact Registry
-docker tag crypto-signals:latest \
-    us-central1-docker.pkg.dev/$GCP_PROJECT/crypto-signals/crypto-signals:latest
-
-# Push to Artifact Registry
-docker push us-central1-docker.pkg.dev/$GCP_PROJECT/crypto-signals/crypto-signals:latest
-```
+Pipeline steps on `main` branch:
+1. Authenticate to GCP with `GCP_CREDENTIALS`
+2. Build and tag the Docker image
+3. Push to the Artifact Registry repository
+4. Update the Cloud Run Job image (`crypto-signals-job`) in `us-central1`
 
 ### 3. Deploy to Cloud Run (Scheduled Job)
 

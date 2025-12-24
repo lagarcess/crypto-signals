@@ -1,0 +1,76 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Install dependencies
+        run: poetry install --no-interaction --no-root
+
+      - name: Lint
+        run: poetry run ruff check .
+
+      - name: Test
+        run: poetry run pytest tests/
+
+  cd:
+    needs: ci
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      IMAGE_BASE: ${{ secrets.GAR_REPOSITORY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_CREDENTIALS }}
+
+      - name: Set up gcloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Configure Artifact Registry Docker auth
+        run: |
+          GAR_HOST=$(echo "${IMAGE_BASE}" | cut -d/ -f1)
+          gcloud auth configure-docker "${GAR_HOST}" --quiet
+          echo "GAR_HOST=${GAR_HOST}" >> "$GITHUB_ENV"
+
+      - name: Build image
+        run: |
+          IMAGE_TAG="${IMAGE_BASE}:${GITHUB_SHA}"
+          echo "IMAGE_TAG=${IMAGE_TAG}" >> "$GITHUB_ENV"
+          docker build -t "${IMAGE_TAG}" .
+
+      - name: Push image
+        run: docker push "${IMAGE_TAG}"
+
+      - name: Deploy to Cloud Run Job
+        run: |
+          gcloud run jobs update crypto-signals-job \
+            --image="${IMAGE_TAG}" \
+            --region=us-central1

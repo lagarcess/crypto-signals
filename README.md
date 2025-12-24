@@ -9,6 +9,8 @@ Crypto Sentinel is a production-ready trading bot that:
 - 🔍 Analyzes technical indicators and patterns using confluence logic
 - 🚀 Generates trading signals with risk management parameters
 - ⚡ **Executes trades via Alpaca Bracket Orders** (Entry, Take-Profit, Stop-Loss)
+- 🤖 Automated execution with managed trade lifecycle and broker sync
+- 📊 PnL tracking for closed positions
 - 💬 Sends real-time Discord notifications
 - ☁️ Stores signals and positions in Google Cloud Firestore
 - 📈 Archives trade history to BigQuery for analytics
