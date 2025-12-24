@@ -511,13 +511,36 @@ def main():
                                     "status": updated_pos.status.value,
                                 },
                             )
-                        elif (
-                            updated_pos.tp_order_id != pos.tp_order_id
-                            or updated_pos.sl_order_id != pos.sl_order_id
-                        ):
-                            # Leg IDs were updated (first sync after fill)
+                        elif updated_pos != pos:
+                            # Any field changed (leg IDs, filled_at, entry_fill_price, etc.)
                             position_repo.update_position(updated_pos)
                             synced_count += 1
+
+                            # Log what changed for debugging
+                            changes = []
+                            if updated_pos.tp_order_id != pos.tp_order_id:
+                                changes.append(f"TP={updated_pos.tp_order_id}")
+                            if updated_pos.sl_order_id != pos.sl_order_id:
+                                changes.append(f"SL={updated_pos.sl_order_id}")
+                            if updated_pos.filled_at != pos.filled_at:
+                                changes.append(f"filled_at={updated_pos.filled_at}")
+                            if updated_pos.entry_fill_price != pos.entry_fill_price:
+                                changes.append(
+                                    f"entry_fill_price={updated_pos.entry_fill_price}"
+                                )
+                            if updated_pos.failed_reason != pos.failed_reason:
+                                changes.append(
+                                    f"failed_reason={updated_pos.failed_reason}"
+                                )
+
+                            logger.info(
+                                f"Position {updated_pos.position_id} synced: "
+                                f"{', '.join(changes) if changes else 'fields updated'}",
+                                extra={
+                                    "position_id": updated_pos.position_id,
+                                    "symbol": updated_pos.symbol,
+                                },
+                            )
 
                     except Exception as e:
                         logger.warning(

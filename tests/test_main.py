@@ -1,9 +1,16 @@
 """Unit tests for the main application entrypoint."""
 
+from datetime import date
 from unittest.mock import ANY, MagicMock, Mock, call, patch
 
 import pytest
-from crypto_signals.domain.schemas import AssetClass, Signal
+from crypto_signals.domain.schemas import (
+    AssetClass,
+    OrderSide,
+    Position,
+    Signal,
+    TradeStatus,
+)
 from crypto_signals.main import main
 from loguru import logger
 
@@ -37,6 +44,8 @@ def mock_dependencies():
         patch("crypto_signals.main.get_settings") as mock_settings,
         patch("crypto_signals.main.init_secrets", return_value=True) as mock_secrets,
         patch("crypto_signals.main.load_config_from_firestore") as mock_firestore_config,
+        patch("crypto_signals.main.PositionRepository") as position_repo,
+        patch("crypto_signals.main.ExecutionEngine") as execution_engine,
     ):
         # Configure mock settings
         mock_settings.return_value.CRYPTO_SYMBOLS = [
@@ -83,6 +92,8 @@ def mock_dependencies():
             "settings": mock_settings,
             "secrets": mock_secrets,
             "firestore_config": mock_firestore_config,
+            "position_repo": position_repo,
+            "execution_engine": execution_engine,
         }
 
 
@@ -390,3 +401,174 @@ def test_guardrail_ignores_firestore_equities(mock_dependencies, caplog):
     assert "AAPL" not in symbols
     assert "TSLA" not in symbols
     assert "BTC/USD" in symbols
+
+
+# =============================================================================
+# POSITION SYNC LOOP TESTS
+# =============================================================================
+
+
+def _create_test_position(
+    position_id="pos-1",
+    status=TradeStatus.OPEN,
+    tp_order_id=None,
+    sl_order_id=None,
+    filled_at=None,
+    entry_fill_price=50000.0,
+    failed_reason=None,
+):
+    """Helper to create a Position for testing."""
+    return Position(
+        position_id=position_id,
+        ds=date(2025, 1, 15),
+        account_id="paper",
+        symbol="BTC/USD",
+        signal_id="signal-1",
+        alpaca_order_id="alpaca-order-1",
+        status=status,
+        entry_fill_price=entry_fill_price,
+        current_stop_loss=48000.0,
+        qty=0.05,
+        side=OrderSide.BUY,
+        tp_order_id=tp_order_id,
+        sl_order_id=sl_order_id,
+        filled_at=filled_at,
+        failed_reason=failed_reason,
+    )
+
+
+def test_sync_loop_updates_position_on_status_change(mock_dependencies, caplog):
+    """Test that positions are updated when status changes (TP/SL hit)."""
+    mock_gen_instance = mock_dependencies["generator"].return_value
+    mock_gen_instance.generate_signals.return_value = None
+
+    mock_settings = mock_dependencies["settings"].return_value
+    mock_settings.ENABLE_EXECUTION = True
+
+    mock_position_repo = mock_dependencies["position_repo"].return_value
+    mock_execution_engine = mock_dependencies["execution_engine"].return_value
+
+    # Create position that will be "closed" by sync
+    original_pos = _create_test_position(status=TradeStatus.OPEN)
+    closed_pos = _create_test_position(status=TradeStatus.CLOSED)
+
+    mock_position_repo.get_open_positions.return_value = [original_pos]
+    mock_execution_engine.sync_position_status.return_value = closed_pos
+
+    with caplog.at_level("INFO"):
+        main()
+
+    # Verify update was called with closed status
+    mock_position_repo.update_position.assert_called_once_with(closed_pos)
+
+    # Verify logging
+    assert "Position pos-1 closed: CLOSED" in caplog.text
+
+
+def test_sync_loop_updates_position_on_leg_id_change(mock_dependencies, caplog):
+    """Test that positions are updated when TP/SL leg IDs change."""
+    mock_gen_instance = mock_dependencies["generator"].return_value
+    mock_gen_instance.generate_signals.return_value = None
+
+    mock_settings = mock_dependencies["settings"].return_value
+    mock_settings.ENABLE_EXECUTION = True
+
+    mock_position_repo = mock_dependencies["position_repo"].return_value
+    mock_execution_engine = mock_dependencies["execution_engine"].return_value
+
+    # Create position without leg IDs
+    original_pos = _create_test_position(tp_order_id=None, sl_order_id=None)
+    # Sync returns position with leg IDs populated
+    synced_pos = _create_test_position(tp_order_id="tp-leg-123", sl_order_id="sl-leg-456")
+
+    mock_position_repo.get_open_positions.return_value = [original_pos]
+    mock_execution_engine.sync_position_status.return_value = synced_pos
+
+    with caplog.at_level("INFO"):
+        main()
+
+    # Verify update was called
+    mock_position_repo.update_position.assert_called_once_with(synced_pos)
+
+    # Verify logging shows what changed
+    assert "Position pos-1 synced" in caplog.text
+    assert "TP=tp-leg-123" in caplog.text
+    assert "SL=sl-leg-456" in caplog.text
+
+
+def test_sync_loop_handles_exceptions_gracefully(mock_dependencies, caplog):
+    """Test that sync loop continues after individual position sync failures."""
+    mock_gen_instance = mock_dependencies["generator"].return_value
+    mock_gen_instance.generate_signals.return_value = None
+
+    mock_settings = mock_dependencies["settings"].return_value
+    mock_settings.ENABLE_EXECUTION = True
+
+    mock_position_repo = mock_dependencies["position_repo"].return_value
+    mock_execution_engine = mock_dependencies["execution_engine"].return_value
+
+    # Create two positions
+    pos1 = _create_test_position(position_id="pos-1")
+    pos2 = _create_test_position(position_id="pos-2")
+
+    mock_position_repo.get_open_positions.return_value = [pos1, pos2]
+
+    # First position sync fails, second succeeds with changes
+    synced_pos2 = _create_test_position(position_id="pos-2", tp_order_id="tp-new")
+
+    def sync_side_effect(pos):
+        if pos.position_id == "pos-1":
+            raise RuntimeError("Alpaca API Error")
+        return synced_pos2
+
+    mock_execution_engine.sync_position_status.side_effect = sync_side_effect
+
+    with caplog.at_level("WARNING"):
+        main()
+
+    # Verify error was logged for pos-1
+    assert "Failed to sync position pos-1" in caplog.text
+    assert "Alpaca API Error" in caplog.text
+
+    # Verify pos-2 was still updated (loop continued)
+    mock_position_repo.update_position.assert_called_once_with(synced_pos2)
+
+
+def test_sync_loop_skipped_when_execution_disabled(mock_dependencies):
+    """Test that sync loop is skipped when ENABLE_EXECUTION is False."""
+    mock_gen_instance = mock_dependencies["generator"].return_value
+    mock_gen_instance.generate_signals.return_value = None
+
+    mock_settings = mock_dependencies["settings"].return_value
+    mock_settings.ENABLE_EXECUTION = False
+
+    mock_position_repo = mock_dependencies["position_repo"].return_value
+
+    main()
+
+    # Verify get_open_positions was never called
+    mock_position_repo.get_open_positions.assert_not_called()
+
+
+def test_sync_loop_no_update_when_position_unchanged(mock_dependencies):
+    """Test that positions are not updated when nothing changed."""
+    mock_gen_instance = mock_dependencies["generator"].return_value
+    mock_gen_instance.generate_signals.return_value = None
+
+    mock_settings = mock_dependencies["settings"].return_value
+    mock_settings.ENABLE_EXECUTION = True
+
+    mock_position_repo = mock_dependencies["position_repo"].return_value
+    mock_execution_engine = mock_dependencies["execution_engine"].return_value
+
+    # Create position
+    pos = _create_test_position()
+
+    mock_position_repo.get_open_positions.return_value = [pos]
+    # Sync returns same position (no changes)
+    mock_execution_engine.sync_position_status.return_value = pos
+
+    main()
+
+    # Verify update was NOT called
+    mock_position_repo.update_position.assert_not_called()

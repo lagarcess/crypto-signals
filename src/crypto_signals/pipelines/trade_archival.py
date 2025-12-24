@@ -151,7 +151,9 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                 # This is the price we *intended* to enter at
                 # Use target_entry_price if available, fallback to entry_fill_price for legacy
                 target_price = float(
-                    pos.get("target_entry_price") or pos.get("entry_fill_price", 0.0)
+                    pos.get("target_entry_price")
+                    if pos.get("target_entry_price") is not None
+                    else pos.get("entry_fill_price", 0.0)
                 )
 
                 # Broker's order ID for auditability (links to Alpaca dashboard)
