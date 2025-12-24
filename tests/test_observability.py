@@ -1,8 +1,18 @@
 """Unit tests for GCP Cloud Logging integration in observability module."""
 
+import sys
+from importlib import reload
 from unittest.mock import MagicMock, patch
 
 from crypto_signals.observability import LOGURU_TO_GCP_SEVERITY
+
+# [Strategy Setup] Detect if the real library is installed to choose the correct patch method
+try:
+    import google.cloud.logging  # noqa: F401
+
+    HAS_GCP_LIBRARY = True
+except ImportError:
+    HAS_GCP_LIBRARY = False
 
 
 class TestGCPLevelMapping:
@@ -51,51 +61,59 @@ class TestGCPLevelMapping:
 
 
 class TestSetupGCPLogging:
-    """Test setup_gcp_logging() function."""
+    """Test setup_gcp_logging() function with robust mocking."""
 
     def test_setup_gcp_logging_returns_true_on_success(self):
         """Test that setup_gcp_logging returns True when client initializes."""
-        import sys
+        import crypto_signals.observability as obs
 
-        # Create mock module structure
-        mock_gcp_logging = MagicMock()
+        reload(obs)  # Ensure a fresh module state
+
         mock_client = MagicMock()
         mock_logger = MagicMock()
         mock_client.logger.return_value = mock_logger
-        mock_gcp_logging.Client.return_value = mock_client
 
-        # Patch the module in sys.modules BEFORE the import happens
-        with patch.dict(sys.modules, {"google.cloud.logging": mock_gcp_logging}):
-            # Need to reimport to use the mocked module
-            from importlib import reload
+        if HAS_GCP_LIBRARY:
+            # Strategy A: Patch the class directly if the library is installed
+            with patch(
+                "google.cloud.logging.Client", return_value=mock_client
+            ) as MockClient:
+                result = obs.setup_gcp_logging("test-log")
 
-            import crypto_signals.observability as obs
+                assert result is True
+                MockClient.assert_called_once()
+                mock_client.logger.assert_called_once_with("test-log")
+        else:
+            # Strategy B: CI/No-library environment, use sys.modules injection
+            mock_gcp_logging = MagicMock()
+            mock_gcp_logging.Client.return_value = mock_client
+            with patch.dict(sys.modules, {"google.cloud.logging": mock_gcp_logging}):
+                result = obs.setup_gcp_logging("test-log")
 
-            reload(obs)
-
-            result = obs.setup_gcp_logging("test-log")
-
-            assert result is True
-            mock_gcp_logging.Client.assert_called_once()
-            mock_client.logger.assert_called_once_with("test-log")
+                assert result is True
+                mock_gcp_logging.Client.assert_called_once()
+                mock_client.logger.assert_called_once_with("test-log")
 
     def test_setup_gcp_logging_returns_false_on_client_failure(self):
         """Test that setup_gcp_logging returns False when client init fails."""
-        import sys
+        import crypto_signals.observability as obs
 
-        mock_gcp_logging = MagicMock()
-        mock_gcp_logging.Client.side_effect = Exception("No credentials")
+        reload(obs)  # Ensure a fresh module state
 
-        with patch.dict(sys.modules, {"google.cloud.logging": mock_gcp_logging}):
-            from importlib import reload
-
-            import crypto_signals.observability as obs
-
-            reload(obs)
-
-            result = obs.setup_gcp_logging()
-
-            assert result is False
+        if HAS_GCP_LIBRARY:
+            # Patch the class to raise an exception
+            with patch(
+                "google.cloud.logging.Client", side_effect=Exception("No credentials")
+            ):
+                result = obs.setup_gcp_logging()
+                assert result is False
+        else:
+            # Inject failure via sys.modules mock
+            mock_gcp_logging = MagicMock()
+            mock_gcp_logging.Client.side_effect = Exception("No credentials")
+            with patch.dict(sys.modules, {"google.cloud.logging": mock_gcp_logging}):
+                result = obs.setup_gcp_logging()
+                assert result is False
 
     def test_gcp_sink_builds_structured_payload(self):
         """Test that GCP sink builds correct structured payload format."""
