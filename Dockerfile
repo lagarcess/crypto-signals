@@ -16,8 +16,9 @@ RUN pip install --no-cache-dir poetry==1.7.1
 # Set working directory
 WORKDIR /app
 
-# Copy dependency files
+# Copy dependency files and source code
 COPY pyproject.toml poetry.lock ./
+COPY src/ ./src/
 
 # Configure poetry to not create virtual env (we're in a container)
 # and install dependencies
@@ -42,8 +43,8 @@ WORKDIR /app
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
-# Copy application code
-COPY --chown=appuser:appuser src/ ./src/
+# Copy application code from builder (ensures consistency)
+COPY --from=builder --chown=appuser:appuser /app/src/ ./src/
 
 # Switch to non-root user
 USER appuser
