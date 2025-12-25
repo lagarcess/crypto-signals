@@ -69,6 +69,35 @@ echo -n "YOUR_VALUE" | gcloud secrets create SECRET_NAME --data-file=-
 4.  `LIVE_CRYPTO_DISCORD_WEBHOOK_URL`: Webhook URL for crypto signals.
 5.  `LIVE_STOCK_DISCORD_WEBHOOK_URL`: Webhook URL for stock signals.
 
+### 2.5. Grant Secret Manager Access to Cloud Run
+
+The Cloud Run service account needs permission to access the secrets. By default, Cloud Run uses the Compute Engine default service account.
+
+**Option A: Grant access to all secrets (recommended for simplicity)**
+```bash
+# Get your project number
+PROJECT_NUMBER=$(gcloud projects describe $(gcloud config get-value project) --format='value(projectNumber)')
+
+# Grant Secret Manager access to the default compute service account
+gcloud projects add-iam-policy-binding $(gcloud config get-value project) \
+    --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+    --role="roles/secretmanager.secretAccessor"
+```
+
+**Option B: Grant access per secret (more restrictive)**
+```bash
+PROJECT_NUMBER=$(gcloud projects describe $(gcloud config get-value project) --format='value(projectNumber)')
+
+# Repeat for each secret
+for SECRET in ALPACA_API_KEY ALPACA_SECRET_KEY TEST_DISCORD_WEBHOOK LIVE_CRYPTO_DISCORD_WEBHOOK_URL LIVE_STOCK_DISCORD_WEBHOOK_URL; do
+  gcloud secrets add-iam-policy-binding $SECRET \
+    --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+    --role="roles/secretmanager.secretAccessor"
+done
+```
+
+> **Note:** Without this step, Cloud Run will fail with "Permission denied on secret" errors.
+
 ## 3. GitHub Configuration
 
 Configure your GitHub repository "Settings -> Secrets and variables -> Actions".
