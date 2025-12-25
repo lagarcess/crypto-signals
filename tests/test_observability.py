@@ -5,7 +5,7 @@ import sys
 from importlib import reload
 from unittest.mock import MagicMock, patch
 
-from crypto_signals.observability import LOGURU_TO_GCP_SEVERITY
+import crypto_signals.observability as obs
 
 # [Strategy Setup] Detect if the real library is installed to choose the correct patch method
 HAS_GCP_LIBRARY = importlib.util.find_spec("google.cloud.logging") is not None
@@ -16,31 +16,31 @@ class TestGCPLevelMapping:
 
     def test_trace_maps_to_debug(self):
         """TRACE level should map to GCP DEBUG."""
-        assert LOGURU_TO_GCP_SEVERITY["TRACE"] == "DEBUG"
+        assert obs.LOGURU_TO_GCP_SEVERITY["TRACE"] == "DEBUG"
 
     def test_debug_maps_to_debug(self):
         """DEBUG level should map to GCP DEBUG."""
-        assert LOGURU_TO_GCP_SEVERITY["DEBUG"] == "DEBUG"
+        assert obs.LOGURU_TO_GCP_SEVERITY["DEBUG"] == "DEBUG"
 
     def test_info_maps_to_info(self):
         """INFO level should map to GCP INFO."""
-        assert LOGURU_TO_GCP_SEVERITY["INFO"] == "INFO"
+        assert obs.LOGURU_TO_GCP_SEVERITY["INFO"] == "INFO"
 
     def test_success_maps_to_info(self):
         """SUCCESS level should map to GCP INFO (GCP has no SUCCESS)."""
-        assert LOGURU_TO_GCP_SEVERITY["SUCCESS"] == "INFO"
+        assert obs.LOGURU_TO_GCP_SEVERITY["SUCCESS"] == "INFO"
 
     def test_warning_maps_to_warning(self):
         """WARNING level should map to GCP WARNING."""
-        assert LOGURU_TO_GCP_SEVERITY["WARNING"] == "WARNING"
+        assert obs.LOGURU_TO_GCP_SEVERITY["WARNING"] == "WARNING"
 
     def test_error_maps_to_error(self):
         """ERROR level should map to GCP ERROR."""
-        assert LOGURU_TO_GCP_SEVERITY["ERROR"] == "ERROR"
+        assert obs.LOGURU_TO_GCP_SEVERITY["ERROR"] == "ERROR"
 
     def test_critical_maps_to_critical(self):
         """CRITICAL level should map to GCP CRITICAL."""
-        assert LOGURU_TO_GCP_SEVERITY["CRITICAL"] == "CRITICAL"
+        assert obs.LOGURU_TO_GCP_SEVERITY["CRITICAL"] == "CRITICAL"
 
     def test_all_loguru_levels_are_mapped(self):
         """All standard Loguru levels should be mapped."""
@@ -53,7 +53,7 @@ class TestGCPLevelMapping:
             "ERROR",
             "CRITICAL",
         }
-        assert set(LOGURU_TO_GCP_SEVERITY.keys()) == expected_levels
+        assert set(obs.LOGURU_TO_GCP_SEVERITY.keys()) == expected_levels
 
 
 class TestSetupGCPLogging:
@@ -61,8 +61,6 @@ class TestSetupGCPLogging:
 
     def test_setup_gcp_logging_returns_true_on_success(self):
         """Test that setup_gcp_logging returns True when client initializes."""
-        import crypto_signals.observability as obs
-
         reload(obs)  # Ensure a fresh module state
 
         mock_client = MagicMock()
@@ -92,8 +90,6 @@ class TestSetupGCPLogging:
 
     def test_setup_gcp_logging_returns_false_on_client_failure(self):
         """Test that setup_gcp_logging returns False when client init fails."""
-        import crypto_signals.observability as obs
-
         reload(obs)  # Ensure a fresh module state
 
         if HAS_GCP_LIBRARY:
