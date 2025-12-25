@@ -100,18 +100,25 @@ jobs:
 
       - name: Notify on failure
         if: failure()
+        env:
+          WEBHOOK_URL: ${{ secrets.TEST_DISCORD_WEBHOOK }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          COMMIT_SHA: ${{ github.sha }}
+          ACTOR: ${{ github.actor }}
         run: |
-          curl -X POST "${{ secrets.TEST_DISCORD_WEBHOOK }}" \
+          curl -X POST "${WEBHOOK_URL}" \
             -H "Content-Type: application/json" \
-            -d '{
-              "content": "🚨 Deployment failed!",
-              "embeds": [{
-                "title": "CD Pipeline Failure",
-                "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
-                "color": 15158332,
-                "fields": [
-                  {"name": "Commit", "value": "${{ github.sha }}", "inline": true},
-                  {"name": "Author", "value": "${{ github.actor }}", "inline": true}
-                ]
-              }]
-            }'
+            -d @- <<EOF
+          {
+            "content": "🚨 Deployment failed!",
+            "embeds": [{
+              "title": "CD Pipeline Failure",
+              "url": "${RUN_URL}",
+              "color": 15158332,
+              "fields": [
+                {"name": "Commit", "value": "${COMMIT_SHA}", "inline": true},
+                {"name": "Author", "value": "${ACTOR}", "inline": true}
+              ]
+            }]
+          }
+          EOF
