@@ -1,7 +1,7 @@
 """Unit tests for Firestore SignalRepository and PositionRepository."""
 
 from datetime import date, datetime, timezone
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from crypto_signals.domain.schemas import (
@@ -169,6 +169,101 @@ class TestSignalRepositoryGetById:
 
         assert result is None
         mock_collection.document.assert_called_with("nonexistent-signal")
+
+
+# =============================================================================
+# SignalRepository.update_signal_atomic Tests
+# =============================================================================
+
+
+class TestSignalRepositoryAtomicUpdate:
+    """Tests for SignalRepository.update_signal_atomic transactional method."""
+
+    def test_atomic_update_success(self, mock_settings, mock_firestore_client):
+        """Test successful atomic update returns True."""
+        mock_db = mock_firestore_client.return_value
+        mock_collection = mock_db.collection.return_value
+        mock_doc_ref = mock_collection.document.return_value
+
+        # Mock the transaction
+        mock_transaction = MagicMock()
+        mock_db.transaction.return_value = mock_transaction
+
+        # Mock snapshot exists
+        mock_snapshot = MagicMock()
+        mock_snapshot.exists = True
+        mock_doc_ref.get.return_value = mock_snapshot
+
+        repo = SignalRepository()
+
+        # Execute with actual firestore.transactional decorator behavior
+        with patch("google.cloud.firestore.transactional") as mock_transactional:
+            # Make transactional decorator pass through and call the function
+            mock_transactional.side_effect = lambda fn: fn
+
+            result = repo.update_signal_atomic("test-signal-123", {"status": "TP1_HIT"})
+
+        assert result is True
+        mock_collection.document.assert_called_with("test-signal-123")
+        mock_transaction.update.assert_called_once_with(
+            mock_doc_ref, {"status": "TP1_HIT"}
+        )
+
+    def test_atomic_update_nonexistent_document(
+        self, mock_settings, mock_firestore_client
+    ):
+        """Test atomic update returns False for non-existent document."""
+        mock_db = mock_firestore_client.return_value
+        mock_collection = mock_db.collection.return_value
+        mock_doc_ref = mock_collection.document.return_value
+
+        # Mock the transaction
+        mock_transaction = MagicMock()
+        mock_db.transaction.return_value = mock_transaction
+
+        # Mock snapshot does NOT exist
+        mock_snapshot = MagicMock()
+        mock_snapshot.exists = False
+        mock_doc_ref.get.return_value = mock_snapshot
+
+        repo = SignalRepository()
+
+        with patch("google.cloud.firestore.transactional") as mock_transactional:
+            mock_transactional.side_effect = lambda fn: fn
+
+            result = repo.update_signal_atomic(
+                "nonexistent-signal", {"status": "TP1_HIT"}
+            )
+
+        assert result is False
+        mock_collection.document.assert_called_with("nonexistent-signal")
+        # update should NOT have been called
+        mock_transaction.update.assert_not_called()
+
+    def test_atomic_update_transaction_failure(
+        self, mock_settings, mock_firestore_client
+    ):
+        """Test atomic update returns False when transaction fails."""
+        mock_db = mock_firestore_client.return_value
+        mock_collection = mock_db.collection.return_value
+        # Note: mock_doc_ref not needed as transaction fails before document access
+        _ = mock_collection.document.return_value
+
+        # Mock the transaction to raise an exception
+        mock_db.transaction.side_effect = Exception(
+            "Transaction conflict: retries exhausted"
+        )
+
+        repo = SignalRepository()
+
+        with patch("google.cloud.firestore.transactional") as mock_transactional:
+            mock_transactional.side_effect = lambda fn: fn
+
+            result = repo.update_signal_atomic("test-signal-123", {"status": "TP1_HIT"})
+
+        # Should gracefully return False, not raise
+        assert result is False
+        mock_collection.document.assert_called_with("test-signal-123")
 
 
 @pytest.fixture

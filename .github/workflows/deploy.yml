@@ -40,12 +40,8 @@ jobs:
 
       - name: Security audit
         run: |
-          set -e
           pip install pip-audit
-          if ! pip-audit --require-hashes --strict; then
-            echo "pip-audit with --require-hashes failed; retrying without --require-hashes..."
-            pip-audit --strict
-          fi
+          pip-audit --strict
 
       - name: Test
         run: PYTHONPATH=src poetry run pytest tests/ --cov=src/crypto_signals --cov-report=term-missing --cov-fail-under=60
@@ -68,7 +64,7 @@ jobs:
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GCP_CREDENTIALS }}
+          credentials_json: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}
 
       - name: Set up gcloud SDK
         uses: google-github-actions/setup-gcloud@v2
@@ -98,6 +94,6 @@ jobs:
         run: |
           gcloud run jobs update crypto-signals-job \
             --image="${IMAGE_TAG}" \
-            --region=us-central1 \
-            --set-env-vars="TEST_MODE=false,ALPACA_PAPER_TRADING=true,ENABLE_EXECUTION=true,ENABLE_GCP_LOGGING=true,DISABLE_SECRET_MANAGER=false,GOOGLE_CLOUD_PROJECT=${{ vars.GOOGLE_CLOUD_PROJECT }}" \
+            --region=${{ vars.GCP_REGION }} \
+            --set-env-vars="TEST_MODE=${{ vars.TEST_MODE }},ALPACA_PAPER_TRADING=${{ vars.ALPACA_PAPER_TRADING }},ENABLE_EXECUTION=${{ vars.ENABLE_EXECUTION }},ENABLE_GCP_LOGGING=${{ vars.ENABLE_GCP_LOGGING }},DISABLE_SECRET_MANAGER=${{ vars.DISABLE_SECRET_MANAGER }},GOOGLE_CLOUD_PROJECT=${{ vars.GOOGLE_CLOUD_PROJECT }}" \
             --set-secrets="ALPACA_API_KEY=ALPACA_API_KEY:latest,ALPACA_SECRET_KEY=ALPACA_SECRET_KEY:latest,TEST_DISCORD_WEBHOOK=TEST_DISCORD_WEBHOOK:latest,LIVE_CRYPTO_DISCORD_WEBHOOK_URL=LIVE_CRYPTO_DISCORD_WEBHOOK_URL:latest,LIVE_STOCK_DISCORD_WEBHOOK_URL=LIVE_STOCK_DISCORD_WEBHOOK_URL:latest"
