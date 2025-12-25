@@ -97,3 +97,21 @@ jobs:
             --region=${{ vars.GCP_REGION }} \
             --set-env-vars="TEST_MODE=${{ vars.TEST_MODE }},ALPACA_PAPER_TRADING=${{ vars.ALPACA_PAPER_TRADING }},ENABLE_EXECUTION=${{ vars.ENABLE_EXECUTION }},ENABLE_EQUITIES=${{ vars.ENABLE_EQUITIES }},ENABLE_GCP_LOGGING=${{ vars.ENABLE_GCP_LOGGING }},DISABLE_SECRET_MANAGER=${{ vars.DISABLE_SECRET_MANAGER }},GOOGLE_CLOUD_PROJECT=${{ vars.GOOGLE_CLOUD_PROJECT }}" \
             --set-secrets="ALPACA_API_KEY=ALPACA_API_KEY:latest,ALPACA_SECRET_KEY=ALPACA_SECRET_KEY:latest,TEST_DISCORD_WEBHOOK=TEST_DISCORD_WEBHOOK:latest,LIVE_CRYPTO_DISCORD_WEBHOOK_URL=LIVE_CRYPTO_DISCORD_WEBHOOK_URL:latest,LIVE_STOCK_DISCORD_WEBHOOK_URL=LIVE_STOCK_DISCORD_WEBHOOK_URL:latest"
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          curl -X POST "${{ secrets.TEST_DISCORD_WEBHOOK }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "content": "🚨 Deployment failed!",
+              "embeds": [{
+                "title": "CD Pipeline Failure",
+                "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+                "color": 15158332,
+                "fields": [
+                  {"name": "Commit", "value": "${{ github.sha }}", "inline": true},
+                  {"name": "Author", "value": "${{ github.actor }}", "inline": true}
+                ]
+              }]
+            }'
