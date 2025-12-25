@@ -70,6 +70,7 @@ class AssetClass(str, Enum):
 class SignalStatus(str, Enum):
     """Lifecycle status of a trading signal."""
 
+    CREATED = "CREATED"  # Persisted but not yet notified
     WAITING = "WAITING"
     CONFIRMED = "CONFIRMED"
     INVALIDATED = "INVALIDATED"
@@ -103,6 +104,7 @@ class ExitReason(str, Enum):
     STRUCTURAL_INVALIDATION = "STRUCTURAL_INVALIDATION"
     EXPIRED = "EXPIRED"
     TP_HIT = "TP_HIT"
+    NOTIFICATION_FAILED = "NOTIFICATION_FAILED"
 
 
 # =============================================================================

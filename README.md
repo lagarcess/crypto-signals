@@ -35,8 +35,7 @@ Crypto Sentinel is a production-ready trading bot that:
 - ✅ **Retry Logic**: Exponential backoff for transient failures
 - ✅ **Graceful Shutdown**: SIGTERM/SIGINT handling for clean container stops
 - ✅ **Data Cleanup**: Automatic TTL via Firestore (30-day retention, no manual cleanup needed)
-- ✅ **Structured Logging**: Context-rich logs with timing metrics
-- ✅ **Health Checks**: Comprehensive service connectivity verification
+- ✅ **Zombie Signal Prevention**: Two-phase commit ensures database tracking before Discord notification, with automated compensation for failures.
 - ✅ **Docker Support**: Multi-stage builds with security best practices
 
 ### Automated Execution
@@ -206,6 +205,7 @@ crypto-signals/
 | `RATE_LIMIT_DELAY` | No | `0.5` | Delay between API requests (seconds) |
 | `DISABLE_SECRET_MANAGER` | No | `false` | Disable Secret Manager (local dev) |
 | `ENABLE_EXECUTION` | No | `false` | Enable bracket order execution |
+| `ENABLE_EQUITIES` | No | `false` | Enable stock trading (requires Alpaca SIP data plan) |
 | `RISK_PER_TRADE` | No | `100.0` | Fixed dollar amount to risk per trade |
 
 ### Portfolio Configuration

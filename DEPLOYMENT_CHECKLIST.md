@@ -37,6 +37,7 @@ Use this checklist before deploying Crypto Sentinel to production.
 - [ ] Created GOOGLE_CLOUD_PROJECT secret
 - [ ] Created ALPACA_PAPER_TRADING secret
 - [ ] Created TEST_MODE secret
+- [ ] Created ENABLE_EQUITIES secret (default: false)
 - [ ] Created ENABLE_EXECUTION secret (default: false)
 - [ ] Created RISK_PER_TRADE secret (default: 100.0)
 - [ ] (Optional) Created LIVE_CRYPTO_DISCORD_WEBHOOK_URL secret (for production)

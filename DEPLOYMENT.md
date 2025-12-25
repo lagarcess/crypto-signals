@@ -42,6 +42,7 @@ echo -n "true" | gcloud secrets create ALPACA_PAPER_TRADING --data-file=-
 # Discord Webhooks (Multi-destination Routing)
 echo -n "your-test-discord-webhook" | gcloud secrets create TEST_DISCORD_WEBHOOK --data-file=-
 echo -n "true" | gcloud secrets create TEST_MODE --data-file=-  # Set to 'false' for production
+echo -n "false" | gcloud secrets create ENABLE_EQUITIES --data-file=- # Set to 'true' to enable stocks
 
 # Production webhooks (required when TEST_MODE=false)
 # echo -n "your-crypto-discord-webhook" | gcloud secrets create LIVE_CRYPTO_DISCORD_WEBHOOK_URL --data-file=-
@@ -87,7 +88,7 @@ gcloud run jobs create crypto-signals-job \
     --memory=1Gi \
     --cpu=1 \
     --set-env-vars=GOOGLE_CLOUD_PROJECT=$GCP_PROJECT \
-    --set-secrets=ALPACA_API_KEY=ALPACA_API_KEY:latest,ALPACA_SECRET_KEY=ALPACA_SECRET_KEY:latest,TEST_DISCORD_WEBHOOK=TEST_DISCORD_WEBHOOK:latest,TEST_MODE=TEST_MODE:latest,ALPACA_PAPER_TRADING=ALPACA_PAPER_TRADING:latest,ENABLE_EXECUTION=ENABLE_EXECUTION:latest,RISK_PER_TRADE=RISK_PER_TRADE:latest
+    --set-secrets=ALPACA_API_KEY=ALPACA_API_KEY:latest,ALPACA_SECRET_KEY=ALPACA_SECRET_KEY:latest,TEST_DISCORD_WEBHOOK=TEST_DISCORD_WEBHOOK:latest,TEST_MODE=TEST_MODE:latest,ALPACA_PAPER_TRADING=ALPACA_PAPER_TRADING:latest,ENABLE_EXECUTION=ENABLE_EXECUTION:latest,ENABLE_EQUITIES=ENABLE_EQUITIES:latest,RISK_PER_TRADE=RISK_PER_TRADE:latest
 
 # For production with separate crypto/stock webhooks, add:
 # --set-secrets=...,LIVE_CRYPTO_DISCORD_WEBHOOK_URL=LIVE_CRYPTO_DISCORD_WEBHOOK_URL:latest,LIVE_STOCK_DISCORD_WEBHOOK_URL=LIVE_STOCK_DISCORD_WEBHOOK_URL:latest
