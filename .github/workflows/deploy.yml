@@ -103,15 +103,17 @@ jobs:
         run: |
           curl -X POST "${{ secrets.TEST_DISCORD_WEBHOOK }}" \
             -H "Content-Type: application/json" \
-            -d '{
-              "content": "🚨 Deployment failed!",
-              "embeds": [{
-                "title": "CD Pipeline Failure",
-                "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
-                "color": 15158332,
-                "fields": [
-                  {"name": "Commit", "value": "${{ github.sha }}", "inline": true},
-                  {"name": "Author", "value": "${{ github.actor }}", "inline": true}
-                ]
-              }]
-            }'
+            -d @- <<EOF
+          {
+            "content": "🚨 Deployment failed!",
+            "embeds": [{
+              "title": "CD Pipeline Failure",
+              "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+              "color": 15158332,
+              "fields": [
+                {"name": "Commit", "value": "${{ github.sha }}", "inline": true},
+                {"name": "Author", "value": "${{ github.actor }}", "inline": true}
+              ]
+            }]
+          }
+          EOF
