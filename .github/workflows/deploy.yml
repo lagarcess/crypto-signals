@@ -98,10 +98,35 @@ jobs:
             --set-env-vars="TEST_MODE=${{ vars.TEST_MODE }},ALPACA_PAPER_TRADING=${{ vars.ALPACA_PAPER_TRADING }},ENABLE_EXECUTION=${{ vars.ENABLE_EXECUTION }},ENABLE_EQUITIES=${{ vars.ENABLE_EQUITIES }},ENABLE_GCP_LOGGING=${{ vars.ENABLE_GCP_LOGGING }},DISABLE_SECRET_MANAGER=${{ vars.DISABLE_SECRET_MANAGER }},GOOGLE_CLOUD_PROJECT=${{ vars.GOOGLE_CLOUD_PROJECT }}" \
             --set-secrets="ALPACA_API_KEY=ALPACA_API_KEY:latest,ALPACA_SECRET_KEY=ALPACA_SECRET_KEY:latest,TEST_DISCORD_WEBHOOK=TEST_DISCORD_WEBHOOK:latest,LIVE_CRYPTO_DISCORD_WEBHOOK_URL=LIVE_CRYPTO_DISCORD_WEBHOOK_URL:latest,LIVE_STOCK_DISCORD_WEBHOOK_URL=LIVE_STOCK_DISCORD_WEBHOOK_URL:latest"
 
+      - name: Notify on success
+        if: success()
+        env:
+          WEBHOOK_URL: ${{ secrets.DISCORD_DEPLOYS }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          COMMIT_SHA: ${{ github.sha }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          curl -X POST "${WEBHOOK_URL}" \
+            -H "Content-Type: application/json" \
+            -d @- <<EOF
+          {
+            "content": "✅ Deployment successful!",
+            "embeds": [{
+              "title": "CD Pipeline Success",
+              "url": "${RUN_URL}",
+              "color": 3066993,
+              "fields": [
+                {"name": "Commit", "value": "${COMMIT_SHA}", "inline": true},
+                {"name": "Author", "value": "${ACTOR}", "inline": true}
+              ]
+            }]
+          }
+          EOF
+
       - name: Notify on failure
         if: failure()
         env:
-          WEBHOOK_URL: ${{ secrets.TEST_DISCORD_WEBHOOK }}
+          WEBHOOK_URL: ${{ secrets.DISCORD_DEPLOYS }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           COMMIT_SHA: ${{ github.sha }}
           ACTOR: ${{ github.actor }}
