@@ -37,6 +37,7 @@ Use this checklist before deploying Crypto Sentinel to production.
 - [ ] Created GOOGLE_CLOUD_PROJECT secret
 - [ ] Created ALPACA_PAPER_TRADING secret
 - [ ] Created TEST_MODE secret
+- [ ] Created ENABLE_EQUITIES secret (default: false)
 - [ ] Created ENABLE_EXECUTION secret (default: false)
 - [ ] Created RISK_PER_TRADE secret (default: 100.0)
 - [ ] (Optional) Created LIVE_CRYPTO_DISCORD_WEBHOOK_URL secret (for production)
@@ -136,6 +137,12 @@ Use this checklist before deploying Crypto Sentinel to production.
 - [ ] Read SECURITY.md (security best practices)
 - [ ] Read REVIEW_SUMMARY.md (review findings)
 - [ ] Understand cost estimates (~$0.79/month initial)
+
+## ✅ CI/CD Verification
+
+- [ ] GitHub Actions pipeline succeeded on `main`
+- [ ] Artifact pushed to Artifact Registry via workflow
+- [ ] Cloud Run job image updated by workflow
 
 ## ✅ Cloud Deployment
 

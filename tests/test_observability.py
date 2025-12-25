@@ -1,8 +1,14 @@
 """Unit tests for GCP Cloud Logging integration in observability module."""
 
+import importlib.util
+import sys
+from importlib import reload
 from unittest.mock import MagicMock, patch
 
-from crypto_signals.observability import LOGURU_TO_GCP_SEVERITY
+import crypto_signals.observability as obs
+
+# [Strategy Setup] Detect if the real library is installed to choose the correct patch method
+HAS_GCP_LIBRARY = importlib.util.find_spec("google.cloud.logging") is not None
 
 
 class TestGCPLevelMapping:
@@ -10,31 +16,31 @@ class TestGCPLevelMapping:
 
     def test_trace_maps_to_debug(self):
         """TRACE level should map to GCP DEBUG."""
-        assert LOGURU_TO_GCP_SEVERITY["TRACE"] == "DEBUG"
+        assert obs.LOGURU_TO_GCP_SEVERITY["TRACE"] == "DEBUG"
 
     def test_debug_maps_to_debug(self):
         """DEBUG level should map to GCP DEBUG."""
-        assert LOGURU_TO_GCP_SEVERITY["DEBUG"] == "DEBUG"
+        assert obs.LOGURU_TO_GCP_SEVERITY["DEBUG"] == "DEBUG"
 
     def test_info_maps_to_info(self):
         """INFO level should map to GCP INFO."""
-        assert LOGURU_TO_GCP_SEVERITY["INFO"] == "INFO"
+        assert obs.LOGURU_TO_GCP_SEVERITY["INFO"] == "INFO"
 
     def test_success_maps_to_info(self):
         """SUCCESS level should map to GCP INFO (GCP has no SUCCESS)."""
-        assert LOGURU_TO_GCP_SEVERITY["SUCCESS"] == "INFO"
+        assert obs.LOGURU_TO_GCP_SEVERITY["SUCCESS"] == "INFO"
 
     def test_warning_maps_to_warning(self):
         """WARNING level should map to GCP WARNING."""
-        assert LOGURU_TO_GCP_SEVERITY["WARNING"] == "WARNING"
+        assert obs.LOGURU_TO_GCP_SEVERITY["WARNING"] == "WARNING"
 
     def test_error_maps_to_error(self):
         """ERROR level should map to GCP ERROR."""
-        assert LOGURU_TO_GCP_SEVERITY["ERROR"] == "ERROR"
+        assert obs.LOGURU_TO_GCP_SEVERITY["ERROR"] == "ERROR"
 
     def test_critical_maps_to_critical(self):
         """CRITICAL level should map to GCP CRITICAL."""
-        assert LOGURU_TO_GCP_SEVERITY["CRITICAL"] == "CRITICAL"
+        assert obs.LOGURU_TO_GCP_SEVERITY["CRITICAL"] == "CRITICAL"
 
     def test_all_loguru_levels_are_mapped(self):
         """All standard Loguru levels should be mapped."""
@@ -47,55 +53,59 @@ class TestGCPLevelMapping:
             "ERROR",
             "CRITICAL",
         }
-        assert set(LOGURU_TO_GCP_SEVERITY.keys()) == expected_levels
+        assert set(obs.LOGURU_TO_GCP_SEVERITY.keys()) == expected_levels
 
 
 class TestSetupGCPLogging:
-    """Test setup_gcp_logging() function."""
+    """Test setup_gcp_logging() function with robust mocking."""
 
     def test_setup_gcp_logging_returns_true_on_success(self):
         """Test that setup_gcp_logging returns True when client initializes."""
-        import sys
+        reload(obs)  # Ensure a fresh module state
 
-        # Create mock module structure
-        mock_gcp_logging = MagicMock()
         mock_client = MagicMock()
         mock_logger = MagicMock()
         mock_client.logger.return_value = mock_logger
-        mock_gcp_logging.Client.return_value = mock_client
 
-        # Patch the module in sys.modules BEFORE the import happens
-        with patch.dict(sys.modules, {"google.cloud.logging": mock_gcp_logging}):
-            # Need to reimport to use the mocked module
-            from importlib import reload
+        if HAS_GCP_LIBRARY:
+            # Strategy A: Patch the class directly if the library is installed
+            with patch(
+                "google.cloud.logging.Client", return_value=mock_client
+            ) as MockClient:
+                result = obs.setup_gcp_logging("test-log")
 
-            import crypto_signals.observability as obs
+                assert result is True
+                MockClient.assert_called_once()
+                mock_client.logger.assert_called_once_with("test-log")
+        else:
+            # Strategy B: CI/No-library environment, use sys.modules injection
+            mock_gcp_logging = MagicMock()
+            mock_gcp_logging.Client.return_value = mock_client
+            with patch.dict(sys.modules, {"google.cloud.logging": mock_gcp_logging}):
+                result = obs.setup_gcp_logging("test-log")
 
-            reload(obs)
-
-            result = obs.setup_gcp_logging("test-log")
-
-            assert result is True
-            mock_gcp_logging.Client.assert_called_once()
-            mock_client.logger.assert_called_once_with("test-log")
+                assert result is True
+                mock_gcp_logging.Client.assert_called_once()
+                mock_client.logger.assert_called_once_with("test-log")
 
     def test_setup_gcp_logging_returns_false_on_client_failure(self):
         """Test that setup_gcp_logging returns False when client init fails."""
-        import sys
+        reload(obs)  # Ensure a fresh module state
 
-        mock_gcp_logging = MagicMock()
-        mock_gcp_logging.Client.side_effect = Exception("No credentials")
-
-        with patch.dict(sys.modules, {"google.cloud.logging": mock_gcp_logging}):
-            from importlib import reload
-
-            import crypto_signals.observability as obs
-
-            reload(obs)
-
-            result = obs.setup_gcp_logging()
-
-            assert result is False
+        if HAS_GCP_LIBRARY:
+            # Patch the class to raise an exception
+            with patch(
+                "google.cloud.logging.Client", side_effect=Exception("No credentials")
+            ):
+                result = obs.setup_gcp_logging()
+                assert result is False
+        else:
+            # Inject failure via sys.modules mock
+            mock_gcp_logging = MagicMock()
+            mock_gcp_logging.Client.side_effect = Exception("No credentials")
+            with patch.dict(sys.modules, {"google.cloud.logging": mock_gcp_logging}):
+                result = obs.setup_gcp_logging()
+                assert result is False
 
     def test_gcp_sink_builds_structured_payload(self):
         """Test that GCP sink builds correct structured payload format."""

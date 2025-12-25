@@ -129,6 +129,14 @@ class Settings(BaseSettings):
         description="Enable order execution (requires ALPACA_PAPER_TRADING=True)",
     )
 
+    ENABLE_EQUITIES: bool = Field(
+        default=False,
+        description=(
+            "Enable equity (stock) trading. Requires Alpaca paid plan with SIP data "
+            "access. Set to True only if you have SIP data subscription."
+        ),
+    )
+
     @field_validator("CRYPTO_SYMBOLS", "EQUITY_SYMBOLS", mode="before")
     @classmethod
     def parse_list_from_str(cls, v: Any) -> Any:
@@ -198,9 +206,10 @@ def get_settings() -> Settings:
             settings.GOOGLE_APPLICATION_CREDENTIALS
         )
 
-    # RESTRICTION: Force disable equities for Basic Alpaca Plans
-    # This overrides .env settings to prevent SIP data errors
-    settings.EQUITY_SYMBOLS = []
+    # Equities disabled by configuration (Basic Alpaca Plans can't access SIP data)
+    # Users with paid plans can set ENABLE_EQUITIES=true to enable stock trading
+    if not settings.ENABLE_EQUITIES:
+        settings.EQUITY_SYMBOLS = []
 
     return settings
 

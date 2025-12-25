@@ -165,11 +165,12 @@ class SignalGenerator:
             suggested_stop = invalidation_price * 0.99
 
         if pattern_name == "MORNING_STAR":
-            # Exit on close below low of t2 (the star).
-            # We access t-1 low relative to current (t0).
-            # Need to get the row before? Vectorized approach:
-            # We generated signals on the last row.
-            pass  # Logic requires lookback context not currently in 'latest'
+            # Exit on close below low of the star candle.
+            # The star is t-1 (middle candle of the 3-candle pattern).
+            # Since we detect on the final candle (t0), use current low as conservative stop.
+            # Full lookback would access df.iloc[-2]["low"] but 'latest' is a Series.
+            invalidation_price = low_price
+            suggested_stop = invalidation_price * 0.99
 
         elif pattern_name == "BULLISH_MARUBOZU":
             # Exit below 50% of body
@@ -178,9 +179,10 @@ class SignalGenerator:
             suggested_stop = invalidation_price * 0.99  # Marubozu fail is strict
 
         elif pattern_name == "BULL_FLAG":
-            # Below lower channel... implies below recent low.
-            # Use general stop for now.
-            pass
+            # Below lower channel implies consolidation breakdown.
+            # Use recent low (flag low) as invalidation level.
+            invalidation_price = low_price
+            suggested_stop = invalidation_price * 0.99
 
         # Take Profits (ATR Based)
         entry_ref = close_price

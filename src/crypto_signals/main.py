@@ -207,39 +207,23 @@ def main():
                             },
                         )
 
-                        # Notify Discord FIRST to capture thread_id for lifecycle updates
-                        thread_id = discord.send_signal(trade_signal)
-                        if thread_id:
-                            # Attach thread_id to signal for lifecycle updates
-                            trade_signal.discord_thread_id = thread_id
-                            logger.info(
-                                "Thread ID captured for signal lifecycle tracking",
-                                extra={
-                                    "signal_id": trade_signal.signal_id,
-                                    "symbol": trade_signal.symbol,
-                                    "thread_id": thread_id,
-                                },
-                            )
-                        else:
-                            logger.warning(
-                                "Failed to send Discord notification for "
-                                f"{trade_signal.symbol}",
-                                extra={"symbol": trade_signal.symbol},
-                            )
+                        # ============================================================
+                        # TWO-PHASE COMMIT: Prevents "Zombie Signals"
+                        # (notifications sent without database tracking)
+                        # ============================================================
 
-                        # Persist signal
+                        # PHASE 1: Persist with CREATED status (establishes tracking)
+                        trade_signal.status = SignalStatus.CREATED
                         persistence_start = time.time()
                         try:
                             repo.save(trade_signal)
                             persistence_duration = time.time() - persistence_start
                             logger.info(
-                                f"Signal {trade_signal.signal_id} persisted to Firestore",
+                                f"Signal {trade_signal.signal_id} created in Firestore",
                                 extra={
                                     "signal_id": trade_signal.signal_id,
                                     "symbol": trade_signal.symbol,
-                                    "thread_id": getattr(
-                                        trade_signal, "discord_thread_id", None
-                                    ),
+                                    "status": "CREATED",
                                     "duration_seconds": round(persistence_duration, 3),
                                 },
                             )
@@ -249,22 +233,66 @@ def main():
                         except Exception as e:
                             persistence_duration = time.time() - persistence_start
                             logger.error(
-                                f"Failed to persist signal {trade_signal.signal_id} to Firestore: {e}",
+                                f"Failed to persist signal {trade_signal.signal_id} - "
+                                "skipping notification to prevent zombie signal",
                                 extra={
                                     "signal_id": trade_signal.signal_id,
                                     "symbol": trade_signal.symbol,
-                                    "thread_id": getattr(
-                                        trade_signal, "discord_thread_id", None
-                                    ),
                                     "error": str(e),
                                 },
                             )
                             metrics.record_failure(
                                 "signal_persistence", persistence_duration
                             )
-                            # Note: We intentionally do NOT re-raise here.
-                            # Signal generation succeeded - only persistence failed.
-                            # The failure is already logged and metrics recorded above.
+                            # Skip notification - can't notify without tracking
+                            continue
+
+                        # PHASE 2: Notify Discord
+                        thread_id = discord.send_signal(trade_signal)
+
+                        # PHASE 3: Update with thread_id and final status
+                        if thread_id:
+                            trade_signal.discord_thread_id = thread_id
+                            trade_signal.status = SignalStatus.WAITING
+                            try:
+                                repo.update_signal(trade_signal)
+                                logger.info(
+                                    "Signal activated with Discord thread",
+                                    extra={
+                                        "signal_id": trade_signal.signal_id,
+                                        "symbol": trade_signal.symbol,
+                                        "thread_id": thread_id,
+                                        "status": "WAITING",
+                                    },
+                                )
+                            except Exception as e:
+                                logger.error(
+                                    f"Failed to update signal {trade_signal.signal_id} "
+                                    "after Discord notification",
+                                    extra={
+                                        "signal_id": trade_signal.signal_id,
+                                        "error": str(e),
+                                    },
+                                )
+                        else:
+                            # Compensation: Mark as invalidated if notification failed
+                            logger.warning(
+                                f"Discord notification failed for {trade_signal.symbol} "
+                                "- marking signal as invalidated",
+                                extra={"symbol": trade_signal.symbol},
+                            )
+                            trade_signal.status = SignalStatus.INVALIDATED
+                            trade_signal.exit_reason = ExitReason.NOTIFICATION_FAILED
+                            try:
+                                repo.update_signal(trade_signal)
+                            except Exception as e:
+                                logger.error(
+                                    f"Failed to invalidate signal: {e}",
+                                    extra={
+                                        "signal_id": trade_signal.signal_id,
+                                        "error": str(e),
+                                    },
+                                )
 
                         # Execute trade if execution is enabled
                         # Safety: ExecutionEngine has built-in guards for:
@@ -373,20 +401,19 @@ def main():
                                 # === SYNC TRAIL TO ALPACA ===
                                 # Update broker stop-loss to match new trailing stop
                                 if settings.ENABLE_EXECUTION and new_tp3:
-                                    positions = position_repo.get_by_signal_id(
+                                    pos = position_repo.get_position_by_signal(
                                         exited.signal_id
                                     )
-                                    for pos in positions:
-                                        if pos.status == TradeStatus.OPEN:
-                                            if execution_engine.modify_stop_loss(
-                                                pos, new_tp3
-                                            ):
-                                                logger.info(
-                                                    f"TRAIL SYNC: Stop -> "
-                                                    f"${new_tp3:.2f} for "
-                                                    f"{pos.position_id}"
-                                                )
-                                                position_repo.update_position(pos)
+                                    if pos and pos.status == TradeStatus.OPEN:
+                                        if execution_engine.modify_stop_loss(
+                                            pos, new_tp3
+                                        ):
+                                            logger.info(
+                                                f"TRAIL SYNC: Stop -> "
+                                                f"${new_tp3:.2f} for "
+                                                f"{pos.position_id}"
+                                            )
+                                            position_repo.update_position(pos)
 
                                 # Clean up private attributes
                                 if hasattr(exited, "_trail_updated"):
@@ -459,13 +486,10 @@ def main():
                             # Progressive stop management on each TP stage
                             if settings.ENABLE_EXECUTION:
                                 # Find position linked to this signal
-                                positions = position_repo.get_by_signal_id(
+                                pos = position_repo.get_position_by_signal(
                                     exited.signal_id
                                 )
-                                for pos in positions:
-                                    if pos.status != TradeStatus.OPEN:
-                                        continue
-
+                                if pos and pos.status == TradeStatus.OPEN:
                                     # TP1: Scale out 50% + move stop to breakeven
                                     if exited.status == SignalStatus.TP1_HIT:
                                         # Idempotency: Skip if already scaled (restarts/retries)
@@ -612,6 +636,14 @@ def main():
                         logger.info("Shutdown requested. Stopping position sync...")
                         break
 
+                    if rate_limit_delay:
+                        time.sleep(rate_limit_delay)
+                        if shutdown_requested:
+                            logger.info(
+                                "Shutdown requested during position sync delay. Stopping..."
+                            )
+                            break
+
                     try:
                         original_status = pos.status
                         updated_pos = execution_engine.sync_position_status(pos)
@@ -641,6 +673,29 @@ def main():
                                     # Calculate PnL including scaled-out portions
                                     entry = updated_pos.entry_fill_price
                                     exit_price = updated_pos.exit_fill_price
+                                    if entry is None or exit_price is None:
+                                        logger.warning(
+                                            "Missing fill prices for position PnL calculation",
+                                            extra={
+                                                "position_id": updated_pos.position_id,
+                                                "entry": entry,
+                                                "exit": exit_price,
+                                            },
+                                        )
+                                        continue
+                                    try:
+                                        entry = float(entry)
+                                        exit_price = float(exit_price)
+                                    except (TypeError, ValueError):
+                                        logger.warning(
+                                            "Non-numeric fill prices for position PnL calculation",
+                                            extra={
+                                                "position_id": updated_pos.position_id,
+                                                "entry": entry,
+                                                "exit": exit_price,
+                                            },
+                                        )
+                                        continue
                                     is_long = updated_pos.side == OrderSide.BUY
 
                                     # PnL from scaled-out portions (TP1, TP2)

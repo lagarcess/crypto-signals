@@ -330,40 +330,46 @@ class DiscordClient:
         Returns:
             bool: True if message sent successfully
         """
-        # Select emoji based on win/loss
-        is_win = pnl_usd >= 0
-        result_emoji = EMOJI_MONEY if is_win else EMOJI_SKULL
-        pnl_sign = "+" if pnl_usd >= 0 else "-"
+        try:
+            # Select emoji based on win/loss
+            is_win = pnl_usd >= 0
+            result_emoji = EMOJI_MONEY if is_win else EMOJI_SKULL
+            pnl_sign = "+" if pnl_usd >= 0 else "-"
 
-        # Format exit price
-        exit_price_str = (
-            f"${position.exit_fill_price:,.2f}" if position.exit_fill_price else "N/A"
-        )
+            # Format exit price
+            exit_price_str = (
+                f"${position.exit_fill_price:,.2f}"
+                if position.exit_fill_price
+                else "N/A"
+            )
 
-        # Test mode label for differentiating test messages in Discord
-        test_label = "[TEST] " if self.settings.TEST_MODE else ""
+            # Test mode label for differentiating test messages in Discord
+            test_label = "[TEST] " if self.settings.TEST_MODE else ""
 
-        # Use absolute values for display with explicit sign prefix
-        # Include pattern name for trade context
-        content = (
-            f"{result_emoji} **{test_label}TRADE CLOSED: {signal.symbol}** {result_emoji}\n"
-            f"**Pattern**: {signal.pattern_name.replace('_', ' ').title()}\n"
-            f"**Result**: {pnl_sign}${abs(pnl_usd):,.2f} ({pnl_sign}{abs(pnl_pct):.2f}%)\n"
-            f"**Duration**: {duration_str}\n"
-            f"**Exit**: {exit_reason} ({exit_price_str})\n"
-            f"**Entry**: ${position.entry_fill_price:,.2f} | Qty: {position.qty}"
-        )
+            # Use absolute values for display with explicit sign prefix
+            # Include pattern name for trade context
+            content = (
+                f"{result_emoji} **{test_label}TRADE CLOSED: {signal.symbol}** {result_emoji}\n"
+                f"**Pattern**: {signal.pattern_name.replace('_', ' ').title()}\n"
+                f"**Result**: {pnl_sign}${abs(pnl_usd):,.2f} ({pnl_sign}{abs(pnl_pct):.2f}%)\n"
+                f"**Duration**: {duration_str}\n"
+                f"**Exit**: {exit_reason} ({exit_price_str})\n"
+                f"**Entry**: ${position.entry_fill_price:,.2f} | Qty: {position.qty}"
+            )
 
-        # Use provided asset_class, or fall back to signal's asset_class
-        effective_asset_class = (
-            asset_class if asset_class is not None else signal.asset_class
-        )
+            # Use provided asset_class, or fall back to signal's asset_class
+            effective_asset_class = (
+                asset_class if asset_class is not None else signal.asset_class
+            )
 
-        return self.send_message(
-            content,
-            thread_id=signal.discord_thread_id,
-            asset_class=effective_asset_class,
-        )
+            return self.send_message(
+                content,
+                thread_id=signal.discord_thread_id,
+                asset_class=effective_asset_class,
+            )
+        except Exception as e:
+            logger.error(f"Failed to send trade close notification: {e}")
+            return False
 
     def _format_message(self, signal: Signal) -> dict:
         """

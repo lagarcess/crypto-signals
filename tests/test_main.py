@@ -123,8 +123,9 @@ def test_main_execution_flow(mock_dependencies):
 
     # Create a manager to track call order across mocks
     manager = Mock()
-    manager.attach_mock(mock_discord_instance.send_signal, "send_signal")
     manager.attach_mock(mock_repo_instance.save, "save")
+    manager.attach_mock(mock_discord_instance.send_signal, "send_signal")
+    manager.attach_mock(mock_repo_instance.update_signal, "update_signal")
 
     # Execute
     main()
@@ -145,18 +146,20 @@ def test_main_execution_flow(mock_dependencies):
     ]
     mock_gen_instance.generate_signals.assert_has_calls(expected_calls, any_order=False)
 
-    # Verify Signal Handling (Send Discord FIRST, then Save)
+    # Verify Signal Handling (Save FIRST with CREATED, then Discord, then Update to WAITING)
     # Should be called once for BTC/USD
-    mock_discord_instance.send_signal.assert_called_once_with(mock_signal)
     mock_repo_instance.save.assert_called_once_with(mock_signal)
+    mock_discord_instance.send_signal.assert_called_once_with(mock_signal)
+    mock_repo_instance.update_signal.assert_called_once_with(mock_signal)
 
-    # Verify thread_id was attached to signal before save
+    # Verify thread_id was attached to signal after Discord notification
     assert mock_signal.discord_thread_id == "thread_123456"
 
-    # Verify explicit call order: Discord -> Firestore
+    # Verify explicit call order: Save -> Discord -> Update (two-phase commit)
     expected_call_order = [
-        call.send_signal(mock_signal),
         call.save(mock_signal),
+        call.send_signal(mock_signal),
+        call.update_signal(mock_signal),
     ]
     assert manager.mock_calls == expected_call_order
 
@@ -186,8 +189,9 @@ def test_send_signal_captures_thread_id(mock_dependencies):
 
     # Create a manager to track call order across mocks
     manager = Mock()
-    manager.attach_mock(mock_discord_instance.send_signal, "send_signal")
     manager.attach_mock(mock_repo_instance.save, "save")
+    manager.attach_mock(mock_discord_instance.send_signal, "send_signal")
+    manager.attach_mock(mock_repo_instance.update_signal, "update_signal")
 
     # Execute
     main()
@@ -195,10 +199,11 @@ def test_send_signal_captures_thread_id(mock_dependencies):
     # Verify thread_id was attached to signal
     assert mock_signal.discord_thread_id == "mock_thread_98765"
 
-    # Verify explicit call order: Discord -> Firestore
+    # Verify explicit call order: Save -> Discord -> Update (two-phase commit)
     expected_call_order = [
-        call.send_signal(mock_signal),
         call.save(mock_signal),
+        call.send_signal(mock_signal),
+        call.update_signal(mock_signal),
     ]
     assert manager.mock_calls == expected_call_order
 
@@ -265,8 +270,9 @@ def test_main_notification_failure(mock_dependencies, caplog):
     with caplog.at_level("WARNING"):
         main()
 
-    # Verify warning
-    assert "Failed to send Discord notification for BTC/USD" in caplog.text
+    # Verify warning (now uses compensation logic - signal marked invalid)
+    assert "Discord notification failed" in caplog.text
+    assert "marking signal as invalidated" in caplog.text
 
 
 def test_main_repo_failure(mock_dependencies, caplog):
@@ -300,9 +306,9 @@ def test_main_repo_failure(mock_dependencies, caplog):
     with caplog.at_level("ERROR"):
         main()
 
-    # Verify error log for persistence failure (new structured logging)
+    # Verify error log for persistence failure (new behavior: skips notification)
     assert "Failed to persist signal" in caplog.text
-    assert "Firestore Unavailable" in caplog.text
+    assert "skipping notification to prevent zombie signal" in caplog.text
 
     # Verify that ETH/USD was still processed (Loop continued)
     calls = mock_gen_instance.generate_signals.call_args_list
@@ -572,3 +578,141 @@ def test_sync_loop_no_update_when_position_unchanged(mock_dependencies):
 
     # Verify update was NOT called
     mock_position_repo.update_position.assert_not_called()
+
+
+# =============================================================================
+# ZOMBIE SIGNAL PREVENTION TESTS
+# =============================================================================
+
+
+def test_zombie_signal_prevention_persistence_first(mock_dependencies):
+    """
+    Test that signals are persisted BEFORE Discord notification (two-phase commit).
+
+    This prevents "Zombie Signals" where users receive Discord notifications
+    for signals that were never persisted to the database.
+    """
+    from crypto_signals.domain.schemas import SignalStatus
+
+    mock_gen_instance = mock_dependencies["generator"].return_value
+    mock_repo_instance = mock_dependencies["repo"].return_value
+    mock_discord_instance = mock_dependencies["discord"].return_value
+
+    # Setup signal
+    mock_signal = MagicMock(spec=Signal)
+    mock_signal.symbol = "BTC/USD"
+    mock_signal.signal_id = "test_signal_zombie_prevention"
+    mock_signal.pattern_name = "bullish_engulfing"
+    mock_signal.suggested_stop = 90000.0
+
+    def side_effect(symbol, asset_class, **kwargs):
+        if symbol == "BTC/USD":
+            return mock_signal
+        return None
+
+    mock_gen_instance.generate_signals.side_effect = side_effect
+    mock_discord_instance.send_signal.return_value = "thread_123"
+
+    # Track call order
+    call_order = []
+
+    def track_save(signal):
+        call_order.append(("save", signal.status))
+
+    def track_update(signal):
+        call_order.append(("update", signal.status))
+
+    def track_discord(signal):
+        call_order.append(("discord", getattr(signal, "status", None)))
+        return "thread_123"
+
+    mock_repo_instance.save.side_effect = track_save
+    mock_repo_instance.update_signal.side_effect = track_update
+    mock_discord_instance.send_signal.side_effect = track_discord
+
+    main()
+
+    # Verify CREATED status set first, then saved, then Discord, then WAITING update
+    assert len(call_order) == 3
+    assert call_order[0] == ("save", SignalStatus.CREATED)
+    assert call_order[1][0] == "discord"  # Discord called after save
+    assert call_order[2] == ("update", SignalStatus.WAITING)
+
+
+def test_zombie_signal_compensation_on_discord_failure(mock_dependencies, caplog):
+    """
+    Test that signal is marked INVALIDATED if Discord notification fails.
+
+    When persistence succeeds but Discord fails, we compensate by marking
+    the signal as INVALIDATED to prevent untracked active signals.
+    """
+    from crypto_signals.domain.schemas import ExitReason, SignalStatus
+
+    mock_gen_instance = mock_dependencies["generator"].return_value
+    _mock_repo_instance = mock_dependencies["repo"].return_value  # noqa: F841
+    mock_discord_instance = mock_dependencies["discord"].return_value
+
+    mock_signal = MagicMock(spec=Signal)
+    mock_signal.symbol = "BTC/USD"
+    mock_signal.signal_id = "test_signal_discord_fail"
+    mock_signal.pattern_name = "test_pattern"
+    mock_signal.suggested_stop = 90000.0
+
+    def side_effect(symbol, asset_class, **kwargs):
+        if symbol == "BTC/USD":
+            return mock_signal
+        return None
+
+    mock_gen_instance.generate_signals.side_effect = side_effect
+
+    # Discord fails - returns None/False
+    mock_discord_instance.send_signal.return_value = None
+
+    with caplog.at_level("WARNING"):
+        main()
+
+    # Verify compensation: signal marked as INVALIDATED
+    assert mock_signal.status == SignalStatus.INVALIDATED
+    assert mock_signal.exit_reason == ExitReason.NOTIFICATION_FAILED
+
+    # Verify warning was logged
+    assert "Discord notification failed" in caplog.text
+    assert "marking signal as invalidated" in caplog.text
+
+
+def test_signal_skipped_if_initial_persistence_fails(mock_dependencies, caplog):
+    """
+    Test that Discord is NOT called if initial persistence fails.
+
+    This is critical to prevent Zombie Signals - if we can't persist,
+    we must NOT notify users about a signal we can't track.
+    """
+    mock_gen_instance = mock_dependencies["generator"].return_value
+    mock_repo_instance = mock_dependencies["repo"].return_value
+    mock_discord_instance = mock_dependencies["discord"].return_value
+
+    mock_signal = MagicMock(spec=Signal)
+    mock_signal.symbol = "BTC/USD"
+    mock_signal.signal_id = "test_signal_persist_fail"
+    mock_signal.pattern_name = "test_pattern"
+    mock_signal.suggested_stop = 90000.0
+
+    def side_effect(symbol, asset_class, **kwargs):
+        if symbol == "BTC/USD":
+            return mock_signal
+        return None
+
+    mock_gen_instance.generate_signals.side_effect = side_effect
+
+    # Initial save fails
+    mock_repo_instance.save.side_effect = RuntimeError("Firestore Unavailable")
+
+    with caplog.at_level("ERROR"):
+        main()
+
+    # Verify Discord was NEVER called (zombie prevention)
+    mock_discord_instance.send_signal.assert_not_called()
+
+    # Verify error logged
+    assert "Failed to persist signal" in caplog.text
+    assert "skipping notification to prevent zombie signal" in caplog.text

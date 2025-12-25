@@ -42,6 +42,7 @@ echo -n "true" | gcloud secrets create ALPACA_PAPER_TRADING --data-file=-
 # Discord Webhooks (Multi-destination Routing)
 echo -n "your-test-discord-webhook" | gcloud secrets create TEST_DISCORD_WEBHOOK --data-file=-
 echo -n "true" | gcloud secrets create TEST_MODE --data-file=-  # Set to 'false' for production
+echo -n "false" | gcloud secrets create ENABLE_EQUITIES --data-file=- # Set to 'true' to enable stocks
 
 # Production webhooks (required when TEST_MODE=false)
 # echo -n "your-crypto-discord-webhook" | gcloud secrets create LIVE_CRYPTO_DISCORD_WEBHOOK_URL --data-file=-
@@ -60,32 +61,20 @@ gcloud secrets list
 > 1. `ALPACA_PAPER_TRADING=true` (mandatory safety guard)
 > 2. `ENABLE_EXECUTION=true` (explicit opt-in)
 
-### 2. Build and Push Docker Image
+### 2. Continuous Deployment (GitHub Actions)
 
-```bash
-# Enable required APIs
-gcloud services enable artifactregistry.googleapis.com
-gcloud services enable run.googleapis.com
+Deployments are now automated via `.github/workflows/deploy.yml`.
 
-# Create Artifact Registry repository
-gcloud artifacts repositories create crypto-signals \
-    --repository-format=docker \
-    --location=us-central1 \
-    --description="Crypto Sentinel Docker images"
+Configure the following GitHub Secrets:
+- `GCP_CREDENTIALS`: Service account JSON (entire JSON content)
+- `GCP_PROJECT_ID`: Target GCP project ID
+- `GAR_REPOSITORY`: Artifact Registry path (e.g., `us-central1-docker.pkg.dev/my-project/crypto-signals/crypto-signals`)
 
-# Configure Docker authentication
-gcloud auth configure-docker us-central1-docker.pkg.dev
-
-# Build the image
-docker build -t crypto-signals:latest .
-
-# Tag for Artifact Registry
-docker tag crypto-signals:latest \
-    us-central1-docker.pkg.dev/$GCP_PROJECT/crypto-signals/crypto-signals:latest
-
-# Push to Artifact Registry
-docker push us-central1-docker.pkg.dev/$GCP_PROJECT/crypto-signals/crypto-signals:latest
-```
+Pipeline steps on `main` branch:
+1. Authenticate to GCP with `GCP_CREDENTIALS`
+2. Build and tag the Docker image
+3. Push to the Artifact Registry repository
+4. Update the Cloud Run Job image (`crypto-signals-job`) in `us-central1`
 
 ### 3. Deploy to Cloud Run (Scheduled Job)
 
@@ -99,7 +88,7 @@ gcloud run jobs create crypto-signals-job \
     --memory=1Gi \
     --cpu=1 \
     --set-env-vars=GOOGLE_CLOUD_PROJECT=$GCP_PROJECT \
-    --set-secrets=ALPACA_API_KEY=ALPACA_API_KEY:latest,ALPACA_SECRET_KEY=ALPACA_SECRET_KEY:latest,TEST_DISCORD_WEBHOOK=TEST_DISCORD_WEBHOOK:latest,TEST_MODE=TEST_MODE:latest,ALPACA_PAPER_TRADING=ALPACA_PAPER_TRADING:latest,ENABLE_EXECUTION=ENABLE_EXECUTION:latest,RISK_PER_TRADE=RISK_PER_TRADE:latest
+    --set-secrets=ALPACA_API_KEY=ALPACA_API_KEY:latest,ALPACA_SECRET_KEY=ALPACA_SECRET_KEY:latest,TEST_DISCORD_WEBHOOK=TEST_DISCORD_WEBHOOK:latest,TEST_MODE=TEST_MODE:latest,ALPACA_PAPER_TRADING=ALPACA_PAPER_TRADING:latest,ENABLE_EXECUTION=ENABLE_EXECUTION:latest,ENABLE_EQUITIES=ENABLE_EQUITIES:latest,RISK_PER_TRADE=RISK_PER_TRADE:latest
 
 # For production with separate crypto/stock webhooks, add:
 # --set-secrets=...,LIVE_CRYPTO_DISCORD_WEBHOOK_URL=LIVE_CRYPTO_DISCORD_WEBHOOK_URL:latest,LIVE_STOCK_DISCORD_WEBHOOK_URL=LIVE_STOCK_DISCORD_WEBHOOK_URL:latest
