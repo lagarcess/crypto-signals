@@ -37,6 +37,8 @@ def pipeline(mock_alpaca, mock_firestore, mock_market_provider):
             "crypto_signals.pipelines.trade_archival.MarketDataProvider",
             return_value=mock_market_provider,
         ),
+        # Patch BigQuery client in the base class to prevent credentials error
+        patch("crypto_signals.pipelines.base.bigquery.Client") as mock_bq,
     ):
         mock_settings.return_value.GOOGLE_CLOUD_PROJECT = "test-project"
 
@@ -46,6 +48,7 @@ def pipeline(mock_alpaca, mock_firestore, mock_market_provider):
         pipe.alpaca = mock_alpaca
         pipe.firestore_client = mock_firestore
         pipe.market_provider = mock_market_provider
+        pipe.bq_client = mock_bq.return_value
 
         return pipe
 

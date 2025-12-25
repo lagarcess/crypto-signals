@@ -40,6 +40,10 @@ def test_active_trade_validation_loop(
     mock_asset_validator = MagicMock()
     mock_asset_validator.get_valid_portfolio.side_effect = lambda s, ac: list(s)
 
+    # Create mock position repository
+    mock_position_repo = MagicMock()
+    mock_position_repo.get_open_positions.return_value = []
+
     # Setup
     with (
         patch("crypto_signals.main.SignalRepository", return_value=mock_repo),
@@ -52,7 +56,10 @@ def test_active_trade_validation_loop(
             "crypto_signals.main.AssetValidationService",
             return_value=mock_asset_validator,
         ),
+        patch("crypto_signals.main.PositionRepository", return_value=mock_position_repo),
+        patch("crypto_signals.main.ExecutionEngine"),
         patch("crypto_signals.main.init_secrets", return_value=True),
+        patch("crypto_signals.main.load_config_from_firestore", return_value=None),
         patch("crypto_signals.main.get_settings") as mock_settings,
         patch("crypto_signals.main.get_stock_data_client"),
         patch("crypto_signals.main.get_crypto_data_client"),
@@ -62,6 +69,9 @@ def test_active_trade_validation_loop(
         mock_settings.return_value.CRYPTO_SYMBOLS = ["BTC/USD"]
         mock_settings.return_value.EQUITY_SYMBOLS = []
         mock_settings.return_value.RATE_LIMIT_DELAY = 0.0
+        # Disable execution and GCP logging to simplify the test
+        mock_settings.return_value.ENABLE_EXECUTION = False
+        mock_settings.return_value.ENABLE_GCP_LOGGING = False
 
         # Mock Repo to return one active signal
         active_sig = MagicMock(spec=Signal)
