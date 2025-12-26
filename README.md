@@ -102,7 +102,7 @@ crypto-signals/
 ├── tests/                         # Comprehensive test suite
 ├── Dockerfile                     # Multi-stage production build
 ├── docker-compose.yml             # Local development setup
-├── DEPLOYMENT.md                  # Cloud deployment guide
+├── DEPLOYMENT.md                  # Quick-start deployment guide
 ├── pyproject.toml                 # Poetry dependencies
 └── README.md                      # This file
 ```
@@ -228,12 +228,24 @@ EQUITY_SYMBOLS: List[str] = [
 
 ## Deployment
 
-See [DEPLOYMENT.md](DEPLOYMENT.md) for comprehensive cloud deployment instructions, including:
-- Google Secret Manager setup
-- Cloud Run deployment
-- Cloud Scheduler configuration
-- Monitoring and alerting
-- Cost optimization strategies
+### Quick Start
+See [DEPLOYMENT.md](DEPLOYMENT.md) for a 5-minute quick-start deployment guide for experienced users.
+
+### Comprehensive Documentation
+For detailed step-by-step deployment instructions, see:
+- **[GCP Deployment Guide](docs/GCP_DEPLOYMENT_GUIDE.md)** - Complete production deployment guide including:
+  - Service account configuration
+  - Secret Manager setup with permission granting
+  - Cloud Scheduler setup for daily 00:01 UTC execution
+  - All environment variables and GitHub configuration
+  - Complete verification procedures
+  
+- **[Troubleshooting Guide](docs/TROUBLESHOOTING.md)** - Common errors and solutions:
+  - Permission denied on secrets
+  - Missing environment variables
+  - Boolean parsing errors
+  - Invalid scheduler URI
+  - Debugging commands and log viewing
 
 ## Development
 
@@ -333,21 +345,31 @@ Verifies:
 
 ## Troubleshooting
 
-### Rate Limit Errors
+For comprehensive troubleshooting of deployment and runtime issues, see the **[Troubleshooting Guide](docs/TROUBLESHOOTING.md)** which covers:
+- Permission denied on secrets
+- Missing environment variables  
+- Boolean parsing errors
+- Cloud Scheduler configuration issues
+- CI/CD deployment failures
+- Debugging commands and log viewing
+
+### Common Local Issues
+
+#### Rate Limit Errors
 
 Increase `RATE_LIMIT_DELAY`:
 ```env
 RATE_LIMIT_DELAY=1.0  # Increase from default 0.5s
 ```
 
-### Memory Issues
+#### Memory Issues
 
 Reduce portfolio size or increase container memory:
 ```bash
 docker-compose up --scale crypto-signals=1 --memory=2g
 ```
 
-### Secret Loading Failures
+#### Secret Loading Failures
 
 Check Secret Manager permissions:
 ```bash
