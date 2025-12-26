@@ -11,15 +11,11 @@ documentation:
 conditions:
   - displayName: "Execution time exceeds 5 minutes"
     conditionThreshold:
-      filter: 'resource.type="cloud_run_job" AND resource.labels.job_name="crypto-signals-job" AND metric.type="run.googleapis.com/job/completed_execution_count"'
+      filter: 'resource.type="cloud_run_job" AND resource.labels.job_name="crypto-signals-job" AND metric.type="run.googleapis.com/job/running_task_attempt_count"'
       comparison: COMPARISON_GT
-      thresholdValue: 300
-      duration: 0s
+      thresholdValue: 0
+      duration: 300s
       aggregations:
         - alignmentPeriod: 60s
-          perSeriesAligner: ALIGN_DELTA
-          crossSeriesReducer: REDUCE_SUM
+          perSeriesAligner: ALIGN_COUNT
 combiner: OR
-alertStrategy:
-  notificationRateLimit:
-    period: 300s

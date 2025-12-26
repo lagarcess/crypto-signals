@@ -19,6 +19,3 @@ conditions:
         - alignmentPeriod: 60s
           perSeriesAligner: ALIGN_MEAN
 combiner: OR
-alertStrategy:
-  notificationRateLimit:
-    period: 300s
