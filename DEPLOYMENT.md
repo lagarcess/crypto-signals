@@ -1,355 +1,264 @@
-# Crypto Sentinel - Cloud Deployment Guide
+# Crypto Sentinel - Deployment Quick Start
 
-## Overview
+**Last Updated:** December 26, 2025
 
-This guide provides comprehensive instructions for deploying Crypto Sentinel to Google Cloud Platform (GCP) with production-ready configurations.
+This is a quick-start guide for deploying Crypto Sentinel to Google Cloud Platform. For detailed step-by-step instructions, see the [Complete GCP Deployment Guide](./docs/GCP_DEPLOYMENT_GUIDE.md).
 
-## Prerequisites
+## 📚 Documentation
 
-1. **GCP Account** with appropriate permissions:
-   - Cloud Run Admin
-   - Secret Manager Admin
-   - Firestore User
-   - BigQuery Admin
-   - Artifact Registry Writer
+- **[Complete GCP Deployment Guide](./docs/GCP_DEPLOYMENT_GUIDE.md)** - Comprehensive deployment instructions with all production details
+- **[Troubleshooting Guide](./docs/TROUBLESHOOTING.md)** - Common errors and solutions from production deployment
+- **[GitHub Workflow](./.github/workflows/deploy.yml)** - Automated CI/CD configuration
 
-2. **Local Tools**:
-   - Docker
-   - gcloud CLI
-   - git
+---
 
-3. **API Credentials**:
-   - Alpaca API Key and Secret
-   - Discord Webhook URL
+## 🚀 Quick Deployment (5 Minutes)
 
-## Setup Instructions
+For users already familiar with GCP and have the prerequisites ready.
 
-### 1. Configure Google Secret Manager
+### Prerequisites
 
-Store all sensitive credentials in Secret Manager before deployment:
+- ✅ GCP project with billing enabled
+- ✅ `gcloud` CLI installed and authenticated
+- ✅ Alpaca API credentials (paper or live)
+- ✅ Discord webhook URLs
+- ✅ GitHub repository admin access
+
+### Fast-Track Commands
 
 ```bash
-# Set your project ID
+# 1. Set project variables
 export GCP_PROJECT="your-project-id"
+export SERVICE_ACCOUNT="crypto-bot-admin@${GCP_PROJECT}.iam.gserviceaccount.com"
 gcloud config set project $GCP_PROJECT
 
-# Create secrets in Secret Manager
-echo -n "your-alpaca-api-key" | gcloud secrets create ALPACA_API_KEY --data-file=-
-echo -n "your-alpaca-secret-key" | gcloud secrets create ALPACA_SECRET_KEY --data-file=-
-echo -n "$GCP_PROJECT" | gcloud secrets create GOOGLE_CLOUD_PROJECT --data-file=-
-echo -n "true" | gcloud secrets create ALPACA_PAPER_TRADING --data-file=-
+# 2. Enable APIs
+gcloud services enable run.googleapis.com secretmanager.googleapis.com \
+    firestore.googleapis.com cloudscheduler.googleapis.com \
+    artifactregistry.googleapis.com logging.googleapis.com bigquery.googleapis.com
 
-# Discord Webhooks (Multi-destination Routing)
-echo -n "your-test-discord-webhook" | gcloud secrets create TEST_DISCORD_WEBHOOK --data-file=-
-echo -n "true" | gcloud secrets create TEST_MODE --data-file=-  # Set to 'false' for production
-echo -n "false" | gcloud secrets create ENABLE_EQUITIES --data-file=- # Set to 'true' to enable stocks
+# 3. Create infrastructure
+gcloud artifacts repositories create crypto-signals \
+    --repository-format=docker --location=us-central1
+gcloud firestore databases create --location=nam5 --type=firestore-native
+bq mk --dataset --location=US ${GCP_PROJECT}:crypto_signals
 
-# Production webhooks (required when TEST_MODE=false)
-# echo -n "your-crypto-discord-webhook" | gcloud secrets create LIVE_CRYPTO_DISCORD_WEBHOOK_URL --data-file=-
-# echo -n "your-stock-discord-webhook" | gcloud secrets create LIVE_STOCK_DISCORD_WEBHOOK_URL --data-file=-
+# 4. Create service account
+gcloud iam service-accounts create crypto-bot-admin \
+    --display-name="Crypto Sentinel Bot Admin"
 
-# Execution Engine Configuration (Optional - Paper Trading Only)
-# IMPORTANT: ALPACA_PAPER_TRADING must be 'true' for execution to work
-echo -n "false" | gcloud secrets create ENABLE_EXECUTION --data-file=-  # Set to 'true' to enable order submission
-echo -n "100.0" | gcloud secrets create RISK_PER_TRADE --data-file=-    # Fixed dollar risk per trade
+# 5. Grant permissions
+for ROLE in run.invoker datastore.user bigquery.dataEditor bigquery.jobUser logging.logWriter; do
+  gcloud projects add-iam-policy-binding $GCP_PROJECT \
+    --member="serviceAccount:${SERVICE_ACCOUNT}" --role="roles/${ROLE}"
+done
 
-# Verify secrets
-gcloud secrets list
-```
+# 6. Create secrets (use echo -n to avoid newlines!)
+echo -n "YOUR_ALPACA_API_KEY" | gcloud secrets create ALPACA_API_KEY --data-file=-
+echo -n "YOUR_ALPACA_SECRET_KEY" | gcloud secrets create ALPACA_SECRET_KEY --data-file=-
+echo -n "YOUR_TEST_WEBHOOK" | gcloud secrets create TEST_DISCORD_WEBHOOK --data-file=-
+echo -n "YOUR_CRYPTO_WEBHOOK" | gcloud secrets create LIVE_CRYPTO_DISCORD_WEBHOOK_URL --data-file=-
+echo -n "YOUR_STOCK_WEBHOOK" | gcloud secrets create LIVE_STOCK_DISCORD_WEBHOOK_URL --data-file=-
 
-> **⚠️ SAFETY REQUIREMENT**: The execution engine will only submit orders when BOTH conditions are met:
-> 1. `ALPACA_PAPER_TRADING=true` (mandatory safety guard)
-> 2. `ENABLE_EXECUTION=true` (explicit opt-in)
+# 7. Grant secret access
+for SECRET in ALPACA_API_KEY ALPACA_SECRET_KEY TEST_DISCORD_WEBHOOK \
+    LIVE_CRYPTO_DISCORD_WEBHOOK_URL LIVE_STOCK_DISCORD_WEBHOOK_URL; do
+  gcloud secrets add-iam-policy-binding "$SECRET" \
+    --member="serviceAccount:${SERVICE_ACCOUNT}" \
+    --role="roles/secretmanager.secretAccessor"
+done
 
-### 2. Continuous Deployment (GitHub Actions)
-
-Deployments are now automated via `.github/workflows/deploy.yml`.
-
-Configure the following GitHub Secrets:
-- `GCP_CREDENTIALS`: Service account JSON (entire JSON content)
-- `GCP_PROJECT_ID`: Target GCP project ID
-- `GAR_REPOSITORY`: Artifact Registry path (e.g., `us-central1-docker.pkg.dev/my-project/crypto-signals/crypto-signals`)
-
-Pipeline steps on `main` branch:
-1. Authenticate to GCP with `GCP_CREDENTIALS`
-2. Build and tag the Docker image
-3. Push to the Artifact Registry repository
-4. Update the Cloud Run Job image (`crypto-signals-job`) in `us-central1`
-
-### 3. Deploy to Cloud Run (Scheduled Job)
-
-```bash
-# Create Cloud Run Job
+# 8. Create placeholder Cloud Run job
 gcloud run jobs create crypto-signals-job \
-    --image=us-central1-docker.pkg.dev/$GCP_PROJECT/crypto-signals/crypto-signals:latest \
     --region=us-central1 \
-    --max-retries=1 \
-    --task-timeout=10m \
-    --memory=1Gi \
-    --cpu=1 \
-    --set-env-vars=GOOGLE_CLOUD_PROJECT=$GCP_PROJECT \
-    --set-secrets=ALPACA_API_KEY=ALPACA_API_KEY:latest,ALPACA_SECRET_KEY=ALPACA_SECRET_KEY:latest,TEST_DISCORD_WEBHOOK=TEST_DISCORD_WEBHOOK:latest,TEST_MODE=TEST_MODE:latest,ALPACA_PAPER_TRADING=ALPACA_PAPER_TRADING:latest,ENABLE_EXECUTION=ENABLE_EXECUTION:latest,ENABLE_EQUITIES=ENABLE_EQUITIES:latest,RISK_PER_TRADE=RISK_PER_TRADE:latest
+    --image=us-docker.pkg.dev/cloudrun/container/placeholder \
+    --service-account="${SERVICE_ACCOUNT}" \
+    --set-env-vars="GOOGLE_CLOUD_PROJECT=${GCP_PROJECT}"
 
-# For production with separate crypto/stock webhooks, add:
-# --set-secrets=...,LIVE_CRYPTO_DISCORD_WEBHOOK_URL=LIVE_CRYPTO_DISCORD_WEBHOOK_URL:latest,LIVE_STOCK_DISCORD_WEBHOOK_URL=LIVE_STOCK_DISCORD_WEBHOOK_URL:latest
-
-# Test the job manually
-gcloud run jobs execute crypto-signals-job --region=us-central1
-```
-
-### 4. Schedule with Cloud Scheduler
-
-```bash
-# Enable Cloud Scheduler API
-gcloud services enable cloudscheduler.googleapis.com
-
-# Create scheduler job (runs daily at 9 AM UTC)
+# 9. Create Cloud Scheduler (daily at 00:01 UTC)
 gcloud scheduler jobs create http crypto-signals-daily \
     --location=us-central1 \
-    --schedule="0 9 * * *" \
-    --uri="https://us-central1-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/$GCP_PROJECT/jobs/crypto-signals-job:run" \
+    --schedule="1 0 * * *" \
+    --time-zone="UTC" \
+    --uri="https://run.googleapis.com/v1/projects/${GCP_PROJECT}/locations/us-central1/jobs/crypto-signals-job:run" \
     --http-method=POST \
-    --oauth-service-account-email=$GCP_PROJECT@appspot.gserviceaccount.com
+    --oauth-service-account-email="${SERVICE_ACCOUNT}" \
+    --description="Capture daily crypto candle closes at 00:01 UTC"
+
+# 10. Create service account key for GitHub
+gcloud iam service-accounts keys create ~/crypto-bot-key.json \
+    --iam-account="${SERVICE_ACCOUNT}"
+cat ~/crypto-bot-key.json  # Copy this to GitHub Secrets
+rm ~/crypto-bot-key.json
+
+echo "✅ GCP infrastructure setup complete!"
+echo "Next: Configure GitHub Secrets and Variables (see docs/GCP_DEPLOYMENT_GUIDE.md#6-github-repository-configuration)"
 ```
 
-### 5. Configure Firestore
+---
+
+## 🔧 GitHub Configuration
+
+### Required Secrets
+
+Go to **Settings → Secrets and variables → Actions → Repository secrets**:
+
+| Secret | Value |
+|--------|-------|
+| `GOOGLE_APPLICATION_CREDENTIALS` | Service account JSON key (from step 10 above) |
+| `GAR_REPOSITORY` | `us-central1-docker.pkg.dev/PROJECT-ID/crypto-signals/crypto-signals` |
+| `ALPACA_API_KEY` | Your Alpaca API key |
+| `ALPACA_SECRET_KEY` | Your Alpaca secret key |
+| `TEST_DISCORD_WEBHOOK` | Test Discord webhook URL |
+| `DISCORD_DEPLOYS` | **NEW** - Deployment notification webhook |
+
+### Required Variables
+
+Go to **Settings → Secrets and variables → Actions → Repository variables**:
+
+| Variable | Value |
+|----------|-------|
+| `GOOGLE_CLOUD_PROJECT` | `your-project-id` |
+| `GCP_REGION` | `us-central1` |
+| `TEST_MODE` | `false` |
+| `ALPACA_PAPER_TRADING` | `true` |
+| `ENABLE_EXECUTION` | `true` |
+| `ENABLE_EQUITIES` | `false` |
+| `ENABLE_GCP_LOGGING` | `true` |
+| `DISABLE_SECRET_MANAGER` | `false` |
+
+---
+
+## ✅ Verification
 
 ```bash
-# Enable Firestore API
-gcloud services enable firestore.googleapis.com
+# Test manual execution
+gcloud run jobs execute crypto-signals-job --region=us-central1 --wait
 
-# Create Firestore database (if not exists)
-gcloud firestore databases create --region=us-central1
+# Test scheduler
+gcloud scheduler jobs run crypto-signals-daily --location=us-central1
+
+# View logs
+gcloud logging read "resource.type=cloud_run_job AND resource.labels.job_name=crypto-signals-job" --limit=20
+
+# Check next scheduled run
+gcloud scheduler jobs describe crypto-signals-daily --location=us-central1
 ```
 
-**Configure Automatic TTL (Recommended):**
+---
 
-The application stores signals with an `expireAt` timestamp field. To enable Google's automatic TTL deletion:
+## 📋 Deployment Overview
 
-1. Go to [Firestore Console](https://console.cloud.google.com/firestore)
-2. Select your database
-3. Click on "Time-to-live" in the left menu
-4. Click "Create TTL policy"
-5. Configure:
-   - Collection ID: `live_signals`
-   - Timestamp field: `expireAt`
-6. Click "Create"
+### Architecture
 
-With automatic TTL enabled, Google will delete expired documents at no extra cost, eliminating the need to run the `cleanup_firestore.py` script.
-
-**Alternative: Manual Cleanup**
-
-If you prefer manual control, skip the TTL policy and schedule the cleanup job:
-
-```bash
-# Create cleanup job
-gcloud run jobs create crypto-signals-cleanup \
-    --image=us-central1-docker.pkg.dev/$GCP_PROJECT/crypto-signals/crypto-signals:latest \
-    --region=us-central1 \
-    --command="python,-m,crypto_signals.scripts.cleanup_firestore" \
-    --max-retries=1 \
-    --task-timeout=5m \
-    --memory=512Mi \
-    --cpu=0.5 \
-    --set-env-vars=GOOGLE_CLOUD_PROJECT=$GCP_PROJECT \
-    --set-secrets=ALPACA_API_KEY=ALPACA_API_KEY:latest,ALPACA_SECRET_KEY=ALPACA_SECRET_KEY:latest
-
-# Schedule cleanup (daily at 2 AM UTC)
-gcloud scheduler jobs create http crypto-signals-cleanup-daily \
-    --location=us-central1 \
-    --schedule="0 2 * * *" \
-    --uri="https://us-central1-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/$GCP_PROJECT/jobs/crypto-signals-cleanup:run" \
-    --http-method=POST \
-    --oauth-service-account-email=$GCP_PROJECT@appspot.gserviceaccount.com
+```
+GitHub Actions (CI/CD)
+    ↓
+Artifact Registry (Docker images)
+    ↓
+Cloud Run Job (executes trading bot)
+    ↓
+├── Secret Manager (credentials)
+├── Firestore (signal storage)
+├── BigQuery (trade analytics)
+└── Discord (notifications)
+    ↑
+Cloud Scheduler (daily 00:01 UTC)
 ```
 
-**Note:** If you have an existing index for cleanup queries, you can remove it after enabling automatic TTL:
+### Workflow
+
+1. **Push to `main` branch** → Triggers GitHub Actions
+2. **CI Job** → Lint, test, security audit
+3. **CD Job** → Build Docker image, push to Artifact Registry, update Cloud Run job
+4. **Cloud Scheduler** → Triggers job daily at 00:01 UTC
+5. **Cloud Run Job** → Analyzes markets, generates signals, executes trades
+6. **Notifications** → Success/failure sent to Discord
+
+---
+
+## 🆘 Troubleshooting
+
+### Common Errors
+
+| Error | Solution |
+|-------|----------|
+| Permission denied on secret | [Grant secretAccessor role](./docs/TROUBLESHOOTING.md#error-1-permission-denied-on-secret) |
+| Missing GOOGLE_CLOUD_PROJECT | [Add environment variable](./docs/TROUBLESHOOTING.md#error-2-missing-google_cloud_project) |
+| Boolean parsing error | [Remove trailing newlines](./docs/TROUBLESHOOTING.md#error-3-boolean-parsing-error) |
+| Missing Docker image name | [Set GAR_REPOSITORY secret](./docs/TROUBLESHOOTING.md#error-4-missing-docker-image-name) |
+| Invalid scheduler URI | [Use correct URI format](./docs/TROUBLESHOOTING.md#error-5-invalid-scheduler-uri) |
+
+**See the complete [Troubleshooting Guide](./docs/TROUBLESHOOTING.md) for detailed solutions.**
+
+### Quick Debug Commands
 
 ```bash
-# List indexes (find the cleanup index ID)
-gcloud firestore indexes composite list
+# View recent errors
+gcloud logging read "resource.type=cloud_run_job AND severity>=ERROR" --limit=10
 
-# Delete the index (optional, after TTL is enabled)
-gcloud firestore indexes composite delete INDEX_ID
-```
-
-### 6. Health Check Setup
-
-```bash
-# Create health check job
-gcloud run jobs create crypto-signals-healthcheck \
-    --image=us-central1-docker.pkg.dev/$GCP_PROJECT/crypto-signals/crypto-signals:latest \
-    --region=us-central1 \
-    --command="python,-m,crypto_signals.scripts.health_check" \
-    --max-retries=0 \
-    --task-timeout=2m \
-    --memory=256Mi \
-    --cpu=0.5 \
-    --set-env-vars=GOOGLE_CLOUD_PROJECT=$GCP_PROJECT \
-    --set-secrets=ALPACA_API_KEY=ALPACA_API_KEY:latest,ALPACA_SECRET_KEY=ALPACA_SECRET_KEY:latest,TEST_DISCORD_WEBHOOK=TEST_DISCORD_WEBHOOK:latest,TEST_MODE=TEST_MODE:latest
-
-# Test health check
-gcloud run jobs execute crypto-signals-healthcheck --region=us-central1
-```
-
-## Local Development
-
-For local testing with Docker:
-
-```bash
-# Create secrets directory
-mkdir -p secrets
-
-# Add your GCP service account key
-cp /path/to/your-service-account-key.json secrets/gcp-key.json
-
-# Create .env file
-cat > .env << EOF
-GOOGLE_CLOUD_PROJECT=your-project-id
-GOOGLE_APPLICATION_CREDENTIALS=./secrets/gcp-key.json
-ALPACA_API_KEY=your-key
-ALPACA_SECRET_KEY=your-secret
-TEST_DISCORD_WEBHOOK=your-test-webhook-url
-TEST_MODE=true
-ALPACA_PAPER_TRADING=true
-DISABLE_SECRET_MANAGER=true
-EOF
-
-# Run with Docker Compose
-docker-compose up
-
-# Or run health check
-docker-compose --profile healthcheck run healthcheck
-```
-
-## Monitoring and Observability
-
-### View Logs
-
-```bash
-# View job execution logs
-gcloud logging read "resource.type=cloud_run_job AND resource.labels.job_name=crypto-signals-job" \
-    --limit=50 \
-    --format=json
-
-# Follow logs in real-time
-gcloud logging tail "resource.type=cloud_run_job AND resource.labels.job_name=crypto-signals-job"
-```
-
-### View Job Executions
-
-```bash
-# List recent executions
-gcloud run jobs executions list \
-    --job=crypto-signals-job \
-    --region=us-central1 \
-    --limit=10
-
-# View execution details
-gcloud run jobs executions describe EXECUTION_NAME \
-    --region=us-central1
-```
-
-### Set Up Alerts
-
-Create alerts in Cloud Monitoring for:
-- Job failures (exit code != 0)
-- Execution time > 5 minutes
-- Memory usage > 80%
-- API rate limit errors
-
-## Security Best Practices
-
-1. **Secret Management**:
-   - Never commit secrets to git
-   - Use Secret Manager for all credentials
-   - Rotate secrets regularly
-
-2. **IAM Permissions**:
-   - Use least privilege principle
-   - Create dedicated service account for Cloud Run
-   - Grant only necessary permissions
-
-3. **Network Security**:
-   - Use VPC Service Controls if available
-   - Enable VPC egress controls
-   - Monitor outbound connections
-
-4. **Container Security**:
-   - Run as non-root user (already configured)
-   - Keep base image updated
-   - Scan images for vulnerabilities
-
-## Cost Optimization
-
-1. **Cloud Run**:
-   - Use minimum CPU/memory needed
-   - Set appropriate timeouts
-   - Schedule jobs during off-peak hours
-
-2. **Firestore**:
-   - Enable TTL for automatic cleanup
-   - Run cleanup job daily
-   - Monitor document counts
-
-3. **BigQuery**:
-   - Use partitioned tables
-   - Set expiration on staging tables
-   - Monitor query costs
-
-## Troubleshooting
-
-### Job Fails to Start
-
-```bash
-# Check job configuration
+# Check job config
 gcloud run jobs describe crypto-signals-job --region=us-central1
 
-# Check secret access
-gcloud secrets versions access latest --secret=ALPACA_API_KEY
+# Verify secrets
+gcloud secrets get-iam-policy ALPACA_API_KEY
 
-# Check service account permissions
-gcloud projects get-iam-policy $GCP_PROJECT
+# List executions
+gcloud run jobs executions list --job=crypto-signals-job --region=us-central1
 ```
 
-### API Rate Limiting
+---
 
-If hitting Alpaca rate limits (200 req/min):
+## 📖 Detailed Documentation
 
-```bash
-# Increase delay between symbols
-gcloud run jobs update crypto-signals-job \
-    --update-env-vars RATE_LIMIT_DELAY=1.0 \
-    --region=us-central1
+For comprehensive deployment instructions:
 
-# Or reduce portfolio size in config
-```
+- **[Complete GCP Deployment Guide](./docs/GCP_DEPLOYMENT_GUIDE.md)** - Step-by-step deployment with all production details including:
+  - Service account configuration
+  - Secret Manager setup with permission granting
+  - Cloud Scheduler configuration for 00:01 UTC
+  - All environment variables and their purposes
+  - Complete verification procedures
 
-### Out of Memory
+- **[Troubleshooting Guide](./docs/TROUBLESHOOTING.md)** - Real production errors and solutions:
+  - 5+ documented errors with full solutions
+  - Debugging commands for each scenario
+  - How to view logs and check status
+  - Common workflow failures
 
-```bash
-# Increase memory allocation
-gcloud run jobs update crypto-signals-job \
-    --memory=2Gi \
-    --region=us-central1
-```
+---
 
-## Rollback Procedure
+## 🔐 Security Best Practices
 
-```bash
-# List previous revisions
-gcloud artifacts docker images list \
-    us-central1-docker.pkg.dev/$GCP_PROJECT/crypto-signals/crypto-signals
+- ✅ Never commit secrets to git
+- ✅ Use `echo -n` when creating secrets (no newlines)
+- ✅ Rotate API keys regularly
+- ✅ Use custom service account (not default)
+- ✅ Grant minimal IAM permissions
+- ✅ Enable GCP logging for audit trail
+- ✅ Use paper trading API in production
 
-# Deploy previous image
-gcloud run jobs update crypto-signals-job \
-    --image=us-central1-docker.pkg.dev/$GCP_PROJECT/crypto-signals/crypto-signals:PREVIOUS_TAG \
-    --region=us-central1
-```
+---
 
-## Additional Resources
+## 💰 Cost Optimization
 
-- [Cloud Run Documentation](https://cloud.google.com/run/docs)
-- [Secret Manager Best Practices](https://cloud.google.com/secret-manager/docs/best-practices)
-- [Firestore TTL Policies](https://cloud.google.com/firestore/docs/ttl)
-- [Alpaca API Documentation](https://alpaca.markets/docs/)
+- **Cloud Run Jobs:** Pay per execution (~$0.01-0.05 per run)
+- **Firestore:** Free tier covers most usage
+- **BigQuery:** Free tier for analytics queries
+- **Secret Manager:** ~$0.06 per secret per month
+- **Estimated Monthly Cost:** $5-15 for daily execution
+
+---
+
+## 📝 Production Deployment Info
+
+**Validated:** December 26, 2025  
+**Service Account:** `crypto-bot-admin@crypto-signal-bot-481500.iam.gserviceaccount.com`  
+**Schedule:** Daily at 00:01 UTC  
+**Region:** us-central1
+
+All deployment steps and troubleshooting scenarios have been validated through actual production deployment.
+
+---
+
+**Need Help?** Check the [Troubleshooting Guide](./docs/TROUBLESHOOTING.md) or open an issue on GitHub.
