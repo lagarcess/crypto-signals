@@ -1,6 +1,6 @@
 # GCP Deployment Guide: Crypto Sentinel
 
-**Last Updated:** December 26, 2025  
+**Last Updated:** December 26, 2025
 **Production Validated:** ✅ December 26, 2025
 
 This guide documents the complete production deployment process for Crypto Sentinel on Google Cloud Platform. All steps have been validated through actual production deployment, including Cloud Scheduler configuration for daily 00:01 UTC execution.
@@ -8,6 +8,7 @@ This guide documents the complete production deployment process for Crypto Senti
 ## Table of Contents
 
 - [Prerequisites](#prerequisites)
+  - [Windows gcloud CLI Setup](#windows-gcloud-cli-setup)
 - [1. GCP Infrastructure Setup](#1-gcp-infrastructure-setup)
   - [1.1. Enable Required APIs](#11-enable-required-apis)
   - [1.2. Create Artifact Registry](#12-create-artifact-registry)
@@ -47,7 +48,7 @@ Before starting the deployment, ensure you have:
    - Project ID (e.g., `crypto-signal-bot-481500`)
 
 2. **Local Tools Installed**
-   - `gcloud` CLI ([Installation Guide](https://cloud.google.com/sdk/docs/install))
+   - `gcloud` CLI (see [Windows Setup](#windows-gcloud-cli-setup) or [Installation Guide](https://cloud.google.com/sdk/docs/install))
    - `git`
    - `docker` (for local testing)
 
@@ -62,6 +63,122 @@ Before starting the deployment, ensure you have:
 5. **GitHub Repository Access**
    - Admin permissions to set Secrets and Variables
    - Ability to create/push to branches
+
+---
+
+### Windows gcloud CLI Setup
+
+This section covers installing and configuring the Google Cloud SDK on Windows.
+
+#### Step 1: Install Google Cloud SDK
+
+**Option A: Using winget (Recommended)**
+
+```powershell
+# Install Google Cloud SDK via winget
+winget install Google.CloudSDK --accept-package-agreements --accept-source-agreements
+```
+
+**Option B: Using the Installer**
+
+1. Download the installer from [Google Cloud SDK](https://cloud.google.com/sdk/docs/install)
+2. Run `GoogleCloudSDKInstaller.exe`
+3. Check the option to **add gcloud to your PATH**
+4. Complete the installation wizard
+
+#### Step 2: Refresh PATH (PowerShell)
+
+After installation, refresh your PATH to use `gcloud` immediately without restarting:
+
+```powershell
+# Refresh PATH in current PowerShell session
+$env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+
+# Verify installation
+gcloud --version
+```
+
+**Expected output:**
+```
+Google Cloud SDK 550.0.0
+bq 2.1.26
+core 2025.12.12
+gcloud-crc32c 1.0.0
+gsutil 5.35
+```
+
+#### Step 3: Authenticate with Google Cloud
+
+```powershell
+# Login to Google Cloud (opens browser)
+gcloud auth login
+```
+
+This opens a browser window:
+1. Sign in with your Google account that has GCP access
+2. Click **Allow** to grant permissions
+3. Return to the terminal - you should see "You are now logged in as [your-email]"
+
+#### Step 4: Set Your Project
+
+```powershell
+# Set your GCP project
+gcloud config set project crypto-signal-bot-481500
+
+# Verify configuration
+gcloud config list
+```
+
+#### Step 5: Running Bash Scripts on Windows
+
+The `scripts/setup_gcp.sh` script is a bash script. On Windows, you have several options:
+
+**Option A: Run Commands Directly in PowerShell**
+
+Instead of running the bash script, execute the gcloud commands directly:
+
+```powershell
+# Set project
+gcloud config set project crypto-signal-bot-481500
+
+# Enable APIs
+gcloud services enable `
+    run.googleapis.com `
+    secretmanager.googleapis.com `
+    firestore.googleapis.com `
+    cloudscheduler.googleapis.com `
+    artifactregistry.googleapis.com `
+    logging.googleapis.com `
+    bigquery.googleapis.com
+
+# Create Artifact Registry (skip if exists)
+gcloud artifacts repositories create crypto-signals `
+    --repository-format=docker `
+    --location=us-central1 `
+    --description="Crypto Sentinel Docker images"
+
+# Check Firestore (create if needed via Console)
+gcloud firestore databases describe
+```
+
+**Option B: Use Git Bash**
+
+If you have Git installed, Git Bash can run the script:
+
+```bash
+# In Git Bash terminal
+./scripts/setup_gcp.sh crypto-signal-bot-481500
+```
+
+**Option C: Use WSL (Windows Subsystem for Linux)**
+
+```bash
+# In WSL terminal
+bash scripts/setup_gcp.sh crypto-signal-bot-481500
+```
+
+> [!TIP]
+> For one-time setup, running commands directly in PowerShell is often simpler than setting up bash environments.
 
 ---
 
