@@ -464,6 +464,15 @@ class DiscordClient:
                 f"**Entry**: ${position.entry_fill_price:,.2f} | Qty: {position.qty}"
             )
 
+            # Add slippage info if available
+            if position.entry_slippage_pct is not None:
+                slippage_emoji = "📉" if position.entry_slippage_pct > 0 else "📈"
+                content += f"\n{slippage_emoji} **Entry Slippage**: {position.entry_slippage_pct:+.2f}%"
+
+            # Add broker fees if any
+            if position.commission > 0:
+                content += f"\n💸 **Broker Fees**: ${position.commission:.2f}"
+
             # Use provided asset_class, or fall back to signal's asset_class
             effective_asset_class = (
                 asset_class if asset_class is not None else signal.asset_class

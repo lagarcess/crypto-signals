@@ -1,6 +1,6 @@
 # Crypto Sentinel - Deployment Quick Start
 
-**Last Updated:** December 26, 2025
+**Last Updated:** December 27, 2025
 
 This is a quick-start guide for deploying Crypto Sentinel to Google Cloud Platform. For detailed step-by-step instructions, see the [Complete GCP Deployment Guide](./docs/GCP_DEPLOYMENT_GUIDE.md).
 
@@ -76,16 +76,23 @@ gcloud run jobs create crypto-signals-job \
     --set-env-vars="GOOGLE_CLOUD_PROJECT=${GCP_PROJECT}"
 
 # 9. Create Cloud Scheduler (daily at 00:01 UTC)
+# IMPORTANT: Use the regional endpoint format for v1 API
 gcloud scheduler jobs create http crypto-signals-daily \
     --location=us-central1 \
     --schedule="1 0 * * *" \
     --time-zone="UTC" \
-    --uri="https://run.googleapis.com/v1/projects/${GCP_PROJECT}/locations/us-central1/jobs/crypto-signals-job:run" \
+    --uri="https://us-central1-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${GCP_PROJECT}/jobs/crypto-signals-job:run" \
     --http-method=POST \
     --oauth-service-account-email="${SERVICE_ACCOUNT}" \
     --description="Capture daily crypto candle closes at 00:01 UTC"
 
-# 10. Create service account key for GitHub
+# 10. Grant run.invoker on the Cloud Run job (required for scheduler)
+gcloud run jobs add-iam-policy-binding crypto-signals-job \
+    --region=us-central1 \
+    --member="serviceAccount:${SERVICE_ACCOUNT}" \
+    --role="roles/run.invoker"
+
+# 11. Create service account key for GitHub
 gcloud iam service-accounts keys create ~/crypto-bot-key.json \
     --iam-account="${SERVICE_ACCOUNT}"
 cat ~/crypto-bot-key.json  # Copy this to GitHub Secrets
@@ -252,9 +259,9 @@ For comprehensive deployment instructions:
 
 ## 📝 Production Deployment Info
 
-**Validated:** December 26, 2025  
-**Service Account:** `crypto-bot-admin@crypto-signal-bot-481500.iam.gserviceaccount.com`  
-**Schedule:** Daily at 00:01 UTC  
+**Validated:** December 26, 2025
+**Service Account:** `crypto-bot-admin@crypto-signal-bot-481500.iam.gserviceaccount.com`
+**Schedule:** Daily at 00:01 UTC
 **Region:** us-central1
 
 All deployment steps and troubleshooting scenarios have been validated through actual production deployment.

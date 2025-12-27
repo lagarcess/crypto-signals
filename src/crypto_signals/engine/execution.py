@@ -154,8 +154,8 @@ class ExecutionEngine:
             position = Position(
                 position_id=signal.signal_id,
                 ds=signal.ds,
-                account_id="paper",  # TODO: Fetch from client.get_account().id
-                symbol=signal.symbol,  # Required for emergency closes
+                account_id="paper",  # All trades use paper account; TEST_MODE only controls Discord routing
+                symbol=signal.symbol,
                 signal_id=signal.signal_id,
                 alpaca_order_id=str(order.id),
                 discord_thread_id=signal.discord_thread_id,
@@ -164,9 +164,7 @@ class ExecutionEngine:
                 current_stop_loss=signal.suggested_stop,
                 qty=qty,
                 side=effective_side,
-                # New: Capture target price for slippage calculation
                 target_entry_price=signal.entry_price,
-                # TP/SL leg IDs populated later by sync_position_status
                 tp_order_id=None,
                 sl_order_id=None,
             )
@@ -330,6 +328,20 @@ class ExecutionEngine:
                 if order.filled_avg_price:
                     position.entry_fill_price = float(order.filled_avg_price)
 
+                # Calculate entry slippage
+                if position.target_entry_price and position.target_entry_price > 0:
+                    position.entry_slippage_pct = round(
+                        (position.entry_fill_price - position.target_entry_price)
+                        / position.target_entry_price
+                        * 100,
+                        4,
+                    )
+
+                # Extract commission if available (Alpaca reports fees in 'commission' field)
+                # Handle None values (common in paper trading)
+                if hasattr(order, "commission"):
+                    position.commission = float(order.commission or 0.0)
+
                 # Extract leg IDs from bracket order
                 if hasattr(order, "legs") and order.legs:
                     for leg in order.legs:
@@ -365,6 +377,7 @@ class ExecutionEngine:
                         position.exit_fill_price = float(tp_order.filled_avg_price)
                     if tp_order.filled_at:
                         position.exit_time = tp_order.filled_at
+                    position.exit_reason = ExitReason.TP_HIT
                     logger.info(f"Position {position.position_id} closed via TP")
 
             if position.sl_order_id and position.status != TradeStatus.CLOSED:
@@ -376,7 +389,43 @@ class ExecutionEngine:
                         position.exit_fill_price = float(sl_order.filled_avg_price)
                     if sl_order.filled_at:
                         position.exit_time = sl_order.filled_at
+                    position.exit_reason = ExitReason.STOP_LOSS
                     logger.info(f"Position {position.position_id} closed via SL")
+
+            # -------------------------------------------------------------------------
+            # CALCULATE EXIT METRICS (when position is closed)
+            # -------------------------------------------------------------------------
+            if position.status == TradeStatus.CLOSED:
+                # Calculate trade duration
+                if position.filled_at and position.exit_time:
+                    duration = position.exit_time - position.filled_at
+                    position.trade_duration_seconds = int(duration.total_seconds())
+
+                # Calculate exit slippage (vs target stop or TP level)
+                # High-fidelity: compare against expected exit price
+                if position.exit_fill_price:
+                    target_exit = None
+                    if position.exit_reason == ExitReason.STOP_LOSS:
+                        # For SL, target is the current stop loss price
+                        target_exit = position.current_stop_loss
+                    elif position.exit_reason == ExitReason.TP_HIT:
+                        # For TP, slippage is typically zero (limit order)
+                        # but we still track it for completeness
+                        target_exit = position.exit_fill_price
+                    else:
+                        # Other exits (manual, emergency) - no expected target
+                        target_exit = position.exit_fill_price
+
+                    if target_exit and target_exit > 0:
+                        position.exit_slippage_pct = round(
+                            (position.exit_fill_price - target_exit) / target_exit * 100,
+                            4,
+                        )
+
+                # Update realized PnL
+                pnl_usd, pnl_pct = self._calculate_realized_pnl(position)
+                position.realized_pnl_usd = pnl_usd
+                position.realized_pnl_pct = pnl_pct
 
             # -------------------------------------------------------------------------
             # MANUAL / EXTERNAL EXIT DETECTION
@@ -664,6 +713,57 @@ class ExecutionEngine:
             )
 
         return success
+
+    def _calculate_realized_pnl(self, position: Position) -> tuple[float, float]:
+        """
+        Calculate aggregate realized PnL including all scale-outs.
+
+        This method computes PnL from:
+        1. All scaled-out portions (TP1, TP2 hits)
+        2. Final exit of remaining position (if closed)
+
+        Args:
+            position: The Position to calculate PnL for.
+
+        Returns:
+            Tuple of (pnl_usd, pnl_pct) rounded for display.
+        """
+        entry = position.entry_fill_price
+        exit_price = position.exit_fill_price
+        is_long = position.side == DomainOrderSide.BUY
+
+        if entry is None or entry == 0:
+            return (0.0, 0.0)
+
+        # PnL from scaled-out portions
+        scaled_pnl = 0.0
+        for scale in position.scaled_out_prices:
+            scale_qty = scale.get("qty", 0)
+            scale_price = scale.get("price", entry)
+            if is_long:
+                scaled_pnl += (scale_price - entry) * scale_qty
+            else:
+                scaled_pnl += (entry - scale_price) * scale_qty
+
+        # PnL from final exit (if position is closed)
+        final_pnl = 0.0
+        if exit_price is not None:
+            remaining_qty = position.qty
+            if is_long:
+                final_pnl = (exit_price - entry) * remaining_qty
+            else:
+                final_pnl = (entry - exit_price) * remaining_qty
+
+        pnl_usd = scaled_pnl + final_pnl
+
+        # Calculate percentage based on total position value
+        total_qty = position.original_qty or (position.qty + position.scaled_out_qty)
+        if total_qty > 0:
+            pnl_pct = (pnl_usd / (entry * total_qty)) * 100
+        else:
+            pnl_pct = 0.0
+
+        return (round(pnl_usd, 2), round(pnl_pct, 4))
 
     def close_position_emergency(self, position: Position) -> bool:
         """

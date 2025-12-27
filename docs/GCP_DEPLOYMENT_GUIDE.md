@@ -1,7 +1,7 @@
 # GCP Deployment Guide: Crypto Sentinel
 
-**Last Updated:** December 26, 2025
-**Production Validated:** ✅ December 26, 2025
+**Last Updated:** December 27, 2025
+**Production Validated:** ✅ December 27, 2025
 
 This guide documents the complete production deployment process for Crypto Sentinel on Google Cloud Platform. All steps have been validated through actual production deployment, including Cloud Scheduler configuration for daily 00:01 UTC execution.
 
@@ -502,14 +502,22 @@ Configure Cloud Scheduler to trigger the job daily at 00:01 UTC to capture crypt
 gcloud services enable cloudscheduler.googleapis.com
 
 # Create scheduler job for daily 00:01 UTC execution
+# IMPORTANT: Use the regional endpoint format for v1 API
 gcloud scheduler jobs create http crypto-signals-daily \
     --location=us-central1 \
     --schedule="1 0 * * *" \
     --time-zone="UTC" \
-    --uri="https://run.googleapis.com/v1/projects/${GCP_PROJECT}/locations/us-central1/jobs/crypto-signals-job:run" \
+    --uri="https://us-central1-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${GCP_PROJECT}/jobs/crypto-signals-job:run" \
     --http-method=POST \
     --oauth-service-account-email="${SERVICE_ACCOUNT}" \
     --description="Capture daily crypto candle closes at 00:01 UTC"
+
+# REQUIRED: Grant run.invoker on the Cloud Run job itself
+# Without this, the scheduler will fail with status code 5 (NOT_FOUND)
+gcloud run jobs add-iam-policy-binding crypto-signals-job \
+    --region=us-central1 \
+    --member="serviceAccount:${SERVICE_ACCOUNT}" \
+    --role="roles/run.invoker"
 ```
 
 **Cron Schedule Explained:**
@@ -535,15 +543,18 @@ gcloud scheduler jobs create http crypto-signals-daily \
 
 ⚠️ **URI Format is Critical:**
 
-**Correct format (uses `run.googleapis.com`):**
+**Correct format (uses regional endpoint for v1 API):**
+```
+https://{REGION}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/{PROJECT-ID}/jobs/{JOB-NAME}:run
+```
+
+**Incorrect format (will fail with status code 5 NOT_FOUND):**
 ```
 https://run.googleapis.com/v1/projects/{PROJECT-ID}/locations/{REGION}/jobs/{JOB-NAME}:run
 ```
 
-**Incorrect format (will fail with `INVALID_ARGUMENT`):**
-```
-https://us-central1-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/...
-```
+> [!IMPORTANT]
+> You must also grant `roles/run.invoker` on the Cloud Run job itself (not just at the project level). Without this, the scheduler trigger will fail with `status.code: 5` (NOT_FOUND).
 
 See [Troubleshooting Guide](./TROUBLESHOOTING.md#error-5-invalid-scheduler-uri) for details.
 
