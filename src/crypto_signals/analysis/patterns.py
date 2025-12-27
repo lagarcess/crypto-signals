@@ -271,6 +271,17 @@ class PatternAnalyzer:
         # ============================================================
         # HIGH-PROBABILITY BULLISH PATTERNS (NEW)
         # ============================================================
+        # 1. Calculate shapes first (Raw detection)
+        self.df["is_dragonfly_doji"] = self._detect_dragonfly_doji()
+        self.df["is_bullish_belt_hold"] = self._detect_bullish_belt_hold()
+        self.df["is_bullish_harami"] = self._detect_bullish_harami()
+        self.df["is_bullish_kicker"] = self._detect_bullish_kicker()
+        self.df["is_three_inside_up"] = self._detect_three_inside_up()
+        self.df["is_rising_three_methods"] = self._detect_rising_three_methods()
+        self.df["is_falling_wedge"] = self._detect_falling_wedge()
+        self.df["is_inverse_head_shoulders"] = self._detect_inverse_head_shoulders()
+
+        # 2. Apply Confluence Filters
 
         # DRAGONFLY DOJI (65% success rate)
         # Single-candle reversal at support with RSI/BB confluence
@@ -1244,6 +1255,7 @@ class PatternAnalyzer:
             return slope
 
         # Rolling slope of highs and lows
+        # Use apply over the series
         high_slope = self.df["high"].rolling(window=lookback).apply(calc_slope, raw=False)
         low_slope = self.df["low"].rolling(window=lookback).apply(calc_slope, raw=False)
 

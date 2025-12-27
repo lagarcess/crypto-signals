@@ -134,6 +134,23 @@ class SignalGenerator:
             pattern_name = "BULLISH_MARUBOZU"
         elif latest.get("tweezer_bottoms"):
             pattern_name = "TWEEZER_BOTTOMS"
+        # HIGH-PROBABILITY BULLISH PATTERNS (NEW)
+        elif latest.get("inverse_head_shoulders"):
+            pattern_name = "INVERSE_HEAD_SHOULDERS"  # 89% success
+        elif latest.get("bullish_kicker"):
+            pattern_name = "BULLISH_KICKER"  # 75% success
+        elif latest.get("falling_wedge"):
+            pattern_name = "FALLING_WEDGE"  # 74% success
+        elif latest.get("rising_three_methods"):
+            pattern_name = "RISING_THREE_METHODS"  # 70% success
+        elif latest.get("three_inside_up"):
+            pattern_name = "THREE_INSIDE_UP"  # 65% success
+        elif latest.get("dragonfly_doji"):
+            pattern_name = "DRAGONFLY_DOJI"  # 65% success
+        elif latest.get("bullish_belt_hold"):
+            pattern_name = "BULLISH_BELT_HOLD"  # 60% success
+        elif latest.get("bullish_harami"):
+            pattern_name = "BULLISH_HARAMI"  # 53% success
 
         if not pattern_name:
             return None
