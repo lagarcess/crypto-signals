@@ -207,7 +207,6 @@ class PatternAnalyzer:
         )
 
         # MARUBOZU
-        # MARUBOZU
         # Strict Rule: Close > Upper Keltner Channel (Breakout)
         keltner_breakout = False
         keltner_col = "KCUe_20_2.0"  # Default pandas-ta naming for EMA basis

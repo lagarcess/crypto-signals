@@ -11,6 +11,64 @@ from loguru import logger
 from pydantic import ValidationError
 
 
+class JobLockRepository:
+    """Repository for managing distributed job locks."""
+
+    def __init__(self):
+        """Initialize Firestore client."""
+        settings = get_settings()
+        self.db = firestore.Client(project=settings.GOOGLE_CLOUD_PROJECT)
+        self.collection_name = "job_locks"
+
+    def acquire_lock(self, job_id: str, ttl_minutes: int = 10) -> bool:
+        """
+        Attempt to acquire a distributed lock.
+
+        Args:
+            job_id: Unique identifier for the job (e.g., 'signal_generation_cron').
+            ttl_minutes: Time-to-live for the lock in minutes.
+
+        Returns:
+            bool: True if lock acquired, False if already held by another valid instance.
+        """
+        doc_ref = self.db.collection(self.collection_name).document(job_id)
+
+        @firestore.transactional
+        def _acquire_in_transaction(transaction):
+            snapshot = doc_ref.get(transaction=transaction)
+            now = datetime.now(timezone.utc)
+
+            if snapshot.exists:
+                data = snapshot.to_dict()
+                expire_at = data.get("expire_at")
+                # Ensure we handle timezone-aware datetimes correctly
+                if expire_at:
+                    if expire_at > now:
+                        return False  # Lock still valid
+
+            # Create or overwrite lock
+            new_expiry = now + timedelta(minutes=ttl_minutes)
+            transaction.set(
+                doc_ref,
+                {"locked_at": now, "expire_at": new_expiry, "job_id": job_id},
+            )
+            return True
+
+        try:
+            return _acquire_in_transaction(self.db.transaction())
+        except Exception as e:
+            logger.error(f"Failed to acquire lock for {job_id}: {e}")
+            return False
+
+    def release_lock(self, job_id: str) -> None:
+        """Release the job lock."""
+        try:
+            self.db.collection(self.collection_name).document(job_id).delete()
+            logger.info(f"Released lock for {job_id}")
+        except Exception as e:
+            logger.error(f"Failed to release lock for {job_id}: {e}")
+
+
 class SignalRepository:
     """Repository for storing signals in Firestore."""
 
@@ -20,10 +78,14 @@ class SignalRepository:
         self.db = firestore.Client(project=settings.GOOGLE_CLOUD_PROJECT)
         self.collection_name = "live_signals"
 
+    DEFAULT_TTL_DAYS = 30
+
     def save(self, signal: Signal) -> None:
         """Save a signal to Firestore with 30-day TTL."""
         signal_data = signal.model_dump(mode="json")
-        signal_data["expireAt"] = datetime.now(timezone.utc) + timedelta(days=30)
+        signal_data["expireAt"] = datetime.now(timezone.utc) + timedelta(
+            days=self.DEFAULT_TTL_DAYS
+        )
 
         doc_ref = self.db.collection(self.collection_name).document(signal.signal_id)
         doc_ref.set(signal_data)
@@ -122,11 +184,20 @@ class SignalRepository:
 
     def cleanup_expired_signals(self, days_old: int = 30) -> int:
         """Delete signals older than specified days. Returns count deleted."""
-        cutoff_date = datetime.now(timezone.utc) - timedelta(days=days_old)
-        logger.info(f"Cleaning up signals before {cutoff_date}")
+        # Calculate cutoff based on expireAt (which is Creation + TTL)
+        # We want to find docs where: creation < Now - days_old
+        # Substitute creation = expireAt - TTL
+        # expireAt - TTL < Now - days_old
+        # expireAt < Now + (TTL - days_old)
+        threshold_offset = self.DEFAULT_TTL_DAYS - days_old
+        cutoff_date = datetime.now(timezone.utc) + timedelta(days=threshold_offset)
+
+        logger.info(
+            f"Cleaning up signals with expireAt before {cutoff_date} (effectively older than {days_old} days)"
+        )
 
         query = self.db.collection(self.collection_name).where(
-            filter=FieldFilter("expiration_at", "<", cutoff_date)
+            filter=FieldFilter("expireAt", "<", cutoff_date)
         )
 
         # Batch delete for efficiency

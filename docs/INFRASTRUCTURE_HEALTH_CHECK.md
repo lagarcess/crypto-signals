@@ -10,7 +10,7 @@ Run this single command to verify core components:
 
 ```powershell
 # Windows PowerShell - Set PATH first if needed
-$env:Path = $env:Path + ";C:\Users\garce\AppData\Local\Google\Cloud SDK\google-cloud-sdk\bin"
+$env:Path = $env:Path + ";C:\Users\YOUR_USERNAME\AppData\Local\Google\Cloud SDK\google-cloud-sdk\bin"
 
 # Quick status check
 gcloud config get-value project

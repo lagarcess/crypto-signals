@@ -369,6 +369,9 @@ echo -n "YOUR_ALPACA_SECRET_KEY" | gcloud secrets create ALPACA_SECRET_KEY --dat
 echo -n "https://discord.com/api/webhooks/YOUR_TEST_WEBHOOK" | gcloud secrets create TEST_DISCORD_WEBHOOK --data-file=-
 echo -n "https://discord.com/api/webhooks/YOUR_CRYPTO_WEBHOOK" | gcloud secrets create LIVE_CRYPTO_DISCORD_WEBHOOK_URL --data-file=-
 echo -n "https://discord.com/api/webhooks/YOUR_STOCK_WEBHOOK" | gcloud secrets create LIVE_STOCK_DISCORD_WEBHOOK_URL --data-file=-
+
+# Discord Bot Token (for thread recovery feature)
+echo -n "YOUR_DISCORD_BOT_TOKEN" | gcloud secrets create DISCORD_BOT_TOKEN --data-file=-
 ```
 
 **Verification:**
@@ -393,7 +396,7 @@ Grant the service account permission to access all secrets:
 
 ```bash
 # Grant access to each secret
-for SECRET in ALPACA_API_KEY ALPACA_SECRET_KEY TEST_DISCORD_WEBHOOK LIVE_CRYPTO_DISCORD_WEBHOOK_URL LIVE_STOCK_DISCORD_WEBHOOK_URL; do
+for SECRET in ALPACA_API_KEY ALPACA_SECRET_KEY TEST_DISCORD_WEBHOOK LIVE_CRYPTO_DISCORD_WEBHOOK_URL LIVE_STOCK_DISCORD_WEBHOOK_URL DISCORD_BOT_TOKEN; do
   gcloud secrets add-iam-policy-binding "$SECRET" \
     --member="serviceAccount:${SERVICE_ACCOUNT}" \
     --role="roles/secretmanager.secretAccessor"
@@ -577,6 +580,23 @@ gcloud scheduler jobs pause crypto-signals-daily --location=us-central1
 gcloud scheduler jobs resume crypto-signals-daily --location=us-central1
 ```
 
+**Configure Retry Policy:**
+
+```bash
+# Recommended: 1 retry with 5-minute backoff
+gcloud scheduler jobs update http crypto-signals-daily \
+  --location=us-central1 \
+  --max-retry-attempts=1 \
+  --max-retry-duration=600s \
+  --min-backoff=300s \
+  --max-backoff=300s
+```
+
+**Retry Behavior:**
+- Initial failure → Wait 5 minutes → Retry once
+- Total failure detection time: ~10 minutes
+- Handles transient API/network issues without masking code bugs
+
 ---
 
 ## 6. GitHub Repository Configuration
@@ -643,6 +663,8 @@ Go to **Settings → Secrets and variables → Actions → Repository variables*
 | `ENABLE_EQUITIES` | `false` | Disable stock trading |
 | `ENABLE_GCP_LOGGING` | `true` | Enable structured logging |
 | `DISABLE_SECRET_MANAGER` | `false` | Use Secret Manager (production) |
+| `DISCORD_CHANNEL_ID_CRYPTO` | `your-crypto-channel-id` | Channel ID for thread recovery (crypto) |
+| `DISCORD_CHANNEL_ID_STOCK` | `your-stock-channel-id` | Channel ID for thread recovery (stocks) |
 
 **Workflow Integration:**
 

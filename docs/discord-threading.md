@@ -28,6 +28,27 @@ If a signal lacks a `discord_thread_id` (due to initial notification failure):
 2. A new thread is created via `discord.send_signal()`
 3. The new thread_id is persisted for future updates
 
+### Thread Recovery (Bot API)
+
+For signals that may have threads but lost the reference, the system uses Discord's Bot API:
+
+1. **On new signal creation**, before creating a new thread:
+   - `discord.find_thread_by_signal_id()` searches active threads in the channel
+   - Searches for threads containing `[signal_id]` in the thread name
+   - If found, reuses the existing thread instead of creating a duplicate
+
+2. **Requirements:**
+   - `DISCORD_BOT_TOKEN` - Bot token with `READ_MESSAGE_HISTORY` permission
+   - `DISCORD_CHANNEL_ID_CRYPTO` - Channel ID for crypto signals
+   - `DISCORD_CHANNEL_ID_STOCK` - Channel ID for stock signals
+
+3. **Channel Type Support:**
+   - **Text Channels** - Uses channel-level `/threads/active` endpoint
+   - **Forum Channels** - Uses guild-level `/guilds/{id}/threads/active` endpoint with parent filtering
+
+> [!NOTE]
+> Thread recovery is optional and gracefully degrades. If bot credentials are missing, the system falls back to creating new threads.
+
 ## Schema Fields
 
 | Model | Field | Description |

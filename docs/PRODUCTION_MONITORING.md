@@ -126,7 +126,7 @@ gcloud firestore fields ttls list --collection-group=live_signals
 
 ```powershell
 # Ensure gcloud is in PATH
-$env:Path = $env:Path + ";C:\Users\garce\AppData\Local\Google\Cloud SDK\google-cloud-sdk\bin"
+$env:Path = $env:Path + ";C:\Users\YOUR_USERNAME\AppData\Local\Google\Cloud SDK\google-cloud-sdk\bin"
 
 # Set project
 gcloud config set project crypto-signal-bot-481500

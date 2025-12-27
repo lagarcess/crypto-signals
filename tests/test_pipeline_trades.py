@@ -1,7 +1,7 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
-from crypto_signals.domain.schemas import Signal, SignalStatus
+from crypto_signals.domain.schemas import SignalStatus
 from crypto_signals.engine.signal_generator import SignalGenerator
 from crypto_signals.main import main
 from crypto_signals.repository.firestore import SignalRepository
@@ -64,7 +64,10 @@ def test_active_trade_validation_loop(
         patch("crypto_signals.main.get_stock_data_client"),
         patch("crypto_signals.main.get_crypto_data_client"),
         patch("crypto_signals.main.get_trading_client"),
+        patch("crypto_signals.main.JobLockRepository") as mock_job_lock,
     ):
+        # Configure JobLock to always succeed
+        mock_job_lock.return_value.acquire_lock.return_value = True
         # Mock settings to have 1 crypto symbol
         mock_settings.return_value.CRYPTO_SYMBOLS = ["BTC/USD"]
         mock_settings.return_value.EQUITY_SYMBOLS = []
@@ -74,9 +77,13 @@ def test_active_trade_validation_loop(
         mock_settings.return_value.ENABLE_GCP_LOGGING = False
 
         # Mock Repo to return one active signal
-        active_sig = MagicMock(spec=Signal)
+        active_sig = MagicMock()
         active_sig.signal_id = "sig_123"
         active_sig.status = SignalStatus.INVALIDATED
+        # We must ensure exit_reason is set to avoid AttributeError if code checks it
+        active_sig.exit_reason = None
+        # Ensure trail logic is skipped
+        active_sig._trail_updated = False
         mock_repo.get_active_signals.return_value = [active_sig]
 
         # Mock Generator to return this signal as invalidated
@@ -99,5 +106,8 @@ def test_active_trade_validation_loop(
         # 2. generator.check_exits should be called
         mock_generator.check_exits.assert_called()
 
-        # 3. repo.update_signal should be called with active_sig
-        mock_repo.update_signal.assert_called_with(active_sig)
+        # 3. repo.update_signal_atomic should be called with active_sig details
+        # Note: exit_reason is only included in updates if it is truthy.
+        mock_repo.update_signal_atomic.assert_called_with(
+            active_sig.signal_id, {"status": active_sig.status.value}
+        )

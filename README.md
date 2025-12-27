@@ -239,7 +239,7 @@ For detailed step-by-step deployment instructions, see:
   - Cloud Scheduler setup for daily 00:01 UTC execution
   - All environment variables and GitHub configuration
   - Complete verification procedures
-  
+
 - **[Troubleshooting Guide](docs/TROUBLESHOOTING.md)** - Common errors and solutions:
   - Permission denied on secrets
   - Missing environment variables
@@ -284,6 +284,37 @@ poetry run pre-commit install
 # Run manually
 poetry run pre-commit run --all-files
 ```
+
+### Pre-Push Hook (Recommended)
+
+**Automatically runs tests before every push** to prevent CI failures.
+
+The pre-push hook is already installed in `.git/hooks/` and will run automatically:
+
+```bash
+git push  # Tests run automatically before push
+```
+
+**Output:**
+```
+🔍 Running pre-push validation...
+📋 Running unit tests...
+237 passed, 13 deselected in 26.33s
+✅ All tests passed - Proceeding with push
+```
+
+**Benefits:**
+- ✅ Catches test failures before they hit CI (~5 min saved per failure)
+- ✅ Runs in ~30 seconds locally vs ~3-5 minutes in CI
+- ✅ Prevents embarrassing CI failures
+
+**To bypass (emergency only):**
+```bash
+git push --no-verify
+```
+
+> [!NOTE]
+> See the [Pre-Push Hook Guide](./docs/PRE_PUSH_HOOK.md) for troubleshooting and customization.
 
 ### Visual Discord Tests
 
@@ -347,7 +378,7 @@ Verifies:
 
 For comprehensive troubleshooting of deployment and runtime issues, see the **[Troubleshooting Guide](docs/TROUBLESHOOTING.md)** which covers:
 - Permission denied on secrets
-- Missing environment variables  
+- Missing environment variables
 - Boolean parsing errors
 - Cloud Scheduler configuration issues
 - CI/CD deployment failures

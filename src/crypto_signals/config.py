@@ -70,6 +70,20 @@ class Settings(BaseSettings):
         description="Discord Webhook URL for live EQUITY signals (required when TEST_MODE=False)",
     )
 
+    # Discord Bot Configuration (for Thread Recovery / Reading)
+    DISCORD_BOT_TOKEN: SecretStr | None = Field(
+        default=None,
+        description="Discord Bot Token for reading threads (optional, enabling recovery)",
+    )
+    DISCORD_CHANNEL_ID_CRYPTO: str | None = Field(
+        default=None,
+        description="Channel ID for Crypto signals (required for recovery)",
+    )
+    DISCORD_CHANNEL_ID_STOCK: str | None = Field(
+        default=None,
+        description="Channel ID for Stock signals (required for recovery)",
+    )
+
     # Environment Mode (defaults to True for safety - all traffic goes to test webhook)
     TEST_MODE: bool = Field(
         default=True,
