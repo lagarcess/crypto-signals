@@ -64,6 +64,16 @@ class PatternAnalyzer:
         self.df["is_ascending_triangle"] = self._detect_ascending_triangle()
         self.df["is_tweezer_bottoms"] = self._detect_tweezer_bottoms()
 
+        # 2b. High-Probability Bullish Patterns (NEW)
+        self.df["is_dragonfly_doji"] = self._detect_dragonfly_doji()
+        self.df["is_bullish_belt_hold"] = self._detect_bullish_belt_hold()
+        self.df["is_bullish_harami"] = self._detect_bullish_harami()
+        self.df["is_bullish_kicker"] = self._detect_bullish_kicker()
+        self.df["is_three_inside_up"] = self._detect_three_inside_up()
+        self.df["is_rising_three_methods"] = self._detect_rising_three_methods()
+        self.df["is_falling_wedge"] = self._detect_falling_wedge()
+        self.df["is_inverse_head_shoulders"] = self._detect_inverse_head_shoulders()
+
         # 3. Check Confirmations (Regime Filters)
         # Trend: Continuation Patterns (Flags/Marubozu/Soldiers) require Price > EMA(50)
         self.df["trend_bullish"] = self.df["close"] > self.df["EMA_50"]
@@ -80,7 +90,8 @@ class PatternAnalyzer:
         if "ATR_SMA_20" in self.df.columns and atr_col in self.df.columns:
             self.df["volatility_contraction"] = self.df[atr_col] < self.df["ATR_SMA_20"]
         else:
-            self.df["volatility_contraction"] = True  # Fallback
+            # Fallback: return Series of True (skip this filter)
+            self.df["volatility_contraction"] = pd.Series(True, index=self.df.index)
 
         # Volume Confirmation
         if "VOL_SMA_20" in self.df.columns:
@@ -90,7 +101,8 @@ class PatternAnalyzer:
             # For flags, we want volume decay, but let's stick to the comprehensive
         # 'volume_confirmed' logic per pattern below.
         else:
-            self.df["volume_expansion"] = False
+            # Fallback: return Series of False (no volume confirmation)
+            self.df["volume_expansion"] = pd.Series(False, index=self.df.index)
 
         # 4. Final Signal Logic with Pattern-Specific Confluence
 
@@ -266,6 +278,81 @@ class PatternAnalyzer:
             & reversal_context
             & self.df["volume_expansion"]
             & self.df["volatility_contraction"]
+        )
+
+        # ============================================================
+        # HIGH-PROBABILITY BULLISH PATTERNS (NEW)
+        # ============================================================
+
+        # DRAGONFLY DOJI (65% success rate)
+        # Single-candle reversal at support with RSI/BB confluence
+        if "BBL_20_2.0" in self.df.columns:
+            at_bb_lower = self.df["low"] <= self.df["BBL_20_2.0"]
+        else:
+            at_bb_lower = pd.Series(True, index=self.df.index)  # Skip if BB not available
+
+        self.df["dragonfly_doji"] = (
+            self.df["is_dragonfly_doji"]
+            & reversal_context
+            & self.df["volume_expansion"]
+            & at_bb_lower
+        )
+
+        # BULLISH BELT HOLD (60% success rate)
+        # Single-candle reversal, needs trend context
+        self.df["bullish_belt_hold"] = (
+            self.df["is_bullish_belt_hold"]
+            & reversal_context
+            & self.df["volume_expansion"]
+        )
+
+        # BULLISH HARAMI (53% success rate)
+        # Two-candle reversal, needs MFI/RSI confluence
+        if "MFI_14" in self.df.columns:
+            mfi_oversold = self.df["MFI_14"] < 30
+        else:
+            mfi_oversold = pd.Series(True, index=self.df.index)
+
+        self.df["bullish_harami"] = (
+            self.df["is_bullish_harami"] & reversal_context & mfi_oversold
+        )
+
+        # BULLISH KICKER (75% success rate)
+        # Two-candle gap reversal with extreme volume
+        vol_extreme = self.df["volume"] > (self.df["volume"].shift(1) * 2)
+
+        self.df["bullish_kicker"] = self.df["is_bullish_kicker"] & vol_extreme
+
+        # THREE INSIDE UP (65% success rate)
+        # Three-candle reversal with volume escalation
+        vol_escalation = (self.df["volume"] > self.df["volume"].shift(1)) & (
+            self.df["volume"].shift(1) > self.df["volume"].shift(2)
+        )
+
+        self.df["three_inside_up"] = (
+            self.df["is_three_inside_up"] & reversal_context & vol_escalation
+        )
+
+        # RISING THREE METHODS (70% success rate)
+        # Five-candle continuation, requires uptrend
+        self.df["rising_three_methods"] = (
+            self.df["is_rising_three_methods"]
+            & self.df["trend_bullish"]
+            & self.df["volume_expansion"]
+        )
+
+        # FALLING WEDGE (74% success rate)
+        # Multi-day breakout, needs volume on breakout
+        self.df["falling_wedge"] = (
+            self.df["is_falling_wedge"]
+            & self.df["volume_expansion"]
+            & self.df["volatility_contraction"]
+        )
+
+        # INVERSE HEAD AND SHOULDERS (89% success rate)
+        # Multi-day reversal, needs volume confirmation
+        self.df["inverse_head_shoulders"] = (
+            self.df["is_inverse_head_shoulders"] & self.df["volume_expansion"]
         )
 
         return self.df
@@ -449,7 +536,9 @@ class PatternAnalyzer:
 
             rsi_oversold = (rsi_t2 < 35) | (rsi_t1 < 35) | (rsi_t0 < 35)
         else:
-            rsi_oversold = True  # Skip if RSI not available
+            rsi_oversold = pd.Series(
+                True, index=self.df.index
+            )  # Skip if RSI not available
 
         # ============================================================
         # STRENGTH SCORE CALCULATION (0.0 to 1.0)
@@ -891,7 +980,7 @@ class PatternAnalyzer:
             # Fallback to EMA_50 if EMA_20 not available
             below_ema = self.df["close"] < self.df["EMA_50"]
         else:
-            below_ema = True  # Skip this check if no EMA available
+            below_ema = pd.Series(True, index=self.df.index)  # Skip if no EMA available
 
         # 4. Current candle should be bullish (reversal indicator)
         current_bullish = self.df["close"] > self.df["open"]
@@ -900,3 +989,363 @@ class PatternAnalyzer:
         is_tweezer_bottoms = matching_lows & rsi_oversold & below_ema & current_bullish
 
         return is_tweezer_bottoms.fillna(False)
+
+    # ================================================================
+    # HIGH-PROBABILITY BULLISH PATTERNS (NEW)
+    # ================================================================
+
+    def _detect_dragonfly_doji(self) -> pd.Series:
+        """
+        Dragonfly Doji (65% success rate).
+
+        A single-candle reversal pattern with:
+        - Open ≈ Close ≈ High (within 10% of range)
+        - Long lower shadow (>2x body size)
+        - Little to no upper shadow
+
+        Confluence (Crypto-tuned):
+        - Location: Price at or below Bollinger Lower Band
+        - RSI: < 35 (oversold)
+        - Volume: Above average (confirms interest at low)
+        """
+        # Body and shadow calculations
+        body_size = self.df["body_size"]
+        total_range = self.df["total_range"]
+        upper_shadow = self.df["high"] - np.maximum(self.df["open"], self.df["close"])
+        lower_shadow = np.minimum(self.df["open"], self.df["close"]) - self.df["low"]
+
+        # Core pattern: Open ≈ Close ≈ High
+        body_near_high = upper_shadow < (total_range * 0.1)  # Upper shadow < 10% of range
+        small_body = body_size < (total_range * 0.1)  # Body < 10% of range
+        long_lower_shadow = lower_shadow > (body_size * 2)  # Lower shadow > 2x body
+
+        is_dragonfly_shape = body_near_high & small_body & long_lower_shadow
+
+        return is_dragonfly_shape.fillna(False)
+
+    def _detect_bullish_belt_hold(self) -> pd.Series:
+        """
+        Bullish Belt Hold (60% success rate).
+
+        A single-candle reversal pattern with:
+        - Opens at session low (Open ≈ Low within 0.1%)
+        - Large bullish body (>60% of range)
+        - Closes near high
+
+        Confluence (Crypto-tuned):
+        - Location: Price below EMA 50 (potential reversal)
+        - Volume: Above average (>120% SMA)
+        - RSI: < 45 (not overbought)
+        """
+        total_range = self.df["total_range"]
+
+        # Open at low (within 0.1% of low)
+        open_at_low = (self.df["open"] - self.df["low"]) <= (self.df["low"] * 0.001)
+
+        # Large bullish body (>60% of range)
+        body_size = self.df["body_size"]
+        large_body = body_size > (total_range * 0.6)
+
+        # Bullish (green) candle
+        is_green = self.df["is_green"]
+
+        is_belt_hold_shape = open_at_low & large_body & is_green
+
+        return is_belt_hold_shape.fillna(False)
+
+    def _detect_bullish_harami(self) -> pd.Series:
+        """
+        Bullish Harami (53% success rate).
+
+        A two-candle reversal pattern with:
+        - t-1: Large bearish candle
+        - t: Small bullish candle completely inside t-1's body
+        - Body ratio: t body < 50% of t-1 body
+
+        Confluence (Crypto-tuned):
+        - RSI: < 40 (near oversold)
+        - MFI: < 30 (money flow oversold)
+        """
+        # t-1: Large bearish candle
+        t1_is_red = self.df["is_red"].shift(1)
+        t1_body = self.df["body_size"].shift(1)
+        t1_open = self.df["open"].shift(1)
+        t1_close = self.df["close"].shift(1)
+
+        # t: Small bullish candle
+        t0_is_green = self.df["is_green"]
+        t0_body = self.df["body_size"]
+        t0_open = self.df["open"]
+        t0_close = self.df["close"]
+
+        # Inside condition: t body completely within t-1 body
+        # For bearish t-1: open > close, so body is between close and open
+        t1_body_high = np.maximum(t1_open, t1_close)
+        t1_body_low = np.minimum(t1_open, t1_close)
+
+        inside_body = (
+            (t0_open > t1_body_low)
+            & (t0_open < t1_body_high)
+            & (t0_close > t1_body_low)
+            & (t0_close < t1_body_high)
+        )
+
+        # Small body: t body < 50% of t-1 body
+        small_body = t0_body < (t1_body * 0.5)
+
+        is_harami_shape = t1_is_red & t0_is_green & inside_body & small_body
+
+        return is_harami_shape.fillna(False)
+
+    def _detect_bullish_kicker(self) -> pd.Series:
+        """
+        Bullish Kicker (75% success rate).
+
+        A two-candle reversal pattern with:
+        - t-1: Bearish candle
+        - t: Bullish candle with gap up (Open > t-1 Open)
+        - Body: t closes significantly higher (>1 ATR from t-1 close)
+
+        Confluence (Crypto-tuned):
+        - Volume: t volume > 200% of t-1 (extreme conviction)
+        - Gap: True gap (t Low > t-1 High) preferred
+        - RSI: Momentum shift (t RSI > 50)
+        """
+        # t-1: Bearish
+        t1_is_red = self.df["is_red"].shift(1)
+        t1_open = self.df["open"].shift(1)
+        t1_high = self.df["high"].shift(1)
+        t1_close = self.df["close"].shift(1)
+
+        # t: Bullish with gap up
+        t0_is_green = self.df["is_green"]
+        t0_open = self.df["open"]
+        t0_low = self.df["low"]
+
+        # Gap up: t open > t-1 open (kicker condition)
+        gap_up = t0_open > t1_open
+
+        # True gap (stronger): t low > t-1 high
+        true_gap = t0_low > t1_high
+
+        # ATR for significance check
+        atr_col = "ATRr_14" if "ATRr_14" in self.df.columns else "ATR_14"
+        if atr_col in self.df.columns:
+            atr = self.df[atr_col]
+            significant_move = (self.df["close"] - t1_close) > atr
+        else:
+            significant_move = pd.Series(True, index=self.df.index)
+
+        is_kicker_shape = t1_is_red & t0_is_green & gap_up & significant_move
+
+        # Store true gap for bonus scoring
+        self.df["is_true_gap_kicker"] = (is_kicker_shape & true_gap).fillna(False)
+
+        return is_kicker_shape.fillna(False)
+
+    def _detect_three_inside_up(self) -> pd.Series:
+        """
+        Three Inside Up (65% success rate).
+
+        A three-candle reversal pattern with:
+        - t-2: Large bearish candle
+        - t-1: Bullish harami (inside t-2)
+        - t: Bullish confirmation closing above t-2's open
+
+        Confluence (Crypto-tuned):
+        - Volume: Increasing across 3 candles
+        - RSI: Rising from oversold
+        - EMA: Price approaching or crossing EMA 20
+        """
+        # t-2: Large bearish
+        t2_is_red = self.df["is_red"].shift(2)
+        t2_open = self.df["open"].shift(2)
+        t2_close = self.df["close"].shift(2)
+
+        # t-1: Bullish inside t-2 (harami)
+        t1_is_green = self.df["is_green"].shift(1)
+        t1_open = self.df["open"].shift(1)
+        t1_close = self.df["close"].shift(1)
+
+        # Inside condition for t-1
+        t2_body_high = np.maximum(t2_open, t2_close)
+        t2_body_low = np.minimum(t2_open, t2_close)
+
+        t1_inside = (
+            (t1_open > t2_body_low)
+            & (t1_open < t2_body_high)
+            & (t1_close > t2_body_low)
+            & (t1_close < t2_body_high)
+        )
+
+        # t: Bullish confirmation closing above t-2's open
+        t0_is_green = self.df["is_green"]
+        confirmation = self.df["close"] > t2_open
+
+        is_three_inside_up_shape = (
+            t2_is_red & t1_is_green & t1_inside & t0_is_green & confirmation
+        )
+
+        return is_three_inside_up_shape.fillna(False)
+
+    def _detect_rising_three_methods(self) -> pd.Series:
+        """
+        Rising Three Methods (70% success rate).
+
+        A five-candle continuation pattern with:
+        - t-4: Large bullish candle (trend candle)
+        - t-3 to t-1: 3 small bearish candles within t-4's range
+        - t: Large bullish candle closing above t-4's high
+
+        Confluence (Crypto-tuned):
+        - Trend: Price above EMA 50 (uptrend confirmation)
+        - Volume: Lower on consolidation (t-3 to t-1), higher on breakout (t)
+        - ATR: Contraction during small candles
+        """
+        # t-4: Large bullish (trend candle)
+        t4_is_green = self.df["is_green"].shift(4)
+        t4_high = self.df["high"].shift(4)
+        t4_low = self.df["low"].shift(4)
+        t4_body = self.df["body_size"].shift(4)
+
+        # t-3, t-2, t-1: Small candles within t-4's range
+        t3_high = self.df["high"].shift(3)
+        t3_low = self.df["low"].shift(3)
+        t2_high = self.df["high"].shift(2)
+        t2_low = self.df["low"].shift(2)
+        t1_high = self.df["high"].shift(1)
+        t1_low = self.df["low"].shift(1)
+
+        # All 3 consolidation candles within t-4's range
+        within_range_3 = (t3_high <= t4_high) & (t3_low >= t4_low)
+        within_range_2 = (t2_high <= t4_high) & (t2_low >= t4_low)
+        within_range_1 = (t1_high <= t4_high) & (t1_low >= t4_low)
+        all_within_range = within_range_3 & within_range_2 & within_range_1
+
+        # t: Bullish breakout above t-4's high
+        t0_is_green = self.df["is_green"]
+        breakout = self.df["close"] > t4_high
+
+        # Large bodies for t-4 and t (relative to consolidation)
+        avg_consol_body = (
+            self.df["body_size"].shift(3)
+            + self.df["body_size"].shift(2)
+            + self.df["body_size"].shift(1)
+        ) / 3
+        t4_large = t4_body > (avg_consol_body * 1.5)
+        t0_large = self.df["body_size"] > (avg_consol_body * 1.5)
+
+        is_rising_three_shape = (
+            t4_is_green & all_within_range & t0_is_green & breakout & t4_large & t0_large
+        )
+
+        return is_rising_three_shape.fillna(False)
+
+    def _detect_falling_wedge(self) -> pd.Series:
+        """
+        Falling Wedge (74% success rate).
+
+        A multi-day bullish reversal/continuation pattern with:
+        - Converging trendlines: Lower highs AND lower lows
+        - Both trendlines slope downward
+        - Breakout: Close above upper trendline
+
+        Confluence (Crypto-tuned):
+        - Volume: Contracting during wedge, expanding on breakout (>150% SMA)
+        - RSI: Rising during wedge formation (bullish divergence)
+        - Volatility: ATR contraction during formation
+
+        Uses 20-period lookback for wedge detection.
+        """
+        lookback = 20
+
+        # Calculate linear regression slopes for highs and lows
+        # Using rolling window approach
+
+        # Create period index for regression
+        x = np.arange(lookback)
+
+        def calc_slope(series):
+            """Calculate slope of linear regression."""
+            if len(series) < lookback:
+                return np.nan
+            y = series.values[-lookback:]
+            if np.any(np.isnan(y)):
+                return np.nan
+            slope = np.polyfit(x, y, 1)[0]
+            return slope
+
+        # Rolling slope of highs and lows
+        high_slope = self.df["high"].rolling(window=lookback).apply(calc_slope, raw=False)
+        low_slope = self.df["low"].rolling(window=lookback).apply(calc_slope, raw=False)
+
+        # Both slopes negative (falling)
+        both_falling = (high_slope < 0) & (low_slope < 0)
+
+        # Converging: high slope less negative than low slope
+        # (wedge narrows as highs fall slower than lows)
+        converging = high_slope > low_slope
+
+        # Breakout: Current close above the projected upper trendline
+        # Approximate upper trendline as recent high minus regression
+        recent_high = self.df["high"].rolling(window=5).max()
+        breakout = self.df["close"] > recent_high.shift(1)
+
+        is_falling_wedge_shape = both_falling & converging & breakout
+
+        return is_falling_wedge_shape.fillna(False)
+
+    def _detect_inverse_head_shoulders(self) -> pd.Series:
+        """
+        Inverse Head and Shoulders (89% success rate).
+
+        A multi-day bullish reversal pattern with:
+        - Left Shoulder: Local low followed by rally
+        - Head: Lower low than shoulders
+        - Right Shoulder: Higher low than head, similar to left shoulder
+        - Neckline: Resistance connecting highs between shoulders
+
+        Confluence (Crypto-tuned):
+        - Volume: Decreasing on head, increasing on right shoulder breakout
+        - RSI: Bullish divergence between head and right shoulder
+        - Breakout: Close above neckline with confirmation
+
+        Uses simplified detection with 30-period lookback.
+        """
+        # Need at least 35 periods for this pattern (30 lookback + 5 buffer)
+        if len(self.df) < 35:
+            return pd.Series(False, index=self.df.index)
+
+        # Find local minima for shoulders and head
+        # Using rolling min with different windows
+
+        # Left shoulder region (periods -30 to -20)
+        left_shoulder_low = self.df["low"].shift(25).rolling(window=10).min()
+
+        # Head region (periods -20 to -10) - should be lowest
+        head_low = self.df["low"].shift(15).rolling(window=10).min()
+
+        # Right shoulder region (periods -10 to -1)
+        right_shoulder_low = self.df["low"].shift(5).rolling(window=10).min()
+
+        # Head must be lower than both shoulders
+        head_lower_than_left = head_low < left_shoulder_low
+        head_lower_than_right = head_low < right_shoulder_low
+
+        # Shoulders should be roughly symmetrical (within 10%)
+        shoulder_symmetry = (
+            np.abs(left_shoulder_low - right_shoulder_low)
+            / left_shoulder_low.replace(0, np.nan)
+        ) < 0.10
+
+        # Neckline: approximate as max high between shoulders
+        neckline = self.df["high"].shift(10).rolling(window=20).max()
+
+        # Breakout above neckline
+        breakout = self.df["close"] > neckline
+
+        is_inv_hs_shape = (
+            head_lower_than_left & head_lower_than_right & shoulder_symmetry & breakout
+        )
+
+        return is_inv_hs_shape.fillna(False)

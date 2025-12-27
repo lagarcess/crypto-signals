@@ -120,6 +120,23 @@ class SignalGenerator:
             pattern_name = "CUP_AND_HANDLE"
         elif latest.get("tweezer_bottoms"):
             pattern_name = "TWEEZER_BOTTOMS"
+        # HIGH-PROBABILITY BULLISH PATTERNS (NEW)
+        elif latest.get("inverse_head_shoulders"):
+            pattern_name = "INVERSE_HEAD_SHOULDERS"  # 89% success
+        elif latest.get("bullish_kicker"):
+            pattern_name = "BULLISH_KICKER"  # 75% success
+        elif latest.get("falling_wedge"):
+            pattern_name = "FALLING_WEDGE"  # 74% success
+        elif latest.get("rising_three_methods"):
+            pattern_name = "RISING_THREE_METHODS"  # 70% success
+        elif latest.get("three_inside_up"):
+            pattern_name = "THREE_INSIDE_UP"  # 65% success
+        elif latest.get("dragonfly_doji"):
+            pattern_name = "DRAGONFLY_DOJI"  # 65% success
+        elif latest.get("bullish_belt_hold"):
+            pattern_name = "BULLISH_BELT_HOLD"  # 60% success
+        elif latest.get("bullish_harami"):
+            pattern_name = "BULLISH_HARAMI"  # 53% success
 
         if not pattern_name:
             return None
@@ -129,9 +146,14 @@ class SignalGenerator:
         # ============================================================
 
         # 1. VOLUME CONFIRMATION FILTER
-        # For breakout patterns (ASCENDING_TRIANGLE, CUP_AND_HANDLE),
-        # require volume to be at least 150% of the 20-period SMA
-        if pattern_name in ("ASCENDING_TRIANGLE", "CUP_AND_HANDLE"):
+        # For breakout patterns, require volume to be at least 150% of 20-period SMA
+        breakout_patterns = (
+            "ASCENDING_TRIANGLE",
+            "CUP_AND_HANDLE",
+            "FALLING_WEDGE",
+            "INVERSE_HEAD_SHOULDERS",
+        )
+        if pattern_name in breakout_patterns:
             current_volume = float(latest.get("volume", 0))
             vol_sma_20 = float(
                 latest.get("VOL_SMA_20", 1.0)

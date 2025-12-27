@@ -736,3 +736,355 @@ class TestTweezerBottoms:
         result = analyzer.check_patterns()
 
         assert bool(result.iloc[-1]["is_tweezer_bottoms"]) is False
+
+
+# ================================================================
+# HIGH-PROBABILITY BULLISH PATTERNS TESTS
+# ================================================================
+
+
+class TestDragonflyDoji:
+    """Tests for Dragonfly Doji pattern detection."""
+
+    @pytest.fixture
+    def base_df(self):
+        """Create dataframe for dragonfly doji testing."""
+        dates = pd.date_range(start="2024-01-01", periods=100, freq="D")
+        df = pd.DataFrame(
+            {
+                "open": 100.0,
+                "high": 105.0,
+                "low": 95.0,
+                "close": 100.0,
+                "volume": 1000.0,
+            },
+            index=dates,
+        )
+        return df
+
+    def test_valid_dragonfly_doji(self, base_df):
+        """Valid dragonfly doji with long lower shadow."""
+        # Open ≈ Close ≈ High, long lower shadow
+        base_df.iloc[-1, base_df.columns.get_loc("open")] = 100.0
+        base_df.iloc[-1, base_df.columns.get_loc("high")] = 100.5  # Near open/close
+        base_df.iloc[-1, base_df.columns.get_loc("low")] = 90.0  # Long lower shadow
+        base_df.iloc[-1, base_df.columns.get_loc("close")] = 100.2
+
+        TechnicalIndicators.add_all_indicators(base_df)
+        base_df["EMA_50"] = 110.0  # Above price - downtrend
+        base_df["RSI_14"] = 30.0
+
+        analyzer = PatternAnalyzer(base_df)
+        result = analyzer.check_patterns()
+
+        assert bool(result.iloc[-1]["is_dragonfly_doji"]) is True
+
+    def test_large_upper_shadow_fails(self, base_df):
+        """Large upper shadow should fail dragonfly doji."""
+        base_df.iloc[-1, base_df.columns.get_loc("open")] = 100.0
+        base_df.iloc[-1, base_df.columns.get_loc("high")] = 110.0  # Large upper shadow
+        base_df.iloc[-1, base_df.columns.get_loc("low")] = 90.0
+        base_df.iloc[-1, base_df.columns.get_loc("close")] = 100.0
+
+        TechnicalIndicators.add_all_indicators(base_df)
+        analyzer = PatternAnalyzer(base_df)
+        result = analyzer.check_patterns()
+
+        assert bool(result.iloc[-1]["is_dragonfly_doji"]) is False
+
+
+class TestBullishBeltHold:
+    """Tests for Bullish Belt Hold pattern detection."""
+
+    @pytest.fixture
+    def base_df(self):
+        """Create dataframe for belt hold testing."""
+        dates = pd.date_range(start="2024-01-01", periods=100, freq="D")
+        df = pd.DataFrame(
+            {
+                "open": 100.0,
+                "high": 105.0,
+                "low": 95.0,
+                "close": 100.0,
+                "volume": 1000.0,
+            },
+            index=dates,
+        )
+        return df
+
+    def test_valid_belt_hold(self, base_df):
+        """Valid belt hold - opens at low, large bullish body."""
+        base_df.iloc[-1, base_df.columns.get_loc("open")] = 95.0  # Open = Low
+        base_df.iloc[-1, base_df.columns.get_loc("high")] = 106.0
+        base_df.iloc[-1, base_df.columns.get_loc("low")] = 95.0
+        base_df.iloc[-1, base_df.columns.get_loc("close")] = 105.0  # Large body
+
+        TechnicalIndicators.add_all_indicators(base_df)
+        base_df["EMA_50"] = 110.0
+
+        analyzer = PatternAnalyzer(base_df)
+        result = analyzer.check_patterns()
+
+        assert bool(result.iloc[-1]["is_bullish_belt_hold"]) is True
+
+    def test_open_not_at_low_fails(self, base_df):
+        """Open not at low should fail belt hold."""
+        base_df.iloc[-1, base_df.columns.get_loc("open")] = 98.0  # Not at low
+        base_df.iloc[-1, base_df.columns.get_loc("high")] = 106.0
+        base_df.iloc[-1, base_df.columns.get_loc("low")] = 95.0
+        base_df.iloc[-1, base_df.columns.get_loc("close")] = 105.0
+
+        TechnicalIndicators.add_all_indicators(base_df)
+        analyzer = PatternAnalyzer(base_df)
+        result = analyzer.check_patterns()
+
+        assert bool(result.iloc[-1]["is_bullish_belt_hold"]) is False
+
+
+class TestBullishHarami:
+    """Tests for Bullish Harami pattern detection."""
+
+    @pytest.fixture
+    def base_df(self):
+        """Create dataframe for harami testing."""
+        dates = pd.date_range(start="2024-01-01", periods=100, freq="D")
+        df = pd.DataFrame(
+            {
+                "open": 100.0,
+                "high": 105.0,
+                "low": 95.0,
+                "close": 100.0,
+                "volume": 1000.0,
+            },
+            index=dates,
+        )
+        return df
+
+    def test_valid_harami(self, base_df):
+        """Valid harami - small bullish inside large bearish."""
+        # t-1: Large bearish
+        base_df.iloc[-2, base_df.columns.get_loc("open")] = 110.0
+        base_df.iloc[-2, base_df.columns.get_loc("high")] = 112.0
+        base_df.iloc[-2, base_df.columns.get_loc("low")] = 98.0
+        base_df.iloc[-2, base_df.columns.get_loc("close")] = 100.0
+
+        # t: Small bullish inside t-1's body
+        base_df.iloc[-1, base_df.columns.get_loc("open")] = 102.0
+        base_df.iloc[-1, base_df.columns.get_loc("high")] = 105.0
+        base_df.iloc[-1, base_df.columns.get_loc("low")] = 101.0
+        base_df.iloc[-1, base_df.columns.get_loc("close")] = 104.0
+
+        TechnicalIndicators.add_all_indicators(base_df)
+        base_df["EMA_50"] = 115.0
+        base_df["RSI_14"] = 35.0
+
+        analyzer = PatternAnalyzer(base_df)
+        result = analyzer.check_patterns()
+
+        assert bool(result.iloc[-1]["is_bullish_harami"]) is True
+
+
+class TestBullishKicker:
+    """Tests for Bullish Kicker pattern detection."""
+
+    @pytest.fixture
+    def base_df(self):
+        """Create dataframe for kicker testing."""
+        dates = pd.date_range(start="2024-01-01", periods=100, freq="D")
+        df = pd.DataFrame(
+            {
+                "open": 100.0,
+                "high": 105.0,
+                "low": 95.0,
+                "close": 100.0,
+                "volume": 1000.0,
+            },
+            index=dates,
+        )
+        return df
+
+    def test_valid_kicker(self, base_df):
+        """Valid kicker - gap up with significant move."""
+        # t-1: Bearish
+        base_df.iloc[-2, base_df.columns.get_loc("open")] = 100.0
+        base_df.iloc[-2, base_df.columns.get_loc("high")] = 102.0
+        base_df.iloc[-2, base_df.columns.get_loc("low")] = 95.0
+        base_df.iloc[-2, base_df.columns.get_loc("close")] = 96.0
+
+        # t: Gap up, bullish
+        base_df.iloc[-1, base_df.columns.get_loc("open")] = 105.0  # Gap above t-1 open
+        base_df.iloc[-1, base_df.columns.get_loc("high")] = 112.0
+        base_df.iloc[-1, base_df.columns.get_loc("low")] = 104.0
+        base_df.iloc[-1, base_df.columns.get_loc("close")] = 110.0
+
+        TechnicalIndicators.add_all_indicators(base_df)
+        base_df["ATRr_14"] = 5.0  # Move > ATR
+
+        analyzer = PatternAnalyzer(base_df)
+        result = analyzer.check_patterns()
+
+        assert bool(result.iloc[-1]["is_bullish_kicker"]) is True
+
+
+class TestThreeInsideUp:
+    """Tests for Three Inside Up pattern detection."""
+
+    @pytest.fixture
+    def base_df(self):
+        """Create dataframe for three inside up testing."""
+        dates = pd.date_range(start="2024-01-01", periods=100, freq="D")
+        df = pd.DataFrame(
+            {
+                "open": 100.0,
+                "high": 105.0,
+                "low": 95.0,
+                "close": 100.0,
+                "volume": 1000.0,
+            },
+            index=dates,
+        )
+        return df
+
+    def test_valid_three_inside_up(self, base_df):
+        """Valid three inside up - harami + confirmation."""
+        # t-2: Large bearish
+        base_df.iloc[-3, base_df.columns.get_loc("open")] = 110.0
+        base_df.iloc[-3, base_df.columns.get_loc("high")] = 112.0
+        base_df.iloc[-3, base_df.columns.get_loc("low")] = 98.0
+        base_df.iloc[-3, base_df.columns.get_loc("close")] = 100.0
+
+        # t-1: Bullish inside t-2 (harami)
+        base_df.iloc[-2, base_df.columns.get_loc("open")] = 102.0
+        base_df.iloc[-2, base_df.columns.get_loc("high")] = 106.0
+        base_df.iloc[-2, base_df.columns.get_loc("low")] = 101.0
+        base_df.iloc[-2, base_df.columns.get_loc("close")] = 105.0
+
+        # t: Bullish confirmation above t-2 open
+        base_df.iloc[-1, base_df.columns.get_loc("open")] = 106.0
+        base_df.iloc[-1, base_df.columns.get_loc("high")] = 115.0
+        base_df.iloc[-1, base_df.columns.get_loc("low")] = 105.0
+        base_df.iloc[-1, base_df.columns.get_loc("close")] = 112.0  # > 110 (t-2 open)
+
+        TechnicalIndicators.add_all_indicators(base_df)
+        base_df["EMA_50"] = 120.0
+        base_df["RSI_14"] = 35.0
+
+        analyzer = PatternAnalyzer(base_df)
+        result = analyzer.check_patterns()
+
+        assert bool(result.iloc[-1]["is_three_inside_up"]) is True
+
+
+class TestRisingThreeMethods:
+    """Tests for Rising Three Methods pattern detection."""
+
+    @pytest.fixture
+    def base_df(self):
+        """Create dataframe for rising three methods testing."""
+        dates = pd.date_range(start="2024-01-01", periods=100, freq="D")
+        df = pd.DataFrame(
+            {
+                "open": 100.0,
+                "high": 105.0,
+                "low": 95.0,
+                "close": 100.0,
+                "volume": 1000.0,
+            },
+            index=dates,
+        )
+        return df
+
+    def test_valid_rising_three(self, base_df):
+        """Valid rising three methods - large bullish, 3 small, large bullish."""
+        # t-4: Large bullish (trend candle)
+        base_df.iloc[-5, base_df.columns.get_loc("open")] = 90.0
+        base_df.iloc[-5, base_df.columns.get_loc("high")] = 105.0
+        base_df.iloc[-5, base_df.columns.get_loc("low")] = 89.0
+        base_df.iloc[-5, base_df.columns.get_loc("close")] = 104.0
+
+        # t-3, t-2, t-1: Small candles within t-4's range
+        for i in [-4, -3, -2]:
+            base_df.iloc[i, base_df.columns.get_loc("open")] = 100.0
+            base_df.iloc[i, base_df.columns.get_loc("high")] = 102.0
+            base_df.iloc[i, base_df.columns.get_loc("low")] = 95.0
+            base_df.iloc[i, base_df.columns.get_loc("close")] = 98.0
+
+        # t: Large bullish above t-4's high
+        base_df.iloc[-1, base_df.columns.get_loc("open")] = 99.0
+        base_df.iloc[-1, base_df.columns.get_loc("high")] = 115.0
+        base_df.iloc[-1, base_df.columns.get_loc("low")] = 98.0
+        base_df.iloc[-1, base_df.columns.get_loc("close")] = 112.0  # > 105
+
+        TechnicalIndicators.add_all_indicators(base_df)
+        base_df["EMA_50"] = 80.0  # Uptrend
+
+        analyzer = PatternAnalyzer(base_df)
+        result = analyzer.check_patterns()
+
+        assert bool(result.iloc[-1]["is_rising_three_methods"]) is True
+
+
+class TestFallingWedge:
+    """Tests for Falling Wedge pattern detection."""
+
+    @pytest.fixture
+    def base_df(self):
+        """Create dataframe for falling wedge testing."""
+        dates = pd.date_range(start="2024-01-01", periods=50, freq="D")
+        df = pd.DataFrame(
+            {
+                "open": 100.0,
+                "high": 105.0,
+                "low": 95.0,
+                "close": 100.0,
+                "volume": 1000.0,
+            },
+            index=dates,
+        )
+        return df
+
+    def test_falling_wedge_insufficient_data(self, base_df):
+        """Should handle insufficient data gracefully."""
+        small_df = base_df.iloc[:10].copy()
+        TechnicalIndicators.add_all_indicators(small_df)
+        small_df["EMA_50"] = 100.0
+        small_df["RSI_14"] = 50.0  # Mock RSI for small df
+
+        analyzer = PatternAnalyzer(small_df)
+        result = analyzer.check_patterns()
+
+        # With only 10 bars, should not detect (needs 20+ for regression)
+        assert bool(result.iloc[-1]["is_falling_wedge"]) is False
+
+
+class TestInverseHeadShoulders:
+    """Tests for Inverse Head and Shoulders pattern detection."""
+
+    @pytest.fixture
+    def base_df(self):
+        """Create dataframe for inverse H&S testing."""
+        dates = pd.date_range(start="2024-01-01", periods=50, freq="D")
+        df = pd.DataFrame(
+            {
+                "open": 100.0,
+                "high": 105.0,
+                "low": 95.0,
+                "close": 100.0,
+                "volume": 1000.0,
+            },
+            index=dates,
+        )
+        return df
+
+    def test_inverse_hs_insufficient_data(self, base_df):
+        """Should handle insufficient data gracefully."""
+        small_df = base_df.iloc[:20].copy()
+        TechnicalIndicators.add_all_indicators(small_df)
+        small_df["EMA_50"] = 100.0
+        small_df["RSI_14"] = 50.0  # Mock RSI for small df
+
+        analyzer = PatternAnalyzer(small_df)
+        result = analyzer.check_patterns()
+
+        # With only 20 bars, should not detect (needs 30+ for pattern)
+        assert bool(result.iloc[-1]["is_inverse_head_shoulders"]) is False
