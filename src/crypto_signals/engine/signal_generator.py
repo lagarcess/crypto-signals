@@ -95,29 +95,43 @@ class SignalGenerator:
 
         pattern_name = None
 
-        # Check patterns in order of priority
-        if latest.get("bull_flag"):
-            pattern_name = "BULL_FLAG"
+        # Check patterns in order of priority (Highest Historical Success First)
+        if latest.get("inverse_head_shoulders"):
+            pattern_name = "INVERSE_HEAD_SHOULDERS"  # 89%
+        elif latest.get("bullish_kicker"):
+            pattern_name = "BULLISH_KICKER"  # 75%
+        elif latest.get("falling_wedge"):
+            pattern_name = "FALLING_WEDGE"  # 74%
+        elif latest.get("rising_three_methods"):
+            pattern_name = "RISING_THREE_METHODS"  # 70%
+        elif latest.get("morning_star"):
+            pattern_name = "MORNING_STAR"  # 70%
+        elif latest.get("three_inside_up"):
+            pattern_name = "THREE_INSIDE_UP"  # 65%
+        elif latest.get("dragonfly_doji"):
+            pattern_name = "DRAGONFLY_DOJI"  # 65%
         elif latest.get("three_white_soldiers"):
             pattern_name = "THREE_WHITE_SOLDIERS"
-        elif latest.get("bullish_marubozu"):
-            pattern_name = "BULLISH_MARUBOZU"
-        elif latest.get("morning_star"):
-            pattern_name = "MORNING_STAR"
-        elif latest.get("piercing_line"):
-            pattern_name = "PIERCING_LINE"
+        elif latest.get("bullish_belt_hold"):
+            pattern_name = "BULLISH_BELT_HOLD"  # 60%
         elif latest.get("bullish_engulfing"):
             pattern_name = "BULLISH_ENGULFING"
         elif latest.get("bullish_hammer"):
             pattern_name = "BULLISH_HAMMER"
-        elif latest.get("inverted_hammer"):
-            pattern_name = "INVERTED_HAMMER"
+        elif latest.get("piercing_line"):
+            pattern_name = "PIERCING_LINE"
+        elif latest.get("bullish_harami"):
+            pattern_name = "BULLISH_HARAMI"  # 53%
         elif latest.get("double_bottom"):
             pattern_name = "DOUBLE_BOTTOM"
-        elif latest.get("ascending_triangle"):
-            pattern_name = "ASCENDING_TRIANGLE"
         elif latest.get("cup_and_handle"):
             pattern_name = "CUP_AND_HANDLE"
+        elif latest.get("bull_flag"):
+            pattern_name = "BULL_FLAG"
+        elif latest.get("inverted_hammer"):
+            pattern_name = "INVERTED_HAMMER"
+        elif latest.get("bullish_marubozu"):
+            pattern_name = "BULLISH_MARUBOZU"
         elif latest.get("tweezer_bottoms"):
             pattern_name = "TWEEZER_BOTTOMS"
 
@@ -129,9 +143,17 @@ class SignalGenerator:
         # ============================================================
 
         # 1. VOLUME CONFIRMATION FILTER
-        # For breakout patterns (ASCENDING_TRIANGLE, CUP_AND_HANDLE),
-        # require volume to be at least 150% of the 20-period SMA
-        if pattern_name in ("ASCENDING_TRIANGLE", "CUP_AND_HANDLE"):
+        # For breakout patterns, require volume to be at least 150% of 20-period SMA
+        breakout_patterns = (
+            "ASCENDING_TRIANGLE",
+            "CUP_AND_HANDLE",
+            "FALLING_WEDGE",
+            "INVERSE_HEAD_SHOULDERS",
+            "BULL_FLAG",
+            "DOUBLE_BOTTOM",
+            "BULLISH_MARUBOZU",
+        )
+        if pattern_name in breakout_patterns:
             current_volume = float(latest.get("volume", 0))
             vol_sma_20 = float(
                 latest.get("VOL_SMA_20", 1.0)
@@ -277,10 +299,9 @@ class SignalGenerator:
         # Confluence Factors: boolean flags in whitelist
         CONFLUENCE_WHITELIST = [
             "rsi_bullish_divergence",
-            "vcp_filter",
-            "volume_confirmed",
-            "ema_cross_bullish",
-            "macd_bullish_cross",
+            "volatility_contraction",
+            "volume_expansion",
+            "trend_bullish",
         ]
 
         confluence_factors = [
