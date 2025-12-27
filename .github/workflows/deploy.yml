@@ -11,6 +11,8 @@ permissions:
 jobs:
   ci:
     runs-on: ubuntu-latest
+    # Skip CI on draft PRs to save resources
+    if: github.event.pull_request.draft == false || github.event_name == 'push'
     env:
       # Bridge GitHub Secrets/Variables for Pydantic config validation during tests
       ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
@@ -46,9 +48,49 @@ jobs:
       - name: Test
         run: PYTHONPATH=src poetry run pytest tests/ --cov=src/crypto_signals --cov-report=term-missing --cov-fail-under=60
 
+  validate-deployment:
+    needs: ci
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    env:
+      IMAGE_BASE: ${{ secrets.GAR_REPOSITORY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up gcloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Create env vars file
+        run: |
+          cat > env_vars.yaml <<EOF
+          TEST_MODE: "${{ vars.TEST_MODE }}"
+          ALPACA_PAPER_TRADING: "${{ vars.ALPACA_PAPER_TRADING }}"
+          ENABLE_EXECUTION: "${{ vars.ENABLE_EXECUTION }}"
+          ENABLE_EQUITIES: "${{ vars.ENABLE_EQUITIES }}"
+          ENABLE_GCP_LOGGING: "${{ vars.ENABLE_GCP_LOGGING }}"
+          DISABLE_SECRET_MANAGER: "${{ vars.DISABLE_SECRET_MANAGER }}"
+          GOOGLE_CLOUD_PROJECT: "${{ vars.GOOGLE_CLOUD_PROJECT }}"
+          DISCORD_CHANNEL_ID_CRYPTO: "${{ vars.DISCORD_CHANNEL_ID_CRYPTO }}"
+          DISCORD_CHANNEL_ID_STOCK: "${{ vars.DISCORD_CHANNEL_ID_STOCK }}"
+          CRYPTO_SYMBOLS: "${{ vars.CRYPTO_SYMBOLS }}"
+          EOF
+
+      - name: Validate deployment config (dry-run)
+        run: |
+          gcloud run jobs update crypto-signals-job \
+            --dry-run \
+            --region=${{ vars.GCP_REGION }} \
+            --env-vars-file=env_vars.yaml
+
   cd:
     needs: ci
-    if: github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     env:
       IMAGE_BASE: ${{ secrets.GAR_REPOSITORY }}
@@ -92,11 +134,24 @@ jobs:
 
       - name: Deploy to Cloud Run Job
         run: |
+          # Create env vars file to handle special characters (slashes in CRYPTO_SYMBOLS)
+          cat > env_vars.yaml <<EOF
+          TEST_MODE: "${{ vars.TEST_MODE }}"
+          ALPACA_PAPER_TRADING: "${{ vars.ALPACA_PAPER_TRADING }}"
+          ENABLE_EXECUTION: "${{ vars.ENABLE_EXECUTION }}"
+          ENABLE_EQUITIES: "${{ vars.ENABLE_EQUITIES }}"
+          ENABLE_GCP_LOGGING: "${{ vars.ENABLE_GCP_LOGGING }}"
+          DISABLE_SECRET_MANAGER: "${{ vars.DISABLE_SECRET_MANAGER }}"
+          GOOGLE_CLOUD_PROJECT: "${{ vars.GOOGLE_CLOUD_PROJECT }}"
+          DISCORD_CHANNEL_ID_CRYPTO: "${{ vars.DISCORD_CHANNEL_ID_CRYPTO }}"
+          DISCORD_CHANNEL_ID_STOCK: "${{ vars.DISCORD_CHANNEL_ID_STOCK }}"
+          CRYPTO_SYMBOLS: "${{ vars.CRYPTO_SYMBOLS }}"
+          EOF
+
           gcloud run jobs update crypto-signals-job \
             --image="${IMAGE_TAG}" \
             --region=${{ vars.GCP_REGION }} \
-            --set-env-vars="TEST_MODE=${{ vars.TEST_MODE }},ALPACA_PAPER_TRADING=${{ vars.ALPACA_PAPER_TRADING }},ENABLE_EXECUTION=${{ vars.ENABLE_EXECUTION }},ENABLE_EQUITIES=${{ vars.ENABLE_EQUITIES }},ENABLE_GCP_LOGGING=${{ vars.ENABLE_GCP_LOGGING }},DISABLE_SECRET_MANAGER=${{ vars.DISABLE_SECRET_MANAGER }},GOOGLE_CLOUD_PROJECT=${{ vars.GOOGLE_CLOUD_PROJECT }},DISCORD_CHANNEL_ID_CRYPTO=${{ vars.DISCORD_CHANNEL_ID_CRYPTO }},DISCORD_CHANNEL_ID_STOCK=${{ vars.DISCORD_CHANNEL_ID_STOCK }}" \
-            --update-env-vars="CRYPTO_SYMBOLS=${{ vars.CRYPTO_SYMBOLS }}" \
+            --env-vars-file=env_vars.yaml \
             --set-secrets="ALPACA_API_KEY=ALPACA_API_KEY:latest,ALPACA_SECRET_KEY=ALPACA_SECRET_KEY:latest,TEST_DISCORD_WEBHOOK=TEST_DISCORD_WEBHOOK:latest,LIVE_CRYPTO_DISCORD_WEBHOOK_URL=LIVE_CRYPTO_DISCORD_WEBHOOK_URL:latest,LIVE_STOCK_DISCORD_WEBHOOK_URL=LIVE_STOCK_DISCORD_WEBHOOK_URL:latest,DISCORD_BOT_TOKEN=DISCORD_BOT_TOKEN:latest"
 
       - name: Notify on success
