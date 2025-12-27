@@ -1,3 +1,4 @@
+[![Deploy](https://github.com/lagarcess/crypto-signals/actions/workflows/deploy.yml/badge.svg)](https://github.com/lagarcess/crypto-signals/actions/workflows/deploy.yml)
 # Crypto Sentinel
 
 **Automated cryptocurrency and equity trading signal generator with cloud-native architecture.**
