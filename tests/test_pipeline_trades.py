@@ -64,7 +64,10 @@ def test_active_trade_validation_loop(
         patch("crypto_signals.main.get_stock_data_client"),
         patch("crypto_signals.main.get_crypto_data_client"),
         patch("crypto_signals.main.get_trading_client"),
+        patch("crypto_signals.main.JobLockRepository") as mock_job_lock,
     ):
+        # Configure JobLock to always succeed
+        mock_job_lock.return_value.acquire_lock.return_value = True
         # Mock settings to have 1 crypto symbol
         mock_settings.return_value.CRYPTO_SYMBOLS = ["BTC/USD"]
         mock_settings.return_value.EQUITY_SYMBOLS = []

@@ -580,6 +580,23 @@ gcloud scheduler jobs pause crypto-signals-daily --location=us-central1
 gcloud scheduler jobs resume crypto-signals-daily --location=us-central1
 ```
 
+**Configure Retry Policy:**
+
+```bash
+# Recommended: 1 retry with 5-minute backoff
+gcloud scheduler jobs update http crypto-signals-daily \
+  --location=us-central1 \
+  --max-retry-attempts=1 \
+  --max-retry-duration=600s \
+  --min-backoff=300s \
+  --max-backoff=300s
+```
+
+**Retry Behavior:**
+- Initial failure → Wait 5 minutes → Retry once
+- Total failure detection time: ~10 minutes
+- Handles transient API/network issues without masking code bugs
+
 ---
 
 ## 6. GitHub Repository Configuration
