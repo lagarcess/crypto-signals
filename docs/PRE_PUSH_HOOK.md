@@ -13,11 +13,12 @@ The pre-push hook automatically runs the full test suite before every `git push`
 
 ## Installation
 
-The hooks are already installed in `.git/hooks/`:
-- `pre-push` - Bash version (Git Bash, WSL, macOS, Linux)
-- `pre-push.ps1` - PowerShell version (Windows)
+The hook is already installed in `.git/hooks/pre-push`.
 
-Git will automatically use the appropriate version based on your shell.
+**Windows:** Uses PowerShell syntax (no bash required)
+**Linux/macOS:** Can use bash or PowerShell version
+
+Git will automatically execute the hook on every push.
 
 ---
 
@@ -89,6 +90,31 @@ If not set:
 ```bash
 git config core.hooksPath .git/hooks
 ```
+
+### Windows: "cannot spawn .git/hooks/pre-push" Error
+
+**Problem:** Git on Windows can't execute bash scripts.
+
+**Solution:** The hook is now PowerShell-based and should work automatically. If you still see this error:
+
+1. Verify the hook file exists:
+   ```powershell
+   Test-Path .git/hooks/pre-push
+   ```
+
+2. Check the first line of the file:
+   ```powershell
+   Get-Content .git/hooks/pre-push -First 1
+   ```
+
+   Should start with: `# Pre-push hook for Windows` (PowerShell comment)
+
+   If it starts with `#!/bin/bash`, the file needs to be recreated with PowerShell syntax.
+
+3. Bypass for this push only:
+   ```bash
+   git push --no-verify
+   ```
 
 ### Tests Failing Locally But Pass in CI
 
