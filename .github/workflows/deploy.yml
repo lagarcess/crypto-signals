@@ -72,13 +72,21 @@ jobs:
 
       - name: Create env vars file
         run: |
+          # Strip whitespace from boolean variables to prevent validation errors
+          TEST_MODE=$(echo "${{ vars.TEST_MODE }}" | xargs)
+          ALPACA_PAPER_TRADING=$(echo "${{ vars.ALPACA_PAPER_TRADING }}" | xargs)
+          ENABLE_EXECUTION=$(echo "${{ vars.ENABLE_EXECUTION }}" | xargs)
+          ENABLE_EQUITIES=$(echo "${{ vars.ENABLE_EQUITIES }}" | xargs)
+          ENABLE_GCP_LOGGING=$(echo "${{ vars.ENABLE_GCP_LOGGING }}" | xargs)
+          DISABLE_SECRET_MANAGER=$(echo "${{ vars.DISABLE_SECRET_MANAGER }}" | xargs)
+
           cat > env_vars.yaml <<EOF
-          TEST_MODE: "${{ vars.TEST_MODE }}"
-          ALPACA_PAPER_TRADING: "${{ vars.ALPACA_PAPER_TRADING }}"
-          ENABLE_EXECUTION: "${{ vars.ENABLE_EXECUTION }}"
-          ENABLE_EQUITIES: "${{ vars.ENABLE_EQUITIES }}"
-          ENABLE_GCP_LOGGING: "${{ vars.ENABLE_GCP_LOGGING }}"
-          DISABLE_SECRET_MANAGER: "${{ vars.DISABLE_SECRET_MANAGER }}"
+          TEST_MODE: "${TEST_MODE}"
+          ALPACA_PAPER_TRADING: "${ALPACA_PAPER_TRADING}"
+          ENABLE_EXECUTION: "${ENABLE_EXECUTION}"
+          ENABLE_EQUITIES: "${ENABLE_EQUITIES}"
+          ENABLE_GCP_LOGGING: "${ENABLE_GCP_LOGGING}"
+          DISABLE_SECRET_MANAGER: "${DISABLE_SECRET_MANAGER}"
           GOOGLE_CLOUD_PROJECT: "${{ vars.GOOGLE_CLOUD_PROJECT }}"
           DISCORD_CHANNEL_ID_CRYPTO: "${{ vars.DISCORD_CHANNEL_ID_CRYPTO }}"
           DISCORD_CHANNEL_ID_STOCK: "${{ vars.DISCORD_CHANNEL_ID_STOCK }}"
@@ -143,14 +151,23 @@ jobs:
 
       - name: Deploy to Cloud Run Job
         run: |
+          # Strip whitespace from boolean variables to prevent Pydantic validation errors
+          # This guards against accidental trailing spaces in GitHub Variables
+          TEST_MODE=$(echo "${{ vars.TEST_MODE }}" | xargs)
+          ALPACA_PAPER_TRADING=$(echo "${{ vars.ALPACA_PAPER_TRADING }}" | xargs)
+          ENABLE_EXECUTION=$(echo "${{ vars.ENABLE_EXECUTION }}" | xargs)
+          ENABLE_EQUITIES=$(echo "${{ vars.ENABLE_EQUITIES }}" | xargs)
+          ENABLE_GCP_LOGGING=$(echo "${{ vars.ENABLE_GCP_LOGGING }}" | xargs)
+          DISABLE_SECRET_MANAGER=$(echo "${{ vars.DISABLE_SECRET_MANAGER }}" | xargs)
+
           # Create env vars file to handle special characters (slashes in CRYPTO_SYMBOLS)
           cat > env_vars.yaml <<EOF
-          TEST_MODE: "${{ vars.TEST_MODE }}"
-          ALPACA_PAPER_TRADING: "${{ vars.ALPACA_PAPER_TRADING }}"
-          ENABLE_EXECUTION: "${{ vars.ENABLE_EXECUTION }}"
-          ENABLE_EQUITIES: "${{ vars.ENABLE_EQUITIES }}"
-          ENABLE_GCP_LOGGING: "${{ vars.ENABLE_GCP_LOGGING }}"
-          DISABLE_SECRET_MANAGER: "${{ vars.DISABLE_SECRET_MANAGER }}"
+          TEST_MODE: "${TEST_MODE}"
+          ALPACA_PAPER_TRADING: "${ALPACA_PAPER_TRADING}"
+          ENABLE_EXECUTION: "${ENABLE_EXECUTION}"
+          ENABLE_EQUITIES: "${ENABLE_EQUITIES}"
+          ENABLE_GCP_LOGGING: "${ENABLE_GCP_LOGGING}"
+          DISABLE_SECRET_MANAGER: "${DISABLE_SECRET_MANAGER}"
           GOOGLE_CLOUD_PROJECT: "${{ vars.GOOGLE_CLOUD_PROJECT }}"
           DISCORD_CHANNEL_ID_CRYPTO: "${{ vars.DISCORD_CHANNEL_ID_CRYPTO }}"
           DISCORD_CHANNEL_ID_STOCK: "${{ vars.DISCORD_CHANNEL_ID_STOCK }}"

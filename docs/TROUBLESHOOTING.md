@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-**Last Updated:** December 26, 2025
+**Last Updated:** December 27, 2025
 
 This guide documents common errors encountered during deployment and operation of Crypto Sentinel on Google Cloud Platform, along with their solutions. All errors listed here were encountered and resolved in production.
 
@@ -12,6 +12,7 @@ This guide documents common errors encountered during deployment and operation o
   - [Error 3: Boolean Parsing Error](#error-3-boolean-parsing-error)
   - [Error 4: Missing Docker Image Name](#error-4-missing-docker-image-name)
   - [Error 5: Invalid Scheduler URI](#error-5-invalid-scheduler-uri)
+  - [Error 6: Scheduler Status Code 5 (NOT_FOUND)](#error-6-scheduler-status-code-5-not_found)
 - [Debugging Commands](#debugging-commands)
   - [View Cloud Run Logs](#view-cloud-run-logs)
   - [Check Scheduler Status](#check-scheduler-status)
@@ -214,23 +215,23 @@ The Cloud Scheduler URI format is incorrect. Must use the newer `run.googleapis.
 Use the correct URI format for Cloud Scheduler:
 
 ```bash
-# CORRECT - uses run.googleapis.com endpoint
+# CORRECT - uses regional endpoint for v1 API
 gcloud scheduler jobs create http crypto-signals-daily \
   --location=us-central1 \
   --schedule="1 0 * * *" \
   --time-zone="UTC" \
-  --uri="https://run.googleapis.com/v1/projects/PROJECT-ID/locations/us-central1/jobs/crypto-signals-job:run" \
+  --uri="https://us-central1-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/PROJECT-ID/jobs/crypto-signals-job:run" \
   --http-method=POST \
   --oauth-service-account-email="SERVICE-ACCOUNT-EMAIL" \
   --description="Capture daily crypto candle closes at 00:01 UTC"
 
-# INCORRECT - uses regional endpoint
-# --uri="https://us-central1-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/PROJECT-ID/jobs/crypto-signals-job:run"
+# INCORRECT - uses wrong endpoint format (will fail with status code 5)
+# --uri="https://run.googleapis.com/v1/projects/PROJECT-ID/locations/us-central1/jobs/crypto-signals-job:run"
 ```
 
 **Correct URI Format:**
 ```
-https://run.googleapis.com/v1/projects/{PROJECT-ID}/locations/{REGION}/jobs/{JOB-NAME}:run
+https://{REGION}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/{PROJECT-ID}/jobs/{JOB-NAME}:run
 ```
 
 **Verification:**
@@ -242,6 +243,56 @@ gcloud scheduler jobs describe crypto-signals-daily --location=us-central1
 # Test scheduler job
 gcloud scheduler jobs run crypto-signals-daily --location=us-central1
 ```
+
+---
+
+### Error 6: Scheduler Status Code 5 (NOT_FOUND)
+
+**Error Message:**
+```
+status:
+  code: 5
+```
+
+**Symptoms:**
+- Cloud Scheduler shows `status.code: 5` after `lastAttemptTime`
+- No Cloud Run job execution is created when scheduler triggers
+- Manual `gcloud scheduler jobs run` completes without error but job doesn't start
+
+**Cause:**
+Two possible causes:
+1. The Cloud Scheduler URI format is incorrect (see [Error 5](#error-5-invalid-scheduler-uri))
+2. The service account does not have `roles/run.invoker` on the Cloud Run **job** itself (project-level permissions are not sufficient)
+
+**Solution:**
+
+Grant `roles/run.invoker` on the Cloud Run job:
+
+```bash
+gcloud run jobs add-iam-policy-binding crypto-signals-job \
+  --region=us-central1 \
+  --member="serviceAccount:crypto-bot-admin@PROJECT-ID.iam.gserviceaccount.com" \
+  --role="roles/run.invoker"
+```
+
+**Verification:**
+
+```bash
+# Check IAM policy on the Cloud Run job
+gcloud run jobs get-iam-policy crypto-signals-job --region=us-central1
+
+# Test scheduler - should now trigger the job
+gcloud scheduler jobs run crypto-signals-daily --location=us-central1
+
+# Wait a few seconds and check for new execution
+gcloud run jobs executions list --job=crypto-signals-job --region=us-central1 --limit=3
+```
+
+**How to distinguish manual vs scheduled runs:**
+
+Look at the `RUN BY` column in executions list:
+- **Manual run**: Shows your email (e.g., `user@gmail.com`)
+- **Scheduled run**: Shows service account (e.g., `crypto-bot-admin@PROJECT.iam.gserviceaccount.com`)
 
 ---
 

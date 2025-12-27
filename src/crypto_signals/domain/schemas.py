@@ -399,6 +399,27 @@ class Position(BaseModel):
         default_factory=list,
         description="History of scale-outs: [{qty, price, timestamp}] for multi-stage PnL.",
     )
+    # === Real-time Analytics Fields ===
+    entry_slippage_pct: Optional[float] = Field(
+        default=None,
+        description="Entry slippage: (entry_fill_price - target_entry_price) / target_entry_price * 100",
+    )
+    exit_slippage_pct: Optional[float] = Field(
+        default=None,
+        description="Exit slippage: (exit_fill_price - target_exit_price) / target_exit_price * 100",
+    )
+    trade_duration_seconds: Optional[int] = Field(
+        default=None,
+        description="Trade duration in seconds from filled_at to exit_time.",
+    )
+    realized_pnl_usd: float = Field(
+        default=0.0,
+        description="Aggregate realized PnL in USD (includes scale-outs). Updated in real-time.",
+    )
+    realized_pnl_pct: float = Field(
+        default=0.0,
+        description="Aggregate realized PnL as percentage of entry. Updated in real-time.",
+    )
 
 
 # =============================================================================

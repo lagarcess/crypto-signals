@@ -23,7 +23,6 @@ from crypto_signals.config import (
 from crypto_signals.domain.schemas import (
     AssetClass,
     ExitReason,
-    OrderSide,
     SignalStatus,
     TradeStatus,
 )
@@ -680,6 +679,7 @@ def main():
                 open_positions = position_repo.get_open_positions()
                 synced_count = 0
                 closed_count = 0
+                slippage_values = []  # Track slippage for summary
 
                 for pos in open_positions:
                     if shutdown_requested:
@@ -720,77 +720,24 @@ def main():
                                 # Fetch associated signal for thread_id
                                 signal_for_pos = repo.get_by_id(updated_pos.signal_id)
                                 if signal_for_pos:
-                                    # Calculate PnL including scaled-out portions
-                                    entry = updated_pos.entry_fill_price
-                                    exit_price = updated_pos.exit_fill_price
-                                    if entry is None or exit_price is None:
-                                        logger.warning(
-                                            "Missing fill prices for position PnL calculation",
-                                            extra={
-                                                "position_id": updated_pos.position_id,
-                                                "entry": entry,
-                                                "exit": exit_price,
-                                            },
-                                        )
-                                        continue
-                                    try:
-                                        entry = float(entry)
-                                        exit_price = float(exit_price)
-                                    except (TypeError, ValueError):
-                                        logger.warning(
-                                            "Non-numeric fill prices for position PnL calculation",
-                                            extra={
-                                                "position_id": updated_pos.position_id,
-                                                "entry": entry,
-                                                "exit": exit_price,
-                                            },
-                                        )
-                                        continue
-                                    is_long = updated_pos.side == OrderSide.BUY
+                                    # Use pre-calculated PnL from sync_position_status()
+                                    pnl_usd = updated_pos.realized_pnl_usd
+                                    pnl_pct = updated_pos.realized_pnl_pct
 
-                                    # PnL from scaled-out portions (TP1, TP2)
-                                    scaled_pnl = 0.0
-                                    for scale in updated_pos.scaled_out_prices:
-                                        scale_qty = scale.get("qty", 0)
-                                        scale_price = scale.get("price", entry)
-                                        if is_long:
-                                            scaled_pnl += (
-                                                scale_price - entry
-                                            ) * scale_qty
-                                        else:
-                                            scaled_pnl += (
-                                                entry - scale_price
-                                            ) * scale_qty
-
-                                    # PnL from final exit (remaining qty)
-                                    remaining_qty = updated_pos.qty
-                                    if is_long:
-                                        final_pnl = (exit_price - entry) * remaining_qty
-                                    else:
-                                        final_pnl = (entry - exit_price) * remaining_qty
-
-                                    # Total PnL
-                                    pnl_usd = scaled_pnl + final_pnl
-                                    total_qty = updated_pos.original_qty or (
-                                        remaining_qty + updated_pos.scaled_out_qty
-                                    )
-                                    pnl_pct = (pnl_usd / (entry * total_qty)) * 100
-
-                                    # Calculate duration
+                                    # Format duration from pre-calculated seconds
                                     duration_str = "N/A"
-                                    if updated_pos.filled_at and updated_pos.exit_time:
-                                        duration = (
-                                            updated_pos.exit_time - updated_pos.filled_at
-                                        )
+                                    if updated_pos.trade_duration_seconds:
                                         hours, remainder = divmod(
-                                            duration.total_seconds(), 3600
+                                            updated_pos.trade_duration_seconds, 3600
                                         )
                                         minutes = remainder // 60
                                         duration_str = f"{int(hours)}h {int(minutes)}m"
 
-                                    # Determine exit reason based on PnL
+                                    # Use actual exit reason from broker sync
                                     exit_reason = (
-                                        "Take Profit" if pnl_usd >= 0 else "Stop Loss"
+                                        updated_pos.exit_reason.value
+                                        if updated_pos.exit_reason
+                                        else "Manual Exit"
                                     )
 
                                     discord.send_trade_close(
@@ -832,6 +779,21 @@ def main():
                                 },
                             )
 
+                            # Log slippage and commission metrics
+                            if updated_pos.entry_slippage_pct is not None:
+                                slippage_values.append(updated_pos.entry_slippage_pct)
+                                logger.info(
+                                    f"Position {updated_pos.position_id} metrics: "
+                                    f"slippage={updated_pos.entry_slippage_pct:+.3f}%, "
+                                    f"commission=${updated_pos.commission:.2f}",
+                                    extra={
+                                        "position_id": updated_pos.position_id,
+                                        "symbol": updated_pos.symbol,
+                                        "entry_slippage_pct": updated_pos.entry_slippage_pct,
+                                        "commission": updated_pos.commission,
+                                    },
+                                )
+
                     except Exception as e:
                         logger.warning(
                             f"Failed to sync position {pos.position_id}: {e}",
@@ -854,12 +816,20 @@ def main():
         # Display Rich execution summary table
         total_duration = time.time() - app_start_time
         console.print()  # Empty line for spacing
+
+        # Calculate average slippage from position sync (if available)
+        avg_slippage = None
+        if settings.ENABLE_EXECUTION and "slippage_values" in dir():
+            if slippage_values:
+                avg_slippage = sum(slippage_values) / len(slippage_values)
+
         summary_table = create_execution_summary_table(
             total_duration=total_duration,
             symbols_processed=symbols_processed,
             total_symbols=len(portfolio_items),
             signals_found=signals_found,
             errors_encountered=errors_encountered,
+            avg_slippage_pct=avg_slippage,
         )
         console.print(summary_table)
         console.print()  # Empty line for spacing

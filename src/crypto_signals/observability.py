@@ -325,6 +325,7 @@ def create_execution_summary_table(
     signals_found: int,
     errors_encountered: int,
     symbol_results: Optional[List[Dict[str, Any]]] = None,
+    avg_slippage_pct: Optional[float] = None,
 ) -> Table:
     """
     Create a Rich table for the execution summary.
@@ -336,6 +337,7 @@ def create_execution_summary_table(
         signals_found: Number of trading signals detected
         errors_encountered: Number of error occurrences
         symbol_results: Optional list of per-symbol results for detailed table
+        avg_slippage_pct: Optional average entry slippage percentage
 
     Returns:
         Rich Table object ready to be printed
@@ -366,6 +368,20 @@ def create_execution_summary_table(
         f"[red]{errors_encountered}[/red]" if errors_encountered > 0 else "0",
     )
     summary_table.add_row("✅ Success Rate", f"{success_rate:.1f}%")
+
+    # Add average slippage if available
+    if avg_slippage_pct is not None:
+        # Color code: green for favorable (negative), red for unfavorable (>0.5%)
+        if avg_slippage_pct > 0.5:
+            slippage_style = "[red]"
+        elif avg_slippage_pct < 0:
+            slippage_style = "[green]"
+        else:
+            slippage_style = "[yellow]"
+        summary_table.add_row(
+            "📉 Avg Entry Slippage",
+            f"{slippage_style}{avg_slippage_pct:+.3f}%[/]",
+        )
 
     return summary_table
 
