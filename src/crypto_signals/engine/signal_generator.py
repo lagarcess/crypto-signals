@@ -114,20 +114,72 @@ class SignalGenerator:
             pattern_name = "INVERTED_HAMMER"
         elif latest.get("double_bottom"):
             pattern_name = "DOUBLE_BOTTOM"
+        elif latest.get("ascending_triangle"):
+            pattern_name = "ASCENDING_TRIANGLE"
+        elif latest.get("cup_and_handle"):
+            pattern_name = "CUP_AND_HANDLE"
+        elif latest.get("tweezer_bottoms"):
+            pattern_name = "TWEEZER_BOTTOMS"
 
         if not pattern_name:
             return None
 
+        # ============================================================
+        # SIGNAL QUALITY FILTERS
+        # ============================================================
+
+        # 1. VOLUME CONFIRMATION FILTER
+        # For breakout patterns (ASCENDING_TRIANGLE, CUP_AND_HANDLE),
+        # require volume to be at least 150% of the 20-period SMA
+        if pattern_name in ("ASCENDING_TRIANGLE", "CUP_AND_HANDLE"):
+            current_volume = float(latest.get("volume", 0))
+            vol_sma_20 = float(
+                latest.get("VOL_SMA_20", 1.0)
+            )  # Default to 1.0 to avoid div/zero
+
+            # Gracefully handle missing volume data
+            if vol_sma_20 <= 0:
+                vol_sma_20 = 1.0
+
+            volume_ratio = current_volume / vol_sma_20 if vol_sma_20 > 0 else 0
+
+            if volume_ratio < 1.5:
+                logger.warning(
+                    f"Signal rejected for {symbol}: {pattern_name} - "
+                    f"Insufficient volume confirmation (ratio: {volume_ratio:.2f}, required: 1.5)"
+                )
+                return None
+
         # 4. Construct Signal
         sig_id = get_deterministic_id(f"{symbol}|{pattern_name}|{latest.name}")
 
-        return self._create_signal(
+        signal = self._create_signal(
             symbol,
             asset_class,
             pattern_name,
             latest,
             sig_id,
         )
+
+        # 2. RISK-TO-REWARD (R:R) FILTER
+        # Discard any signal where the R:R ratio is less than 1.5
+        # This ensures we only take trades with favorable risk profiles
+        if signal.take_profit_1 and signal.suggested_stop and signal.entry_price:
+            potential_profit = abs(signal.take_profit_1 - signal.entry_price)
+            potential_risk = abs(signal.entry_price - signal.suggested_stop)
+
+            # Avoid division by zero
+            if potential_risk > 0:
+                rr_ratio = potential_profit / potential_risk
+
+                if rr_ratio < 1.5:
+                    logger.warning(
+                        f"Signal rejected for {symbol}: {pattern_name} - "
+                        f"Poor R:R ratio ({rr_ratio:.2f}, required: 1.5)"
+                    )
+                    return None
+
+        return signal
 
     def _create_signal(
         self,
@@ -179,8 +231,28 @@ class SignalGenerator:
             suggested_stop = invalidation_price * 0.99  # Marubozu fail is strict
 
         elif pattern_name == "BULL_FLAG":
-            # Below lower channel implies consolidation breakdown.
-            # Use recent low (flag low) as invalidation level.
+            # Pattern-specific exits based on flagpole geometry
+            # Calculate flagpole height from recent price action
+
+            # Get pole high (recent high from rolling 15-day max)
+            # and pole low (start of the move)
+            pole_high = float(latest.get("high", close_price))
+            pole_low = low_price  # Flag consolidation low
+
+            # Estimate flagpole height (use volatility-adjusted calculation)
+            # For Bull Flag, we look at the move that created the pole
+            if "ATRr_14" in latest:
+                # Flagpole is typically 2-4x ATR
+                flagpole_height = max(atr * 3.0, pole_high - pole_low)
+            else:
+                flagpole_height = pole_high - pole_low
+
+            # TP1 = 50% of flagpole height above breakout
+            # TP2 = 100% of flagpole height above breakout
+            take_profit_1 = close_price + (0.5 * flagpole_height)
+            take_profit_2 = close_price + (1.0 * flagpole_height)
+
+            # SL = below lowest low of flag consolidation
             invalidation_price = low_price
             suggested_stop = invalidation_price * 0.99
 

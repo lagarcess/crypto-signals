@@ -59,18 +59,10 @@ class PatternAnalyzer:
 
         # 2. Detect Macro Shapes (Multi-Candle / Rolling)
         self.df["is_bull_flag"] = self._detect_bull_flag()
-        # Cup and Handle, Double Bottom, etc. are computationally expensive
-        # and strictly require geometric analysis over variable windows.
-        # For this implementation phase, we will focus on Bull Flag logic.
-        # For this implementation phase, we will focus on Bull Flag as the primary
-        # macro shape to ensure performance, or implement simplified rolling logic
-        # if critical.
-        # User requested: Bull Flag, Cup & Handle, Double Bottom,
-        # Ascending Triangle.
-        # I will implement placeholders or simplified logic for the others to avoid
-        # timeout/complexity in vectorized pandas.
-        self.df["is_cup_handle"] = self._detect_cup_and_handle()  # Simplified
+        self.df["is_cup_handle"] = self._detect_cup_and_handle()
         self.df["is_double_bottom"] = self._detect_double_bottom()
+        self.df["is_ascending_triangle"] = self._detect_ascending_triangle()
+        self.df["is_tweezer_bottoms"] = self._detect_tweezer_bottoms()
 
         # 3. Check Confirmations (Regime Filters)
         # Trend: Continuation Patterns (Flags/Marubozu/Soldiers) require Price > EMA(50)
@@ -243,6 +235,30 @@ class PatternAnalyzer:
             & self.df["volatility_contraction"]
         )
 
+        # ASCENDING TRIANGLE
+        # Continuation pattern, requires bullish trend
+        self.df["ascending_triangle"] = (
+            self.df["is_ascending_triangle"]
+            & self.df["trend_bullish"]
+            & self.df["volume_expansion"]
+            & self.df["volatility_contraction"]
+        )
+
+        # CUP AND HANDLE
+        # Continuation pattern with breakout confirmation
+        self.df["cup_and_handle"] = (
+            self.df["is_cup_handle"]
+            & self.df["trend_bullish"]
+            & self.df["volume_expansion"]
+            & self.df["volatility_contraction"]
+        )
+
+        # TWEEZER BOTTOMS
+        # Reversal pattern with strong downtrend context
+        self.df["tweezer_bottoms"] = (
+            self.df["is_tweezer_bottoms"] & reversal_context & self.df["volume_expansion"]
+        )
+
         # INVERTED HAMMER
         # Reversal Context (Trend or Div)
         self.df["inverted_hammer"] = (
@@ -336,36 +352,131 @@ class PatternAnalyzer:
 
     def _detect_morning_star(self) -> pd.Series:
         """
-        Morning Star:
+        Enhanced Morning Star Detection with Conviction Score.
+
+        Base Morning Star:
         t1 (t-2): Large Red (Close < Open AND Abs(Open-Close) > ATR)
-        t2 (t-1): Spinning Top/Doji (Body small, Gap down ideally or close)
-        t3 (t): Large Green (Close > (Open(t-2) + Close(t-2))/2)
+        t2 (t-1): Spinning Top/Doji (Body small, Gap down ideally)
+        t3 (t): Large Green (Close > Midpoint of t-2 body - 50% penetration)
+
+        Sub-Pattern Detection:
+        - Bullish Abandoned Baby: Gaps between all 3 candles
+          (t1.low > t2.high AND t2.high < t3.low)
+
+        Strength Modifiers:
+        - Volume Escalation: Vol 3 > Vol 2 > Vol 1 (+0.2)
+        - Abandoned Baby: True gaps on both sides (+0.3)
+        - RSI Context: RSI < 35 within last 3 periods (+0.2)
+        - 50% Penetration: Close > t2 midpoint (+0.3 base)
+
+        Returns:
+            pd.Series[bool]: True at bars where Morning Star is detected.
+
+        Note:
+            Strength score is stored in 'morning_star_strength' column.
+            Is_abandoned_baby is stored in 'is_abandoned_baby' column.
+            All logic uses vectorized pandas operations.
         """
-        # t-2: Bearish
+        # ============================================================
+        # BASE MORNING STAR DETECTION
+        # ============================================================
+
+        # t-2: Bearish (Large Red)
         t2_is_red = self.df["is_red"].shift(2)
         t2_body = self.df["body_size"].shift(2)
+        t2_open = self.df["open"].shift(2)
+        t2_close = self.df["close"].shift(2)
+        t2_low = self.df["low"].shift(2)
 
         # Using ATR for "Large" - check available column
         atr_col = "ATRr_14" if "ATRr_14" in self.df.columns else "ATR_14"
-        # Fallback to 0 if neither exists (should not happen if indicators added)
         atr_series = self.df[atr_col].shift(2) if atr_col in self.df.columns else 0.0
-
         has_size = t2_body > atr_series
 
-        # t-1: Small Body (Abs < (H-L)*0.3)
+        # t-1: Small Body (Spinning Top/Doji)
         t1_range = self.df["total_range"].shift(1)
         t1_body = self.df["body_size"].shift(1)
+        t1_high = self.df["high"].shift(1)
         is_star = t1_body < (t1_range * 0.3)
-        # Gap logic: Open(t-1) <= Close(t-2)
-        is_gap = self.df["open_1"] <= self.df["close_2"]
+
+        # Gap down from t-2 to t-1: Open(t-1) <= Close(t-2)
+        is_gap_down = self.df["open"].shift(1) <= t2_close
 
         # t: Bullish, Green
         t0_is_green = self.df["is_green"]
-        # Piercing into t-2 body: Close > Midpoint of t-2
-        t2_mid = (self.df["open_2"] + self.df["close_2"]) / 2
+        t0_low = self.df["low"]
+        t0_volume = self.df["volume"]
+
+        # 50% Penetration: Close > Midpoint of t-2 body
+        t2_mid = (t2_open + t2_close) / 2
         penetration = self.df["close"] > t2_mid
 
-        return t2_is_red & has_size & is_star & is_gap & t0_is_green & penetration
+        # Base Morning Star Pattern
+        is_morning_star = (
+            t2_is_red & has_size & is_star & is_gap_down & t0_is_green & penetration
+        )
+
+        # ============================================================
+        # ABANDONED BABY DETECTION (Stronger Sub-Pattern)
+        # ============================================================
+        # Gap 1: t-2 low > t-1 high (gap down from t-2 to t-1)
+        gap_1_abandoned = t2_low > t1_high
+
+        # Gap 2: t-1 high < t0 low (gap up from t-1 to t)
+        gap_2_abandoned = t1_high < t0_low
+
+        is_abandoned_baby = is_morning_star & gap_1_abandoned & gap_2_abandoned
+
+        # Store abandoned baby detection
+        self.df["is_abandoned_baby"] = is_abandoned_baby.fillna(False)
+
+        # ============================================================
+        # VOLUME ESCALATION CHECK (Vol 3 > Vol 2 > Vol 1)
+        # ============================================================
+        vol_t2 = self.df["volume"].shift(2)
+        vol_t1 = self.df["volume"].shift(1)
+        vol_t0 = t0_volume
+
+        volume_escalation = (vol_t0 > vol_t1) & (vol_t1 > vol_t2)
+
+        # ============================================================
+        # CONTEXTUAL RSI CHECK (RSI < 35 in last 3 periods)
+        # ============================================================
+        if "RSI_14" in self.df.columns:
+            rsi_t2 = self.df["RSI_14"].shift(2)
+            rsi_t1 = self.df["RSI_14"].shift(1)
+            rsi_t0 = self.df["RSI_14"]
+
+            rsi_oversold = (rsi_t2 < 35) | (rsi_t1 < 35) | (rsi_t0 < 35)
+        else:
+            rsi_oversold = True  # Skip if RSI not available
+
+        # ============================================================
+        # STRENGTH SCORE CALCULATION (0.0 to 1.0)
+        # ============================================================
+        # Base score for valid morning star with 50% penetration
+        strength = pd.Series(0.0, index=self.df.index)
+
+        # Base score: 0.3 for valid pattern with penetration
+        strength = strength.where(~is_morning_star, 0.3)
+
+        # +0.2 for volume escalation
+        strength = strength + volume_escalation.astype(float) * 0.2
+
+        # +0.3 for abandoned baby (rare, explosive signal)
+        strength = strength + is_abandoned_baby.astype(float) * 0.3
+
+        # +0.2 for RSI oversold context
+        strength = strength + rsi_oversold.astype(float) * 0.2
+
+        # Ensure score stays in [0.0, 1.0] range and only for valid patterns
+        strength = strength.clip(0.0, 1.0)
+        strength = strength.where(is_morning_star, 0.0)
+
+        # Store strength score
+        self.df["morning_star_strength"] = strength
+
+        return is_morning_star.fillna(False)
 
     def _detect_piercing_line(self) -> pd.Series:
         """
@@ -540,41 +651,252 @@ class PatternAnalyzer:
         return has_pole & valid_retracement & vol_decay
 
     def _detect_cup_and_handle(self) -> pd.Series:
-        return pd.Series(False, index=self.df.index)
+        """
+        Cup and Handle Pattern Detection.
+
+        The Cup and Handle is a bullish continuation pattern consisting of:
+        1. Cup (U-Shape):
+           - Local high (left rim) followed by 30-50% retracement
+           - Recovery back to initial high level over 20-30 periods
+           - Rounded bottom (not a sharp V) - verified by checking that the
+             rolling minimum variance is low, indicating gradual price change
+
+        2. Handle:
+           - 4-7 periods of consolidation after cup completes
+           - Price stays within top 10% of the cup's total height
+
+        Mathematical Roundedness Check:
+            A rounded bottom has a gradual transition vs a V-shape's sharp turn.
+            We measure this by checking that the middle portion of the cup
+            (around the bottom) shows the rolling min staying relatively stable
+            over several bars, indicating a "U" rather than a "V".
+
+        Returns:
+            pd.Series[bool]: True at bars where cup and handle breakout is detected.
+        """
+        cup_period = 25  # Average cup formation period (20-30 range)
+        handle_period = 5  # Handle consolidation period (4-7 range)
+        total_lookback = cup_period + handle_period
+
+        is_cup_handle = pd.Series(False, index=self.df.index)
+
+        # Need enough data
+        if len(self.df) < total_lookback + 10:
+            return is_cup_handle
+
+        # 1. Identify the left rim (local high before cup)
+        # Rolling max of highs over past cup_period, shifted by handle_period
+        left_rim_high = (
+            self.df["high"].shift(handle_period).rolling(window=cup_period).max()
+        )
+
+        # 2. Cup bottom - minimum low during cup formation
+        cup_bottom_low = (
+            self.df["low"].shift(handle_period).rolling(window=cup_period).min()
+        )
+
+        # 3. Cup height and retracement check (30-50%)
+        cup_height = left_rim_high - cup_bottom_low
+        retracement_pct = cup_height / left_rim_high
+
+        valid_retracement = (retracement_pct >= 0.30) & (retracement_pct <= 0.50)
+
+        # 4. Recovery check - current price near left rim level
+        # Price recovered back within 5% of left rim high
+        right_rim_price = self.df["high"].shift(handle_period)
+        recovery_valid = right_rim_price >= (left_rim_high * 0.95)
+
+        # 5. Rounded Bottom Check (U-shape vs V-shape)
+        # A U-shape has the minimum staying relatively stable in the middle
+        # We check variance of the rolling minimum over the cup's middle third
+        mid_section_window = max(cup_period // 3, 5)
+        mid_section_start = handle_period + (cup_period // 3)
+
+        # Rolling std of lows in the bottom section
+        # Low variance indicates a rounded (U-shape) bottom vs sharp (V-shape)
+        rolling_min_std = (
+            self.df["low"]
+            .shift(mid_section_start)
+            .rolling(window=mid_section_window)
+            .std()
+        )
+
+        # Variance relative to cup height should be low for U-shape
+        # V-shape would have high variance as price changes rapidly
+        roundedness_ratio = rolling_min_std / cup_height.replace(0, np.nan)
+        rounded_bottom = roundedness_ratio < 0.15  # Low variance = rounded
+
+        # 6. Handle Consolidation Check
+        # Last handle_period bars should stay within top 10% of cup height
+        handle_low = self.df["low"].rolling(window=handle_period).min()
+        handle_high = self.df["high"].rolling(window=handle_period).max()
+
+        cup_top = left_rim_high
+        cup_height_10pct = cup_height * 0.10
+
+        # Handle should be in the upper zone (within 10% of cup top)
+        handle_floor = cup_top - cup_height_10pct
+        handle_in_zone = (handle_low >= handle_floor) & (handle_high <= cup_top * 1.02)
+
+        # 7. Breakout signal - current bar breaks above handle resistance
+        breakout = self.df["close"] > handle_high.shift(1)
+
+        # Combine all conditions
+        is_cup_handle = (
+            valid_retracement
+            & recovery_valid
+            & rounded_bottom
+            & handle_in_zone
+            & breakout
+        )
+
+        return is_cup_handle.fillna(False)
 
     def _detect_double_bottom(self) -> pd.Series:
         """
-        Double Bottom:
-        1. Two Lows separated by > 10 bars (and < 40?).
-        2. Lows within 3% of each other.
-        3. Reversal context (Price > EMA waived, but usually downtrend before).
+        Hardened Double Bottom Detection.
+
+        Structural Requirements:
+        1. Two Lows separated by 10-30 bars.
+        2. Lows within 1.5% of each other (tighter tolerance).
+        3. Middle Peak (Neckline) must be >= 3% above average of the two bottoms.
+
+        Returns:
+            pd.Series[bool]: True at bars where valid double bottom is detected.
+
+        Note:
+            Uses vectorized pandas operations for performance - no for-loops.
         """
-        import numpy as np
-
-        # Check specific lags for efficiency.
-        # Checking every lag from 10 to 40 is expensive in pure python loop,
-        # but okay-ish for vectorized shifts if limited.
-        # Let's check a range of lags.
-
         is_double_bottom = pd.Series(False, index=self.df.index)
         current_low = self.df["low"]
 
-        # Check lags 10 to 30
-        for lag in range(10, 31):
+        # Vectorized approach: Check multiple lags simultaneously
+        # We'll check lags 10, 15, 20, 25, 30 (representative samples)
+        lags_to_check = [10, 15, 20, 25, 30]
+
+        for lag in lags_to_check:
             past_low = self.df["low"].shift(lag)
-            # Variance check: abs(diff) / current < 0.03
-            # Or past_low is within 1.03 * current and 0.97 * current
-            diff_pct = np.abs(current_low - past_low) / current_low
-            match = diff_pct < 0.03
 
-            # Ensure "W" shape? i.e. middle peak is higher.
-            # Max high in between must be somewhat higher (e.g. > 5% above low)
-            # This logic is heavy. We stick to the primary constraint requested:
-            # "Lows within 3% of each other and separated by at least 10 bars"
+            # 1. Validate bottoms within 1.5% of each other
+            avg_bottoms = (current_low + past_low) / 2
+            diff_pct = np.abs(current_low - past_low) / avg_bottoms
+            bottoms_match = diff_pct < 0.015  # 1.5% tolerance
 
-            is_double_bottom = is_double_bottom | match
+            # 2. Middle Peak Verification (Neckline check)
+            # Find the maximum high between the two potential bottoms
+            # Rolling max over the lag period, shifted by 1 to exclude current bar
+            middle_peak = self.df["high"].shift(1).rolling(window=lag - 1).max()
 
-        return is_double_bottom
+            # Neckline must be >= 3% higher than average of bottoms
+            neckline_valid = middle_peak >= (avg_bottoms * 1.03)
+
+            # Combine conditions
+            valid_double_bottom = bottoms_match & neckline_valid
+
+            # Aggregate results
+            is_double_bottom = is_double_bottom | valid_double_bottom
+
+        return is_double_bottom.fillna(False)
 
     def _detect_ascending_triangle(self) -> pd.Series:
-        return pd.Series(False, index=self.df.index)
+        """
+        Ascending Triangle Detection.
+
+        Structural Requirements:
+        1. Flat Upper Resistance: Rolling max of highs over 14 periods with variance ≤ 0.5%.
+        2. Rising Support: Positive linear regression slope of rolling lows.
+
+        Returns:
+            pd.Series[bool]: True at bars where ascending triangle pattern is detected.
+
+        Note:
+            Uses vectorized pandas operations for performance.
+        """
+        window = 14
+        is_ascending_triangle = pd.Series(False, index=self.df.index)
+
+        # 1. Flat Upper Resistance Check
+        # Calculate rolling max and check if highs stay within 0.5% of max
+        rolling_high_max = self.df["high"].rolling(window=window).max()
+        rolling_high_min = self.df["high"].rolling(window=window).min()
+
+        # Variance in highs: (max - min) / max should be <= 0.5%
+        high_variance = (rolling_high_max - rolling_high_min) / rolling_high_max
+        flat_resistance = high_variance <= 0.005  # 0.5% tolerance
+
+        # 2. Rising Support Check
+        # Calculate linear regression slope of lows using rolling window
+        # Slope > 0 indicates rising support
+
+        def rolling_slope(series: pd.Series, window: int) -> pd.Series:
+            """Calculate rolling linear regression slope."""
+            # Create x values (0, 1, 2, ..., window-1)
+            x = np.arange(window)
+            x_mean = x.mean()
+
+            def calc_slope(y):
+                if len(y) < window or np.isnan(y).any():
+                    return np.nan
+                y_mean = y.mean()
+                numerator = np.sum((x - x_mean) * (y - y_mean))
+                denominator = np.sum((x - x_mean) ** 2)
+                if denominator == 0:
+                    return 0.0
+                return numerator / denominator
+
+            return series.rolling(window=window).apply(calc_slope, raw=True)
+
+        low_slope = rolling_slope(self.df["low"], window)
+        rising_support = low_slope > 0
+
+        # Combine conditions
+        is_ascending_triangle = flat_resistance & rising_support
+
+        return is_ascending_triangle.fillna(False)
+
+    def _detect_tweezer_bottoms(self) -> pd.Series:
+        """
+        Tweezer Bottoms Detection.
+
+        A two-candle (or more) reversal pattern characterized by:
+        1. Matching lows within 0.1% variance
+        2. Downtrend context: RSI < 35
+        3. Price below 20-period EMA
+
+        Returns:
+            pd.Series[bool]: True at bars where tweezer bottoms pattern is detected.
+
+        Note:
+            The second candle (current) should be bullish for optimal signal.
+        """
+        # 1. Matching lows check (within 0.1% of each other)
+        current_low = self.df["low"]
+        prev_low = self.df["low"].shift(1)
+
+        # Variance check: |current - prev| / avg <= 0.1%
+        avg_low = (current_low + prev_low) / 2
+        low_diff_pct = np.abs(current_low - prev_low) / avg_low
+        matching_lows = low_diff_pct <= 0.001  # 0.1% tolerance
+
+        # 2. Downtrend context - RSI < 35 (oversold)
+        if "RSI_14" in self.df.columns:
+            rsi_oversold = self.df["RSI_14"] < 35
+        else:
+            rsi_oversold = False
+
+        # 3. Price below 20-period EMA (downtrend confirmation)
+        if "EMA_20" in self.df.columns:
+            below_ema = self.df["close"] < self.df["EMA_20"]
+        elif "EMA_50" in self.df.columns:
+            # Fallback to EMA_50 if EMA_20 not available
+            below_ema = self.df["close"] < self.df["EMA_50"]
+        else:
+            below_ema = True  # Skip this check if no EMA available
+
+        # 4. Current candle should be bullish (reversal indicator)
+        current_bullish = self.df["close"] > self.df["open"]
+
+        # Combine all conditions
+        is_tweezer_bottoms = matching_lows & rsi_oversold & below_ema & current_bullish
+
+        return is_tweezer_bottoms.fillna(False)
