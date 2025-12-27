@@ -106,51 +106,36 @@ class SignalGenerator:
             pattern_name = "RISING_THREE_METHODS"  # 70%
         elif latest.get("morning_star"):
             pattern_name = "MORNING_STAR"  # 70%
+        elif latest.get("ascending_triangle"):
+            pattern_name = "ASCENDING_TRIANGLE"  # 68%
         elif latest.get("three_inside_up"):
             pattern_name = "THREE_INSIDE_UP"  # 65%
         elif latest.get("dragonfly_doji"):
             pattern_name = "DRAGONFLY_DOJI"  # 65%
         elif latest.get("three_white_soldiers"):
-            pattern_name = "THREE_WHITE_SOLDIERS"
+            pattern_name = "THREE_WHITE_SOLDIERS"  # 64%
+        elif latest.get("cup_and_handle"):
+            pattern_name = "CUP_AND_HANDLE"  # 63%
+        elif latest.get("double_bottom"):
+            pattern_name = "DOUBLE_BOTTOM"  # 62%
+        elif latest.get("bull_flag"):
+            pattern_name = "BULL_FLAG"  # 61%
         elif latest.get("bullish_belt_hold"):
             pattern_name = "BULLISH_BELT_HOLD"  # 60%
         elif latest.get("bullish_engulfing"):
-            pattern_name = "BULLISH_ENGULFING"
+            pattern_name = "BULLISH_ENGULFING"  # 58%
         elif latest.get("bullish_hammer"):
-            pattern_name = "BULLISH_HAMMER"
+            pattern_name = "BULLISH_HAMMER"  # 57%
         elif latest.get("piercing_line"):
-            pattern_name = "PIERCING_LINE"
+            pattern_name = "PIERCING_LINE"  # 55%
+        elif latest.get("inverted_hammer"):
+            pattern_name = "INVERTED_HAMMER"  # 55%
+        elif latest.get("bullish_marubozu"):
+            pattern_name = "BULLISH_MARUBOZU"  # 54%
         elif latest.get("bullish_harami"):
             pattern_name = "BULLISH_HARAMI"  # 53%
-        elif latest.get("double_bottom"):
-            pattern_name = "DOUBLE_BOTTOM"
-        elif latest.get("cup_and_handle"):
-            pattern_name = "CUP_AND_HANDLE"
-        elif latest.get("bull_flag"):
-            pattern_name = "BULL_FLAG"
-        elif latest.get("inverted_hammer"):
-            pattern_name = "INVERTED_HAMMER"
-        elif latest.get("bullish_marubozu"):
-            pattern_name = "BULLISH_MARUBOZU"
         elif latest.get("tweezer_bottoms"):
-            pattern_name = "TWEEZER_BOTTOMS"
-        # HIGH-PROBABILITY BULLISH PATTERNS (NEW)
-        elif latest.get("inverse_head_shoulders"):
-            pattern_name = "INVERSE_HEAD_SHOULDERS"  # 89% success
-        elif latest.get("bullish_kicker"):
-            pattern_name = "BULLISH_KICKER"  # 75% success
-        elif latest.get("falling_wedge"):
-            pattern_name = "FALLING_WEDGE"  # 74% success
-        elif latest.get("rising_three_methods"):
-            pattern_name = "RISING_THREE_METHODS"  # 70% success
-        elif latest.get("three_inside_up"):
-            pattern_name = "THREE_INSIDE_UP"  # 65% success
-        elif latest.get("dragonfly_doji"):
-            pattern_name = "DRAGONFLY_DOJI"  # 65% success
-        elif latest.get("bullish_belt_hold"):
-            pattern_name = "BULLISH_BELT_HOLD"  # 60% success
-        elif latest.get("bullish_harami"):
-            pattern_name = "BULLISH_HARAMI"  # 53% success
+            pattern_name = "TWEEZER_BOTTOMS"  # 52%
 
         if not pattern_name:
             return None
@@ -444,6 +429,7 @@ class SignalGenerator:
         for signal in active_signals:
             exit_triggered = False
             trail_updated = False
+            original_status = signal.status
 
             # Determine side once for this signal
             is_long = signal.side != OrderSide.SELL
@@ -593,6 +579,16 @@ class SignalGenerator:
                 f"End of loop: exit_triggered={exit_triggered}, trail_updated={trail_updated}"
             )
             if exit_triggered:
+                # Detect Status Jump (e.g., WAITING -> TP2_HIT)
+                if (
+                    original_status == SignalStatus.WAITING
+                    and signal.status == SignalStatus.TP2_HIT
+                ):
+                    logger.info(
+                        f"Status Jump detected for {signal.signal_id}: WAITING -> TP2_HIT"
+                    )
+                    object.__setattr__(signal, "_status_jump", True)
+
                 exited_signals.append(signal)
                 logger.debug("Appended signal to exited_signals (exit_triggered)")
             elif trail_updated:

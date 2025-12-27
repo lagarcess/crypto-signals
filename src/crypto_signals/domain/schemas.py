@@ -105,6 +105,7 @@ class ExitReason(str, Enum):
     EXPIRED = "EXPIRED"
     TP_HIT = "TP_HIT"
     NOTIFICATION_FAILED = "NOTIFICATION_FAILED"
+    MANUAL_EXIT = "MANUAL_EXIT"
 
 
 # =============================================================================
@@ -368,6 +369,10 @@ class Position(BaseModel):
     exit_time: Optional[datetime] = Field(
         default=None,
         description="UTC timestamp when exit order was filled. From Alpaca API.",
+    )
+    exit_reason: Optional[ExitReason] = Field(
+        default=None,
+        description="Reason for trade exit (e.g., TP1, STOP_LOSS, MANUAL_EXIT).",
     )
     # === Scale-Out Tracking (TP1 automation) ===
     original_qty: Optional[float] = Field(

@@ -75,6 +75,115 @@ class DiscordClient:
         # Fallback for system messages (no asset class) - use test webhook
         return self.settings.TEST_DISCORD_WEBHOOK.get_secret_value()
 
+    def _get_channel_id(self, asset_class: AssetClass | None = None) -> str | None:
+        """
+        Get the Channel ID for the given asset class (required for Bot API).
+        """
+        # If TEST_MODE is True, we might not have a test channel ID configured.
+        # Currently config only has LIVE_CRYPTO/STOCK channel IDs.
+        # We'll allow recovery if keys are present regardless of mode,
+        # or STRICTLY follow LIVE/TEST separation.
+        # For this implementation: specific channel IDs match specific asset classes.
+
+        if asset_class == AssetClass.CRYPTO:
+            return self.settings.DISCORD_CHANNEL_ID_CRYPTO
+        elif asset_class == AssetClass.EQUITY:
+            return self.settings.DISCORD_CHANNEL_ID_STOCK
+        return None
+
+    def find_thread_by_signal_id(
+        self, signal_id: str, symbol: str, asset_class: AssetClass
+    ) -> str | None:
+        """
+        Attempt to find an existing Discord thread for a signal using the Bot API.
+
+        Searches active threads in the configured channel.
+        This requires DISCORD_BOT_TOKEN and Channel IDs to be configured.
+
+        Supports both Text channels and Forum channels by detecting channel type
+        and using the appropriate API endpoint.
+
+        Args:
+            signal_id: The unique signal ID to search for.
+            symbol: Ticker symbol (secondary check).
+            asset_class: Asset class to determine which channel to search.
+
+        Returns:
+            str | None: The thread_id if found, else None.
+        """
+        token = self.settings.DISCORD_BOT_TOKEN
+        if not token:
+            logger.debug("Skipping thread recovery: No DISCORD_BOT_TOKEN configured.")
+            return None
+
+        channel_id = self._get_channel_id(asset_class)
+        if not channel_id:
+            logger.debug(f"Skipping thread recovery: No Channel ID for {asset_class}.")
+            return None
+
+        headers = {
+            "Authorization": f"Bot {token.get_secret_value()}",
+            "Content-Type": "application/json",
+        }
+
+        try:
+            # First, get channel info to determine type
+            channel_response = requests.get(
+                f"https://discord.com/api/v10/channels/{channel_id}",
+                headers=headers,
+                timeout=5.0,
+            )
+            if channel_response.status_code != 200:
+                logger.warning(
+                    f"Cannot access channel {channel_id}: {channel_response.status_code}"
+                )
+                return None
+
+            channel_info = channel_response.json()
+            channel_type = channel_info.get("type", 0)
+            guild_id = channel_info.get("guild_id")
+
+            # Channel type 15 = Forum Channel (uses guild-level threads endpoint)
+            # Channel type 0 = Text Channel (can use channel-level endpoint)
+            if channel_type == 15 and guild_id:
+                url = f"https://discord.com/api/v10/guilds/{guild_id}/threads/active"
+            else:
+                url = f"https://discord.com/api/v10/channels/{channel_id}/threads/active"
+
+            response = requests.get(url, headers=headers, timeout=5.0)
+            if response.status_code == 403:
+                logger.warning("Discord Bot lacks permission to read threads (403).")
+                return None
+            if response.status_code == 404:
+                logger.debug(f"No threads endpoint found for channel {channel_id}")
+                return None
+            response.raise_for_status()
+
+            threads_data = response.json()
+            threads = threads_data.get("threads", [])
+
+            # For guild-level endpoint, filter to only threads in our target channel
+            if channel_type == 15:
+                threads = [t for t in threads if t.get("parent_id") == channel_id]
+
+            # Search for signal_id in thread name
+            search_term = f"[{signal_id}]"
+
+            for thread in threads:
+                t_name = thread.get("name", "")
+                if search_term in t_name:
+                    logger.info(
+                        f"Recovered Discord thread {thread['id']} for {signal_id}"
+                    )
+                    return thread["id"]
+
+            logger.debug(f"No active thread found for {signal_id}")
+            return None
+
+        except requests.RequestException as e:
+            logger.error(f"Failed to search Discord threads: {e}")
+            return None
+
     def send_signal(
         self, signal: Signal, thread_name: Optional[str] = None
     ) -> Optional[str]:
@@ -338,9 +447,7 @@ class DiscordClient:
 
             # Format exit price
             exit_price_str = (
-                f"${position.exit_fill_price:,.2f}"
-                if position.exit_fill_price
-                else "N/A"
+                f"${position.exit_fill_price:,.2f}" if position.exit_fill_price else "N/A"
             )
 
             # Test mode label for differentiating test messages in Discord

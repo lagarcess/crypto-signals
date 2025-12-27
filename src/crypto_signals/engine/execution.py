@@ -25,6 +25,7 @@ from alpaca.trading.requests import (
 from crypto_signals.config import get_settings, get_trading_client
 from crypto_signals.domain.schemas import (
     AssetClass,
+    ExitReason,
     Position,
     Signal,
     TradeStatus,
@@ -376,6 +377,78 @@ class ExecutionEngine:
                     if sl_order.filled_at:
                         position.exit_time = sl_order.filled_at
                     logger.info(f"Position {position.position_id} closed via SL")
+
+            # -------------------------------------------------------------------------
+            # MANUAL / EXTERNAL EXIT DETECTION
+            # -------------------------------------------------------------------------
+            # If position is still marked OPEN but TP/SL were not triggered,
+            # verify if the position corresponds to actual broker state.
+            if position.status == TradeStatus.OPEN:
+                try:
+                    # Check actual open position on Alpaca
+                    # get_open_position raises 404 if no position exists
+                    self.client.get_open_position(position.symbol)
+                except Exception as e:
+                    # 404 means no position -> It was closed manually/externally
+                    if "not found" in str(e).lower() or "404" in str(e):
+                        logger.warning(
+                            f"Position {position.position_id} not found on Alpaca (Manual Exit detected)"
+                        )
+
+                        # Find the closing order to get fill price
+                        try:
+                            # Search recent filled orders (opposite side)
+                            close_side = (
+                                OrderSide.SELL
+                                if position.side == DomainOrderSide.BUY
+                                else OrderSide.BUY
+                            )
+
+                            recent_orders = self.client.get_orders(
+                                filter={
+                                    "status": "filled",
+                                    "symbols": [position.symbol],
+                                    "limit": 5,
+                                    "side": close_side,
+                                }
+                            )
+
+                            # Find the most recent fill that is NOT our TP or SL
+                            closing_order = None
+                            ignored_ids = {position.tp_order_id, position.sl_order_id}
+
+                            for o in recent_orders:
+                                if str(o.id) not in ignored_ids:
+                                    closing_order = o
+                                    break
+
+                            if closing_order:
+                                position.status = TradeStatus.CLOSED
+                                position.exit_reason = ExitReason.MANUAL_EXIT
+                                if closing_order.filled_avg_price:
+                                    position.exit_fill_price = float(
+                                        closing_order.filled_avg_price
+                                    )
+                                if closing_order.filled_at:
+                                    position.exit_time = closing_order.filled_at
+                                logger.info(
+                                    f"Detected MANUAL EXIT for {position.position_id} "
+                                    f"at ${position.exit_fill_price}"
+                                )
+                            else:
+                                # Closed but can't find order? Mark closed anyway to sync state
+                                position.status = TradeStatus.CLOSED
+                                position.exit_reason = ExitReason.MANUAL_EXIT
+                                logger.warning(
+                                    f"Could not find closing order for {position.position_id}. "
+                                    "Marking CLOSED with unknown price."
+                                )
+
+                        except Exception as search_err:
+                            logger.error(f"Failed to search closing order: {search_err}")
+                            # Fallback close
+                            position.status = TradeStatus.CLOSED
+                            position.exit_reason = ExitReason.MANUAL_EXIT
 
         except Exception as e:
             logger.error(f"Failed to sync position {position.position_id}: {e}")

@@ -630,6 +630,64 @@ class TestSyncPositionStatus:
         assert updated.exit_fill_price == 48000.0
         assert updated.exit_time == datetime(2025, 1, 15, 16, 0, 0, tzinfo=timezone.utc)
 
+    def test_sync_detects_manual_exit_when_not_found(
+        self, execution_engine, mock_trading_client
+    ):
+        """Verify position marked CLOSED (Manual Exit) when not found on Alpaca."""
+        from datetime import datetime, timezone
+
+        from crypto_signals.domain.schemas import ExitReason, Position, TradeStatus
+
+        # Setup - parent order is filled (Entry)
+        mock_parent = MagicMock()
+        mock_parent.status = "filled"
+        mock_parent.legs = []  # No active legs found (or irrelevant)
+
+        # Setup - get_open_position raises 404 (Not Found)
+        mock_trading_client.get_open_position.side_effect = Exception(
+            "position not found (404)"
+        )
+
+        # Setup - get_orders finds a closing order
+        mock_close_order = MagicMock()
+        mock_close_order.id = "manual-close-id"
+        mock_close_order.status = "filled"
+        mock_close_order.filled_avg_price = "52000.0"
+        mock_close_order.filled_at = datetime(2025, 1, 15, 17, 0, 0, tzinfo=timezone.utc)
+
+        mock_trading_client.get_orders.return_value = [mock_close_order]
+
+        # Setup get_order_by_id for parent
+        mock_trading_client.get_order_by_id.return_value = mock_parent
+
+        position = Position(
+            position_id="test-pos-manual",
+            ds=date(2025, 1, 15),
+            account_id="paper",
+            symbol="BTC/USD",
+            signal_id="test-signal-manual",
+            alpaca_order_id="parent-id",
+            status=TradeStatus.OPEN,
+            entry_fill_price=50000.0,
+            current_stop_loss=48000.0,
+            qty=0.05,
+            side=OrderSide.BUY,
+        )
+
+        # Execute
+        updated = execution_engine.sync_position_status(position)
+
+        # Verify
+        assert updated.status == TradeStatus.CLOSED
+        assert updated.exit_reason == ExitReason.MANUAL_EXIT
+        assert updated.exit_fill_price == 52000.0
+        assert updated.exit_time == datetime(2025, 1, 15, 17, 0, 0, tzinfo=timezone.utc)
+
+        # Verify get_orders called with correct filter
+        mock_trading_client.get_orders.assert_called_once()
+        call_args = mock_trading_client.get_orders.call_args
+        assert call_args[1]["filter"]["side"] == OrderSide.SELL  # Closing a BUY
+
 
 class TestModifyStopLoss:
     """Tests for the modify_stop_loss method."""
