@@ -1,4 +1,10 @@
 [![Deploy](https://github.com/lagarcess/crypto-signals/actions/workflows/deploy.yml/badge.svg)](https://github.com/lagarcess/crypto-signals/actions/workflows/deploy.yml)
+![Python](https://img.shields.io/badge/python-3.11-3776AB?logo=python&logoColor=white)
+![Poetry](https://img.shields.io/badge/packaging-poetry-60A5FA?logo=poetry&logoColor=white)
+![Ruff](https://img.shields.io/badge/linting-ruff-D7FF64?logo=ruff&logoColor=black)
+![Security](https://img.shields.io/badge/security-pip--audit-brightgreen)
+![Cloud Run](https://img.shields.io/badge/deployed%20on-Cloud%20Run-4285F4?logo=google-cloud&logoColor=white)
+
 # Crypto Sentinel
 
 **Automated cryptocurrency and equity trading signal generator with cloud-native architecture.**
