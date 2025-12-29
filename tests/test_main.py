@@ -47,6 +47,7 @@ def mock_dependencies():
         patch("crypto_signals.main.PositionRepository") as position_repo,
         patch("crypto_signals.main.ExecutionEngine") as execution_engine,
         patch("crypto_signals.main.JobLockRepository") as job_lock,
+        patch("crypto_signals.main.RejectedSignalRepository") as rejected_repo,
     ):
         # Configure mock settings
         mock_settings.return_value.CRYPTO_SYMBOLS = [
@@ -108,6 +109,7 @@ def mock_dependencies():
             "position_repo": position_repo,
             "execution_engine": execution_engine,
             "job_lock": job_lock,
+            "rejected_repo": rejected_repo,
         }
 
 
