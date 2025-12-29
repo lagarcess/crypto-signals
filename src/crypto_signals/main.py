@@ -125,22 +125,22 @@ def main(
 
             logger.success("🟢 SMOKE TEST PASSED: All connectivity checks succeeded.")
             sys.exit(0)
-            # -----------------------
+        # -----------------------
 
-            # Initialize Services
-            logger.info("Initializing services...")
-            with log_execution_time(logger, "initialize_services"):
-                stock_client = get_stock_data_client()
-                crypto_client = get_crypto_data_client()
-                market_provider = MarketDataProvider(stock_client, crypto_client)
-                generator = SignalGenerator(market_provider=market_provider)
-                repo = SignalRepository()
-                position_repo = PositionRepository()
-                discord = DiscordClient()
-                asset_validator = AssetValidationService(get_trading_client())
-                execution_engine = ExecutionEngine()
-                job_lock_repo = JobLockRepository()
-                rejected_repo = RejectedSignalRepository()  # Shadow signal persistence
+        # Initialize Services
+        logger.info("Initializing services...")
+        with log_execution_time(logger, "initialize_services"):
+            stock_client = get_stock_data_client()
+            crypto_client = get_crypto_data_client()
+            market_provider = MarketDataProvider(stock_client, crypto_client)
+            generator = SignalGenerator(market_provider=market_provider)
+            repo = SignalRepository()
+            position_repo = PositionRepository()
+            discord = DiscordClient()
+            asset_validator = AssetValidationService(get_trading_client())
+            execution_engine = ExecutionEngine()
+            job_lock_repo = JobLockRepository()
+            rejected_repo = RejectedSignalRepository()  # Shadow signal persistence
 
         # Job Locking
         job_id = "signal_generator_cron"
