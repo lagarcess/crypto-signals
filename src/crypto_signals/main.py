@@ -11,8 +11,10 @@ import sys
 import time
 from datetime import datetime, timedelta, timezone
 
+import typer
 from loguru import logger
 
+from crypto_signals.analysis.structural import warmup_jit
 from crypto_signals.config import (
     get_crypto_data_client,
     get_settings,
@@ -43,12 +45,16 @@ from crypto_signals.observability import (
 from crypto_signals.repository.firestore import (
     JobLockRepository,
     PositionRepository,
+    RejectedSignalRepository,
     SignalRepository,
 )
 from crypto_signals.secrets_manager import init_secrets
 
 # Configure logging with Rich integration
 configure_logging(level="INFO")
+
+# Pre-compile Numba JIT functions to avoid cold-start latency in live trading
+warmup_jit()
 
 
 # Global flag for graceful shutdown
@@ -63,7 +69,11 @@ def signal_handler(signum, frame):
     shutdown_requested = True
 
 
-def main():
+def main(
+    smoke_test: bool = typer.Option(
+        False, help="Run a shallow connectivity check (Smoke Test) and exit."
+    ),
+):
     """Execute the main signal generation loop."""
     global shutdown_requested
 
@@ -99,6 +109,24 @@ def main():
                 logger.critical("Failed to load required secrets. Exiting.")
                 sys.exit(1)
 
+        # --- SMOKE TEST PATH ---
+        if smoke_test:
+            logger.warning("💨 SMOKE TEST: Running connectivity checks...")
+
+            # 1. Verify Firestore Connectivity
+            # Initializing repository creates the Firestore client
+            JobLockRepository()
+            logger.info("✅ Firestore: Client Initialized")
+
+            # 2. Verify settings loaded
+            if not settings.GOOGLE_CLOUD_PROJECT:
+                raise ValueError("Missing GOOGLE_CLOUD_PROJECT")
+            logger.info(f"✅ Configuration: Project={settings.GOOGLE_CLOUD_PROJECT}")
+
+            logger.success("🟢 SMOKE TEST PASSED: All connectivity checks succeeded.")
+            sys.exit(0)
+            # -----------------------
+
             # Initialize Services
             logger.info("Initializing services...")
             with log_execution_time(logger, "initialize_services"):
@@ -112,6 +140,7 @@ def main():
                 asset_validator = AssetValidationService(get_trading_client())
                 execution_engine = ExecutionEngine()
                 job_lock_repo = JobLockRepository()
+                rejected_repo = RejectedSignalRepository()  # Shadow signal persistence
 
         # Job Locking
         job_id = "signal_generator_cron"
@@ -210,6 +239,42 @@ def main():
                     symbols_processed += 1
 
                     if trade_signal:
+                        # Handle Shadow Signals (rejected by quality gates)
+                        if trade_signal.status == SignalStatus.REJECTED_BY_FILTER:
+                            # DEDUPLICATION: Skip shadow if active signal exists (avoid noise)
+                            active_signals = repo.get_active_signals(symbol)
+                            if active_signals:
+                                logger.debug(
+                                    f"[SHADOW] Skipping {symbol} shadow signal - active signal exists",
+                                    extra={"symbol": symbol},
+                                )
+                                continue
+
+                            # Persist to rejected_signals collection for audit/analysis
+                            try:
+                                rejected_repo.save(trade_signal)
+                                # Send to shadow Discord channel (if configured)
+                                discord.send_shadow_signal(trade_signal)
+                                logger.info(
+                                    f"[SHADOW] {trade_signal.symbol} {trade_signal.pattern_name}: "
+                                    f"{trade_signal.rejection_reason}",
+                                    extra={
+                                        "symbol": trade_signal.symbol,
+                                        "pattern": trade_signal.pattern_name,
+                                        "rejection_reason": trade_signal.rejection_reason,
+                                        "pattern_duration_days": trade_signal.pattern_duration_days,
+                                        "pattern_classification": trade_signal.pattern_classification,
+                                    },
+                                )
+                            except Exception as e:
+                                logger.warning(
+                                    f"Failed to persist shadow signal: {e}",
+                                    extra={"symbol": trade_signal.symbol},
+                                )
+                            # Shadow signals don't trigger live trading - continue to next symbol
+                            continue
+
+                        # Standard signal handling (WAITING status)
                         signals_found += 1
                         logger.info(
                             f"SIGNAL FOUND: {trade_signal.pattern_name} "
@@ -218,6 +283,8 @@ def main():
                                 "symbol": trade_signal.symbol,
                                 "pattern": trade_signal.pattern_name,
                                 "stop_loss": trade_signal.suggested_stop,
+                                "pattern_duration_days": trade_signal.pattern_duration_days,
+                                "pattern_classification": trade_signal.pattern_classification,
                             },
                         )
 
@@ -848,4 +915,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    typer.run(main)

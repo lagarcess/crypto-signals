@@ -78,6 +78,7 @@ class SignalStatus(str, Enum):
     TP1_HIT = "TP1_HIT"
     TP2_HIT = "TP2_HIT"
     TP3_HIT = "TP3_HIT"
+    REJECTED_BY_FILTER = "REJECTED_BY_FILTER"  # Shadow signal: failed quality gate
 
 
 class TradeStatus(str, Enum):
@@ -242,6 +243,27 @@ class Signal(BaseModel):
     side: Optional[OrderSide] = Field(
         default=OrderSide.BUY,
         description="Trade direction (BUY for Long, SELL for Short). Defaults to BUY for backward compatibility.",
+    )
+    # === Structural Pattern Metadata (Phase 7) ===
+    pattern_duration_days: Optional[int] = Field(
+        default=None,
+        description="Duration in days from first pivot to signal (for MACRO classification)",
+    )
+    pattern_classification: Optional[str] = Field(
+        default=None,
+        description="Pattern scale: 'STANDARD_PATTERN' (5-90 days) or 'MACRO_PATTERN' (>90 days)",
+    )
+    structural_anchors: Optional[List[Dict[str, Any]]] = Field(
+        default=None,
+        description="List of structural pivots defining pattern geometry: [{price, timestamp, pivot_type}]",
+    )
+    rejection_reason: Optional[str] = Field(
+        default=None,
+        description="Reason for rejection if status is REJECTED_BY_FILTER (e.g., 'Volume 1.2x < 1.5x Required')",
+    )
+    confluence_snapshot: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Snapshot of indicator values at rejection: {rsi, adx, sma_trend, volume_ratio, rr_ratio}",
     )
 
 

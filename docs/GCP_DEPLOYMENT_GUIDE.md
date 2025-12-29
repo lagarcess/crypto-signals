@@ -383,6 +383,17 @@ gcloud secrets list
 gcloud secrets versions access latest --secret=ALPACA_API_KEY | od -c
 ```
 
+**Batch Verify All Secrets Exist:**
+
+```bash
+for secret in ALPACA_API_KEY ALPACA_SECRET_KEY TEST_DISCORD_WEBHOOK \
+  LIVE_CRYPTO_DISCORD_WEBHOOK_URL LIVE_STOCK_DISCORD_WEBHOOK_URL \
+  DISCORD_SHADOW_WEBHOOK_URL DISCORD_BOT_TOKEN; do
+    gcloud secrets describe $secret > /dev/null 2>&1 && \
+    echo "✅ $secret exists" || echo "❌ $secret MISSING";
+done
+```
+
 ⚠️ **Common Pitfall:** Using `echo` without `-n` adds a newline character (`\n`), causing Pydantic validation errors like:
 ```
 Input should be a valid boolean, unable to interpret input [type=bool_parsing, input_value='true\r\n']
@@ -690,6 +701,20 @@ These variables are used in `.github/workflows/deploy.yml`:
       --set-env-vars="GOOGLE_CLOUD_PROJECT=${{ vars.GOOGLE_CLOUD_PROJECT }},..." \
       ...
 ```
+
+**CI/CD Workflow Features:**
+
+The GitHub Actions workflow (`.github/workflows/deploy.yml`) includes production-grade safety features:
+
+1. **Concurrency Control:** Only one deployment runs at a time to prevent race conditions
+2. **Smoke Testing:** After deployment, executes `python -m crypto_signals.main --smoke-test` to verify:
+   - Firestore connectivity
+   - Configuration validity
+   - Basic system health
+3. **Auto-Rollback:** If smoke test fails, automatically reverts the Cloud Run job to the previous `latest` image
+4. **Promote-on-Success:** The `latest` tag is only applied after smoke test passes, ensuring it always points to a verified stable release
+5. **Bypass Logic:** Add `[skip-smoke]` to your commit message to skip smoke testing (useful for docs-only changes)
+6. **Detailed Notifications:** Discord alerts include per-step status (\ud83d\udfe2 Passed / \ud83d\udd34 Failed / \u23ed\ufe0f Skipped)
 
 ---
 
