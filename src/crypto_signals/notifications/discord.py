@@ -617,19 +617,17 @@ class DiscordClient:
         ):
             content += "\n"  # Blank line separator
 
-        # Pattern classification label (used for both span and duration)
-        classification_label = (
-            signal.pattern_classification.replace("_", " ").title()
-            if signal.pattern_classification
-            else "Standard Pattern"
-        )
-
         # Pattern Span (actual pivot cluster timeframe)
         if signal.pattern_span_days is not None:
             content += f"\n**Pattern Span:** {signal.pattern_span_days} days"
 
         # Formation Age (total duration from first pivot to current bar)
         if signal.pattern_duration_days:
+            classification_label = (
+                signal.pattern_classification.replace("_", " ").title()
+                if signal.pattern_classification
+                else "Standard Pattern"
+            )
             content += f"\n**Formation Age:** {signal.pattern_duration_days} days ({classification_label})"
 
         # Pattern Geometry block
