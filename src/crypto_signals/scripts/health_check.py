@@ -261,6 +261,24 @@ def verify_discord(settings) -> bool:
             "Not configured (Shadow disabled)",
         )
 
+    # --- Step 4.5: Validate DISCORD_DEPLOYS (CI/CD Deployments Webhook) ---
+    if settings.DISCORD_DEPLOYS:
+        deploys_url = settings.DISCORD_DEPLOYS.get_secret_value()
+        try:
+            response = requests.get(deploys_url, timeout=5.0)
+            if response.status_code == 200:
+                webhook_status["DEPLOYS_WEBHOOK"] = ("✅", "Operational")
+            else:
+                webhook_status["DEPLOYS_WEBHOOK"] = (
+                    "⚠️",
+                    f"HTTP {response.status_code}",
+                )
+        except requests.RequestException as e:
+            webhook_status["DEPLOYS_WEBHOOK"] = ("❌", f"Error: {str(e)[:50]}")
+    else:
+        # Not critical - only used in CI/CD, not in application
+        webhook_status["DEPLOYS_WEBHOOK"] = ("➖", "Not configured (CI/CD only)")
+
     # --- Step 5: Build comprehensive status message ---
     mode_str = "TEST" if settings.TEST_MODE else "LIVE"
     status_lines = [
