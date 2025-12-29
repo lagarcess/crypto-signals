@@ -337,12 +337,10 @@ class SignalGenerator:
 
         take_profit_1 = entry_ref + (2.0 * atr) if atr > 0 else None
         take_profit_2 = entry_ref + (4.0 * atr) if atr > 0 else None
-        # TP3: Runner using Chandelier Exit
-        take_profit_3 = (
-            float(latest["CHANDELIER_EXIT_LONG"])
-            if "CHANDELIER_EXIT_LONG" in latest
-            else None
-        )
+        # TP3: Extended runner target (becomes trailing stop after TP1/TP2 hit)
+        # Initial target ensures TP3 > TP2 for clean signal display
+        # After TP1/TP2, check_exits() updates this to Chandelier Exit for trailing
+        take_profit_3 = entry_ref + (6.0 * atr) if atr > 0 else None
 
         # Strategy ID is the pattern name for now
         strategy_id = pattern_name
@@ -392,6 +390,7 @@ class SignalGenerator:
                 pattern_classification = str(latest[class_col])
 
         # Extract structural pivots (limit to 5 most recent for memory efficiency)
+        pattern_span_days = None
         if hasattr(analyzer, "pivots") and analyzer.pivots:
             # Get the 5 most recent pivots, sorted chronologically
             recent_pivots = sorted(analyzer.pivots[-5:], key=lambda p: p.index)
@@ -405,6 +404,11 @@ class SignalGenerator:
                 }
                 for p in recent_pivots
             ]
+
+            # Calculate pattern span (first to last pivot in the cluster)
+            if len(structural_anchors) >= 2:
+                pivot_indices = [p["index"] for p in structural_anchors]
+                pattern_span_days = max(pivot_indices) - min(pivot_indices)
 
         return Signal(
             signal_id=sig_id,
@@ -422,6 +426,7 @@ class SignalGenerator:
             take_profit_2=take_profit_2,
             take_profit_3=take_profit_3,
             pattern_duration_days=pattern_duration_days,
+            pattern_span_days=pattern_span_days,
             pattern_classification=pattern_classification,
             structural_anchors=structural_anchors,
         )

@@ -195,9 +195,12 @@ class DiscordClient:
         which includes the message ID that serves as the thread_id for Forum posts.
         This enables subsequent lifecycle updates to be pinned to the same thread.
 
+        Automatically generates thread_name for Forum channels if not provided.
+
         Args:
             signal: The signal to broadcast.
-            thread_name: Optional thread name (required for Forum Channels).
+            thread_name: Optional thread name override for Forum Channels.
+                        If not provided, auto-generates from signal pattern/symbol.
 
         Returns:
             Optional[str]: The thread_id (message ID) if successful, None otherwise.
@@ -211,8 +214,48 @@ class DiscordClient:
             return None
 
         message = self._format_message(signal)
-        if thread_name:
-            message["thread_name"] = thread_name
+
+        # Auto-generate thread_name if not provided (required for Forum channels)
+        if not thread_name:
+            # Determine emoji (matches _format_message logic)
+            BULLISH_PATTERNS = {
+                "bullish_engulfing",
+                "bullish_hammer",
+                "bullish_harami",
+                "bullish_marubozu",
+                "bullish_belt_hold",
+                "bullish_kicker",
+                "morning_star",
+                "three_white_soldiers",
+                "three_inside_up",
+                "piercing_line",
+                "inverted_hammer",
+                "dragonfly_doji",
+                "double_bottom",
+                "inverse_head_shoulders",
+                "bull_flag",
+                "cup_and_handle",
+                "ascending_triangle",
+                "falling_wedge",
+                "rising_three_methods",
+                "tweezer_bottoms",
+            }
+            pattern_lower = signal.pattern_name.lower()
+            is_bullish = pattern_lower in BULLISH_PATTERNS or "bullish" in pattern_lower
+
+            # MACRO patterns get building emoji
+            if signal.pattern_classification == MACRO_PATTERN:
+                emoji = "🏛️"
+            else:
+                emoji = EMOJI_ROCKET if is_bullish else "📊"
+
+            # Format pattern name
+            pattern_display = signal.pattern_name.replace("_", " ").title()
+
+            # Generate thread name
+            thread_name = f"{emoji} {signal.symbol} {pattern_display}"
+
+        message["thread_name"] = thread_name
 
         # Append ?wait=true to get the full Message object with ID
         url = f"{webhook_url}?wait=true"
@@ -567,17 +610,27 @@ class DiscordClient:
         # ============================================================
         # STRUCTURAL METADATA (Formation Scale & Pattern Geometry)
         # ============================================================
-        if signal.pattern_duration_days or signal.structural_anchors:
+        if (
+            signal.pattern_duration_days
+            or signal.pattern_span_days
+            or signal.structural_anchors
+        ):
             content += "\n"  # Blank line separator
 
-        # Formation Scale line
+        # Pattern classification label (used for both span and duration)
+        classification_label = (
+            signal.pattern_classification.replace("_", " ").title()
+            if signal.pattern_classification
+            else "Standard Pattern"
+        )
+
+        # Pattern Span (actual pivot cluster timeframe)
+        if signal.pattern_span_days is not None:
+            content += f"\n**Pattern Span:** {signal.pattern_span_days} days"
+
+        # Formation Age (total duration from first pivot to current bar)
         if signal.pattern_duration_days:
-            classification_label = (
-                signal.pattern_classification.replace("_", " ").title()
-                if signal.pattern_classification
-                else "Standard Pattern"
-            )
-            content += f"\n**Formation Scale:** {signal.pattern_duration_days} days ({classification_label})"
+            content += f"\n**Formation Age:** {signal.pattern_duration_days} days ({classification_label})"
 
         # Pattern Geometry block
         if signal.structural_anchors:
@@ -843,16 +896,25 @@ class DiscordClient:
             "fields": fields,
         }
 
-        # Add formation scale to footer if available
-        if signal.pattern_duration_days:
+        # Footer with formation metadata (if available)
+        if signal.pattern_duration_days or signal.pattern_span_days:
             classification = (
                 signal.pattern_classification.replace("_", " ").title()
                 if signal.pattern_classification
                 else "Standard"
             )
-            embed["footer"] = {
-                "text": f"Formation: {signal.pattern_duration_days} days ({classification})"
-            }
+
+            # Build footer text with both metrics
+            footer_parts = []
+            if signal.pattern_span_days is not None:
+                footer_parts.append(f"Span: {signal.pattern_span_days}d")
+            if signal.pattern_duration_days:
+                footer_parts.append(
+                    f"Age: {signal.pattern_duration_days}d ({classification})"
+                )
+
+            if footer_parts:
+                embed["footer"] = {"text": " | ".join(footer_parts)}
 
         return {
             "embeds": [embed],

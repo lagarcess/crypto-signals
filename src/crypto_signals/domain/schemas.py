@@ -249,6 +249,10 @@ class Signal(BaseModel):
         default=None,
         description="Duration in days from first pivot to signal (for MACRO classification)",
     )
+    pattern_span_days: Optional[int] = Field(
+        default=None,
+        description="Time span from first to last structural pivot in the pattern (geometric extent)",
+    )
     pattern_classification: Optional[str] = Field(
         default=None,
         description="Pattern scale: 'STANDARD_PATTERN' (5-90 days) or 'MACRO_PATTERN' (>90 days)",

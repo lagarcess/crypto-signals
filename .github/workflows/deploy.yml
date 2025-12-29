@@ -197,44 +197,49 @@ jobs:
         run: |
           gcloud artifacts docker tags add "${{ env.IMAGE_BASE }}:${{ github.sha }}" "${{ env.IMAGE_BASE }}:latest" --quiet
 
+  notify:
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [ci, validate-deployment, cd]
+    steps:
       - name: Discord Notification
-        if: always()
         env:
           WEBHOOK_URL: ${{ secrets.DISCORD_DEPLOYS }}
         run: |
-          # 1. Determine Main Embed Color
-          if [ "${{ job.status }}" == "failure" ]; then
+          CI_STATUS="${{ needs.ci.result }}"
+          VAL_STATUS="${{ needs.validate-deployment.result }}"
+          CD_STATUS="${{ needs.cd.result }}"
+
+          if [[ "$CI_STATUS" == "failure" || "$VAL_STATUS" == "failure" || "$CD_STATUS" == "failure" ]]; then
              COLOR="15158332" # Red
              EMOJI="🚨"
-          elif [ "${{ steps.smoke_test.conclusion }}" == "skipped" ]; then
-             COLOR="16737792" # Orange
-             EMOJI="⚠️"
+             FINAL_STATUS="FAILED"
           else
              COLOR="3066993" # Green
              EMOJI="✅"
+             FINAL_STATUS="SUCCESS"
           fi
 
-          # 2. Determine Field Emojis
-          DEPLOY_EMOJI=$([ "${{ job.status }}" == "success" ] && echo "🟢 Passed" || echo "🔴 Failed")
-
-          if [ "${{ steps.smoke_test.conclusion }}" == "skipped" ]; then
-            SMOKE_EMOJI="⏭️ Skipped"
-          elif [ "${{ steps.smoke_test.outcome }}" == "success" ]; then
-            SMOKE_EMOJI="🟢 Passed"
-          else
-            SMOKE_EMOJI="🔴 Failed"
-          fi
+          status_emoji() {
+            case "$1" in
+              success) echo "🟢 Passed" ;;
+              failure) echo "🔴 Failed" ;;
+              skipped) echo "⏭️ Skipped" ;;
+              cancelled) echo "⚪ Cancelled" ;;
+              *) echo "❓ Unknown" ;;
+            esac
+          }
 
           curl -X POST "${WEBHOOK_URL}" -H "Content-Type: application/json" -d @- <<EOF
           {
-            "content": "${EMOJI} CD Pipeline **${{ job.status }}**",
+            "content": "${EMOJI} Pipeline **${FINAL_STATUS}**",
             "embeds": [{
-              "title": "Deployment Summary",
+              "title": "Workflow Execution Summary",
               "color": ${COLOR},
               "fields": [
-                {"name": "Build & Deploy", "value": "${DEPLOY_EMOJI}", "inline": true},
-                {"name": "Smoke Test", "value": "${SMOKE_EMOJI}", "inline": true},
-                {"name": "Monitoring", "value": "📡 Active", "inline": true},
+                {"name": "1. CI (Tests/Lint)", "value": "$(status_emoji $CI_STATUS)", "inline": true},
+                {"name": "2. Validation", "value": "$(status_emoji $VAL_STATUS)", "inline": true},
+                {"name": "3. Deployment", "value": "$(status_emoji $CD_STATUS)", "inline": true},
                 {"name": "Author", "value": "${{ github.actor }}", "inline": true},
                 {"name": "Commit", "value": "${{ github.sha }}", "inline": false}
               ]
