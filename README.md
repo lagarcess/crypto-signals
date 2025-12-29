@@ -63,9 +63,14 @@ Crypto Sentinel is a production-ready trading bot that:
 
 ![Crypto Sentinel Architecture](./docs/images/crypto-sentinel-architecture.png)
 
+**Core Engine:**
+- **Structural Foundation**: O(N) ZigZag pivot detection with Numba JIT compilation
+- **Pattern Classification**: STANDARD_PATTERN (5-90d) vs MACRO_PATTERN (>90d)
+- **Shadow Signaling**: Rejected signals persisted to `rejected_signals` collection for audit
+
 **External Services:**
 - **Alpaca API**: Market data & trading
-- **Google Cloud Firestore**: Signal & position storage
+- **Google Cloud Firestore**: Signal, position, and rejected signal storage
 - **Google Cloud BigQuery**: Trade analytics
 - **Discord Webhooks**: Threaded notifications
 - **Google Secret Manager**: Credentials
@@ -87,6 +92,7 @@ crypto-signals/
 │   │   └── exceptions.py          # Custom exceptions
 │   ├── analysis/
 │   │   ├── indicators.py          # Technical indicators (RSI, MACD, etc.)
+│   │   ├── structural.py          # O(N) ZigZag pivot detection (Numba JIT)
 │   │   └── patterns.py            # Pattern detection logic
 │   ├── notifications/
 │   │   └── discord.py             # Discord webhook client (threaded messaging)
@@ -209,6 +215,7 @@ crypto-signals/
 | `TEST_MODE` | No | `true` | Route all traffic to test webhook (safe default) |
 | `LIVE_CRYPTO_DISCORD_WEBHOOK_URL` | No** | - | Live webhook for CRYPTO signals (**required if TEST_MODE=false) |
 | `LIVE_STOCK_DISCORD_WEBHOOK_URL` | No** | - | Live webhook for EQUITY signals (**required if TEST_MODE=false) |
+| `DISCORD_SHADOW_WEBHOOK_URL` | No | - | Deduplicated shadow signals (rejected patterns) |
 | `RATE_LIMIT_DELAY` | No | `0.5` | Delay between API requests (seconds) |
 | `DISABLE_SECRET_MANAGER` | No | `false` | Disable Secret Manager (local dev) |
 | `ENABLE_EXECUTION` | No | `false` | Enable bracket order execution |
@@ -366,6 +373,15 @@ Built-in metrics tracking:
 - Execution duration (min/avg/max)
 - Total operations count
 - Error rates and types
+
+### Shadow Signals (Phase 7)
+Rejections are routed to `#shadow-signals` (grey embed) and stored in `rejected_signals` collection.
+Key metrics captured in `confluence_snapshot`: RSI, ADX, SMA trend, Volume Ratio.
+
+**Firestore Indexing:**
+Ensure composite index exists for `rejected_signals`:
+`symbol ASC, rejected_at DESC`
+(Required for Phase 8 audit queries)
 
 ### Health Checks
 

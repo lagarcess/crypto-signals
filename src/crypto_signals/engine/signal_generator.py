@@ -10,7 +10,9 @@ from typing import Optional, Type
 import numpy as np
 import pandas as pd
 from crypto_signals.analysis.indicators import TechnicalIndicators
-from crypto_signals.analysis.patterns import PatternAnalyzer
+from crypto_signals.analysis.patterns import (
+    PatternAnalyzer,
+)
 from crypto_signals.domain.schemas import (
     AssetClass,
     ExitReason,
@@ -141,11 +143,25 @@ class SignalGenerator:
             return None
 
         # ============================================================
-        # SIGNAL QUALITY FILTERS
+        # SIGNAL QUALITY FILTERS (Confluence Validation)
         # ============================================================
+        # Collect all rejection reasons and indicator values for transparency
+        rejection_reasons: list[str] = []
 
-        # 1. VOLUME CONFIRMATION FILTER
-        # For breakout patterns, require volume to be at least 150% of 20-period SMA
+        # Extract indicator values for confluence snapshot
+        current_volume = float(latest.get("volume", 0))
+        vol_sma_20 = float(latest.get("VOL_SMA_20", 1.0))
+        if vol_sma_20 <= 0:
+            vol_sma_20 = 1.0
+        volume_ratio = current_volume / vol_sma_20 if vol_sma_20 > 0 else 0
+
+        rsi_value = float(latest.get("RSI_14", 50))  # Default to neutral
+        adx_value = float(latest.get("ADX_14", 25))  # Default to moderate trend
+        sma_200 = float(latest.get("SMA_200", 0))
+        close_price = float(latest.get("close", 0))
+        sma_trend = "Above" if close_price > sma_200 and sma_200 > 0 else "Below"
+
+        # Define pattern categories for targeted validation
         breakout_patterns = (
             "ASCENDING_TRIANGLE",
             "CUP_AND_HANDLE",
@@ -155,24 +171,50 @@ class SignalGenerator:
             "DOUBLE_BOTTOM",
             "BULLISH_MARUBOZU",
         )
-        if pattern_name in breakout_patterns:
-            current_volume = float(latest.get("volume", 0))
-            vol_sma_20 = float(
-                latest.get("VOL_SMA_20", 1.0)
-            )  # Default to 1.0 to avoid div/zero
+        trend_following_patterns = (
+            "BULL_FLAG",
+            "ASCENDING_TRIANGLE",
+            "RISING_THREE_METHODS",
+            "THREE_WHITE_SOLDIERS",
+        )
 
-            # Gracefully handle missing volume data
-            if vol_sma_20 <= 0:
-                vol_sma_20 = 1.0
+        # 1. VOLUME CONFIRMATION FILTER (Breakout patterns only)
+        if pattern_name in breakout_patterns and volume_ratio < 1.5:
+            rejection_reasons.append(f"Volume {volume_ratio:.1f}x < 1.5x")
 
-            volume_ratio = current_volume / vol_sma_20 if vol_sma_20 > 0 else 0
+        # 2. RSI OVERBOUGHT FILTER (Bullish patterns)
+        # Reject if RSI > 70 (overbought) - reduces chasing extended moves
+        if rsi_value > 70:
+            rejection_reasons.append(f"RSI {rsi_value:.0f} > 70 (Overbought)")
 
-            if volume_ratio < 1.5:
-                logger.warning(
-                    f"Signal rejected for {symbol}: {pattern_name} - "
-                    f"Insufficient volume confirmation (ratio: {volume_ratio:.2f}, required: 1.5)"
-                )
-                return None
+        # 3. ADX WEAK TREND FILTER (Trend-following patterns only)
+        # Reject if ADX < 20 - trend is too weak for trend-following setups
+        if pattern_name in trend_following_patterns and adx_value < 20:
+            rejection_reasons.append(f"ADX {adx_value:.0f} < 20 (Weak Trend)")
+
+        # Build confluence snapshot for persistence
+        confluence_snapshot = {
+            "rsi": round(rsi_value, 1),
+            "adx": round(adx_value, 1),
+            "sma_trend": sma_trend,
+            "volume_ratio": round(volume_ratio, 2),
+        }
+
+        # If quality gate failures exist at this point, reject early
+        if rejection_reasons:
+            combined_reason = " AND ".join(rejection_reasons)
+            logger.warning(
+                f"[REJECTION] {symbol} {pattern_name} rejected: {combined_reason}"
+            )
+            return self._create_rejected_signal(
+                symbol,
+                asset_class,
+                pattern_name,
+                latest,
+                analyzer,
+                combined_reason,
+                confluence_snapshot,
+            )
 
         # 4. Construct Signal
         sig_id = get_deterministic_id(f"{symbol}|{pattern_name}|{latest.name}")
@@ -183,25 +225,34 @@ class SignalGenerator:
             pattern_name,
             latest,
             sig_id,
+            analyzer,
         )
 
-        # 2. RISK-TO-REWARD (R:R) FILTER
+        # 5. RISK-TO-REWARD (R:R) FILTER (Post-construction)
         # Discard any signal where the R:R ratio is less than 1.5
-        # This ensures we only take trades with favorable risk profiles
+        rr_ratio = 0.0
         if signal.take_profit_1 and signal.suggested_stop and signal.entry_price:
             potential_profit = abs(signal.take_profit_1 - signal.entry_price)
             potential_risk = abs(signal.entry_price - signal.suggested_stop)
 
-            # Avoid division by zero
             if potential_risk > 0:
                 rr_ratio = potential_profit / potential_risk
+                confluence_snapshot["rr_ratio"] = round(rr_ratio, 2)
 
                 if rr_ratio < 1.5:
+                    rejection_reason = f"R:R {rr_ratio:.1f} < 1.5"
                     logger.warning(
-                        f"Signal rejected for {symbol}: {pattern_name} - "
-                        f"Poor R:R ratio ({rr_ratio:.2f}, required: 1.5)"
+                        f"[REJECTION] {symbol} {pattern_name} rejected: {rejection_reason}"
                     )
-                    return None
+                    return self._create_rejected_signal(
+                        symbol,
+                        asset_class,
+                        pattern_name,
+                        latest,
+                        analyzer,
+                        rejection_reason,
+                        confluence_snapshot,
+                    )
 
         return signal
 
@@ -212,8 +263,9 @@ class SignalGenerator:
         pattern_name: str,
         latest: pd.Series,
         sig_id: str,
+        analyzer: PatternAnalyzer,
     ) -> Signal:
-        """Create a Signal object with all fields populated."""
+        """Create a Signal object with all fields populated, including structural metadata."""
 
         # Extract Prices
         close_price = float(latest["close"])
@@ -285,12 +337,10 @@ class SignalGenerator:
 
         take_profit_1 = entry_ref + (2.0 * atr) if atr > 0 else None
         take_profit_2 = entry_ref + (4.0 * atr) if atr > 0 else None
-        # TP3: Runner using Chandelier Exit
-        take_profit_3 = (
-            float(latest["CHANDELIER_EXIT_LONG"])
-            if "CHANDELIER_EXIT_LONG" in latest
-            else None
-        )
+        # TP3: Extended runner target (becomes trailing stop after TP1/TP2 hit)
+        # Initial target ensures TP3 > TP2 for clean signal display
+        # After TP1/TP2, check_exits() updates this to Chandelier Exit for trailing
+        take_profit_3 = entry_ref + (6.0 * atr) if atr > 0 else None
 
         # Strategy ID is the pattern name for now
         strategy_id = pattern_name
@@ -314,6 +364,52 @@ class SignalGenerator:
             and latest[col]
         ]
 
+        # ============================================================
+        # STRUCTURAL METADATA EXTRACTION
+        # ============================================================
+        pattern_duration_days = None
+        pattern_classification = None
+        structural_anchors = None
+
+        # Extract pattern-specific duration/classification from metadata columns
+        # Map pattern names to their corresponding metadata column prefixes
+        structural_patterns = {
+            "DOUBLE_BOTTOM": "double_bottom",
+            "INVERSE_HEAD_SHOULDERS": "inv_hs",
+        }
+
+        if pattern_name in structural_patterns:
+            col_prefix = structural_patterns[pattern_name]
+            duration_col = f"{col_prefix}_duration"
+            class_col = f"{col_prefix}_classification"
+
+            if duration_col in latest.index and pd.notna(latest.get(duration_col)):
+                pattern_duration_days = int(latest[duration_col])
+
+            if class_col in latest.index and pd.notna(latest.get(class_col)):
+                pattern_classification = str(latest[class_col])
+
+        # Extract structural pivots (limit to 5 most recent for memory efficiency)
+        pattern_span_days = None
+        if hasattr(analyzer, "pivots") and analyzer.pivots:
+            # Get the 5 most recent pivots, sorted chronologically
+            recent_pivots = sorted(analyzer.pivots[-5:], key=lambda p: p.index)
+
+            structural_anchors = [
+                {
+                    "price": p.price,
+                    "timestamp": str(p.timestamp) if p.timestamp else None,
+                    "pivot_type": p.pivot_type,
+                    "index": p.index,
+                }
+                for p in recent_pivots
+            ]
+
+            # Calculate pattern span (first to last pivot in the cluster)
+            if len(structural_anchors) >= 2:
+                pivot_indices = [p["index"] for p in structural_anchors]
+                pattern_span_days = max(pivot_indices) - min(pivot_indices)
+
         return Signal(
             signal_id=sig_id,
             strategy_id=strategy_id,
@@ -329,7 +425,51 @@ class SignalGenerator:
             take_profit_1=take_profit_1,
             take_profit_2=take_profit_2,
             take_profit_3=take_profit_3,
+            pattern_duration_days=pattern_duration_days,
+            pattern_span_days=pattern_span_days,
+            pattern_classification=pattern_classification,
+            structural_anchors=structural_anchors,
         )
+
+    def _create_rejected_signal(
+        self,
+        symbol: str,
+        asset_class: AssetClass,
+        pattern_name: str,
+        latest: pd.Series,
+        analyzer: PatternAnalyzer,
+        rejection_reason: str,
+        confluence_snapshot: dict | None = None,
+    ) -> Signal:
+        """Create a shadow signal for rejected patterns (failed quality gates).
+
+        These signals have status REJECTED_BY_FILTER and are used for:
+        - Firestore auditing (rejected_signals collection)
+        - Discord shadow channel visibility
+        - Phase 8 backtesting analysis
+
+        Args:
+            symbol: Trading symbol
+            asset_class: Asset class (CRYPTO/EQUITY)
+            pattern_name: Name of detected pattern
+            latest: Latest candle data
+            analyzer: Pattern analyzer with pivot data
+            rejection_reason: Why the signal was rejected
+            confluence_snapshot: Indicator values at rejection time
+        """
+        sig_id = get_deterministic_id(f"{symbol}|{pattern_name}|{latest.name}|REJECTED")
+
+        # Create base signal with structural metadata
+        signal = self._create_signal(
+            symbol, asset_class, pattern_name, latest, sig_id, analyzer
+        )
+
+        # Override status and add rejection metadata
+        signal.status = SignalStatus.REJECTED_BY_FILTER
+        signal.rejection_reason = rejection_reason
+        signal.confluence_snapshot = confluence_snapshot
+
+        return signal
 
     def check_exits(
         self,
@@ -568,7 +708,7 @@ class SignalGenerator:
                 # 2. Dynamic Invalidation (Color Flip / Indicators)
                 # Note: bearish_engulfing, rsi_overbought, adx_peaking are Long-specific
                 # For Short positions, these would indicate favorable conditions, not invalidation
-                # TODO: Add bullish equivalents for Short invalidation when signals are generated
+                # NOTE: Bullish equivalents for Short invalidation not yet implemented.\n                # Short signals use structural invalidation only, not pattern-based exits\n                # (e.g., bullish_engulfing). This is a known Phase 8 enhancement.
                 elif is_long and (is_bearish_engulfing or rsi_overbought or adx_peaking):
                     signal.status = SignalStatus.INVALIDATED
                     signal.exit_reason = ExitReason.COLOR_FLIP

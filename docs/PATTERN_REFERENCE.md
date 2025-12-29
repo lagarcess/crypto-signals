@@ -317,6 +317,14 @@ A five-bar continuation pattern with three small consolidation candles.
 
 ## Multi-Day Chart Patterns
 
+> [!NOTE]
+> **Geometric Structural Foundation**: Multi-day patterns use O(N) ZigZag pivot detection
+> (Numba-optimized) rather than fixed lookback windows. Patterns are classified as:
+> - **STANDARD_PATTERN**: 5-90 day formations
+> - **MACRO_PATTERN**: >90 day formations (displayed with 🏛️ header in Discord)
+>
+> This allows patterns to be detected regardless of formation length, with accurate
+> duration tracking and classification for position sizing context.
 
 ### Bull Flag
 

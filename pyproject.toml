@@ -27,6 +27,7 @@ pandas-ta-classic = {git = "https://github.com/xgboosted/pandas-ta-classic.git",
 # Terminal UI & Rich Logging
 rich = "^13.0.0"
 typer = "^0.20.1"
+numba = {version = ">=0.60.0", python = ">=3.10"}
 
 [build-system]
 requires = ["poetry-core"]
@@ -51,6 +52,7 @@ addopts = "-m 'not integration'"
 markers = [
     "visual: marks tests as visual integration tests (require TEST_DISCORD_WEBHOOK)",
     "integration: marks tests as integration tests that require real credentials (deselected by default)",
+    "slow: marks tests as slow (performance benchmarks requiring large datasets)",
 ]
 
 [tool.ruff]

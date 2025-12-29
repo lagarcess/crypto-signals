@@ -177,10 +177,41 @@ Cloud Scheduler (daily 00:01 UTC)
 
 1. **Push to `main` branch** → Triggers GitHub Actions
 2. **CI Job** → Lint, test, security audit
-3. **CD Job** → Build Docker image, push to Artifact Registry, update Cloud Run job
-4. **Cloud Scheduler** → Triggers job daily at 00:01 UTC
-5. **Cloud Run Job** → Analyzes markets, generates signals, executes trades
-6. **Notifications** → Success/failure sent to Discord
+3. **Validate Deployment** → Dry-run configuration checks (PRs only)
+4. **CD Job** → Build Docker image, push to Artifact Registry, update Cloud Run job
+5. **Smoke Test** → Execute job with `--smoke-test` flag to verify connectivity
+6. **Auto-Rollback** → Revert to `latest` if smoke test fails
+7. **Promote to Latest** → Tag new image as `latest` only after smoke test passes
+8. **Cloud Scheduler** → Triggers job daily at 00:01 UTC
+9. **Cloud Run Job** → Analyzes markets, generates signals, executes trades
+10. **Notifications** → Success/failure sent to Discord
+
+### CI/CD Features
+
+**Concurrency Control:**
+- Only one deployment runs at a time (`cancel-in-progress: true`)
+- Prevents race conditions and conflicting deployments
+
+**Smoke Testing:**
+- After deployment, executes job with `--smoke-test` flag
+- Verifies Firestore connectivity and configuration
+- Skips full signal generation for fast validation
+
+**Auto-Rollback:**
+- If smoke test fails, automatically reverts to previous `latest` image
+- Uses "Promote-on-Success" pattern: `latest` tag only applied after passing smoke test
+- Failed builds are never promoted, ensuring `latest` always points to a stable release
+
+**Bypass Logic:**
+- Add `[skip-smoke]` to commit message to skip smoke test
+- Useful for documentation-only changes or emergency hotfixes
+- Image still promoted to `latest` if deployment succeeds
+
+**Detailed Notifications:**
+- Discord notifications include process summary with status emojis:
+  - Build & Deploy: 🟢 Passed / 🔴 Failed
+  - Smoke Test: 🟢 Passed / 🔴 Failed / ⏭️ Skipped
+- Granular error reporting with last 5 lines of validation errors
 
 ---
 

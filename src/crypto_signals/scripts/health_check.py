@@ -13,7 +13,7 @@ Run this script to validate your environment before running the main application
 """
 
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from alpaca.data.historical.crypto import CryptoHistoricalDataClient
 from alpaca.data.requests import CryptoBarsRequest
@@ -123,7 +123,21 @@ def verify_firestore(settings) -> bool:
     # Delete test document
     doc_ref.delete()
 
-    print("✅ [GCP Firestore] Connected (Write/Delete Test Passed)")
+    # Phase 7: Verify write permissions for 'rejected_signals' collection
+    # Critical for Shadow Signaling audit trail
+    shadow_ref = db.collection("rejected_signals").document("health_check_test")
+    shadow_ref.set(
+        {
+            "test": "write_permission",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "expireAt": datetime.now(timezone.utc) + timedelta(minutes=5),
+        }
+    )
+    shadow_ref.delete()
+
+    print(
+        "✅ [GCP Firestore] Connected (Write/Delete Test for _healthcheck & rejected_signals Passed)"
+    )
     return True
 
 
@@ -225,7 +239,47 @@ def verify_discord(settings) -> bool:
     else:
         webhook_status["LIVE_STOCK_WEBHOOK"] = ("➖", "Not configured")
 
-    # --- Step 4: Build comprehensive status message ---
+    # --- Step 4: Validate DISCORD_SHADOW_WEBHOOK_URL (Phase 7) ---
+    if settings.DISCORD_SHADOW_WEBHOOK_URL:
+        shadow_url = settings.DISCORD_SHADOW_WEBHOOK_URL.get_secret_value()
+        try:
+            response = requests.get(shadow_url, timeout=5.0)
+            if response.status_code == 200:
+                webhook_status["SHADOW_WEBHOOK"] = ("✅", "Operational")
+            else:
+                webhook_status["SHADOW_WEBHOOK"] = (
+                    "⚠️",
+                    f"HTTP {response.status_code}",
+                )
+        except requests.RequestException as e:
+            webhook_status["SHADOW_WEBHOOK"] = ("❌", f"Error: {str(e)[:50]}")
+    else:
+        # Warning if not configured in production, acceptable in test
+        status_icon = "➖" if settings.TEST_MODE else "⚠️"
+        webhook_status["SHADOW_WEBHOOK"] = (
+            status_icon,
+            "Not configured (Shadow disabled)",
+        )
+
+    # --- Step 4.5: Validate DISCORD_DEPLOYS (CI/CD Deployments Webhook) ---
+    if settings.DISCORD_DEPLOYS:
+        deploys_url = settings.DISCORD_DEPLOYS.get_secret_value()
+        try:
+            response = requests.get(deploys_url, timeout=5.0)
+            if response.status_code == 200:
+                webhook_status["DEPLOYS_WEBHOOK"] = ("✅", "Operational")
+            else:
+                webhook_status["DEPLOYS_WEBHOOK"] = (
+                    "⚠️",
+                    f"HTTP {response.status_code}",
+                )
+        except requests.RequestException as e:
+            webhook_status["DEPLOYS_WEBHOOK"] = ("❌", f"Error: {str(e)[:50]}")
+    else:
+        # Not critical - only used in CI/CD, not in application
+        webhook_status["DEPLOYS_WEBHOOK"] = ("➖", "Not configured (CI/CD only)")
+
+    # --- Step 5: Build comprehensive status message ---
     mode_str = "TEST" if settings.TEST_MODE else "LIVE"
     status_lines = [
         "✅ **[Health Check]** System is online",
@@ -238,7 +292,7 @@ def verify_discord(settings) -> bool:
 
     msg = "\n".join(status_lines)
 
-    # --- Step 5: Send report to TEST_DISCORD_WEBHOOK only ---
+    # --- Step 6: Send report to TEST_DISCORD_WEBHOOK only ---
     client = DiscordClient(settings=settings)
     success = client.send_message(
         msg,
@@ -250,12 +304,12 @@ def verify_discord(settings) -> bool:
         print("❌ [Discord] Failed to send health report to TEST_DISCORD_WEBHOOK")
         return False
 
-    # --- Step 6: Print console status ---
+    # --- Step 7: Print console status ---
     print("✅ [Discord] Health report sent to TEST_DISCORD_WEBHOOK")
     for webhook_name, (emoji, status) in webhook_status.items():
         print(f"   {emoji} {webhook_name}: {status}")
 
-    # --- Step 7: Validate operational status ---
+    # --- Step 8: Validate operational status ---
     # In TEST_MODE: "➖" (not configured) is acceptable for live webhooks
     # In LIVE_MODE: Live webhooks must be "✅" (not "➖" or any error)
     all_operational = True

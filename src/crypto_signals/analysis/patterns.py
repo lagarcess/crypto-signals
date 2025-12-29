@@ -4,6 +4,11 @@ from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
+from crypto_signals.analysis.structural import Pivot, find_pivots
+
+# Pattern classification constants
+STANDARD_PATTERN = "STANDARD_PATTERN"  # 5-90 day formations
+MACRO_PATTERN = "MACRO_PATTERN"  # >90 day formations
 
 
 @dataclass
@@ -15,10 +20,16 @@ class Signal:
     pattern_type: str
     price: float
     confidence: str = "HIGH"  # Derived from confluence
+    pattern_duration_days: int | None = None
+    pattern_classification: str | None = None
 
 
 class PatternAnalyzer:
-    """Engine for detecting technical patterns with confluence confirmation."""
+    """Engine for detecting technical patterns with confluence confirmation.
+
+    Uses structural pivot detection for geometric pattern recognition,
+    allowing patterns to be identified regardless of formation length.
+    """
 
     # Confluence Constants
     RSI_THRESHOLD = 45.0
@@ -31,9 +42,24 @@ class PatternAnalyzer:
     ADX_TRENDING = 25.0
     MARUBOZU_BODY_RATIO = 0.95
 
-    def __init__(self, dataframe: pd.DataFrame):
-        """Initialize the PatternAnalyzer with a dataframe."""
+    # Structural Pattern Constants
+    PIVOT_PCT_THRESHOLD = 0.05  # 5% threshold for ZigZag pivot detection
+
+    def __init__(self, dataframe: pd.DataFrame, pct_threshold: float | None = None):
+        """Initialize the PatternAnalyzer with a dataframe.
+
+        Args:
+            dataframe: OHLCV DataFrame with 'open', 'high', 'low', 'close', 'volume'
+            pct_threshold: Optional custom threshold for pivot detection (default 5%)
+        """
         self.df = dataframe.copy()  # Work on a copy safely
+        self.pct_threshold = pct_threshold or self.PIVOT_PCT_THRESHOLD
+
+        # Compute structural pivots for geometric pattern detection
+        if len(self.df) > 0:
+            self.pivots = find_pivots(self.df, pct_threshold=self.pct_threshold)
+        else:
+            self.pivots = []
 
     def check_patterns(self) -> pd.DataFrame:
         """
@@ -379,6 +405,71 @@ class PatternAnalyzer:
 
         self.df["open_2"] = self.df["open"].shift(2)
         self.df["close_2"] = self.df["close"].shift(2)
+
+    # =========================================================================
+    # STRUCTURAL PATTERN HELPERS
+    # =========================================================================
+
+    def _get_valleys_in_range(
+        self, min_bars_back: int = 5, max_bars_back: int = 200
+    ) -> list[Pivot]:
+        """Get valley pivots within a lookback range from current position."""
+        if not self.pivots:
+            return []
+
+        current_idx = len(self.df) - 1
+        min_idx = max(0, current_idx - max_bars_back)
+        max_idx = current_idx - min_bars_back
+
+        return [
+            p
+            for p in self.pivots
+            if p.pivot_type == "VALLEY" and min_idx <= p.index <= max_idx
+        ]
+
+    def _get_peaks_in_range(
+        self, min_bars_back: int = 5, max_bars_back: int = 200
+    ) -> list[Pivot]:
+        """Get peak pivots within a lookback range from current position."""
+        if not self.pivots:
+            return []
+
+        current_idx = len(self.df) - 1
+        min_idx = max(0, current_idx - max_bars_back)
+        max_idx = current_idx - min_bars_back
+
+        return [
+            p
+            for p in self.pivots
+            if p.pivot_type == "PEAK" and min_idx <= p.index <= max_idx
+        ]
+
+    def _calculate_pattern_duration(self, first_pivot_idx: int) -> tuple[int, str]:
+        """Calculate pattern duration and classification.
+
+        Args:
+            first_pivot_idx: Index of the first pivot in the pattern
+
+        Returns:
+            Tuple of (duration_days, classification)
+        """
+        current_idx = len(self.df) - 1
+        duration_days = current_idx - first_pivot_idx
+
+        if duration_days > 90:
+            classification = MACRO_PATTERN
+        else:
+            classification = STANDARD_PATTERN
+
+        return duration_days, classification
+
+    def _pivots_match_price(
+        self, p1: Pivot, p2: Pivot, tolerance_pct: float = 0.015
+    ) -> bool:
+        """Check if two pivots have matching prices within tolerance."""
+        avg_price = (p1.price + p2.price) / 2
+        diff_pct = abs(p1.price - p2.price) / avg_price
+        return diff_pct < tolerance_pct
 
     def _detect_bullish_hammer(self) -> pd.Series:
         """Lower Wick >= 2.0 * Body, Upper Wick <= 0.5 * Body, Downtrend context."""
@@ -821,48 +912,85 @@ class PatternAnalyzer:
 
     def _detect_double_bottom(self) -> pd.Series:
         """
-        Hardened Double Bottom Detection.
+        Structural Double Bottom Detection using pivot geometry.
+
+        This flexible-net approach detects double bottoms regardless of
+        formation length by analyzing the geometric relationship between
+        structural valley pivots.
 
         Structural Requirements:
-        1. Two Lows separated by 10-30 bars.
-        2. Lows within 1.5% of each other (tighter tolerance).
-        3. Middle Peak (Neckline) must be >= 3% above average of the two bottoms.
+        1. Two valley pivots with prices within 1.5% of each other.
+        2. A peak pivot between the two valleys (neckline) >= 3% above bottoms.
+        3. Valleys separated by at least 5 bars (no micro-patterns).
 
         Returns:
             pd.Series[bool]: True at bars where valid double bottom is detected.
 
         Note:
-            Uses vectorized pandas operations for performance - no for-loops.
+            Pattern duration and classification are stored in metadata columns.
         """
         is_double_bottom = pd.Series(False, index=self.df.index)
-        current_low = self.df["low"]
+        pattern_duration = pd.Series(dtype="Int64", index=self.df.index)
+        pattern_class = pd.Series(dtype="object", index=self.df.index)
 
-        # Vectorized approach: Check multiple lags simultaneously
-        # We'll check lags 10, 15, 20, 25, 30 (representative samples)
-        lags_to_check = [10, 15, 20, 25, 30]
+        if len(self.pivots) < 3:
+            # Need at least 2 valleys and 1 peak for double bottom
+            self.df["double_bottom_duration"] = pattern_duration
+            self.df["double_bottom_classification"] = pattern_class
+            return is_double_bottom
 
-        for lag in lags_to_check:
-            past_low = self.df["low"].shift(lag)
+        # Get valleys from structural pivots (flexible lookback)
+        valleys = [p for p in self.pivots if p.pivot_type == "VALLEY"]
+        peaks = [p for p in self.pivots if p.pivot_type == "PEAK"]
+
+        if len(valleys) < 2 or len(peaks) < 1:
+            self.df["double_bottom_duration"] = pattern_duration
+            self.df["double_bottom_classification"] = pattern_class
+            return is_double_bottom
+
+        # Check each pair of consecutive valleys
+        for i in range(len(valleys) - 1):
+            v1 = valleys[i]  # First bottom
+            v2 = valleys[i + 1]  # Second bottom
+
+            # Minimum separation check (at least 5 bars apart)
+            if v2.index - v1.index < 5:
+                continue
 
             # 1. Validate bottoms within 1.5% of each other
-            avg_bottoms = (current_low + past_low) / 2
-            diff_pct = np.abs(current_low - past_low) / avg_bottoms
-            bottoms_match = diff_pct < 0.015  # 1.5% tolerance
+            if not self._pivots_match_price(v1, v2, tolerance_pct=0.015):
+                continue
 
-            # 2. Middle Peak Verification (Neckline check)
-            # Find the maximum high between the two potential bottoms
-            # Rolling max over the lag period, shifted by 1 to exclude current bar
-            middle_peak = self.df["high"].shift(1).rolling(window=lag - 1).max()
+            # 2. Find peak between the two valleys (neckline)
+            middle_peaks = [p for p in peaks if v1.index < p.index < v2.index]
+
+            if not middle_peaks:
+                continue
+
+            # Get the highest peak between valleys (neckline)
+            neckline_pivot = max(middle_peaks, key=lambda p: p.price)
+            avg_bottoms = (v1.price + v2.price) / 2
 
             # Neckline must be >= 3% higher than average of bottoms
-            neckline_valid = middle_peak >= (avg_bottoms * 1.03)
+            if neckline_pivot.price < avg_bottoms * 1.03:
+                continue
 
-            # Combine conditions
-            valid_double_bottom = bottoms_match & neckline_valid
+            # Valid double bottom found!
+            # Mark all bars from v2 to current as potential signal bars
+            current_idx = len(self.df) - 1
 
-            # Aggregate results
-            is_double_bottom = is_double_bottom | valid_double_bottom
+            # Only signal if we're near or after the second bottom
+            if current_idx >= v2.index:
+                # Calculate pattern duration and classification
+                duration, classification = self._calculate_pattern_duration(v1.index)
 
+                # For vectorized output, mark current bar
+                is_double_bottom.iloc[-1] = True
+                pattern_duration.iloc[-1] = duration
+                pattern_class.iloc[-1] = classification
+
+        self.df["double_bottom_duration"] = pattern_duration
+        self.df["double_bottom_classification"] = pattern_class
         return is_double_bottom.fillna(False)
 
     def _detect_ascending_triangle(self) -> pd.Series:
@@ -1276,58 +1404,97 @@ class PatternAnalyzer:
 
     def _detect_inverse_head_shoulders(self) -> pd.Series:
         """
-        Inverse Head and Shoulders (89% success rate).
+        Structural Inverse Head and Shoulders Detection using pivot geometry.
 
-        A multi-day bullish reversal pattern with:
-        - Left Shoulder: Local low followed by rally
-        - Head: Lower low than shoulders
-        - Right Shoulder: Higher low than head, similar to left shoulder
-        - Neckline: Resistance connecting highs between shoulders
+        This flexible-net approach detects inverse H&S patterns regardless of
+        formation length by analyzing the 5-pivot structure:
+        - Left Shoulder (Valley): First low
+        - Left Peak: Rally after left shoulder
+        - Head (Valley): Lowest low (lower than both shoulders)
+        - Right Peak: Rally after head
+        - Right Shoulder (Valley): Similar height to left shoulder
 
-        Confluence (Crypto-tuned):
-        - Volume: Decreasing on head, increasing on right shoulder breakout
-        - RSI: Bullish divergence between head and right shoulder
-        - Breakout: Close above neckline with confirmation
+        Structural Requirements:
+        1. Head valley must be lower than both shoulder valleys.
+        2. Shoulder valleys within 10% of each other (symmetry).
+        3. Breakout above neckline (line connecting the two peaks).
 
-        Uses simplified detection with 30-period lookback.
+        Returns:
+            pd.Series[bool]: True at bars where valid inverse H&S is detected.
+
+        Note:
+            Pattern duration and classification are stored in metadata columns.
         """
-        # Need at least 35 periods for this pattern (30 lookback + 5 buffer)
-        if len(self.df) < 35:
-            return pd.Series(False, index=self.df.index)
+        is_inv_hs = pd.Series(False, index=self.df.index)
+        pattern_duration = pd.Series(dtype="Int64", index=self.df.index)
+        pattern_class = pd.Series(dtype="object", index=self.df.index)
 
-        # Find local minima for shoulders and head
-        # Using rolling min with different windows
+        if len(self.pivots) < 5:
+            # Need at least 3 valleys and 2 peaks for inverse H&S
+            self.df["inv_hs_duration"] = pattern_duration
+            self.df["inv_hs_classification"] = pattern_class
+            return is_inv_hs
 
-        # Left shoulder region (periods -30 to -20)
-        left_shoulder_low = self.df["low"].shift(25).rolling(window=10).min()
+        # Get valleys and peaks from structural pivots
+        valleys = [p for p in self.pivots if p.pivot_type == "VALLEY"]
+        peaks = [p for p in self.pivots if p.pivot_type == "PEAK"]
 
-        # Head region (periods -20 to -10) - should be lowest
-        head_low = self.df["low"].shift(15).rolling(window=10).min()
+        if len(valleys) < 3 or len(peaks) < 2:
+            self.df["inv_hs_duration"] = pattern_duration
+            self.df["inv_hs_classification"] = pattern_class
+            return is_inv_hs
 
-        # Right shoulder region (periods -10 to -1)
-        right_shoulder_low = self.df["low"].shift(5).rolling(window=10).min()
+        # Look for valid 5-pivot inverse H&S structure
+        # Check combinations of 3 consecutive valleys for L-Shoulder, Head, R-Shoulder
+        for i in range(len(valleys) - 2):
+            left_shoulder = valleys[i]
+            head = valleys[i + 1]
+            right_shoulder = valleys[i + 2]
 
-        # Head must be lower than both shoulders
-        head_lower_than_left = head_low < left_shoulder_low
-        head_lower_than_right = head_low < right_shoulder_low
+            # 1. Head must be lower than both shoulders
+            if not (
+                head.price < left_shoulder.price and head.price < right_shoulder.price
+            ):
+                continue
 
-        # Shoulders should be roughly symmetrical (within 10%)
-        shoulder_symmetry = (
-            np.abs(left_shoulder_low - right_shoulder_low)
-            / left_shoulder_low.replace(0, np.nan)
-        ) < 0.10
+            # 2. Shoulders should be roughly symmetrical (within 10%)
+            avg_shoulders = (left_shoulder.price + right_shoulder.price) / 2
+            shoulder_diff_pct = (
+                abs(left_shoulder.price - right_shoulder.price) / avg_shoulders
+            )
+            if shoulder_diff_pct > 0.10:
+                continue
 
-        # Neckline: Max high between left shoulder and head, and head and right shoulder
-        # More precise: resistance line connecting the two peaks (maxima)
-        peak1 = self.df["high"].shift(15).rolling(window=10).max()
-        peak2 = self.df["high"].shift(5).rolling(window=10).max()
-        neckline = np.maximum(peak1, peak2)
+            # 3. Find peaks between shoulders (neckline points)
+            left_peaks = [p for p in peaks if left_shoulder.index < p.index < head.index]
+            right_peaks = [
+                p for p in peaks if head.index < p.index < right_shoulder.index
+            ]
 
-        # Breakout above neckline
-        breakout = self.df["close"] > neckline
+            if not left_peaks or not right_peaks:
+                continue
 
-        is_inv_hs_shape = (
-            head_lower_than_left & head_lower_than_right & shoulder_symmetry & breakout
-        )
+            # Get highest peaks for neckline
+            left_peak = max(left_peaks, key=lambda p: p.price)
+            right_peak = max(right_peaks, key=lambda p: p.price)
 
-        return is_inv_hs_shape.fillna(False)
+            # Neckline is the lower of the two peaks
+            neckline = min(left_peak.price, right_peak.price)
+
+            # 4. Check for breakout above neckline at current bar
+            current_idx = len(self.df) - 1
+            current_close = self.df["close"].iloc[-1]
+
+            if current_idx >= right_shoulder.index and current_close > neckline:
+                # Valid inverse H&S with breakout!
+                duration, classification = self._calculate_pattern_duration(
+                    left_shoulder.index
+                )
+
+                is_inv_hs.iloc[-1] = True
+                pattern_duration.iloc[-1] = duration
+                pattern_class.iloc[-1] = classification
+
+        self.df["inv_hs_duration"] = pattern_duration
+        self.df["inv_hs_classification"] = pattern_class
+        return is_inv_hs.fillna(False)
