@@ -13,7 +13,7 @@ Archived documents are kept for:
 ## Files
 
 ### GCP_DEPLOYMENT_GUIDE_V1.md
-**Status:** Archived on December 26, 2025  
+**Status:** Archived on December 26, 2025
 **Replaced By:** `docs/GCP_DEPLOYMENT_GUIDE.md`
 
 **Reason for Archive:**
