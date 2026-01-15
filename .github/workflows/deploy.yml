@@ -86,7 +86,14 @@ jobs:
 
   cd:
     needs: [ci, validate-deployment]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # Run on push to main when CI passes. validate-deployment is skipped on push (only runs on PRs)
+    # so we accept both 'success' and 'skipped' for that job.
+    if: |
+      always() &&
+      needs.ci.result == 'success' &&
+      (needs.validate-deployment.result == 'success' || needs.validate-deployment.result == 'skipped') &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     env:
       IMAGE_BASE: ${{ secrets.GAR_REPOSITORY }}
@@ -199,7 +206,11 @@ jobs:
 
   notify:
     runs-on: ubuntu-latest
-    if: always()
+    # Only notify when CI actually ran (skip drafts where everything is skipped)
+    if: |
+      always() &&
+      needs.ci.result != 'skipped' &&
+      (github.event.pull_request.draft == false || github.event_name == 'push')
     needs: [ci, validate-deployment, cd]
     steps:
       - name: Discord Notification
