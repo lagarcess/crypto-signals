@@ -376,12 +376,17 @@ class SignalGenerator:
         structural_patterns = {
             "DOUBLE_BOTTOM": "double_bottom",
             "INVERSE_HEAD_SHOULDERS": "inv_hs",
+            "BULL_FLAG": "bull_flag",
+            "CUP_AND_HANDLE": "cup_handle",
+            "FALLING_WEDGE": "falling_wedge",
+            "ASCENDING_TRIANGLE": "asc_triangle",
         }
 
         if pattern_name in structural_patterns:
             col_prefix = structural_patterns[pattern_name]
             duration_col = f"{col_prefix}_duration"
             class_col = f"{col_prefix}_classification"
+            pivots_col = f"{col_prefix}_pivots"
 
             if duration_col in latest.index and pd.notna(latest.get(duration_col)):
                 pattern_duration_days = int(latest[duration_col])
@@ -409,6 +414,14 @@ class SignalGenerator:
             if len(structural_anchors) >= 2:
                 pivot_indices = [p["index"] for p in structural_anchors]
                 pattern_span_days = max(pivot_indices) - min(pivot_indices)
+
+        # Classification Fix: MACRO only if pattern_span_days > 90 days
+        # This overrides any classification from metadata columns
+        if pattern_span_days is not None:
+            if pattern_span_days > 90:
+                pattern_classification = "MACRO_PATTERN"
+            else:
+                pattern_classification = "STANDARD_PATTERN"
 
         return Signal(
             signal_id=sig_id,
