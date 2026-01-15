@@ -50,7 +50,7 @@ COPY --from=builder --chown=appuser:appuser /app/src/ ./src/
 USER appuser
 
 # Set Python path
-ENV PYTHONPATH=/app
+ENV PYTHONPATH=/app/src
 ENV PYTHONUNBUFFERED=1
 
 # Health check

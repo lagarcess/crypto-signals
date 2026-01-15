@@ -130,6 +130,32 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Validate Container Build
+        run: |
+          IMAGE_SHA="${{ env.IMAGE_BASE }}:${{ github.sha }}"
+
+          echo "🔍 Testing container can import module..."
+          docker run --rm "$IMAGE_SHA" python -c "import crypto_signals.main; print('✅ Module import successful')"
+
+          echo "💨 Running containerized smoke test..."
+          docker run --rm \
+            -e DISABLE_SECRET_MANAGER=true \
+            -e TEST_MODE=true \
+            -e GOOGLE_CLOUD_PROJECT=${{ vars.GOOGLE_CLOUD_PROJECT }} \
+            -e ALPACA_API_KEY=${{ secrets.ALPACA_API_KEY }} \
+            -e ALPACA_SECRET_KEY=${{ secrets.ALPACA_SECRET_KEY }} \
+            -e TEST_DISCORD_WEBHOOK=${{ secrets.TEST_DISCORD_WEBHOOK }} \
+            -e LIVE_CRYPTO_DISCORD_WEBHOOK_URL=${{ secrets.LIVE_CRYPTO_DISCORD_WEBHOOK_URL }} \
+            -e LIVE_STOCK_DISCORD_WEBHOOK_URL=${{ secrets.LIVE_STOCK_DISCORD_WEBHOOK_URL }} \
+            -e DISCORD_SHADOW_WEBHOOK_URL=${{ secrets.DISCORD_SHADOW_WEBHOOK_URL }} \
+            -e DISCORD_BOT_TOKEN=${{ secrets.DISCORD_BOT_TOKEN }} \
+            -e CRYPTO_SYMBOLS="${{ vars.CRYPTO_SYMBOLS }}" \
+            "$IMAGE_SHA" \
+            --smoke-test
+
+          echo "✅ Container validation complete"
+
+
       - name: Deploy to Cloud Run Job
         run: |
           clean_var() { echo "$1" | xargs; }
