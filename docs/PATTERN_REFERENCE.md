@@ -333,14 +333,17 @@ A continuation pattern with a strong uptrend followed by consolidation.
 
 ![Bull Flag](images/patterns/bull_flag.png)
 
-**Detection Logic:**
-- Flagpole: Rising prices over 5-20 periods
-- Flag: Consolidation with lower/equal highs
-- Breakout: Close above flag resistance
+**Detection Logic (Pivot-Based):**
+- Pole Valley → Peak: ≥15% price rise
+- Flag consolidation: Stays within top 50% of pole height
+- Minimum Pattern Width: At least 10 bars
+- Volume Decay: Flag volume < Pole volume
+- Breakout: Close ≥ 95% of flag high
 
 **Pattern-Specific Exits:**
 - TP1 = Entry + 50% of flagpole height
 - TP2 = Entry + 100% of flagpole height
+- TP3 = Entry + 150% of flagpole height (runner target)
 - SL = Flag consolidation low × 0.99
 
 ---
@@ -352,10 +355,10 @@ A reversal pattern with two similar lows and a middle peak (neckline).
 
 ![Double Bottom](images/patterns/double_bottom.png)
 
-**Detection Logic:**
-- Two bottoms within 1.5% of each other
-- Bottoms separated by 10-25 periods
-- Middle peak (neckline) ≥ 3% above average of bottoms
+**Detection Logic (Pivot-Based):**
+- Two valley pivots (V1, V2) within 1.5% price variance
+- Minimum Pattern Width: At least 10 bars between valleys
+- Neckline (peak between valleys): ≥3% above average of bottoms
 
 **Confluence Requirements:**
 - Reversal context
@@ -393,10 +396,11 @@ A continuation pattern with flat resistance and rising support.
 
 ![Ascending Triangle](images/patterns/ascending_triangle.png)
 
-**Detection Logic:**
-- Flat upper resistance (≤ 0.5% variance over 14 periods)
-- Rising support (positive slope via linear regression)
-- Lookback: 14-20 periods
+**Detection Logic (Pivot-Based):**
+- Flat Resistance: 2-3 peaks within 2% price variance
+- Rising Support: Valley pivots with ascending prices (≥1% slope)
+- Minimum Pattern Width: At least 10 bars
+- Breakout: Close ≥ 98% of resistance level
 
 **Confluence Requirements:**
 - Price above EMA 50 (bullish trend)
@@ -412,11 +416,12 @@ A bullish pattern with converging, downward-sloping trendlines.
 
 ![Falling Wedge](images/patterns/falling_wedge.png)
 
-**Detection Logic:**
-- Both high and low slopes negative (falling)
-- High slope > low slope (converging/narrowing)
-- Breakout: Close above recent high
-- Lookback: 20 periods for regression
+**Detection Logic (Pivot-Based):**
+- Lower Highs: Sequential peaks descending in price
+- Lower Lows: Sequential valleys descending in price
+- Converging: Peak descent rate < Valley descent rate (narrowing)
+- Minimum Pattern Width: At least 10 bars
+- Breakout: Close above most recent peak
 
 **Confluence Requirements:**
 - Volume expansion on breakout (> 150% SMA)
@@ -431,13 +436,13 @@ A powerful reversal pattern with three troughs.
 
 ![Inverse Head and Shoulders](images/patterns/inverse_head_shoulders.png)
 
-**Detection Logic:**
-- Left Shoulder: Local low (periods -30 to -20)
-- Head: Lower low than both shoulders (periods -20 to -10)
-- Right Shoulder: Higher low than head, ~similar to left (periods -10 to -1)
-- Shoulder symmetry: Within 10% of each other
-- Neckline: Max high between shoulders
-- Breakout: Close above neckline
+**Detection Logic (Pivot-Based):**
+- 5-pivot structure: V1 (L-Shoulder), P1 (Neckline), V2 (Head), P2 (Neckline), V3 (R-Shoulder)
+- Depth Symmetry: V1 and V3 within 3% price variance
+- Head Prominence: V2 at least 3% lower than the lowest shoulder
+- Time Symmetry: Duration V1→V2 between 60%-140% of V2→V3
+- Minimum Pattern Width: At least 10 bars
+- Breakout: Close above neckline (lower of P1, P2)
 
 **Confluence Requirements:**
 - Volume: Decreasing on head, increasing on right shoulder

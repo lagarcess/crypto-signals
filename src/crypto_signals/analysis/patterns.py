@@ -153,7 +153,6 @@ class PatternAnalyzer:
         )
 
         # ENGULFING
-        # ENGULFING
         self.df["bullish_engulfing"] = (
             self.df["is_engulfing_shape"]
             & reversal_context
@@ -161,7 +160,6 @@ class PatternAnalyzer:
             & self.df["volatility_contraction"]
         )
 
-        # MORNING STAR
         # MORNING STAR
         # Strict Rule: Must be confirmed by RSI Bullish Divergence.
         # (Overriding generic reversal_context)
@@ -297,19 +295,8 @@ class PatternAnalyzer:
         )
 
         # ============================================================
-        # HIGH-PROBABILITY BULLISH PATTERNS (NEW)
+        # HIGH-PROBABILITY BULLISH PATTERNS (Confluence Filters)
         # ============================================================
-        # 1. Calculate shapes first (Raw detection)
-        self.df["is_dragonfly_doji"] = self._detect_dragonfly_doji()
-        self.df["is_bullish_belt_hold"] = self._detect_bullish_belt_hold()
-        self.df["is_bullish_harami"] = self._detect_bullish_harami()
-        self.df["is_bullish_kicker"] = self._detect_bullish_kicker()
-        self.df["is_three_inside_up"] = self._detect_three_inside_up()
-        self.df["is_rising_three_methods"] = self._detect_rising_three_methods()
-        self.df["is_falling_wedge"] = self._detect_falling_wedge()
-        self.df["is_inverse_head_shoulders"] = self._detect_inverse_head_shoulders()
-
-        # 2. Apply Confluence Filters
 
         # DRAGONFLY DOJI (65% success rate)
         # Single-candle reversal at support with RSI/BB confluence
@@ -828,7 +815,7 @@ class PatternAnalyzer:
                 # 2. Flag consolidation must stay within top 50% of pole height
                 # Check the price range after the pole peak
                 pole_midpoint = pole_valley.price + (pole_height * 0.5)
-                flag_data = self.df.iloc[consolidation_start:current_idx + 1]
+                flag_data = self.df.iloc[consolidation_start : current_idx + 1]
 
                 if len(flag_data) < 5:  # Need at least 5 bars of consolidation
                     continue
@@ -842,14 +829,20 @@ class PatternAnalyzer:
 
                 # 3. Volume decay during flag
                 if "volume" in self.df.columns:
-                    pole_avg_vol = self.df["volume"].iloc[pole_valley.index:pole_peak.index + 1].mean()
+                    pole_avg_vol = (
+                        self.df["volume"]
+                        .iloc[pole_valley.index : pole_peak.index + 1]
+                        .mean()
+                    )
                     flag_avg_vol = flag_data["volume"].mean()
                     if flag_avg_vol >= pole_avg_vol:
                         continue
 
                 # Valid bull flag: check if current close indicates breakout potential
                 if current_close >= flag_high * 0.95:
-                    duration, classification = self._calculate_pattern_duration(pole_valley.index)
+                    duration, classification = self._calculate_pattern_duration(
+                        pole_valley.index
+                    )
 
                     is_bull_flag.iloc[-1] = True
                     pattern_duration.iloc[-1] = duration
@@ -858,8 +851,16 @@ class PatternAnalyzer:
                     # Store pivots that formed the pattern
                     flag_pivots = [p for p in self.pivots if p.index > pole_peak.index]
                     pattern_pivots.iloc[-1] = [
-                        {"type": "POLE_VALLEY", "index": pole_valley.index, "price": pole_valley.price},
-                        {"type": "POLE_PEAK", "index": pole_peak.index, "price": pole_peak.price},
+                        {
+                            "type": "POLE_VALLEY",
+                            "index": pole_valley.index,
+                            "price": pole_valley.price,
+                        },
+                        {
+                            "type": "POLE_PEAK",
+                            "index": pole_peak.index,
+                            "price": pole_peak.price,
+                        },
                     ] + [
                         {"type": p.pivot_type, "index": p.index, "price": p.price}
                         for p in flag_pivots[:4]
@@ -914,14 +915,11 @@ class PatternAnalyzer:
         current_close = self.df["close"].iloc[-1]
 
         # Look for left rim (peak), then cup valleys, then right rim (peak), then handle
-        for i, left_rim in enumerate(peaks[:-1]):
+        for left_rim in peaks[:-1]:
             # Find cup valleys after left rim
             cup_valleys = [v for v in valleys if v.index > left_rim.index]
             if len(cup_valleys) < 3:
                 continue
-
-            # Cup must have at least 3 valleys forming a U-shape
-            cup_valley_prices = [v.price for v in cup_valleys[:5]]  # Check first 5 valleys
 
             # Find right rim: peak after the cup valleys
             right_rim_candidates = [p for p in peaks if p.index > cup_valleys[0].index]
@@ -931,7 +929,9 @@ class PatternAnalyzer:
             # Right rim should be close to left rim price (within 10%)
             right_rim = None
             for rim_candidate in right_rim_candidates:
-                price_diff_pct = abs(rim_candidate.price - left_rim.price) / left_rim.price
+                price_diff_pct = (
+                    abs(rim_candidate.price - left_rim.price) / left_rim.price
+                )
                 if price_diff_pct <= 0.10:
                     right_rim = rim_candidate
                     break
@@ -946,7 +946,9 @@ class PatternAnalyzer:
 
             # 1. Rounded bottom check: Cup valleys should form a U-shape
             # Verify at least 3 valleys exist between left and right rim
-            cup_interior_valleys = [v for v in cup_valleys if left_rim.index < v.index < right_rim.index]
+            cup_interior_valleys = [
+                v for v in cup_valleys if left_rim.index < v.index < right_rim.index
+            ]
             if len(cup_interior_valleys) < 3:
                 continue
 
@@ -959,7 +961,9 @@ class PatternAnalyzer:
             # Simple check: first and last interior valley prices > middle prices
             if len(interior_prices) >= 3:
                 # Not a sharp V: extremes should be higher than minimum
-                if not (interior_prices[0] > cup_bottom and interior_prices[-1] > cup_bottom):
+                if not (
+                    interior_prices[0] > cup_bottom and interior_prices[-1] > cup_bottom
+                ):
                     continue
 
             # 2. Handle check: Find pivots after right rim
@@ -969,7 +973,11 @@ class PatternAnalyzer:
                 continue
 
             # Handle must not retrace more than 15% of cup depth
-            handle_low = min(p.price for p in handle_pivots[:3]) if handle_pivots else right_rim.price
+            handle_low = (
+                min(p.price for p in handle_pivots[:3])
+                if handle_pivots
+                else right_rim.price
+            )
             handle_retrace = right_rim.price - handle_low
             handle_retrace_pct = handle_retrace / cup_depth if cup_depth > 0 else 1.0
 
@@ -977,24 +985,47 @@ class PatternAnalyzer:
                 continue
 
             # 3. Breakout check: current close should be near or above right rim
-            last_handle_idx = max(p.index for p in handle_pivots[:3]) if handle_pivots else right_rim.index
+            last_handle_idx = (
+                max(p.index for p in handle_pivots[:3])
+                if handle_pivots
+                else right_rim.index
+            )
             if current_idx >= last_handle_idx and current_close >= right_rim.price * 0.98:
-                duration, classification = self._calculate_pattern_duration(left_rim.index)
+                duration, classification = self._calculate_pattern_duration(
+                    left_rim.index
+                )
 
                 is_cup_handle.iloc[-1] = True
                 pattern_duration.iloc[-1] = duration
                 pattern_class.iloc[-1] = classification
-                pattern_pivots.iloc[-1] = [
-                    {"type": "LEFT_RIM", "index": left_rim.index, "price": left_rim.price},
-                ] + [
-                    {"type": "CUP_VALLEY", "index": v.index, "price": v.price}
-                    for v in cup_interior_valleys[:3]
-                ] + [
-                    {"type": "RIGHT_RIM", "index": right_rim.index, "price": right_rim.price},
-                ] + [
-                    {"type": "HANDLE_" + p.pivot_type, "index": p.index, "price": p.price}
-                    for p in handle_pivots[:2]
-                ]
+                pattern_pivots.iloc[-1] = (
+                    [
+                        {
+                            "type": "LEFT_RIM",
+                            "index": left_rim.index,
+                            "price": left_rim.price,
+                        },
+                    ]
+                    + [
+                        {"type": "CUP_VALLEY", "index": v.index, "price": v.price}
+                        for v in cup_interior_valleys[:3]
+                    ]
+                    + [
+                        {
+                            "type": "RIGHT_RIM",
+                            "index": right_rim.index,
+                            "price": right_rim.price,
+                        },
+                    ]
+                    + [
+                        {
+                            "type": "HANDLE_" + p.pivot_type,
+                            "index": p.index,
+                            "price": p.price,
+                        }
+                        for p in handle_pivots[:2]
+                    ]
+                )
                 break  # Found valid pattern
 
             if is_cup_handle.iloc[-1]:
@@ -1135,8 +1166,6 @@ class PatternAnalyzer:
             self.df["asc_triangle_pivots"] = pattern_pivots
             return is_ascending_triangle
 
-        current_idx = len(self.df) - 1
-
         # Use the most recent pivots for pattern detection (last 3 of each)
         recent_peaks = peaks[-3:]  # Last 3 peaks
         recent_valleys = valleys[-3:]  # Last 3 valleys
@@ -1172,25 +1201,33 @@ class PatternAnalyzer:
         # Valleys should have ascending prices (sorted by index)
         sorted_valleys = sorted(recent_valleys, key=lambda v: v.index)
         valley_prices = [v.price for v in sorted_valleys]
-        rising_support = all(valley_prices[i] <= valley_prices[i + 1]
-                            for i in range(len(valley_prices) - 1))
+        rising_support = all(
+            valley_prices[i] <= valley_prices[i + 1]
+            for i in range(len(valley_prices) - 1)
+        )
 
         # Also check that valleys are actually rising (not flat)
         if len(valley_prices) >= 2:
             valley_slope = (valley_prices[-1] - valley_prices[0]) / valley_prices[0]
             rising_support = rising_support and valley_slope > 0.01  # At least 1% rise
 
-        # 3. Pattern structure validation
-        if flat_resistance and rising_support:
+        # 3. Pattern structure validation + Breakout confirmation
+        # Must have flat resistance, rising support, AND price at resistance (breakout)
+        current_close = self.df["close"].iloc[-1]
+        breakout = current_close >= avg_peak * 0.98  # Within 2% of resistance
+
+        if flat_resistance and rising_support and breakout:
             duration, classification = self._calculate_pattern_duration(first_pivot_idx)
 
             is_ascending_triangle.iloc[-1] = True
             pattern_duration.iloc[-1] = duration
             pattern_class.iloc[-1] = classification
-            pattern_pivots.iloc[-1] = (
-                [{"type": "PEAK", "index": p.index, "price": p.price} for p in recent_peaks] +
-                [{"type": "VALLEY", "index": v.index, "price": v.price} for v in recent_valleys]
-            )
+            pattern_pivots.iloc[-1] = [
+                {"type": "PEAK", "index": p.index, "price": p.price} for p in recent_peaks
+            ] + [
+                {"type": "VALLEY", "index": v.index, "price": v.price}
+                for v in recent_valleys
+            ]
 
         self.df["asc_triangle_duration"] = pattern_duration
         self.df["asc_triangle_classification"] = pattern_class
@@ -1536,7 +1573,6 @@ class PatternAnalyzer:
             self.df["falling_wedge_pivots"] = pattern_pivots
             return is_falling_wedge
 
-        current_idx = len(self.df) - 1
         current_close = self.df["close"].iloc[-1]
 
         # Use the most recent pivots for wedge detection
@@ -1550,8 +1586,12 @@ class PatternAnalyzer:
             return is_falling_wedge
 
         # Minimum Pattern Width: 10 bars
-        first_pivot_idx = min(min(p.index for p in recent_peaks), min(v.index for v in recent_valleys))
-        last_pivot_idx = max(max(p.index for p in recent_peaks), max(v.index for v in recent_valleys))
+        first_pivot_idx = min(
+            min(p.index for p in recent_peaks), min(v.index for v in recent_valleys)
+        )
+        last_pivot_idx = max(
+            max(p.index for p in recent_peaks), max(v.index for v in recent_valleys)
+        )
         pattern_width = last_pivot_idx - first_pivot_idx
 
         if pattern_width < MINIMUM_PATTERN_WIDTH:
@@ -1562,13 +1602,15 @@ class PatternAnalyzer:
 
         # 1. Lower Highs Check (peaks should be descending)
         peak_prices = [p.price for p in sorted(recent_peaks, key=lambda p: p.index)]
-        lower_highs = all(peak_prices[i] > peak_prices[i + 1]
-                         for i in range(len(peak_prices) - 1))
+        lower_highs = all(
+            peak_prices[i] > peak_prices[i + 1] for i in range(len(peak_prices) - 1)
+        )
 
         # 2. Lower Lows Check (valleys should be descending)
         valley_prices = [v.price for v in sorted(recent_valleys, key=lambda v: v.index)]
-        lower_lows = all(valley_prices[i] > valley_prices[i + 1]
-                        for i in range(len(valley_prices) - 1))
+        lower_lows = all(
+            valley_prices[i] > valley_prices[i + 1] for i in range(len(valley_prices) - 1)
+        )
 
         # 3. Converging Check (wedge narrows)
         # The rate of descent for peaks should be less than valleys
@@ -1590,10 +1632,12 @@ class PatternAnalyzer:
             is_falling_wedge.iloc[-1] = True
             pattern_duration.iloc[-1] = duration
             pattern_class.iloc[-1] = classification
-            pattern_pivots.iloc[-1] = (
-                [{"type": "PEAK", "index": p.index, "price": p.price} for p in recent_peaks] +
-                [{"type": "VALLEY", "index": v.index, "price": v.price} for v in recent_valleys]
-            )
+            pattern_pivots.iloc[-1] = [
+                {"type": "PEAK", "index": p.index, "price": p.price} for p in recent_peaks
+            ] + [
+                {"type": "VALLEY", "index": v.index, "price": v.price}
+                for v in recent_valleys
+            ]
 
         self.df["falling_wedge_duration"] = pattern_duration
         self.df["falling_wedge_classification"] = pattern_class

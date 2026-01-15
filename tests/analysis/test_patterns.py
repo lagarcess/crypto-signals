@@ -5,15 +5,6 @@ import pytest
 from crypto_signals.analysis.indicators import TechnicalIndicators
 from crypto_signals.analysis.patterns import PatternAnalyzer
 
-# ... (rest of imports or code)
-# I need to use separate Replace calls if they are far apart.
-# Wait, I can't restart the file content in the middle of a ReplacementChunk if I targeted Lines 1-8?
-# I will use MULTI REPL to do both changes in one go.
-
-# Actually, I am using replace_file_content tool. I can only do SINGLE contiguous block.
-# So I must do 2 calls or use multi_replace.
-# I will use multi_replace_file_content.
-
 
 @pytest.fixture
 def mock_df():
@@ -270,7 +261,9 @@ class TestMacroPatterns:
             base_df.iloc[i, base_df.columns.get_loc("close")] = price
             base_df.iloc[i, base_df.columns.get_loc("high")] = price + 1
             base_df.iloc[i, base_df.columns.get_loc("low")] = price - 1
-            base_df.iloc[i, base_df.columns.get_loc("volume")] = 3000.0  # High pole volume
+            base_df.iloc[i, base_df.columns.get_loc("volume")] = (
+                3000.0  # High pole volume
+            )
 
         # Set clear peak at bar 125
         base_df.iloc[125, base_df.columns.get_loc("high")] = 110.0
@@ -284,7 +277,9 @@ class TestMacroPatterns:
         for i in range(126, 146):
             base_df.iloc[i, base_df.columns.get_loc("close")] = 106.0
             base_df.iloc[i, base_df.columns.get_loc("high")] = 108.0
-            base_df.iloc[i, base_df.columns.get_loc("low")] = 104.0  # Above midpoint of 98.5
+            base_df.iloc[i, base_df.columns.get_loc("low")] = (
+                104.0  # Above midpoint of 98.5
+            )
             base_df.iloc[i, base_df.columns.get_loc("volume")] = 1500.0  # Lower than pole
 
         # Phase 5: Breakout at last bars

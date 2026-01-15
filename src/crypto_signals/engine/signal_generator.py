@@ -281,6 +281,11 @@ class SignalGenerator:
         suggested_stop = low_price * 0.99
         invalidation_price = None
 
+        # Take profit targets (pattern-specific logic may override these)
+        take_profit_1 = None
+        take_profit_2 = None
+        take_profit_3 = None
+
         # Specific Structural Invalidation
         if pattern_name == "BULLISH_HAMMER":
             # Invalidation: Close below candle low
@@ -325,22 +330,27 @@ class SignalGenerator:
 
             # TP1 = 50% of flagpole height above breakout
             # TP2 = 100% of flagpole height above breakout
+            # TP3 = 150% of flagpole height (runner target)
             take_profit_1 = close_price + (0.5 * flagpole_height)
             take_profit_2 = close_price + (1.0 * flagpole_height)
+            take_profit_3 = close_price + (1.5 * flagpole_height)
 
             # SL = below lowest low of flag consolidation
             invalidation_price = low_price
             suggested_stop = invalidation_price * 0.99
 
-        # Take Profits (ATR Based)
+        # Take Profits (ATR Based) - Only set if not already defined by pattern-specific logic
         entry_ref = close_price
 
-        take_profit_1 = entry_ref + (2.0 * atr) if atr > 0 else None
-        take_profit_2 = entry_ref + (4.0 * atr) if atr > 0 else None
+        if take_profit_1 is None:
+            take_profit_1 = entry_ref + (2.0 * atr) if atr > 0 else None
+        if take_profit_2 is None:
+            take_profit_2 = entry_ref + (4.0 * atr) if atr > 0 else None
         # TP3: Extended runner target (becomes trailing stop after TP1/TP2 hit)
         # Initial target ensures TP3 > TP2 for clean signal display
         # After TP1/TP2, check_exits() updates this to Chandelier Exit for trailing
-        take_profit_3 = entry_ref + (6.0 * atr) if atr > 0 else None
+        if take_profit_3 is None:
+            take_profit_3 = entry_ref + (6.0 * atr) if atr > 0 else None
 
         # Strategy ID is the pattern name for now
         strategy_id = pattern_name
@@ -386,7 +396,6 @@ class SignalGenerator:
             col_prefix = structural_patterns[pattern_name]
             duration_col = f"{col_prefix}_duration"
             class_col = f"{col_prefix}_classification"
-            pivots_col = f"{col_prefix}_pivots"
 
             if duration_col in latest.index and pd.notna(latest.get(duration_col)):
                 pattern_duration_days = int(latest[duration_col])
