@@ -206,7 +206,11 @@ jobs:
 
   notify:
     runs-on: ubuntu-latest
-    if: always()
+    # Only notify when CI actually ran (skip drafts where everything is skipped)
+    if: |
+      always() &&
+      needs.ci.result != 'skipped' &&
+      (github.event.pull_request.draft == false || github.event_name == 'push')
     needs: [ci, validate-deployment, cd]
     steps:
       - name: Discord Notification
