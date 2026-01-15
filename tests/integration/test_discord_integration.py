@@ -359,3 +359,49 @@ class TestDiscordWebhookConfiguration:
             "https://discord.com/api/webhooks/"
         ), f"LIVE_STOCK_DISCORD_WEBHOOK_URL doesn't look valid: {webhook_url[:50]}..."
         print("\n✅ LIVE_STOCK_DISCORD_WEBHOOK_URL is configured correctly")
+
+    def test_shadow_webhook_is_configured(self, settings):
+        """Verify DISCORD_SHADOW_WEBHOOK_URL is present."""
+        webhook = settings.DISCORD_SHADOW_WEBHOOK_URL
+        if webhook is None:
+            pytest.skip(
+                "DISCORD_SHADOW_WEBHOOK_URL not configured (required for shadow signals)"
+            )
+
+        webhook_url = webhook.get_secret_value()
+        assert webhook_url.startswith(
+            "https://discord.com/api/webhooks/"
+        ), f"DISCORD_SHADOW_WEBHOOK_URL doesn't look valid: {webhook_url[:50]}..."
+        print("\n✅ DISCORD_SHADOW_WEBHOOK_URL is configured correctly")
+
+    def test_webhook_endpoints_are_reachable(self, settings):
+        """Verify all configured webhook URLs are reachable (HTTP 200/204)."""
+        import requests
+
+        webhooks_to_test = [
+            ("TEST_DISCORD_WEBHOOK", settings.TEST_DISCORD_WEBHOOK),
+            ("LIVE_CRYPTO_DISCORD_WEBHOOK_URL", settings.LIVE_CRYPTO_DISCORD_WEBHOOK_URL),
+            ("LIVE_STOCK_DISCORD_WEBHOOK_URL", settings.LIVE_STOCK_DISCORD_WEBHOOK_URL),
+            ("DISCORD_SHADOW_WEBHOOK_URL", settings.DISCORD_SHADOW_WEBHOOK_URL),
+        ]
+
+        for name, webhook in webhooks_to_test:
+            if webhook is None:
+                print(f"\n⏭️  {name}: Skipped (not configured)")
+                continue
+
+            webhook_url = webhook.get_secret_value()
+
+            # Use GET request to test webhook validity without sending a message
+            # Discord webhooks return 200 for GET with webhook info
+            response = requests.get(webhook_url, timeout=10.0)
+
+            assert response.status_code == 200, (
+                f"{name} webhook endpoint unreachable. "
+                f"Status: {response.status_code}, Response: {response.text[:200]}"
+            )
+
+            webhook_info = response.json()
+            webhook_id = webhook_info.get("id", "unknown")
+            webhook_name = webhook_info.get("name", "unnamed")
+            print(f"\n✅ {name}: Reachable (ID: {webhook_id}, Name: {webhook_name})")

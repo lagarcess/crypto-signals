@@ -47,6 +47,7 @@ def mock_dependencies():
         patch("crypto_signals.main.PositionRepository") as position_repo,
         patch("crypto_signals.main.ExecutionEngine") as execution_engine,
         patch("crypto_signals.main.JobLockRepository") as job_lock,
+        patch("crypto_signals.main.RejectedSignalRepository") as rejected_repo,
     ):
         # Configure mock settings
         mock_settings.return_value.CRYPTO_SYMBOLS = [
@@ -108,6 +109,7 @@ def mock_dependencies():
             "position_repo": position_repo,
             "execution_engine": execution_engine,
             "job_lock": job_lock,
+            "rejected_repo": rejected_repo,
         }
 
 
@@ -146,7 +148,7 @@ def test_main_execution_flow(mock_dependencies):
     manager.attach_mock(mock_repo_instance.update_signal, "update_signal")
 
     # Execute
-    main()
+    main(smoke_test=False)
 
     # Verify Initialization
     mock_dependencies["stock_client"].assert_called_once()
@@ -222,7 +224,7 @@ def test_send_signal_captures_thread_id(mock_dependencies):
     mock_discord_instance.find_thread_by_signal_id.return_value = None
 
     # Execute
-    main()
+    main(smoke_test=False)
 
     # Verify thread_id was attached to signal
     assert mock_signal.discord_thread_id == "mock_thread_98765"
@@ -247,7 +249,7 @@ def test_main_symbol_error_handling(mock_dependencies):
     mock_gen_instance.generate_signals.side_effect = side_effect
 
     # Execute (should not raise exception)
-    main()
+    main(smoke_test=False)
 
     # Verify that subsequent symbols (e.g., XRP/USD) were still processed
     calls = mock_gen_instance.generate_signals.call_args_list
@@ -264,7 +266,7 @@ def test_main_fatal_error():
         mock_init.side_effect = ImportError("Critical Dependency Missing")
 
         with pytest.raises(SystemExit) as excinfo:
-            main()
+            main(smoke_test=False)
 
         assert excinfo.value.code == 1
 
@@ -295,7 +297,7 @@ def test_main_notification_failure(mock_dependencies, caplog):
     # Execute with caplog capturing (handled by fixture)
 
     with caplog.at_level("WARNING"):
-        main()
+        main(smoke_test=False)
 
     # Verify warning (now uses compensation logic - signal marked invalid)
     assert "Discord notification failed" in caplog.text
@@ -332,7 +334,7 @@ def test_main_repo_failure(mock_dependencies, caplog):
     # Execute with caplog capturing (handled by fixture)
 
     with caplog.at_level("ERROR"):
-        main()
+        main(smoke_test=False)
 
     # Verify error log for persistence failure (new behavior: skips notification)
     assert "Failed to persist signal" in caplog.text
@@ -360,7 +362,7 @@ def test_main_uses_firestore_config(mock_dependencies):
     mock_gen_instance.generate_signals.return_value = None
 
     # Execute
-    main()
+    main(smoke_test=False)
 
     # Verify Logic
     # 1. Check if settings were updated
@@ -389,7 +391,7 @@ def test_main_fallback_to_env_on_empty(mock_dependencies):
     mock_gen_instance.generate_signals.return_value = None
 
     # Execute
-    main()
+    main(smoke_test=False)
 
     # Verify Logic
     # Settings should remain as default (from fixture)
@@ -424,7 +426,7 @@ def test_guardrail_ignores_firestore_equities(mock_dependencies, caplog):
     mock_gen_instance.generate_signals.return_value = None
 
     with caplog.at_level("WARNING"):
-        main()
+        main(smoke_test=False)
 
     # Asset: Equities should still be EMPTY because the guardrail ignored them.
     assert mock_settings.EQUITY_SYMBOLS == []
@@ -490,7 +492,7 @@ def test_sync_loop_updates_position_on_status_change(mock_dependencies, caplog):
     mock_execution_engine.sync_position_status.return_value = closed_pos
 
     with caplog.at_level("INFO"):
-        main()
+        main(smoke_test=False)
 
     # Verify update was called with closed status
     mock_position_repo.update_position.assert_called_once_with(closed_pos)
@@ -519,7 +521,7 @@ def test_sync_loop_updates_position_on_leg_id_change(mock_dependencies, caplog):
     mock_execution_engine.sync_position_status.return_value = synced_pos
 
     with caplog.at_level("INFO"):
-        main()
+        main(smoke_test=False)
 
     # Verify update was called
     mock_position_repo.update_position.assert_called_once_with(synced_pos)
@@ -558,7 +560,7 @@ def test_sync_loop_handles_exceptions_gracefully(mock_dependencies, caplog):
     mock_execution_engine.sync_position_status.side_effect = sync_side_effect
 
     with caplog.at_level("WARNING"):
-        main()
+        main(smoke_test=False)
 
     # Verify error was logged for pos-1
     assert "Failed to sync position pos-1" in caplog.text
@@ -578,7 +580,7 @@ def test_sync_loop_skipped_when_execution_disabled(mock_dependencies):
 
     mock_position_repo = mock_dependencies["position_repo"].return_value
 
-    main()
+    main(smoke_test=False)
 
     # Verify get_open_positions was never called
     mock_position_repo.get_open_positions.assert_not_called()
@@ -602,7 +604,7 @@ def test_sync_loop_no_update_when_position_unchanged(mock_dependencies):
     # Sync returns same position (no changes)
     mock_execution_engine.sync_position_status.return_value = pos
 
-    main()
+    main(smoke_test=False)
 
     # Verify update was NOT called
     mock_position_repo.update_position.assert_not_called()
@@ -670,7 +672,7 @@ def test_zombie_signal_prevention_persistence_first(mock_dependencies):
 
     mock_repo_instance.update_signal_atomic.side_effect = track_atomic
 
-    main()
+    main(smoke_test=False)
 
     # Verify CREATED status set first, then saved, then Discord, then WAITING update
     assert len(call_order) == 3
@@ -714,7 +716,7 @@ def test_zombie_signal_compensation_on_discord_failure(mock_dependencies, caplog
     mock_discord_instance.send_signal.return_value = None
 
     with caplog.at_level("WARNING"):
-        main()
+        main(smoke_test=False)
 
     # Verify compensation: signal marked as INVALIDATED via atomic update
     if not mock_dependencies["repo"].return_value.update_signal_atomic.called:
@@ -761,7 +763,7 @@ def test_signal_skipped_if_initial_persistence_fails(mock_dependencies, caplog):
     mock_repo_instance.save.side_effect = RuntimeError("Firestore Unavailable")
 
     with caplog.at_level("ERROR"):
-        main()
+        main(smoke_test=False)
 
     # Verify Discord was NEVER called (zombie prevention)
     mock_discord_instance.send_signal.assert_not_called()
@@ -802,7 +804,7 @@ def test_thread_recovery_check(mock_dependencies, caplog):
     mock_repo_instance.update_signal_atomic.return_value = True
 
     with caplog.at_level("INFO"):
-        main()
+        main(smoke_test=False)
 
     # Verify:
     # 1. find_thread called

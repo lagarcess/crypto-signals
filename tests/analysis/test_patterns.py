@@ -498,26 +498,61 @@ class TestHardenedDoubleBottom:
         return df
 
     def test_valid_double_bottom_with_neckline(self, base_df):
-        """Double bottom with proper neckline (>3% above bottoms) should pass."""
-        # For lag=20 check: past_low = df["low"].shift(20)
-        # At index -1, past_low[-1] = df["low"][-21]
-        # So set matching lows at index -21 and -1
+        """Double bottom with proper neckline (>3% above bottoms) should pass.
 
-        # First bottom (lag 20 before current)
-        base_df.iloc[-21, base_df.columns.get_loc("low")] = 90.0
+        Creates a clear structural pattern with >5% price swings to generate pivots:
+        - First valley at 85 (bar 10)
+        - Peak at 100 (bar 20) - neckline
+        - Second valley at 86 (bar 35) - within 1.5% of first
+        - Current price testing for breakout
+        """
+        # Create clear structural zigzag pattern with >5% moves
+        # Start high, drop to first valley, rally to neckline, drop to second valley
 
-        # Second bottom (current position)
-        base_df.iloc[-1, base_df.columns.get_loc("low")] = 90.5  # Within 1.5% of 90
+        # First descent (bars 0-10): 100 -> 85
+        for i in range(11):
+            price = 100 - (i * 1.5)  # 100 down to ~85
+            base_df.iloc[i, base_df.columns.get_loc("high")] = price + 2
+            base_df.iloc[i, base_df.columns.get_loc("low")] = price - 2
+            base_df.iloc[i, base_df.columns.get_loc("close")] = price
 
-        # Middle peak (neckline) - highs between -20 and -2
-        # Must be >3% above avg of bottoms (90.25 * 1.03 = 92.96)
-        for i in range(-18, -3):
-            base_df.iloc[i, base_df.columns.get_loc("high")] = 100.0  # Well above 93
+        # First valley (bar 10): low at 85
+        base_df.iloc[10, base_df.columns.get_loc("low")] = 85.0
+        base_df.iloc[10, base_df.columns.get_loc("close")] = 86.0
+
+        # Rally to neckline (bars 11-20): 87 -> 100
+        for i in range(11, 21):
+            price = 87 + ((i - 11) * 1.3)  # 87 up to ~100
+            base_df.iloc[i, base_df.columns.get_loc("high")] = price + 2
+            base_df.iloc[i, base_df.columns.get_loc("low")] = price - 2
+            base_df.iloc[i, base_df.columns.get_loc("close")] = price
+
+        # Neckline peak (bar 20): high at 102
+        base_df.iloc[20, base_df.columns.get_loc("high")] = 102.0
+        base_df.iloc[20, base_df.columns.get_loc("close")] = 100.0
+
+        # Second descent (bars 21-35): 98 -> 86
+        for i in range(21, 36):
+            price = 98 - ((i - 21) * 0.8)  # 98 down to ~86
+            base_df.iloc[i, base_df.columns.get_loc("high")] = price + 2
+            base_df.iloc[i, base_df.columns.get_loc("low")] = price - 2
+            base_df.iloc[i, base_df.columns.get_loc("close")] = price
+
+        # Second valley (bar 35): low at 86 (within 1.5% of 85)
+        base_df.iloc[35, base_df.columns.get_loc("low")] = 86.0
+        base_df.iloc[35, base_df.columns.get_loc("close")] = 87.0
+
+        # Recovery/breakout attempt (bars 36-49)
+        for i in range(36, 50):
+            price = 88 + ((i - 36) * 0.8)
+            base_df.iloc[i, base_df.columns.get_loc("high")] = price + 2
+            base_df.iloc[i, base_df.columns.get_loc("low")] = price - 2
+            base_df.iloc[i, base_df.columns.get_loc("close")] = price
 
         # High volume on breakout
         base_df.iloc[-1, base_df.columns.get_loc("volume")] = 2000.0
 
-        # Add indicators, then ensure required columns are set
+        # Add indicators
         TechnicalIndicators.add_all_indicators(base_df)
         base_df["EMA_50"] = 90.0
         base_df["RSI_14"] = base_df["RSI_14"].fillna(30.0)

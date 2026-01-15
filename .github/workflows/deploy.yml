@@ -10,18 +10,20 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: production
+  cancel-in-progress: true
+
 jobs:
   ci:
     runs-on: ubuntu-latest
-    # Skip CI on draft PRs to save resources
     if: github.event.pull_request.draft == false || github.event_name == 'push'
     env:
-      # Bridge GitHub Secrets/Variables for Pydantic config validation during tests
       ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
       ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
       TEST_DISCORD_WEBHOOK: ${{ secrets.TEST_DISCORD_WEBHOOK }}
+      DISCORD_SHADOW_WEBHOOK_URL: ${{ secrets.DISCORD_SHADOW_WEBHOOK_URL }}
       GOOGLE_CLOUD_PROJECT: ${{ vars.GOOGLE_CLOUD_PROJECT }}
-      # Test mode defaults
       TEST_MODE: "true"
       ALPACA_PAPER_TRADING: "true"
     steps:
@@ -32,6 +34,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: 'pip'
 
       - name: Install Poetry
         run: pip install poetry
@@ -39,23 +42,23 @@ jobs:
       - name: Install dependencies
         run: poetry install --no-interaction --no-root
 
-      - name: Lint
-        run: poetry run ruff check .
-
-      - name: Security audit
+      - name: Lint & Security
         run: |
+          poetry run ruff check .
           pip install pip-audit
           pip-audit --strict
 
       - name: Test
-        run: PYTHONPATH=src poetry run pytest tests/ --cov=src/crypto_signals --cov-report=term-missing --cov-fail-under=60
+        run: |
+          PYTHONPATH=src poetry run pytest tests/ \
+          --cov=src/crypto_signals \
+          --cov-report=term-missing \
+          --cov-fail-under=60
 
   validate-deployment:
     needs: ci
     if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
-    env:
-      IMAGE_BASE: ${{ secrets.GAR_REPOSITORY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -70,43 +73,19 @@ jobs:
         with:
           project_id: ${{ vars.GOOGLE_CLOUD_PROJECT }}
 
-      - name: Create env vars file
+      - name: Dry-Run Configuration Validation
         run: |
-          # Strip whitespace from boolean variables to prevent validation errors
-          TEST_MODE=$(echo "${{ vars.TEST_MODE }}" | xargs)
-          ALPACA_PAPER_TRADING=$(echo "${{ vars.ALPACA_PAPER_TRADING }}" | xargs)
-          ENABLE_EXECUTION=$(echo "${{ vars.ENABLE_EXECUTION }}" | xargs)
-          ENABLE_EQUITIES=$(echo "${{ vars.ENABLE_EQUITIES }}" | xargs)
-          ENABLE_GCP_LOGGING=$(echo "${{ vars.ENABLE_GCP_LOGGING }}" | xargs)
-          DISABLE_SECRET_MANAGER=$(echo "${{ vars.DISABLE_SECRET_MANAGER }}" | xargs)
-
-          cat > env_vars.yaml <<EOF
-          TEST_MODE: "${TEST_MODE}"
-          ALPACA_PAPER_TRADING: "${ALPACA_PAPER_TRADING}"
-          ENABLE_EXECUTION: "${ENABLE_EXECUTION}"
-          ENABLE_EQUITIES: "${ENABLE_EQUITIES}"
-          ENABLE_GCP_LOGGING: "${ENABLE_GCP_LOGGING}"
-          DISABLE_SECRET_MANAGER: "${DISABLE_SECRET_MANAGER}"
+          clean_var() { echo "$1" | xargs; }
+          cat > dry_run_vars.yaml <<EOF
+          TEST_MODE: "$(clean_var "${{ vars.TEST_MODE }}")"
+          ALPACA_PAPER_TRADING: "$(clean_var "${{ vars.ALPACA_PAPER_TRADING }}")"
           GOOGLE_CLOUD_PROJECT: "${{ vars.GOOGLE_CLOUD_PROJECT }}"
-          DISCORD_CHANNEL_ID_CRYPTO: "${{ vars.DISCORD_CHANNEL_ID_CRYPTO }}"
-          DISCORD_CHANNEL_ID_STOCK: "${{ vars.DISCORD_CHANNEL_ID_STOCK }}"
           CRYPTO_SYMBOLS: "${{ vars.CRYPTO_SYMBOLS }}"
           EOF
-
-      - name: Validate deployment config (schema check)
-        run: |
-          # Cloud Run Jobs does not support --dry-run yet
-          # We validate that the env vars file was created successfully
-          if [ -f env_vars.yaml ]; then
-            echo "✅ env_vars.yaml created successfully"
-            cat env_vars.yaml | grep -v "KEY" # Print safe vars
-          else
-            echo "❌ Failed to create env_vars.yaml"
-            exit 1
-          fi
+          gcloud run jobs describe crypto-signals-job --region=${{ vars.GCP_REGION }} --format="value(name)"
 
   cd:
-    needs: ci
+    needs: [ci, validate-deployment]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     env:
@@ -115,11 +94,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
@@ -130,44 +104,34 @@ jobs:
         with:
           project_id: ${{ vars.GOOGLE_CLOUD_PROJECT }}
 
-      - name: Configure Artifact Registry Docker auth
+      - name: Configure Docker Auth
         run: |
           GAR_HOST=$(echo "${IMAGE_BASE}" | cut -d/ -f1)
           gcloud auth configure-docker "${GAR_HOST}" --quiet
-          echo "GAR_HOST=${GAR_HOST}" >> "$GITHUB_ENV"
 
-      - name: Build image
-        run: |
-          IMAGE_TAG="${IMAGE_BASE}:${GITHUB_SHA}"
-          LATEST_TAG="${IMAGE_BASE}:latest"
-          echo "IMAGE_TAG=${IMAGE_TAG}" >> "$GITHUB_ENV"
-          echo "LATEST_TAG=${LATEST_TAG}" >> "$GITHUB_ENV"
-          docker build -t "${IMAGE_TAG}" -t "${LATEST_TAG}" .
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Push image
-        run: |
-          docker push "${IMAGE_TAG}"
-          docker push "${LATEST_TAG}"
+      - name: Build and Push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE_BASE }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Deploy to Cloud Run Job
         run: |
-          # Strip whitespace from boolean variables to prevent Pydantic validation errors
-          # This guards against accidental trailing spaces in GitHub Variables
-          TEST_MODE=$(echo "${{ vars.TEST_MODE }}" | xargs)
-          ALPACA_PAPER_TRADING=$(echo "${{ vars.ALPACA_PAPER_TRADING }}" | xargs)
-          ENABLE_EXECUTION=$(echo "${{ vars.ENABLE_EXECUTION }}" | xargs)
-          ENABLE_EQUITIES=$(echo "${{ vars.ENABLE_EQUITIES }}" | xargs)
-          ENABLE_GCP_LOGGING=$(echo "${{ vars.ENABLE_GCP_LOGGING }}" | xargs)
-          DISABLE_SECRET_MANAGER=$(echo "${{ vars.DISABLE_SECRET_MANAGER }}" | xargs)
-
-          # Create env vars file to handle special characters (slashes in CRYPTO_SYMBOLS)
+          clean_var() { echo "$1" | xargs; }
           cat > env_vars.yaml <<EOF
-          TEST_MODE: "${TEST_MODE}"
-          ALPACA_PAPER_TRADING: "${ALPACA_PAPER_TRADING}"
-          ENABLE_EXECUTION: "${ENABLE_EXECUTION}"
-          ENABLE_EQUITIES: "${ENABLE_EQUITIES}"
-          ENABLE_GCP_LOGGING: "${ENABLE_GCP_LOGGING}"
-          DISABLE_SECRET_MANAGER: "${DISABLE_SECRET_MANAGER}"
+          TEST_MODE: "$(clean_var "${{ vars.TEST_MODE }}")"
+          ALPACA_PAPER_TRADING: "$(clean_var "${{ vars.ALPACA_PAPER_TRADING }}")"
+          ENABLE_EXECUTION: "$(clean_var "${{ vars.ENABLE_EXECUTION }}")"
+          ENABLE_EQUITIES: "$(clean_var "${{ vars.ENABLE_EQUITIES }}")"
+          ENABLE_GCP_LOGGING: "$(clean_var "${{ vars.ENABLE_GCP_LOGGING }}")"
+          DISABLE_SECRET_MANAGER: "$(clean_var "${{ vars.DISABLE_SECRET_MANAGER }}")"
           GOOGLE_CLOUD_PROJECT: "${{ vars.GOOGLE_CLOUD_PROJECT }}"
           DISCORD_CHANNEL_ID_CRYPTO: "${{ vars.DISCORD_CHANNEL_ID_CRYPTO }}"
           DISCORD_CHANNEL_ID_STOCK: "${{ vars.DISCORD_CHANNEL_ID_STOCK }}"
@@ -175,56 +139,109 @@ jobs:
           EOF
 
           gcloud run jobs update crypto-signals-job \
-            --image="${IMAGE_TAG}" \
+            --image="${{ env.IMAGE_BASE }}:${{ github.sha }}" \
             --region=${{ vars.GCP_REGION }} \
             --env-vars-file=env_vars.yaml \
-            --set-secrets="ALPACA_API_KEY=ALPACA_API_KEY:latest,ALPACA_SECRET_KEY=ALPACA_SECRET_KEY:latest,TEST_DISCORD_WEBHOOK=TEST_DISCORD_WEBHOOK:latest,LIVE_CRYPTO_DISCORD_WEBHOOK_URL=LIVE_CRYPTO_DISCORD_WEBHOOK_URL:latest,LIVE_STOCK_DISCORD_WEBHOOK_URL=LIVE_STOCK_DISCORD_WEBHOOK_URL:latest,DISCORD_BOT_TOKEN=DISCORD_BOT_TOKEN:latest"
+            --set-secrets="ALPACA_API_KEY=ALPACA_API_KEY:latest,ALPACA_SECRET_KEY=ALPACA_SECRET_KEY:latest,TEST_DISCORD_WEBHOOK=TEST_DISCORD_WEBHOOK:latest,LIVE_CRYPTO_DISCORD_WEBHOOK_URL=LIVE_CRYPTO_DISCORD_WEBHOOK_URL:latest,LIVE_STOCK_DISCORD_WEBHOOK_URL=LIVE_STOCK_DISCORD_WEBHOOK_URL:latest,DISCORD_SHADOW_WEBHOOK_URL=DISCORD_SHADOW_WEBHOOK_URL:latest,DISCORD_BOT_TOKEN=DISCORD_BOT_TOKEN:latest"
 
-      - name: Notify on success
-        if: success()
-        env:
-          WEBHOOK_URL: ${{ secrets.DISCORD_DEPLOYS }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          COMMIT_SHA: ${{ github.sha }}
-          ACTOR: ${{ github.actor }}
+      - name: Deploy Monitoring Alert Policy
         run: |
-          curl -X POST "${WEBHOOK_URL}" \
-            -H "Content-Type: application/json" \
-            -d @- <<EOF
+          CHANNEL_NAME=$(gcloud monitoring channels list --filter='displayName="Discord Alerts"' --format='value(name)')
+          if [ -z "$CHANNEL_NAME" ]; then
+            CHANNEL_NAME=$(gcloud monitoring channels create --display-name="Discord Alerts" --type="webhook_tokenauth" --labels="url=${{ secrets.DISCORD_DEPLOYS }}" --format='value(name)')
+          fi
+
+          cat > alert_policy.json <<EOF
           {
-            "content": "✅ Deployment successful!",
-            "embeds": [{
-              "title": "CD Pipeline Success",
-              "url": "${RUN_URL}",
-              "color": 3066993,
-              "fields": [
-                {"name": "Commit", "value": "${COMMIT_SHA}", "inline": true},
-                {"name": "Author", "value": "${ACTOR}", "inline": true}
-              ]
-            }]
+            "displayName": "Crypto Signals Runtime Error",
+            "conditions": [{
+              "displayName": "Log error detected",
+              "conditionMatchedLog": {
+                "filter": "resource.type=\"cloud_run_job\" AND resource.labels.job_name=\"crypto-signals-job\" AND severity>=ERROR"
+              }
+            }],
+            "combiner": "OR",
+            "enabled": true,
+            "notificationChannels": ["$CHANNEL_NAME"]
           }
           EOF
 
-      - name: Notify on failure
-        if: failure()
+          POLICY_NAME=$(gcloud monitoring policies list --filter='displayName="Crypto Signals Runtime Error"' --format='value(name)')
+          if [ -z "$POLICY_NAME" ]; then
+            gcloud monitoring policies create --policy-from-file="alert_policy.json"
+          else
+            gcloud monitoring policies update "$POLICY_NAME" --policy-from-file="alert_policy.json"
+          fi
+
+      - name: Smoke Test (Execute Job)
+        id: smoke_test
+        if: "!contains(github.event.head_commit.message, '[skip-smoke]')"
+        continue-on-error: true
+        run: |
+          gcloud run jobs execute crypto-signals-job \
+            --region=${{ vars.GCP_REGION }} \
+            --update-env-vars TEST_MODE=true \
+            --args="--smoke-test" \
+            --wait
+
+      - name: Auto-Rollback on Failure
+        if: steps.smoke_test.conclusion == 'failure'
+        run: |
+          gcloud run jobs update crypto-signals-job \
+            --region=${{ vars.GCP_REGION }} \
+            --image="${{ env.IMAGE_BASE }}:latest"
+          exit 1
+
+      - name: Promote Image to Latest (On Success)
+        if: success() || (steps.smoke_test.outcome == 'skipped')
+        run: |
+          gcloud artifacts docker tags add "${{ env.IMAGE_BASE }}:${{ github.sha }}" "${{ env.IMAGE_BASE }}:latest" --quiet
+
+  notify:
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [ci, validate-deployment, cd]
+    steps:
+      - name: Discord Notification
         env:
           WEBHOOK_URL: ${{ secrets.DISCORD_DEPLOYS }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          COMMIT_SHA: ${{ github.sha }}
-          ACTOR: ${{ github.actor }}
         run: |
-          curl -X POST "${WEBHOOK_URL}" \
-            -H "Content-Type: application/json" \
-            -d @- <<EOF
+          CI_STATUS="${{ needs.ci.result }}"
+          VAL_STATUS="${{ needs.validate-deployment.result }}"
+          CD_STATUS="${{ needs.cd.result }}"
+
+          if [[ "$CI_STATUS" == "failure" || "$VAL_STATUS" == "failure" || "$CD_STATUS" == "failure" ]]; then
+             COLOR="15158332" # Red
+             EMOJI="🚨"
+             FINAL_STATUS="FAILED"
+          else
+             COLOR="3066993" # Green
+             EMOJI="✅"
+             FINAL_STATUS="SUCCESS"
+          fi
+
+          status_emoji() {
+            case "$1" in
+              success) echo "🟢 Passed" ;;
+              failure) echo "🔴 Failed" ;;
+              skipped) echo "⏭️ Skipped" ;;
+              cancelled) echo "⚪ Cancelled" ;;
+              *) echo "❓ Unknown" ;;
+            esac
+          }
+
+          curl -X POST "${WEBHOOK_URL}" -H "Content-Type: application/json" -d @- <<EOF
           {
-            "content": "🚨 Deployment failed!",
+            "content": "${EMOJI} Pipeline **${FINAL_STATUS}**",
             "embeds": [{
-              "title": "CD Pipeline Failure",
-              "url": "${RUN_URL}",
-              "color": 15158332,
+              "title": "Workflow Execution Summary",
+              "color": ${COLOR},
               "fields": [
-                {"name": "Commit", "value": "${COMMIT_SHA}", "inline": true},
-                {"name": "Author", "value": "${ACTOR}", "inline": true}
+                {"name": "1. CI (Tests/Lint)", "value": "$(status_emoji $CI_STATUS)", "inline": true},
+                {"name": "2. Validation", "value": "$(status_emoji $VAL_STATUS)", "inline": true},
+                {"name": "3. Deployment", "value": "$(status_emoji $CD_STATUS)", "inline": true},
+                {"name": "Author", "value": "${{ github.actor }}", "inline": true},
+                {"name": "Commit", "value": "${{ github.sha }}", "inline": false}
               ]
             }]
           }

@@ -14,7 +14,8 @@ Usage:
     - expiration  : Signal → Expiration
     - trail       : Signal → TP1 → Trail Updates → TP3 (runner trail path)
     - short       : Short position trail path
-    - all         : Run all five paths (default)
+    - patterns    : All 8 structural patterns with geometry verification
+    - all         : Run all six paths (default)
 
     Modes:
     - test : Routes all traffic to TEST_DISCORD_WEBHOOK (default, safe)
@@ -68,6 +69,8 @@ class TestPath(str, Enum):
     expiration = "expiration"
     trail = "trail"
     short = "short"
+    patterns = "patterns"  # 8 structural patterns with geometry
+    shadow = "shadow"  # Shadow signal with rejection details
     all = "all"
 
 
@@ -83,7 +86,7 @@ def create_test_signal(scenario: str) -> Signal:
     now = datetime.now(timezone.utc)
     signal_key = f"{date.today()}|visual_test|BTC/USD|{scenario}"
 
-    return Signal(
+    signal = Signal(
         signal_id=get_deterministic_id(signal_key),
         ds=date.today(),
         strategy_id="visual_test",
@@ -99,6 +102,86 @@ def create_test_signal(scenario: str) -> Signal:
         take_profit_2=102000.00,  # Structural: +7.4%
         take_profit_3=110000.00,  # Runner: +15.8%
         expiration_at=now + timedelta(hours=24),
+    )
+
+    if scenario == "shadow":
+        signal.pattern_name = "bull_flag"
+        signal.pattern_classification = "MACRO_PATTERN"
+        signal.pattern_duration_days = 95
+        signal.status = SignalStatus.REJECTED_BY_FILTER
+        signal.rejection_reason = "VOLUME 1.1X < 1.5X"
+        signal.confluence_snapshot = {
+            "rsi": 65,
+            "adx": 30,
+            "sma_trend": "Above",
+            "volume_ratio": 1.1,
+            "rr_ratio": 2.5,
+        }
+
+        def days_ago(d):
+            return (datetime.now(timezone.utc) - timedelta(days=d)).isoformat()
+
+        signal.structural_anchors = [
+            {"price": 95000, "timestamp": days_ago(95), "pivot_type": "peak", "index": 0},
+            {
+                "price": 85000,
+                "timestamp": days_ago(45),
+                "pivot_type": "valley",
+                "index": 1,
+            },
+            {"price": 94000, "timestamp": days_ago(10), "pivot_type": "peak", "index": 2},
+            {
+                "price": 92000,
+                "timestamp": days_ago(0),
+                "pivot_type": "valley",
+                "index": 3,
+            },
+        ]
+
+    return signal
+
+
+def create_structural_signal(
+    pattern_name: str,
+    pattern_duration_days: int,
+    pattern_classification: str,
+    structural_anchors: list[dict],
+    symbol: str = "BTC/USD",
+    entry_price: float = 95000.00,
+) -> Signal:
+    """Create a test signal with structural pattern metadata.
+
+    Args:
+        pattern_name: Pattern name (e.g., DOUBLE_BOTTOM)
+        pattern_duration_days: Duration of pattern formation
+        pattern_classification: STANDARD_PATTERN or MACRO_PATTERN
+        structural_anchors: List of pivot dictionaries
+        symbol: Trading symbol
+        entry_price: Entry price for the signal
+    """
+    now = datetime.now(timezone.utc)
+    signal_key = f"{date.today()}|visual_test|{symbol}|{pattern_name}"
+
+    return Signal(
+        signal_id=get_deterministic_id(signal_key),
+        ds=date.today(),
+        strategy_id="visual_test",
+        symbol=symbol,
+        asset_class=AssetClass.CRYPTO,
+        confluence_factors=["RSI_Divergence", "Volume_Breakout"],
+        entry_price=entry_price,
+        pattern_name=pattern_name,
+        status=SignalStatus.WAITING,
+        suggested_stop=entry_price * 0.95,
+        invalidation_price=entry_price * 0.96,
+        take_profit_1=entry_price * 1.05,
+        take_profit_2=entry_price * 1.10,
+        take_profit_3=entry_price * 1.15,
+        expiration_at=now + timedelta(hours=24),
+        # Structural metadata
+        pattern_duration_days=pattern_duration_days,
+        pattern_classification=pattern_classification,
+        structural_anchors=structural_anchors,
     )
 
 
@@ -493,8 +576,377 @@ def test_short_runner_trail_path(client: DiscordClient) -> None:
     print("   Trailing stop moved DOWN as price fell.\n")
 
 
+def test_structural_patterns(client: DiscordClient) -> None:
+    """
+    Test all 8 multi-day structural patterns with geometry verification.
+
+    Verifies:
+    - MACRO header (🏛️) for patterns >90 days
+    - Formation Scale line with duration and classification
+    - Pattern Geometry block with "Days Ago" calculations
+    - Pivot anchor formatting for each pattern shape
+    """
+    print("\n📐 Starting STRUCTURAL PATTERNS test...")
+    print("-" * 50)
+    print("Testing 8 multi-day patterns with geometry visualization\n")
+
+    # Calculate reference dates (for realistic "days ago" values)
+    today = date.today()
+
+    def days_ago(n: int) -> str:
+        """Return ISO date string for n days ago."""
+        return str(today - timedelta(days=n))
+
+    # =========================================================================
+    # PATTERN DEFINITIONS
+    # Each pattern has realistic geometry based on technical analysis standards
+    # =========================================================================
+
+    patterns = [
+        # 1. DOUBLE BOTTOM - Standard (W-shape: Valley, Peak, Valley)
+        {
+            "name": "DOUBLE_BOTTOM",
+            "symbol": "BTC/USD",
+            "entry": 45000.00,
+            "duration": 42,
+            "classification": "STANDARD_PATTERN",
+            "anchors": [
+                {
+                    "price": 38500.00,
+                    "timestamp": days_ago(42),
+                    "pivot_type": "valley",
+                    "index": 0,
+                },
+                {
+                    "price": 43200.00,
+                    "timestamp": days_ago(21),
+                    "pivot_type": "peak",
+                    "index": 1,
+                },
+                {
+                    "price": 38800.00,
+                    "timestamp": days_ago(7),
+                    "pivot_type": "valley",
+                    "index": 2,
+                },
+            ],
+            "description": "Classic W-shape with ~0.8% valley variance",
+        },
+        # 2. INVERSE HEAD & SHOULDERS - MACRO (5 pivots: symmetrical pattern)
+        {
+            "name": "INVERSE_HEAD_SHOULDERS",
+            "symbol": "ETH/USD",
+            "entry": 3800.00,
+            "duration": 112,
+            "classification": "MACRO_PATTERN",
+            "anchors": [
+                {
+                    "price": 2850.00,
+                    "timestamp": days_ago(112),
+                    "pivot_type": "valley",
+                    "index": 0,
+                },  # Left Shoulder
+                {
+                    "price": 3200.00,
+                    "timestamp": days_ago(84),
+                    "pivot_type": "peak",
+                    "index": 1,
+                },  # Neckline 1
+                {
+                    "price": 2600.00,
+                    "timestamp": days_ago(56),
+                    "pivot_type": "valley",
+                    "index": 2,
+                },  # Head (lowest)
+                {
+                    "price": 3250.00,
+                    "timestamp": days_ago(28),
+                    "pivot_type": "peak",
+                    "index": 3,
+                },  # Neckline 2
+                {
+                    "price": 2900.00,
+                    "timestamp": days_ago(7),
+                    "pivot_type": "valley",
+                    "index": 4,
+                },  # Right Shoulder
+            ],
+            "description": "Institutional-scale reversal with 5-pivot symmetry",
+        },
+        # 3. BULL FLAG - Standard (Pole + Flag consolidation)
+        {
+            "name": "BULL_FLAG",
+            "symbol": "SOL/USD",
+            "entry": 125.00,
+            "duration": 18,
+            "classification": "STANDARD_PATTERN",
+            "anchors": [
+                {
+                    "price": 95.00,
+                    "timestamp": days_ago(18),
+                    "pivot_type": "valley",
+                    "index": 0,
+                },  # Pole base
+                {
+                    "price": 130.00,
+                    "timestamp": days_ago(10),
+                    "pivot_type": "peak",
+                    "index": 1,
+                },  # Pole top
+                {
+                    "price": 118.00,
+                    "timestamp": days_ago(5),
+                    "pivot_type": "valley",
+                    "index": 2,
+                },  # Flag low
+                {
+                    "price": 126.00,
+                    "timestamp": days_ago(2),
+                    "pivot_type": "peak",
+                    "index": 3,
+                },  # Flag high
+            ],
+            "description": "Strong 36% pole with tight flag retracement",
+        },
+        # 4. CUP AND HANDLE - MACRO (U-shape with handle)
+        {
+            "name": "CUP_AND_HANDLE",
+            "symbol": "AAPL",
+            "entry": 195.00,
+            "duration": 95,
+            "classification": "MACRO_PATTERN",
+            "anchors": [
+                {
+                    "price": 182.00,
+                    "timestamp": days_ago(95),
+                    "pivot_type": "peak",
+                    "index": 0,
+                },  # Cup left rim
+                {
+                    "price": 165.00,
+                    "timestamp": days_ago(60),
+                    "pivot_type": "valley",
+                    "index": 1,
+                },  # Cup bottom
+                {
+                    "price": 184.00,
+                    "timestamp": days_ago(30),
+                    "pivot_type": "peak",
+                    "index": 2,
+                },  # Cup right rim
+                {
+                    "price": 178.00,
+                    "timestamp": days_ago(10),
+                    "pivot_type": "valley",
+                    "index": 3,
+                },  # Handle low
+            ],
+            "description": "Rounded base with shallow handle pullback",
+        },
+        # 5. ASCENDING TRIANGLE - Standard (Flat resistance, rising lows)
+        {
+            "name": "ASCENDING_TRIANGLE",
+            "symbol": "NVDA",
+            "entry": 145.00,
+            "duration": 35,
+            "classification": "STANDARD_PATTERN",
+            "anchors": [
+                {
+                    "price": 128.00,
+                    "timestamp": days_ago(35),
+                    "pivot_type": "valley",
+                    "index": 0,
+                },  # First low
+                {
+                    "price": 142.00,
+                    "timestamp": days_ago(28),
+                    "pivot_type": "peak",
+                    "index": 1,
+                },  # Resistance test 1
+                {
+                    "price": 133.00,
+                    "timestamp": days_ago(21),
+                    "pivot_type": "valley",
+                    "index": 2,
+                },  # Higher low 1
+                {
+                    "price": 143.00,
+                    "timestamp": days_ago(14),
+                    "pivot_type": "peak",
+                    "index": 3,
+                },  # Resistance test 2
+                {
+                    "price": 138.00,
+                    "timestamp": days_ago(5),
+                    "pivot_type": "valley",
+                    "index": 4,
+                },  # Higher low 2
+            ],
+            "description": "Coiling pattern with rising demand",
+        },
+        # 6. FALLING WEDGE - Standard (Convergent, declining channel)
+        {
+            "name": "FALLING_WEDGE",
+            "symbol": "TSLA",
+            "entry": 265.00,
+            "duration": 28,
+            "classification": "STANDARD_PATTERN",
+            "anchors": [
+                {
+                    "price": 310.00,
+                    "timestamp": days_ago(28),
+                    "pivot_type": "peak",
+                    "index": 0,
+                },  # Upper trendline start
+                {
+                    "price": 275.00,
+                    "timestamp": days_ago(21),
+                    "pivot_type": "valley",
+                    "index": 1,
+                },  # Lower trendline 1
+                {
+                    "price": 295.00,
+                    "timestamp": days_ago(14),
+                    "pivot_type": "peak",
+                    "index": 2,
+                },  # Upper trendline 2
+                {
+                    "price": 258.00,
+                    "timestamp": days_ago(3),
+                    "pivot_type": "valley",
+                    "index": 3,
+                },  # Lower trendline 2
+            ],
+            "description": "Bullish reversal wedge with volume divergence",
+        },
+        # 7. RISING THREE METHODS - Standard (Candlestick continuation)
+        {
+            "name": "RISING_THREE_METHODS",
+            "symbol": "AMZN",
+            "entry": 188.00,
+            "duration": 8,
+            "classification": "STANDARD_PATTERN",
+            "anchors": [
+                {
+                    "price": 178.00,
+                    "timestamp": days_ago(8),
+                    "pivot_type": "valley",
+                    "index": 0,
+                },  # Pre-pattern low
+                {
+                    "price": 185.00,
+                    "timestamp": days_ago(5),
+                    "pivot_type": "peak",
+                    "index": 1,
+                },  # Strong bull candle
+                {
+                    "price": 182.00,
+                    "timestamp": days_ago(2),
+                    "pivot_type": "valley",
+                    "index": 2,
+                },  # Consolidation low
+            ],
+            "description": "5-candle continuation with contained retracement",
+        },
+        # 8. TWEEZER BOTTOMS - Standard (Equal lows candlestick pattern)
+        {
+            "name": "TWEEZER_BOTTOMS",
+            "symbol": "GOOGL",
+            "entry": 178.00,
+            "duration": 5,
+            "classification": "STANDARD_PATTERN",
+            "anchors": [
+                {
+                    "price": 172.50,
+                    "timestamp": days_ago(5),
+                    "pivot_type": "valley",
+                    "index": 0,
+                },  # First bottom
+                {
+                    "price": 176.00,
+                    "timestamp": days_ago(3),
+                    "pivot_type": "peak",
+                    "index": 1,
+                },  # Interim high
+                {
+                    "price": 172.55,
+                    "timestamp": days_ago(1),
+                    "pivot_type": "valley",
+                    "index": 2,
+                },  # Second bottom (matched)
+            ],
+            "description": "Matched lows with <0.1% variance indicate strong support",
+        },
+    ]
+
+    # =========================================================================
+    # SEND EACH PATTERN TO DISCORD
+    # =========================================================================
+
+    for idx, pattern_config in enumerate(patterns, 1):
+        print(
+            f"\n📤 Pattern {idx}/8: {pattern_config['name']} ({pattern_config['classification']})"
+        )
+
+        signal = create_structural_signal(
+            pattern_name=pattern_config["name"],
+            pattern_duration_days=pattern_config["duration"],
+            pattern_classification=pattern_config["classification"],
+            structural_anchors=pattern_config["anchors"],
+            symbol=pattern_config["symbol"],
+            entry_price=pattern_config["entry"],
+        )
+
+        # Create thread name with MACRO indicator if applicable
+        is_macro = pattern_config["classification"] == "MACRO_PATTERN"
+        macro_badge = "🏛️ " if is_macro else ""
+        thread_name = (
+            f"🧪 {macro_badge}{pattern_config['name'].replace('_', ' ').title()}"
+        )
+
+        # Send signal (creates thread with Pattern Geometry block)
+        thread_id = client.send_signal(signal, thread_name=thread_name)
+
+        if thread_id:
+            print(f"   ✅ Thread created: {thread_id}")
+            print(f"      Duration: {pattern_config['duration']} days")
+            print(f"      Anchors: {len(pattern_config['anchors'])} pivots")
+            print(f"      {pattern_config['description']}")
+        else:
+            print(f"   ❌ FAILED: Could not create thread for {pattern_config['name']}")
+
+        # Rate limiting between patterns
+        time.sleep(UPDATE_DELAY_SECONDS)
+
+    print("\n" + "-" * 50)
+    print("✅ STRUCTURAL PATTERNS test complete!")
+    print("\n   Verification Checklist:")
+    print("   □ MACRO patterns show 🏛️ [MACRO SETUP] header")
+    print("   □ All patterns have 'Formation Scale' line")
+    print("   □ Pattern Geometry shows correct 'Days Ago'")
+    print("   □ Pivots are listed chronologically (oldest → newest)")
+    print("   □ Inverse H&S shows 5 pivots with symmetry")
+    print("\n   Please verify in Discord that all 8 threads display correctly.\n")
+
+
+def test_shadow_path(client: DiscordClient) -> None:
+    """Test Shadow Signal (Rejected) notification."""
+    print("Testing SHADOW SIGNAL Path (Rejected by Filter)...")
+
+    # Create manually triggered shadow signal
+    signal = create_test_signal("shadow")
+
+    # Send shadow notification
+    client.send_shadow_signal(signal)
+
+    print("✅ Shadow Signal Sent")
+    print(f"   Reason: {signal.rejection_reason}")
+    print(f"   Snapshot: {signal.confluence_snapshot}")
+    print("   Verify: Ghost emoji 👻, Grey Embed, [REJECTED] Header")
+
+
 def run_all_tests(client: DiscordClient) -> None:
-    """Run all four test paths."""
+    """Run all six test paths."""
     test_success_path(client)
     print("\n" + "=" * 70 + "\n")
     time.sleep(1)
@@ -512,6 +964,14 @@ def run_all_tests(client: DiscordClient) -> None:
     time.sleep(1)
 
     test_short_runner_trail_path(client)
+    print("\n" + "=" * 70 + "\n")
+    time.sleep(1)
+
+    test_structural_patterns(client)
+    print("\n" + "=" * 70 + "\n")
+    time.sleep(1)
+
+    test_shadow_path(client)
 
 
 @app.command()
@@ -566,6 +1026,10 @@ def main(
         test_runner_trail_path(client)
     elif path == TestPath.short:
         test_short_runner_trail_path(client)
+    elif path == TestPath.patterns:
+        test_structural_patterns(client)
+    elif path == TestPath.shadow:
+        test_shadow_path(client)
     elif path == TestPath.all:
         run_all_tests(client)
 

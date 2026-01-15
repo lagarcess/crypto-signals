@@ -251,6 +251,134 @@ class SignalRepository:
         return count
 
 
+class RejectedSignalRepository:
+    """Repository for storing rejected (shadow) signals in Firestore.
+
+    Shadow signals are patterns that were detected but failed quality gates
+    (e.g., Volume < 1.5x, R:R < 1.5). They are persisted for:
+    - Backtesting analysis (Phase 8)
+    - Filter optimization
+    - Market regime analysis
+
+    Uses a shorter 7-day TTL since shadow signals are primarily for debugging
+    and analysis, not operational trading.
+    """
+
+    # Shadow signals expire after 7 days (shorter than live signals)
+    DEFAULT_TTL_DAYS = 7
+
+    def __init__(self):
+        """Initialize Firestore client."""
+        settings = get_settings()
+        self.db = firestore.Client(project=settings.GOOGLE_CLOUD_PROJECT)
+        self.collection_name = "rejected_signals"
+
+    def save(self, signal: Signal) -> None:
+        """Save a rejected signal to Firestore with 7-day TTL.
+
+        Args:
+            signal: Signal with status=REJECTED_BY_FILTER and rejection_reason populated
+        """
+        if signal.status != SignalStatus.REJECTED_BY_FILTER:
+            logger.warning(
+                f"RejectedSignalRepository.save() called with non-rejected signal: "
+                f"{signal.signal_id} (status={signal.status})"
+            )
+            return
+
+        signal_data = signal.model_dump(mode="json")
+        signal_data["expireAt"] = datetime.now(timezone.utc) + timedelta(
+            days=self.DEFAULT_TTL_DAYS
+        )
+        signal_data["rejected_at"] = datetime.now(timezone.utc)
+
+        doc_ref = self.db.collection(self.collection_name).document(signal.signal_id)
+        doc_ref.set(signal_data)
+
+        logger.debug(
+            f"[SHADOW] Saved rejected signal: {signal.symbol} {signal.pattern_name} - "
+            f"{signal.rejection_reason}"
+        )
+
+    def get_rejections_by_symbol(self, symbol: str, days: int = 7) -> list[Signal]:
+        """Get recent rejected signals for a symbol.
+
+        Useful for analyzing which patterns are being filtered most often.
+
+        Args:
+            symbol: Trading symbol (e.g., "BTC/USD")
+            days: Look back period in days (default: 7)
+
+        Returns:
+            List of rejected Signal objects
+        """
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+
+        query = (
+            self.db.collection(self.collection_name)
+            .where(filter=FieldFilter("symbol", "==", symbol))
+            .where(filter=FieldFilter("rejected_at", ">=", cutoff))
+        )
+
+        results = []
+        for doc in query.stream():
+            try:
+                results.append(Signal(**doc.to_dict()))
+            except ValidationError as e:
+                log_validation_error(doc.id, e)
+                # Auto-delete invalid legacy document
+                doc.reference.delete()
+
+        return results
+
+    def get_rejection_stats(self, days: int = 7) -> dict[str, int]:
+        """Get aggregated rejection counts by reason.
+
+        Returns:
+            Dict mapping rejection_reason to count
+        """
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+
+        query = self.db.collection(self.collection_name).where(
+            filter=FieldFilter("rejected_at", ">=", cutoff)
+        )
+
+        stats: dict[str, int] = {}
+        for doc in query.stream():
+            data = doc.to_dict()
+            reason = data.get("rejection_reason", "Unknown")
+            stats[reason] = stats.get(reason, 0) + 1
+
+        return stats
+
+    def cleanup_expired(self) -> int:
+        """Delete expired rejected signals. Returns count deleted."""
+        cutoff_date = datetime.now(timezone.utc)
+
+        query = self.db.collection(self.collection_name).where(
+            filter=FieldFilter("expireAt", "<", cutoff_date)
+        )
+
+        batch = self.db.batch()
+        count = 0
+
+        for doc in query.stream():
+            batch.delete(doc.reference)
+            count += 1
+
+            if count >= 400:
+                batch.commit()
+                batch = self.db.batch()
+
+        if count > 0 and count % 400 != 0:
+            batch.commit()
+
+        if count > 0:
+            logger.info(f"Cleaned up {count} expired rejected signals")
+
+        return count
+
+
 class PositionRepository:
     """Repository for storing positions in Firestore."""
 

@@ -403,6 +403,17 @@ gcloud run jobs execute crypto-signals-job --region=us-central1
 gcloud secrets get-iam-policy ALPACA_API_KEY --format=json | jq '.bindings[] | select(.role=="roles/secretmanager.secretAccessor")'
 ```
 
+**Batch verify all required secrets exist:**
+
+```bash
+for secret in ALPACA_API_KEY ALPACA_SECRET_KEY TEST_DISCORD_WEBHOOK \
+  LIVE_CRYPTO_DISCORD_WEBHOOK_URL LIVE_STOCK_DISCORD_WEBHOOK_URL \
+  DISCORD_SHADOW_WEBHOOK_URL DISCORD_BOT_TOKEN; do
+    gcloud secrets describe $secret > /dev/null 2>&1 && \
+    echo "✅ $secret exists" || echo "❌ $secret MISSING";
+done
+```
+
 ---
 
 ### Test Cloud Run Job Manually

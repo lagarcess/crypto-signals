@@ -24,10 +24,14 @@ htmlcov/
 *.log
 logs/
 
+# Debug
+debug.txt
+
 # Secrets directory (for local development)
 secrets/
 *.json
 !pyproject.json
+valid_assets.txt
 
 # Temporary files
 tmp/

@@ -57,6 +57,7 @@ def test_active_trade_validation_loop(
             return_value=mock_asset_validator,
         ),
         patch("crypto_signals.main.PositionRepository", return_value=mock_position_repo),
+        patch("crypto_signals.main.RejectedSignalRepository"),
         patch("crypto_signals.main.ExecutionEngine"),
         patch("crypto_signals.main.init_secrets", return_value=True),
         patch("crypto_signals.main.load_config_from_firestore", return_value=None),
@@ -95,9 +96,9 @@ def test_active_trade_validation_loop(
         mock_generator.generate_signals.return_value = None
 
         # Run Main (Override sys.exit or ensure it terminates?)
-        # main() runs until portfolio exhausted.
+        # main(smoke_test=False) runs until portfolio exhausted.
         # It loops active portfolio items once.
-        main()
+        main(smoke_test=False)
 
         # Verification
         # 1. repo.get_active_signals should be called with "BTC/USD"

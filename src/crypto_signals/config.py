@@ -83,6 +83,14 @@ class Settings(BaseSettings):
         default=None,
         description="Channel ID for Stock signals (required for recovery)",
     )
+    DISCORD_SHADOW_WEBHOOK_URL: SecretStr | None = Field(
+        default=None,
+        description="Discord Webhook URL for shadow (rejected) signals",
+    )
+    DISCORD_DEPLOYS: SecretStr | None = Field(
+        default=None,
+        description="Discord Webhook URL for CI/CD deployment notifications (used in GitHub Actions)",
+    )
 
     # Environment Mode (defaults to True for safety - all traffic goes to test webhook)
     TEST_MODE: bool = Field(
