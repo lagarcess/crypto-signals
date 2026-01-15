@@ -289,6 +289,38 @@ def main(
                         )
 
                         # ============================================================
+                        # IDEMPOTENCY GATE: Prevent redundant Discord alerts
+                        # ============================================================
+                        existing_signal = repo.get_by_id(trade_signal.signal_id)
+                        if existing_signal:
+                            # Skip if signal exists in WAITING status with discord_thread_id
+                            if (
+                                existing_signal.status == SignalStatus.WAITING
+                                and existing_signal.discord_thread_id
+                            ):
+                                logger.info(
+                                    f"[IDEMPOTENCY] Skip notified signal {trade_signal.signal_id}",
+                                    extra={
+                                        "signal_id": trade_signal.signal_id,
+                                        "symbol": trade_signal.symbol,
+                                        "thread_id": existing_signal.discord_thread_id,
+                                    },
+                                )
+                                continue
+
+                            # Self-heal: If exists but discord_thread_id is null, proceed to notification
+                            if not existing_signal.discord_thread_id:
+                                logger.info(
+                                    f"[IDEMPOTENCY] Self-healing signal {trade_signal.signal_id} - "
+                                    "missing discord_thread_id",
+                                    extra={
+                                        "signal_id": trade_signal.signal_id,
+                                        "symbol": trade_signal.symbol,
+                                    },
+                                )
+                                # Continue to notification phase to fix the missing thread_id
+
+                        # ============================================================
                         # TWO-PHASE COMMIT: Prevents "Zombie Signals"
                         # (notifications sent without database tracking)
                         # ============================================================

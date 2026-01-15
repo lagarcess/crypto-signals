@@ -26,7 +26,7 @@ Crypto Sentinel is a production-ready trading bot that:
 
 ### Core Capabilities
 - **Multi-Asset Support**: Trades both cryptocurrencies (BTC, ETH, XRP) and equities (NVDA, QQQ, GLD)
-- **Pattern Recognition**: Detects bullish hammer and bullish engulfing patterns
+- **Pattern Recognition**: Detects 22 bullish patterns using O(N) ZigZag pivot detection, including candlestick reversal patterns (Hammer, Engulfing, Morning Star) and structural chart patterns (Bull Flag, Double Bottom, Cup and Handle, Inverse Head & Shoulders)
 - **Technical Indicators**: RSI, MACD, Bollinger Bands, EMA, and more
 - **Risk Management**: Automatic stop-loss calculation and position sizing
 - **Cloud-Native**: Designed for containerized deployment on GCP

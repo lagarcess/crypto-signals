@@ -10,6 +10,9 @@ from crypto_signals.analysis.structural import Pivot, find_pivots
 STANDARD_PATTERN = "STANDARD_PATTERN"  # 5-90 day formations
 MACRO_PATTERN = "MACRO_PATTERN"  # >90 day formations
 
+# Minimum pattern width in bars (sanity gate to prevent micro-pattern misclassification)
+MINIMUM_PATTERN_WIDTH = 10
+
 
 @dataclass
 class Signal:
@@ -150,7 +153,6 @@ class PatternAnalyzer:
         )
 
         # ENGULFING
-        # ENGULFING
         self.df["bullish_engulfing"] = (
             self.df["is_engulfing_shape"]
             & reversal_context
@@ -158,7 +160,6 @@ class PatternAnalyzer:
             & self.df["volatility_contraction"]
         )
 
-        # MORNING STAR
         # MORNING STAR
         # Strict Rule: Must be confirmed by RSI Bullish Divergence.
         # (Overriding generic reversal_context)
@@ -294,19 +295,8 @@ class PatternAnalyzer:
         )
 
         # ============================================================
-        # HIGH-PROBABILITY BULLISH PATTERNS (NEW)
+        # HIGH-PROBABILITY BULLISH PATTERNS (Confluence Filters)
         # ============================================================
-        # 1. Calculate shapes first (Raw detection)
-        self.df["is_dragonfly_doji"] = self._detect_dragonfly_doji()
-        self.df["is_bullish_belt_hold"] = self._detect_bullish_belt_hold()
-        self.df["is_bullish_harami"] = self._detect_bullish_harami()
-        self.df["is_bullish_kicker"] = self._detect_bullish_kicker()
-        self.df["is_three_inside_up"] = self._detect_three_inside_up()
-        self.df["is_rising_three_methods"] = self._detect_rising_three_methods()
-        self.df["is_falling_wedge"] = self._detect_falling_wedge()
-        self.df["is_inverse_head_shoulders"] = self._detect_inverse_head_shoulders()
-
-        # 2. Apply Confluence Filters
 
         # DRAGONFLY DOJI (65% success rate)
         # Single-candle reversal at support with RSI/BB confluence
@@ -760,154 +750,290 @@ class PatternAnalyzer:
 
     def _detect_bull_flag(self) -> pd.Series:
         """
-        Bull Flag Detection with strict constraints:
-        1. Pole: >15% move in 5 days (checked at t-3 to t-10).
-        2. Retracement: High(Pole) - Low(Flag) < 0.5 * Pole_Height.
-        3. Volume Decay: Volume SMA(5) declining.
+        Bull Flag Detection using structural pivot geometry.
+
+        Refined Geometric Rules:
+        1. Pole height >= 15% (from valley to peak).
+        2. Flag consolidation must stay within the top 50% of the pole height.
+        3. Minimum Pattern Width: At least 10 bars between pole valley and current bar.
+        4. Volume Decay: Volume during flag consolidation < pole volume.
+
+        Returns:
+            pd.Series[bool]: True at bars where valid bull flag is detected.
+
+        Note:
+            Pattern duration, classification, and pivots stored in metadata columns.
         """
+        is_bull_flag = pd.Series(False, index=self.df.index)
+        pattern_duration = pd.Series(dtype="Int64", index=self.df.index)
+        pattern_class = pd.Series(dtype="object", index=self.df.index)
+        pattern_pivots = pd.Series(dtype="object", index=self.df.index)
 
-        # 1. Identify Pole candidates (rolling 5d return)
-        # We look for a pole that *ended* roughly 3-10 days ago (consolidation phase)
-        # Shifted returns to identify past strength
-        ret_5d = self.df["close"].pct_change(5)
-        # Pole ending 3 to 10 days ago
-        # Max return in the window [t-10, t-3] must be > 15%
-        # Window size = 8.
-        past_strength = ret_5d.shift(3).rolling(8).max()
-        has_pole = past_strength > 0.15
+        # Need at least a valley and peak for pole structure
+        if len(self.pivots) < 2:
+            self.df["bull_flag_duration"] = pattern_duration
+            self.df["bull_flag_classification"] = pattern_class
+            self.df["bull_flag_pivots"] = pattern_pivots
+            return is_bull_flag
 
-        # 2. Retracement Check
-        # Find the High of the recent past (Pole Top) - say last 15 days
-        recent_high = self.df["high"].rolling(15).max()
-        # Find Low of the consolidation (last 5 days)
-        recent_low = self.df["low"].rolling(5).min()
-        # Pole low (approximate: Low 15 days ago? Or min in 15 days?)
-        pole_low = self.df["low"].rolling(15).min()
+        valleys = [p for p in self.pivots if p.pivot_type == "VALLEY"]
+        peaks = [p for p in self.pivots if p.pivot_type == "PEAK"]
 
-        pole_height = recent_high - pole_low
-        # Avoid division by zero
-        pole_height = pole_height.replace(0, np.nan)
+        if len(valleys) < 1 or len(peaks) < 1:
+            self.df["bull_flag_duration"] = pattern_duration
+            self.df["bull_flag_classification"] = pattern_class
+            self.df["bull_flag_pivots"] = pattern_pivots
+            return is_bull_flag
 
-        retracement = (recent_high - recent_low) / pole_height
-        valid_retracement = retracement < 0.5
+        current_idx = len(self.df) - 1
+        current_close = self.df["close"].iloc[-1]
 
-        # 3. Volume Decay
-        # SMA(5) of Volume is less than SMA(20) OR SMA(5) is declining?
-        # User: "verify that volume is decreasing during the consolidation phase"
-        # shift check to t-1 to avoid breakout volume spike.
-        vol_sma_5 = self.df["volume"].rolling(5).mean()
-        vol_sma_20 = self.df["volume"].rolling(20).mean()
+        # Look for pole: Valley -> Peak with >= 15% rise
+        for pole_valley in valleys:
+            # Find peaks that come after this valley
+            candidate_peaks = [p for p in peaks if p.index > pole_valley.index]
+            if not candidate_peaks:
+                continue
 
-        # Shifted SMAs to check t-1
-        vol_sma_5_prev = vol_sma_5.shift(1)
-        vol_sma_20_prev = vol_sma_20.shift(1)
+            for pole_peak in candidate_peaks:
+                # 1. Pole height >= 15%
+                pole_height = pole_peak.price - pole_valley.price
+                pole_height_pct = pole_height / pole_valley.price
+                if pole_height_pct < 0.15:
+                    continue
 
-        vol_decay = (vol_sma_5_prev < vol_sma_5.shift(4)) & (
-            vol_sma_5_prev < vol_sma_20_prev
-        )
+                # Minimum Pattern Width: 10 bars from pole_valley to current
+                pattern_width = current_idx - pole_valley.index
+                if pattern_width < MINIMUM_PATTERN_WIDTH:
+                    continue
 
-        return has_pole & valid_retracement & vol_decay
+                # Need consolidation period after the pole peak
+                consolidation_start = pole_peak.index + 1
+                if consolidation_start >= current_idx:
+                    continue
+
+                # 2. Flag consolidation must stay within top 50% of pole height
+                # Check the price range after the pole peak
+                pole_midpoint = pole_valley.price + (pole_height * 0.5)
+                flag_data = self.df.iloc[consolidation_start : current_idx + 1]
+
+                if len(flag_data) < 5:  # Need at least 5 bars of consolidation
+                    continue
+
+                flag_low = flag_data["low"].min()
+                flag_high = flag_data["high"].max()
+
+                # Flag low must be above the pole midpoint (top 50%)
+                if flag_low < pole_midpoint:
+                    continue
+
+                # 3. Volume decay during flag
+                if "volume" in self.df.columns:
+                    pole_avg_vol = (
+                        self.df["volume"]
+                        .iloc[pole_valley.index : pole_peak.index + 1]
+                        .mean()
+                    )
+                    flag_avg_vol = flag_data["volume"].mean()
+                    if flag_avg_vol >= pole_avg_vol:
+                        continue
+
+                # Valid bull flag: check if current close indicates breakout potential
+                if current_close >= flag_high * 0.95:
+                    duration, classification = self._calculate_pattern_duration(
+                        pole_valley.index
+                    )
+
+                    is_bull_flag.iloc[-1] = True
+                    pattern_duration.iloc[-1] = duration
+                    pattern_class.iloc[-1] = classification
+
+                    # Store pivots that formed the pattern
+                    flag_pivots = [p for p in self.pivots if p.index > pole_peak.index]
+                    pattern_pivots.iloc[-1] = [
+                        {
+                            "type": "POLE_VALLEY",
+                            "index": pole_valley.index,
+                            "price": pole_valley.price,
+                        },
+                        {
+                            "type": "POLE_PEAK",
+                            "index": pole_peak.index,
+                            "price": pole_peak.price,
+                        },
+                    ] + [
+                        {"type": p.pivot_type, "index": p.index, "price": p.price}
+                        for p in flag_pivots[:4]
+                    ]
+                    break  # Found valid pattern, stop searching
+
+            if is_bull_flag.iloc[-1]:
+                break
+
+        self.df["bull_flag_duration"] = pattern_duration
+        self.df["bull_flag_classification"] = pattern_class
+        self.df["bull_flag_pivots"] = pattern_pivots
+        return is_bull_flag.fillna(False)
 
     def _detect_cup_and_handle(self) -> pd.Series:
         """
-        Cup and Handle Pattern Detection.
+        Cup and Handle Pattern Detection using structural pivot geometry.
 
-        The Cup and Handle is a bullish continuation pattern consisting of:
-        1. Cup (U-Shape):
-           - Local high (left rim) followed by 30-50% retracement
-           - Recovery back to initial high level over 20-30 periods
-           - Rounded bottom (not a sharp V) - verified by checking that the
-             rolling minimum variance is low, indicating gradual price change
-
-        2. Handle:
-           - 4-7 periods of consolidation after cup completes
-           - Price stays within top 10% of the cup's total height
-
-        Mathematical Roundedness Check:
-            A rounded bottom has a gradual transition vs a V-shape's sharp turn.
-            We measure this by checking that the middle portion of the cup
-            (around the bottom) shows the rolling min staying relatively stable
-            over several bars, indicating a "U" rather than a "V".
+        Refined Geometric Rules:
+        1. Cup bottom must be "Rounded" (at least 3 valley pivots forming a U-shape).
+        2. Handle must not retrace more than 15% of the cup depth.
+        3. Minimum Pattern Width: At least 10 bars between first and last pivot.
 
         Returns:
             pd.Series[bool]: True at bars where cup and handle breakout is detected.
+
+        Note:
+            Pattern duration, classification, and pivots stored in metadata columns.
         """
-        cup_period = 25  # Average cup formation period (20-30 range)
-        handle_period = 5  # Handle consolidation period (4-7 range)
-        total_lookback = cup_period + handle_period
-
         is_cup_handle = pd.Series(False, index=self.df.index)
+        pattern_duration = pd.Series(dtype="Int64", index=self.df.index)
+        pattern_class = pd.Series(dtype="object", index=self.df.index)
+        pattern_pivots = pd.Series(dtype="object", index=self.df.index)
 
-        # Need enough data
-        if len(self.df) < total_lookback + 10:
+        # Need enough pivots for cup structure (at least 3 valleys for rounded bottom)
+        if len(self.pivots) < 5:
+            self.df["cup_handle_duration"] = pattern_duration
+            self.df["cup_handle_classification"] = pattern_class
+            self.df["cup_handle_pivots"] = pattern_pivots
             return is_cup_handle
 
-        # 1. Identify the left rim (local high before cup)
-        # Rolling max of highs over past cup_period, shifted by handle_period
-        left_rim_high = (
-            self.df["high"].shift(handle_period).rolling(window=cup_period).max()
-        )
+        valleys = [p for p in self.pivots if p.pivot_type == "VALLEY"]
+        peaks = [p for p in self.pivots if p.pivot_type == "PEAK"]
 
-        # 2. Cup bottom - minimum low during cup formation
-        cup_bottom_low = (
-            self.df["low"].shift(handle_period).rolling(window=cup_period).min()
-        )
+        if len(valleys) < 3 or len(peaks) < 2:
+            self.df["cup_handle_duration"] = pattern_duration
+            self.df["cup_handle_classification"] = pattern_class
+            self.df["cup_handle_pivots"] = pattern_pivots
+            return is_cup_handle
 
-        # 3. Cup height and retracement check (30-50%)
-        cup_height = left_rim_high - cup_bottom_low
-        retracement_pct = cup_height / left_rim_high
+        current_idx = len(self.df) - 1
+        current_close = self.df["close"].iloc[-1]
 
-        valid_retracement = (retracement_pct >= 0.30) & (retracement_pct <= 0.50)
+        # Look for left rim (peak), then cup valleys, then right rim (peak), then handle
+        for left_rim in peaks[:-1]:
+            # Find cup valleys after left rim
+            cup_valleys = [v for v in valleys if v.index > left_rim.index]
+            if len(cup_valleys) < 3:
+                continue
 
-        # 4. Recovery check - current price near left rim level
-        # Price recovered back within 5% of left rim high
-        right_rim_price = self.df["high"].shift(handle_period)
-        recovery_valid = right_rim_price >= (left_rim_high * 0.95)
+            # Find right rim: peak after the cup valleys
+            right_rim_candidates = [p for p in peaks if p.index > cup_valleys[0].index]
+            if not right_rim_candidates:
+                continue
 
-        # 5. Rounded Bottom Check (U-shape vs V-shape)
-        # A U-shape has the minimum staying relatively stable in the middle
-        # We check variance of the rolling minimum over the cup's middle third
-        mid_section_window = max(cup_period // 3, 5)
-        mid_section_start = handle_period + (cup_period // 3)
+            # Right rim should be close to left rim price (within 10%)
+            right_rim = None
+            for rim_candidate in right_rim_candidates:
+                price_diff_pct = (
+                    abs(rim_candidate.price - left_rim.price) / left_rim.price
+                )
+                if price_diff_pct <= 0.10:
+                    right_rim = rim_candidate
+                    break
 
-        # Rolling std of lows in the bottom section
-        # Low variance indicates a rounded (U-shape) bottom vs sharp (V-shape)
-        rolling_min_std = (
-            self.df["low"]
-            .shift(mid_section_start)
-            .rolling(window=mid_section_window)
-            .std()
-        )
+            if right_rim is None:
+                continue
 
-        # Variance relative to cup height should be low for U-shape
-        # V-shape would have high variance as price changes rapidly
-        roundedness_ratio = rolling_min_std / cup_height.replace(0, np.nan)
-        rounded_bottom = roundedness_ratio < 0.15  # Low variance = rounded
+            # Minimum Pattern Width: 10 bars
+            pattern_width = right_rim.index - left_rim.index
+            if pattern_width < MINIMUM_PATTERN_WIDTH:
+                continue
 
-        # 6. Handle Consolidation Check
-        # Last handle_period bars should stay within top 10% of cup height
-        handle_low = self.df["low"].rolling(window=handle_period).min()
-        handle_high = self.df["high"].rolling(window=handle_period).max()
+            # 1. Rounded bottom check: Cup valleys should form a U-shape
+            # Verify at least 3 valleys exist between left and right rim
+            cup_interior_valleys = [
+                v for v in cup_valleys if left_rim.index < v.index < right_rim.index
+            ]
+            if len(cup_interior_valleys) < 3:
+                continue
 
-        cup_top = left_rim_high
-        cup_height_10pct = cup_height * 0.10
+            # Check U-shape: middle valleys should be lowest
+            interior_prices = [v.price for v in cup_interior_valleys]
+            cup_bottom = min(interior_prices)
+            cup_depth = left_rim.price - cup_bottom
 
-        # Handle should be in the upper zone (within 10% of cup top)
-        handle_floor = cup_top - cup_height_10pct
-        handle_in_zone = (handle_low >= handle_floor) & (handle_high <= cup_top * 1.02)
+            # U-shape: prices should descend to bottom and ascend (not V-shape)
+            # Simple check: first and last interior valley prices > middle prices
+            if len(interior_prices) >= 3:
+                # Not a sharp V: extremes should be higher than minimum
+                if not (
+                    interior_prices[0] > cup_bottom and interior_prices[-1] > cup_bottom
+                ):
+                    continue
 
-        # 7. Breakout signal - current bar breaks above handle resistance
-        breakout = self.df["close"] > handle_high.shift(1)
+            # 2. Handle check: Find pivots after right rim
+            handle_pivots = [p for p in self.pivots if p.index > right_rim.index]
+            if not handle_pivots:
+                # No handle yet, still forming
+                continue
 
-        # Combine all conditions
-        is_cup_handle = (
-            valid_retracement
-            & recovery_valid
-            & rounded_bottom
-            & handle_in_zone
-            & breakout
-        )
+            # Handle must not retrace more than 15% of cup depth
+            handle_low = (
+                min(p.price for p in handle_pivots[:3])
+                if handle_pivots
+                else right_rim.price
+            )
+            handle_retrace = right_rim.price - handle_low
+            handle_retrace_pct = handle_retrace / cup_depth if cup_depth > 0 else 1.0
 
+            if handle_retrace_pct > 0.15:
+                continue
+
+            # 3. Breakout check: current close should be near or above right rim
+            last_handle_idx = (
+                max(p.index for p in handle_pivots[:3])
+                if handle_pivots
+                else right_rim.index
+            )
+            if current_idx >= last_handle_idx and current_close >= right_rim.price * 0.98:
+                duration, classification = self._calculate_pattern_duration(
+                    left_rim.index
+                )
+
+                is_cup_handle.iloc[-1] = True
+                pattern_duration.iloc[-1] = duration
+                pattern_class.iloc[-1] = classification
+                pattern_pivots.iloc[-1] = (
+                    [
+                        {
+                            "type": "LEFT_RIM",
+                            "index": left_rim.index,
+                            "price": left_rim.price,
+                        },
+                    ]
+                    + [
+                        {"type": "CUP_VALLEY", "index": v.index, "price": v.price}
+                        for v in cup_interior_valleys[:3]
+                    ]
+                    + [
+                        {
+                            "type": "RIGHT_RIM",
+                            "index": right_rim.index,
+                            "price": right_rim.price,
+                        },
+                    ]
+                    + [
+                        {
+                            "type": "HANDLE_" + p.pivot_type,
+                            "index": p.index,
+                            "price": p.price,
+                        }
+                        for p in handle_pivots[:2]
+                    ]
+                )
+                break  # Found valid pattern
+
+            if is_cup_handle.iloc[-1]:
+                break
+
+        self.df["cup_handle_duration"] = pattern_duration
+        self.df["cup_handle_classification"] = pattern_class
+        self.df["cup_handle_pivots"] = pattern_pivots
         return is_cup_handle.fillna(False)
 
     def _detect_double_bottom(self) -> pd.Series:
@@ -918,25 +1044,27 @@ class PatternAnalyzer:
         formation length by analyzing the geometric relationship between
         structural valley pivots.
 
-        Structural Requirements:
-        1. Two valley pivots with prices within 1.5% of each other.
-        2. A peak pivot between the two valleys (neckline) >= 3% above bottoms.
-        3. Valleys separated by at least 5 bars (no micro-patterns).
+        Refined Geometric Rules:
+        1. V1 and V2 price variance <= 1.5%.
+        2. Neckline (P1) must be >= 3% above the valleys.
+        3. Minimum Pattern Width: At least 10 bars between first and last pivot.
 
         Returns:
             pd.Series[bool]: True at bars where valid double bottom is detected.
 
         Note:
-            Pattern duration and classification are stored in metadata columns.
+            Pattern duration, classification, and pivots stored in metadata columns.
         """
         is_double_bottom = pd.Series(False, index=self.df.index)
         pattern_duration = pd.Series(dtype="Int64", index=self.df.index)
         pattern_class = pd.Series(dtype="object", index=self.df.index)
+        pattern_pivots = pd.Series(dtype="object", index=self.df.index)
 
         if len(self.pivots) < 3:
             # Need at least 2 valleys and 1 peak for double bottom
             self.df["double_bottom_duration"] = pattern_duration
             self.df["double_bottom_classification"] = pattern_class
+            self.df["double_bottom_pivots"] = pattern_pivots
             return is_double_bottom
 
         # Get valleys from structural pivots (flexible lookback)
@@ -946,6 +1074,7 @@ class PatternAnalyzer:
         if len(valleys) < 2 or len(peaks) < 1:
             self.df["double_bottom_duration"] = pattern_duration
             self.df["double_bottom_classification"] = pattern_class
+            self.df["double_bottom_pivots"] = pattern_pivots
             return is_double_bottom
 
         # Check each pair of consecutive valleys
@@ -953,8 +1082,9 @@ class PatternAnalyzer:
             v1 = valleys[i]  # First bottom
             v2 = valleys[i + 1]  # Second bottom
 
-            # Minimum separation check (at least 5 bars apart)
-            if v2.index - v1.index < 5:
+            # Minimum Pattern Width Sanity Gate (10 bars)
+            pattern_width = v2.index - v1.index
+            if pattern_width < MINIMUM_PATTERN_WIDTH:
                 continue
 
             # 1. Validate bottoms within 1.5% of each other
@@ -968,11 +1098,11 @@ class PatternAnalyzer:
                 continue
 
             # Get the highest peak between valleys (neckline)
-            neckline_pivot = max(middle_peaks, key=lambda p: p.price)
+            p1 = max(middle_peaks, key=lambda p: p.price)
             avg_bottoms = (v1.price + v2.price) / 2
 
             # Neckline must be >= 3% higher than average of bottoms
-            if neckline_pivot.price < avg_bottoms * 1.03:
+            if p1.price < avg_bottoms * 1.03:
                 continue
 
             # Valid double bottom found!
@@ -988,65 +1118,120 @@ class PatternAnalyzer:
                 is_double_bottom.iloc[-1] = True
                 pattern_duration.iloc[-1] = duration
                 pattern_class.iloc[-1] = classification
+                # Store 3-pivot structure
+                pattern_pivots.iloc[-1] = [
+                    {"type": "V1", "index": v1.index, "price": v1.price},
+                    {"type": "P1", "index": p1.index, "price": p1.price},
+                    {"type": "V2", "index": v2.index, "price": v2.price},
+                ]
 
         self.df["double_bottom_duration"] = pattern_duration
         self.df["double_bottom_classification"] = pattern_class
+        self.df["double_bottom_pivots"] = pattern_pivots
         return is_double_bottom.fillna(False)
 
     def _detect_ascending_triangle(self) -> pd.Series:
         """
-        Ascending Triangle Detection.
+        Ascending Triangle Detection using structural pivot geometry.
 
         Structural Requirements:
-        1. Flat Upper Resistance: Rolling max of highs over 14 periods with variance ≤ 0.5%.
-        2. Rising Support: Positive linear regression slope of rolling lows.
+        1. Flat Upper Resistance: Multiple peaks at similar price levels (within 2%).
+        2. Rising Support: Valley pivots with ascending prices.
+        3. Minimum Pattern Width: At least 10 bars between first and last pivot.
 
         Returns:
             pd.Series[bool]: True at bars where ascending triangle pattern is detected.
 
         Note:
-            Uses vectorized pandas operations for performance.
+            Pattern duration, classification, and pivots stored in metadata columns.
         """
-        window = 14
         is_ascending_triangle = pd.Series(False, index=self.df.index)
+        pattern_duration = pd.Series(dtype="Int64", index=self.df.index)
+        pattern_class = pd.Series(dtype="object", index=self.df.index)
+        pattern_pivots = pd.Series(dtype="object", index=self.df.index)
+
+        # Need enough pivots for triangle structure (at least 2 peaks and 2 valleys)
+        if len(self.pivots) < 4:
+            self.df["asc_triangle_duration"] = pattern_duration
+            self.df["asc_triangle_classification"] = pattern_class
+            self.df["asc_triangle_pivots"] = pattern_pivots
+            return is_ascending_triangle
+
+        valleys = [p for p in self.pivots if p.pivot_type == "VALLEY"]
+        peaks = [p for p in self.pivots if p.pivot_type == "PEAK"]
+
+        if len(valleys) < 2 or len(peaks) < 2:
+            self.df["asc_triangle_duration"] = pattern_duration
+            self.df["asc_triangle_classification"] = pattern_class
+            self.df["asc_triangle_pivots"] = pattern_pivots
+            return is_ascending_triangle
+
+        # Use the most recent pivots for pattern detection (last 3 of each)
+        recent_peaks = peaks[-3:]  # Last 3 peaks
+        recent_valleys = valleys[-3:]  # Last 3 valleys
+
+        if len(recent_peaks) < 2 or len(recent_valleys) < 2:
+            self.df["asc_triangle_duration"] = pattern_duration
+            self.df["asc_triangle_classification"] = pattern_class
+            self.df["asc_triangle_pivots"] = pattern_pivots
+            return is_ascending_triangle
+
+        # Minimum Pattern Width: 10 bars (using the pivot cluster, not all pivots)
+        peak_indices = [p.index for p in recent_peaks]
+        valley_indices = [v.index for v in recent_valleys]
+        first_pivot_idx = min(min(peak_indices), min(valley_indices))
+        last_pivot_idx = max(max(peak_indices), max(valley_indices))
+        pattern_width = last_pivot_idx - first_pivot_idx
+
+        if pattern_width < MINIMUM_PATTERN_WIDTH:
+            self.df["asc_triangle_duration"] = pattern_duration
+            self.df["asc_triangle_classification"] = pattern_class
+            self.df["asc_triangle_pivots"] = pattern_pivots
+            return is_ascending_triangle
 
         # 1. Flat Upper Resistance Check
-        # Calculate rolling max and check if highs stay within 0.5% of max
-        rolling_high_max = self.df["high"].rolling(window=window).max()
-        rolling_high_min = self.df["high"].rolling(window=window).min()
+        # Peaks should be within 2% of each other (flat resistance)
+        peak_prices = [p.price for p in recent_peaks]
+        avg_peak = sum(peak_prices) / len(peak_prices)
+        max_peak_variance = max(abs(p - avg_peak) / avg_peak for p in peak_prices)
 
-        # Variance in highs: (max - min) / max should be <= 0.5%
-        high_variance = (rolling_high_max - rolling_high_min) / rolling_high_max
-        flat_resistance = high_variance <= 0.005  # 0.5% tolerance
+        flat_resistance = max_peak_variance <= 0.02  # 2% tolerance for flat resistance
 
         # 2. Rising Support Check
-        # Calculate linear regression slope of lows using rolling window
-        # Slope > 0 indicates rising support
+        # Valleys should have ascending prices (sorted by index)
+        sorted_valleys = sorted(recent_valleys, key=lambda v: v.index)
+        valley_prices = [v.price for v in sorted_valleys]
+        rising_support = all(
+            valley_prices[i] <= valley_prices[i + 1]
+            for i in range(len(valley_prices) - 1)
+        )
 
-        def rolling_slope(series: pd.Series, window: int) -> pd.Series:
-            """Calculate rolling linear regression slope."""
-            # Create x values (0, 1, 2, ..., window-1)
-            x = np.arange(window)
-            x_mean = x.mean()
+        # Also check that valleys are actually rising (not flat)
+        if len(valley_prices) >= 2:
+            valley_slope = (valley_prices[-1] - valley_prices[0]) / valley_prices[0]
+            rising_support = rising_support and valley_slope > 0.01  # At least 1% rise
 
-            def calc_slope(y):
-                if len(y) < window or np.isnan(y).any():
-                    return np.nan
-                y_mean = y.mean()
-                numerator = np.sum((x - x_mean) * (y - y_mean))
-                denominator = np.sum((x - x_mean) ** 2)
-                if denominator == 0:
-                    return 0.0
-                return numerator / denominator
+        # 3. Pattern structure validation + Breakout confirmation
+        # Must have flat resistance, rising support, AND price at resistance (breakout)
+        current_close = self.df["close"].iloc[-1]
+        breakout = current_close >= avg_peak * 0.98  # Within 2% of resistance
 
-            return series.rolling(window=window).apply(calc_slope, raw=True)
+        if flat_resistance and rising_support and breakout:
+            duration, classification = self._calculate_pattern_duration(first_pivot_idx)
 
-        low_slope = rolling_slope(self.df["low"], window)
-        rising_support = low_slope > 0
+            is_ascending_triangle.iloc[-1] = True
+            pattern_duration.iloc[-1] = duration
+            pattern_class.iloc[-1] = classification
+            pattern_pivots.iloc[-1] = [
+                {"type": "PEAK", "index": p.index, "price": p.price} for p in recent_peaks
+            ] + [
+                {"type": "VALLEY", "index": v.index, "price": v.price}
+                for v in recent_valleys
+            ]
 
-        # Combine conditions
-        is_ascending_triangle = flat_resistance & rising_support
-
+        self.df["asc_triangle_duration"] = pattern_duration
+        self.df["asc_triangle_classification"] = pattern_class
+        self.df["asc_triangle_pivots"] = pattern_pivots
         return is_ascending_triangle.fillna(False)
 
     def _detect_tweezer_bottoms(self) -> pd.Series:
@@ -1349,90 +1534,145 @@ class PatternAnalyzer:
 
     def _detect_falling_wedge(self) -> pd.Series:
         """
-        Falling Wedge (74% success rate).
+        Falling Wedge Detection using structural pivot geometry.
 
         A multi-day bullish reversal/continuation pattern with:
         - Converging trendlines: Lower highs AND lower lows
         - Both trendlines slope downward
         - Breakout: Close above upper trendline
 
-        Confluence (Crypto-tuned):
-        - Volume: Contracting during wedge, expanding on breakout (>150% SMA)
-        - RSI: Rising during wedge formation (bullish divergence)
-        - Volatility: ATR contraction during formation
+        Refined Geometric Rules:
+        1. At least 2 peaks and 2 valleys forming converging lines.
+        2. Both peak sequence and valley sequence trending downward.
+        3. Minimum Pattern Width: At least 10 bars between first and last pivot.
 
-        Uses 20-period lookback for wedge detection.
+        Returns:
+            pd.Series[bool]: True at bars where falling wedge pattern is detected.
+
+        Note:
+            Pattern duration, classification, and pivots stored in metadata columns.
         """
-        lookback = 20
+        is_falling_wedge = pd.Series(False, index=self.df.index)
+        pattern_duration = pd.Series(dtype="Int64", index=self.df.index)
+        pattern_class = pd.Series(dtype="object", index=self.df.index)
+        pattern_pivots = pd.Series(dtype="object", index=self.df.index)
 
-        # Calculate linear regression slopes for highs and lows
-        # Using rolling window approach
+        # Need enough pivots for wedge structure (at least 2 peaks and 2 valleys)
+        if len(self.pivots) < 4:
+            self.df["falling_wedge_duration"] = pattern_duration
+            self.df["falling_wedge_classification"] = pattern_class
+            self.df["falling_wedge_pivots"] = pattern_pivots
+            return is_falling_wedge
 
-        # Create period index for regression
-        x = np.arange(lookback)
+        valleys = [p for p in self.pivots if p.pivot_type == "VALLEY"]
+        peaks = [p for p in self.pivots if p.pivot_type == "PEAK"]
 
-        def calc_slope(series):
-            """Calculate slope of linear regression."""
-            if len(series) < lookback:
-                return np.nan
-            y = series.values[-lookback:]
-            if np.any(np.isnan(y)):
-                return np.nan
-            slope = np.polyfit(x, y, 1)[0]
-            return slope
+        if len(valleys) < 2 or len(peaks) < 2:
+            self.df["falling_wedge_duration"] = pattern_duration
+            self.df["falling_wedge_classification"] = pattern_class
+            self.df["falling_wedge_pivots"] = pattern_pivots
+            return is_falling_wedge
 
-        # Rolling slope of highs and lows
-        # Use apply over the series
-        high_slope = self.df["high"].rolling(window=lookback).apply(calc_slope, raw=False)
-        low_slope = self.df["low"].rolling(window=lookback).apply(calc_slope, raw=False)
+        current_close = self.df["close"].iloc[-1]
 
-        # Both slopes negative (falling)
-        both_falling = (high_slope < 0) & (low_slope < 0)
+        # Use the most recent pivots for wedge detection
+        recent_peaks = peaks[-3:]  # Last 3 peaks
+        recent_valleys = valleys[-3:]  # Last 3 valleys
 
-        # Converging: high slope less negative than low slope
-        # (wedge narrows as highs fall slower than lows)
-        converging = high_slope > low_slope
+        if len(recent_peaks) < 2 or len(recent_valleys) < 2:
+            self.df["falling_wedge_duration"] = pattern_duration
+            self.df["falling_wedge_classification"] = pattern_class
+            self.df["falling_wedge_pivots"] = pattern_pivots
+            return is_falling_wedge
 
-        # Breakout: Current close above the projected upper trendline
-        # Approximate upper trendline as recent high minus regression
-        recent_high = self.df["high"].rolling(window=5).max()
-        breakout = self.df["close"] > recent_high.shift(1)
+        # Minimum Pattern Width: 10 bars
+        first_pivot_idx = min(
+            min(p.index for p in recent_peaks), min(v.index for v in recent_valleys)
+        )
+        last_pivot_idx = max(
+            max(p.index for p in recent_peaks), max(v.index for v in recent_valleys)
+        )
+        pattern_width = last_pivot_idx - first_pivot_idx
 
-        is_falling_wedge_shape = both_falling & converging & breakout
+        if pattern_width < MINIMUM_PATTERN_WIDTH:
+            self.df["falling_wedge_duration"] = pattern_duration
+            self.df["falling_wedge_classification"] = pattern_class
+            self.df["falling_wedge_pivots"] = pattern_pivots
+            return is_falling_wedge
 
-        return is_falling_wedge_shape.fillna(False)
+        # 1. Lower Highs Check (peaks should be descending)
+        peak_prices = [p.price for p in sorted(recent_peaks, key=lambda p: p.index)]
+        lower_highs = all(
+            peak_prices[i] > peak_prices[i + 1] for i in range(len(peak_prices) - 1)
+        )
+
+        # 2. Lower Lows Check (valleys should be descending)
+        valley_prices = [v.price for v in sorted(recent_valleys, key=lambda v: v.index)]
+        lower_lows = all(
+            valley_prices[i] > valley_prices[i + 1] for i in range(len(valley_prices) - 1)
+        )
+
+        # 3. Converging Check (wedge narrows)
+        # The rate of descent for peaks should be less than valleys
+        if len(peak_prices) >= 2 and len(valley_prices) >= 2:
+            peak_descent = (peak_prices[0] - peak_prices[-1]) / peak_prices[0]
+            valley_descent = (valley_prices[0] - valley_prices[-1]) / valley_prices[0]
+            converging = peak_descent < valley_descent  # Highs falling slower than lows
+        else:
+            converging = False
+
+        # 4. Breakout check: current close above the upper trendline (most recent peak)
+        upper_trendline = recent_peaks[-1].price if recent_peaks else current_close
+        breakout = current_close > upper_trendline
+
+        # Pattern validation
+        if lower_highs and lower_lows and converging and breakout:
+            duration, classification = self._calculate_pattern_duration(first_pivot_idx)
+
+            is_falling_wedge.iloc[-1] = True
+            pattern_duration.iloc[-1] = duration
+            pattern_class.iloc[-1] = classification
+            pattern_pivots.iloc[-1] = [
+                {"type": "PEAK", "index": p.index, "price": p.price} for p in recent_peaks
+            ] + [
+                {"type": "VALLEY", "index": v.index, "price": v.price}
+                for v in recent_valleys
+            ]
+
+        self.df["falling_wedge_duration"] = pattern_duration
+        self.df["falling_wedge_classification"] = pattern_class
+        self.df["falling_wedge_pivots"] = pattern_pivots
+        return is_falling_wedge.fillna(False)
 
     def _detect_inverse_head_shoulders(self) -> pd.Series:
         """
         Structural Inverse Head and Shoulders Detection using pivot geometry.
 
-        This flexible-net approach detects inverse H&S patterns regardless of
-        formation length by analyzing the 5-pivot structure:
-        - Left Shoulder (Valley): First low
-        - Left Peak: Rally after left shoulder
-        - Head (Valley): Lowest low (lower than both shoulders)
-        - Right Peak: Rally after head
-        - Right Shoulder (Valley): Similar height to left shoulder
+        Matches 5 pivots: V1 (L-Shoulder), P1 (Neckline), V2 (Head), P2 (Neckline), V3 (R-Shoulder).
 
-        Structural Requirements:
-        1. Head valley must be lower than both shoulder valleys.
-        2. Shoulder valleys within 10% of each other (symmetry).
-        3. Breakout above neckline (line connecting the two peaks).
+        Refined Geometric Rules (Visual Logic):
+        1. Depth Symmetry: V1 and V3 must be within 3% price variance of each other.
+        2. Head Prominence: V2 must be at least 3% lower than the lowest shoulder.
+        3. Time Symmetry: Duration from V1→V2 must be between 60% and 140% of V2→V3.
+        4. Minimum Pattern Width: At least 10 bars between first and last pivot.
+        5. Breakout: Close above neckline (line connecting the two peaks).
 
         Returns:
             pd.Series[bool]: True at bars where valid inverse H&S is detected.
 
         Note:
-            Pattern duration and classification are stored in metadata columns.
+            Pattern duration, classification, and pivots stored in metadata columns.
         """
         is_inv_hs = pd.Series(False, index=self.df.index)
         pattern_duration = pd.Series(dtype="Int64", index=self.df.index)
         pattern_class = pd.Series(dtype="object", index=self.df.index)
+        pattern_pivots = pd.Series(dtype="object", index=self.df.index)
 
         if len(self.pivots) < 5:
             # Need at least 3 valleys and 2 peaks for inverse H&S
             self.df["inv_hs_duration"] = pattern_duration
             self.df["inv_hs_classification"] = pattern_class
+            self.df["inv_hs_pivots"] = pattern_pivots
             return is_inv_hs
 
         # Get valleys and peaks from structural pivots
@@ -1442,59 +1682,76 @@ class PatternAnalyzer:
         if len(valleys) < 3 or len(peaks) < 2:
             self.df["inv_hs_duration"] = pattern_duration
             self.df["inv_hs_classification"] = pattern_class
+            self.df["inv_hs_pivots"] = pattern_pivots
             return is_inv_hs
 
         # Look for valid 5-pivot inverse H&S structure
         # Check combinations of 3 consecutive valleys for L-Shoulder, Head, R-Shoulder
         for i in range(len(valleys) - 2):
-            left_shoulder = valleys[i]
-            head = valleys[i + 1]
-            right_shoulder = valleys[i + 2]
+            v1 = valleys[i]  # Left Shoulder
+            v2 = valleys[i + 1]  # Head
+            v3 = valleys[i + 2]  # Right Shoulder
 
-            # 1. Head must be lower than both shoulders
-            if not (
-                head.price < left_shoulder.price and head.price < right_shoulder.price
-            ):
+            # Minimum Pattern Width Sanity Gate (10 bars)
+            pattern_width = v3.index - v1.index
+            if pattern_width < MINIMUM_PATTERN_WIDTH:
                 continue
 
-            # 2. Shoulders should be roughly symmetrical (within 10%)
-            avg_shoulders = (left_shoulder.price + right_shoulder.price) / 2
-            shoulder_diff_pct = (
-                abs(left_shoulder.price - right_shoulder.price) / avg_shoulders
-            )
-            if shoulder_diff_pct > 0.10:
+            # 1. Head Prominence: V2 must be at least 3% lower than the lowest shoulder
+            lowest_shoulder = min(v1.price, v3.price)
+            head_prominence_pct = (lowest_shoulder - v2.price) / lowest_shoulder
+            if head_prominence_pct < 0.03:
                 continue
 
-            # 3. Find peaks between shoulders (neckline points)
-            left_peaks = [p for p in peaks if left_shoulder.index < p.index < head.index]
-            right_peaks = [
-                p for p in peaks if head.index < p.index < right_shoulder.index
-            ]
+            # 2. Depth Symmetry: V1 and V3 must be within 3% price variance
+            avg_shoulders = (v1.price + v3.price) / 2
+            shoulder_diff_pct = abs(v1.price - v3.price) / avg_shoulders
+            if shoulder_diff_pct > 0.03:
+                continue
+
+            # 3. Find peaks between shoulders (neckline points: P1 and P2)
+            left_peaks = [p for p in peaks if v1.index < p.index < v2.index]
+            right_peaks = [p for p in peaks if v2.index < p.index < v3.index]
 
             if not left_peaks or not right_peaks:
                 continue
 
             # Get highest peaks for neckline
-            left_peak = max(left_peaks, key=lambda p: p.price)
-            right_peak = max(right_peaks, key=lambda p: p.price)
+            p1 = max(left_peaks, key=lambda p: p.price)
+            p2 = max(right_peaks, key=lambda p: p.price)
+
+            # 4. Time Symmetry: Duration V1→V2 must be 60%-140% of V2→V3
+            duration_v1_v2 = v2.index - v1.index
+            duration_v2_v3 = v3.index - v2.index
+            if duration_v2_v3 > 0:
+                time_ratio = duration_v1_v2 / duration_v2_v3
+                if not (0.6 <= time_ratio <= 1.4):
+                    continue
 
             # Neckline is the lower of the two peaks
-            neckline = min(left_peak.price, right_peak.price)
+            neckline = min(p1.price, p2.price)
 
-            # 4. Check for breakout above neckline at current bar
+            # 5. Check for breakout above neckline at current bar
             current_idx = len(self.df) - 1
             current_close = self.df["close"].iloc[-1]
 
-            if current_idx >= right_shoulder.index and current_close > neckline:
+            if current_idx >= v3.index and current_close > neckline:
                 # Valid inverse H&S with breakout!
-                duration, classification = self._calculate_pattern_duration(
-                    left_shoulder.index
-                )
+                duration, classification = self._calculate_pattern_duration(v1.index)
 
                 is_inv_hs.iloc[-1] = True
                 pattern_duration.iloc[-1] = duration
                 pattern_class.iloc[-1] = classification
+                # Store 5-pivot structure
+                pattern_pivots.iloc[-1] = [
+                    {"type": "V1", "index": v1.index, "price": v1.price},
+                    {"type": "P1", "index": p1.index, "price": p1.price},
+                    {"type": "V2", "index": v2.index, "price": v2.price},
+                    {"type": "P2", "index": p2.index, "price": p2.price},
+                    {"type": "V3", "index": v3.index, "price": v3.price},
+                ]
 
         self.df["inv_hs_duration"] = pattern_duration
         self.df["inv_hs_classification"] = pattern_class
+        self.df["inv_hs_pivots"] = pattern_pivots
         return is_inv_hs.fillna(False)

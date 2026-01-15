@@ -281,6 +281,11 @@ class SignalGenerator:
         suggested_stop = low_price * 0.99
         invalidation_price = None
 
+        # Take profit targets (pattern-specific logic may override these)
+        take_profit_1 = None
+        take_profit_2 = None
+        take_profit_3 = None
+
         # Specific Structural Invalidation
         if pattern_name == "BULLISH_HAMMER":
             # Invalidation: Close below candle low
@@ -325,22 +330,27 @@ class SignalGenerator:
 
             # TP1 = 50% of flagpole height above breakout
             # TP2 = 100% of flagpole height above breakout
+            # TP3 = 150% of flagpole height (runner target)
             take_profit_1 = close_price + (0.5 * flagpole_height)
             take_profit_2 = close_price + (1.0 * flagpole_height)
+            take_profit_3 = close_price + (1.5 * flagpole_height)
 
             # SL = below lowest low of flag consolidation
             invalidation_price = low_price
             suggested_stop = invalidation_price * 0.99
 
-        # Take Profits (ATR Based)
+        # Take Profits (ATR Based) - Only set if not already defined by pattern-specific logic
         entry_ref = close_price
 
-        take_profit_1 = entry_ref + (2.0 * atr) if atr > 0 else None
-        take_profit_2 = entry_ref + (4.0 * atr) if atr > 0 else None
+        if take_profit_1 is None:
+            take_profit_1 = entry_ref + (2.0 * atr) if atr > 0 else None
+        if take_profit_2 is None:
+            take_profit_2 = entry_ref + (4.0 * atr) if atr > 0 else None
         # TP3: Extended runner target (becomes trailing stop after TP1/TP2 hit)
         # Initial target ensures TP3 > TP2 for clean signal display
         # After TP1/TP2, check_exits() updates this to Chandelier Exit for trailing
-        take_profit_3 = entry_ref + (6.0 * atr) if atr > 0 else None
+        if take_profit_3 is None:
+            take_profit_3 = entry_ref + (6.0 * atr) if atr > 0 else None
 
         # Strategy ID is the pattern name for now
         strategy_id = pattern_name
@@ -376,6 +386,10 @@ class SignalGenerator:
         structural_patterns = {
             "DOUBLE_BOTTOM": "double_bottom",
             "INVERSE_HEAD_SHOULDERS": "inv_hs",
+            "BULL_FLAG": "bull_flag",
+            "CUP_AND_HANDLE": "cup_handle",
+            "FALLING_WEDGE": "falling_wedge",
+            "ASCENDING_TRIANGLE": "asc_triangle",
         }
 
         if pattern_name in structural_patterns:
@@ -409,6 +423,14 @@ class SignalGenerator:
             if len(structural_anchors) >= 2:
                 pivot_indices = [p["index"] for p in structural_anchors]
                 pattern_span_days = max(pivot_indices) - min(pivot_indices)
+
+        # Classification Fix: MACRO only if pattern_span_days > 90 days
+        # This overrides any classification from metadata columns
+        if pattern_span_days is not None:
+            if pattern_span_days > 90:
+                pattern_classification = "MACRO_PATTERN"
+            else:
+                pattern_classification = "STANDARD_PATTERN"
 
         return Signal(
             signal_id=sig_id,
