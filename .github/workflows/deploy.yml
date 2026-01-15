@@ -170,7 +170,12 @@ jobs:
             }],
             "combiner": "OR",
             "enabled": true,
-            "notificationChannels": ["$CHANNEL_NAME"]
+            "notificationChannels": ["$CHANNEL_NAME"],
+            "alertStrategy": {
+              "notificationRateLimit": {
+                "period": "300s"
+              }
+            }
           }
           EOF
 
