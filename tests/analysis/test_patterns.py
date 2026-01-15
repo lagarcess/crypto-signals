@@ -236,38 +236,75 @@ class TestMacroPatterns:
 
     def test_bull_flag_strict(self, base_df):
         """
-        Bull Flag:
-        1. Pole > 15% (t-5 to t-10)
-        2. Retracement < 50%
+        Bull Flag using pivot-based detection:
+        1. Pole >= 15% (valley to peak)
+        2. Flag consolidation within top 50% of pole height
         3. Volume Decay in Consolidation
+        4. Minimum 10 bars pattern width
         """
-        # Base level
-        base_df["close"] = 100.0
-        base_df["volume"] = 2000.0
+        # Create clear structural pivots with >5% moves to trigger ZigZag
+        # Key: Flag consolidation must stay ABOVE pole midpoint
 
-        # Pole Start (-10)
-        base_df.iloc[-10:, base_df.columns.get_loc("close")] = 100.0
-        # Pole Rise (-5) -> 120 (+20%)
-        base_df.iloc[-5:, base_df.columns.get_loc("close")] = 120.0  # To 120
-        base_df.iloc[-5, base_df.columns.get_loc("high")] = 122.0  # Top
-        base_df.iloc[-5, base_df.columns.get_loc("low")] = (
-            115.0  # Low of Pole Top candle must be high enough to not trigger retracement
-        )
-        base_df.iloc[-5, base_df.columns.get_loc("volume")] = 5000.0  # Pole Vol
-        # Consolidation (t-4 to t)
-        for i in range(-4, 0):
-            base_df.iloc[i, base_df.columns.get_loc("high")] = 118.0
-            base_df.iloc[i, base_df.columns.get_loc("low")] = 114.0  # > 110
-            base_df.iloc[i, base_df.columns.get_loc("close")] = 116.0
-            # Volume Decay
-            base_df.iloc[i, base_df.columns.get_loc("volume")] = 1000.0 - (100 * (4 + i))
+        # Phase 1: Base level (bars 0-100) - stable prices
+        for i in range(100):
+            base_df.iloc[i, base_df.columns.get_loc("close")] = 100.0
+            base_df.iloc[i, base_df.columns.get_loc("high")] = 101.0
+            base_df.iloc[i, base_df.columns.get_loc("low")] = 99.0
+            base_df.iloc[i, base_df.columns.get_loc("volume")] = 1000.0
 
-        # Breakout at t
-        base_df.iloc[-1, base_df.columns.get_loc("close")] = 112.0
-        base_df.iloc[-1, base_df.columns.get_loc("low")] = (
-            112.0  # > Pole Low, ensures <50% retracement (122-112=10, 10/22 < 0.5)
-        )
-        base_df.iloc[-1, base_df.columns.get_loc("volume")] = 5000.0  # Breakout Vol
+        # Phase 2: Pole Valley (bar 100-105) - create a clear valley at 90
+        for i in range(100, 106):
+            price = 100 - (i - 100) * 2.0  # Descend from 100 to 90
+            base_df.iloc[i, base_df.columns.get_loc("close")] = price
+            base_df.iloc[i, base_df.columns.get_loc("high")] = price + 1
+            base_df.iloc[i, base_df.columns.get_loc("low")] = price - 1
+            base_df.iloc[i, base_df.columns.get_loc("volume")] = 2000.0
+
+        # Set clear valley at bar 105
+        base_df.iloc[105, base_df.columns.get_loc("low")] = 89.0
+        base_df.iloc[105, base_df.columns.get_loc("close")] = 90.0
+
+        # Phase 3: Pole Rise (bars 106-125) - rise from 90 to 108 (=20%)
+        for i in range(106, 126):
+            price = 90 + (i - 105) * 0.9  # Rise from 90 to 108
+            base_df.iloc[i, base_df.columns.get_loc("close")] = price
+            base_df.iloc[i, base_df.columns.get_loc("high")] = price + 1
+            base_df.iloc[i, base_df.columns.get_loc("low")] = price - 1
+            base_df.iloc[i, base_df.columns.get_loc("volume")] = 3000.0  # High pole volume
+
+        # Set clear peak at bar 125
+        base_df.iloc[125, base_df.columns.get_loc("high")] = 110.0
+        base_df.iloc[125, base_df.columns.get_loc("close")] = 108.0
+
+        # Pole height = 108 - 89 = 19. Midpoint = 89 + 9.5 = 98.5
+        # Flag must stay above 98.5
+
+        # Phase 4: Flag Consolidation (bars 126-145) - tight consolidation above midpoint
+        # Consolidation range: 104-108 (all above 98.5 midpoint)
+        for i in range(126, 146):
+            base_df.iloc[i, base_df.columns.get_loc("close")] = 106.0
+            base_df.iloc[i, base_df.columns.get_loc("high")] = 108.0
+            base_df.iloc[i, base_df.columns.get_loc("low")] = 104.0  # Above midpoint of 98.5
+            base_df.iloc[i, base_df.columns.get_loc("volume")] = 1500.0  # Lower than pole
+
+        # Phase 5: Breakout at last bars
+        base_df.iloc[-4, base_df.columns.get_loc("close")] = 107.0
+        base_df.iloc[-4, base_df.columns.get_loc("high")] = 108.0
+        base_df.iloc[-4, base_df.columns.get_loc("low")] = 105.0
+
+        base_df.iloc[-3, base_df.columns.get_loc("close")] = 108.0
+        base_df.iloc[-3, base_df.columns.get_loc("high")] = 109.0
+        base_df.iloc[-3, base_df.columns.get_loc("low")] = 106.0
+
+        base_df.iloc[-2, base_df.columns.get_loc("close")] = 109.0
+        base_df.iloc[-2, base_df.columns.get_loc("high")] = 110.0
+        base_df.iloc[-2, base_df.columns.get_loc("low")] = 107.0
+
+        base_df.iloc[-1, base_df.columns.get_loc("close")] = 110.0
+        base_df.iloc[-1, base_df.columns.get_loc("high")] = 111.0
+        base_df.iloc[-1, base_df.columns.get_loc("low")] = 108.0
+        base_df.iloc[-1, base_df.columns.get_loc("volume")] = 4000.0
+
         TechnicalIndicators.add_all_indicators(base_df)
         base_df["EMA_50"] = 90.0
         base_df["ATRr_14"] = 1.0
@@ -277,9 +314,11 @@ class TestMacroPatterns:
         analyzer = PatternAnalyzer(base_df)
         res = analyzer.check_patterns()
 
+        # The pivot-based detection requires clear structural pivots
+        # This test validates the new unified architecture
         assert (
             bool(res.iloc[-1]["bull_flag"]) is True
-        ), f"Strict Bull Flag Check. Pole: {analyzer._detect_bull_flag().iloc[-1]}"
+        ), f"Strict Bull Flag Check. Result: {res.iloc[-1]['bull_flag']}"
 
 
 class TestInvertedHammer:
@@ -619,12 +658,81 @@ class TestAscendingTriangle:
         return df
 
     def test_flat_resistance_rising_support(self, base_df):
-        """Flat highs with rising lows should detect ascending triangle."""
-        # Create flat resistance at 105
-        for i in range(-14, 0):
-            base_df.iloc[i, base_df.columns.get_loc("high")] = 105.0 + (i * 0.001)
-            # Rising lows: 95 -> 99
-            base_df.iloc[i, base_df.columns.get_loc("low")] = 95.0 + ((i + 14) * 0.3)
+        """Flat highs with rising lows should detect ascending triangle using pivot-based detection.
+
+        This test creates structural pivots that generate:
+        - Multiple peaks at similar prices (flat resistance)
+        - Multiple valleys with ascending prices (rising support)
+        - At least 10 bars pattern width
+        """
+        # Create clear structural pivots with >5% moves to trigger ZigZag
+        # Start with a stable base level that won't create spurious pivots
+
+        # Bar 0-4: Stable base (no pivot)
+        for i in range(5):
+            base_df.iloc[i, base_df.columns.get_loc("close")] = 100.0
+            base_df.iloc[i, base_df.columns.get_loc("high")] = 101.0
+            base_df.iloc[i, base_df.columns.get_loc("low")] = 99.0
+
+        # Valley 1 at bar 5 (price ~94) - First structural pivot
+        base_df.iloc[5, base_df.columns.get_loc("low")] = 94.0
+        base_df.iloc[5, base_df.columns.get_loc("close")] = 94.0
+        base_df.iloc[5, base_df.columns.get_loc("high")] = 95.0
+
+        # Rise to first peak (bars 6-10)
+        for i in range(6, 11):
+            price = 94 + (i - 5) * 2.4  # Rise from 94 to 106
+            base_df.iloc[i, base_df.columns.get_loc("close")] = price
+            base_df.iloc[i, base_df.columns.get_loc("high")] = price + 1
+            base_df.iloc[i, base_df.columns.get_loc("low")] = price - 1
+
+        # Peak 1 at bar 10 (price ~106)
+        base_df.iloc[10, base_df.columns.get_loc("high")] = 107.0
+        base_df.iloc[10, base_df.columns.get_loc("close")] = 106.0
+
+        # Descent to second valley (bars 11-15)
+        for i in range(11, 16):
+            price = 106 - (i - 10) * 2.0  # Fall from 106 to 96
+            base_df.iloc[i, base_df.columns.get_loc("close")] = price
+            base_df.iloc[i, base_df.columns.get_loc("high")] = price + 1
+            base_df.iloc[i, base_df.columns.get_loc("low")] = price - 1
+
+        # Valley 2 at bar 15 (price ~96, higher than valley 1 at 94 = rising support)
+        base_df.iloc[15, base_df.columns.get_loc("low")] = 95.0
+        base_df.iloc[15, base_df.columns.get_loc("close")] = 96.0
+
+        # Rise to second peak (bars 16-20)
+        for i in range(16, 21):
+            price = 96 + (i - 15) * 2.0  # Rise from 96 to 106
+            base_df.iloc[i, base_df.columns.get_loc("close")] = price
+            base_df.iloc[i, base_df.columns.get_loc("high")] = price + 1
+            base_df.iloc[i, base_df.columns.get_loc("low")] = price - 1
+
+        # Peak 2 at bar 20 (price ~106, same as peak 1 = flat resistance)
+        base_df.iloc[20, base_df.columns.get_loc("high")] = 107.0
+        base_df.iloc[20, base_df.columns.get_loc("close")] = 106.0
+
+        # Descent to third valley (bars 21-25)
+        for i in range(21, 26):
+            price = 106 - (i - 20) * 1.6  # Fall from 106 to 98
+            base_df.iloc[i, base_df.columns.get_loc("close")] = price
+            base_df.iloc[i, base_df.columns.get_loc("high")] = price + 1
+            base_df.iloc[i, base_df.columns.get_loc("low")] = price - 1
+
+        # Valley 3 at bar 25 (price ~98, higher than valley 2 = rising support)
+        base_df.iloc[25, base_df.columns.get_loc("low")] = 97.0
+        base_df.iloc[25, base_df.columns.get_loc("close")] = 98.0
+
+        # Rise to third peak/current level (bars 26-29)
+        for i in range(26, 30):
+            price = 98 + (i - 25) * 2.0  # Rise toward 106
+            base_df.iloc[i, base_df.columns.get_loc("close")] = price
+            base_df.iloc[i, base_df.columns.get_loc("high")] = price + 1
+            base_df.iloc[i, base_df.columns.get_loc("low")] = price - 1
+
+        # Peak 3 at bar 29 (price ~106, same as others = flat resistance)
+        base_df.iloc[29, base_df.columns.get_loc("high")] = 107.0
+        base_df.iloc[29, base_df.columns.get_loc("close")] = 106.0
 
         TechnicalIndicators.add_all_indicators(base_df)
         # Ensure mock values are set after indicators
@@ -637,7 +745,7 @@ class TestAscendingTriangle:
         analyzer = PatternAnalyzer(base_df)
         result = analyzer.check_patterns()
 
-        # Check shape detection
+        # Check shape detection with pivot-based approach
         assert bool(result.iloc[-1]["is_ascending_triangle"]) is True
 
     def test_rising_highs_fails(self, base_df):
