@@ -185,7 +185,7 @@ jobs:
             --wait
 
       - name: Auto-Rollback on Failure
-        if: steps.smoke_test.outcome == 'failure' && steps.smoke_test.conclusion != 'skipped'
+        if: steps.smoke_test.conclusion == 'failure'
         run: |
           gcloud run jobs update crypto-signals-job \
             --region=${{ vars.GCP_REGION }} \

@@ -57,6 +57,7 @@ def test_active_trade_validation_loop(
             return_value=mock_asset_validator,
         ),
         patch("crypto_signals.main.PositionRepository", return_value=mock_position_repo),
+        patch("crypto_signals.main.RejectedSignalRepository"),
         patch("crypto_signals.main.ExecutionEngine"),
         patch("crypto_signals.main.init_secrets", return_value=True),
         patch("crypto_signals.main.load_config_from_firestore", return_value=None),
