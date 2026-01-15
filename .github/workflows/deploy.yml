@@ -156,7 +156,7 @@ jobs:
         run: |
           CHANNEL_NAME=$(gcloud beta monitoring channels list --filter='displayName="Discord Alerts"' --format='value(name)')
           if [ -z "$CHANNEL_NAME" ]; then
-            CHANNEL_NAME=$(gcloud beta monitoring channels create --display-name="Discord Alerts" --type="webhook_tokenauth" --labels="url=${{ secrets.DISCORD_DEPLOYS }}" --format='value(name)')
+            CHANNEL_NAME=$(gcloud beta monitoring channels create --display-name="Discord Alerts" --type="webhook_tokenauth" --channel-labels="url=${{ secrets.DISCORD_DEPLOYS }}" --format='value(name)')
           fi
 
           cat > alert_policy.json <<EOF
