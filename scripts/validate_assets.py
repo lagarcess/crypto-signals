@@ -1,21 +1,42 @@
-import sys
 import os
+import sys
+
 from dotenv import load_dotenv
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from crypto_signals.config import get_trading_client
 from alpaca.common.exceptions import APIError
+from crypto_signals.config import get_trading_client
+
 
 def validate_assets():
     load_dotenv()
     trading_client = get_trading_client()
 
     raw_symbols = [
-        "AAVE", "AVAX", "BAT", "BCH", "BTC", "CRV", "DOGE", "DOT", "ETH",
-        "GRT", "LINK", "LTC", "PEPE", "SHIB", "SOL", "SUSHI", "UNI",
-        "USDC", "USDT", "XRP", "XTZ", "YFI"
+        "AAVE",
+        "AVAX",
+        "BAT",
+        "BCH",
+        "BTC",
+        "CRV",
+        "DOGE",
+        "DOT",
+        "ETH",
+        "GRT",
+        "LINK",
+        "LTC",
+        "PEPE",
+        "SHIB",
+        "SOL",
+        "SUSHI",
+        "UNI",
+        "USDC",
+        "USDT",
+        "XRP",
+        "XTZ",
+        "YFI",
     ]
 
     valid_symbols = []
@@ -43,16 +64,17 @@ def validate_assets():
                 print(f"❌ {fmt}: Error - {str(e)}")
 
         if not found:
-             print(f"❌ {symbol}: Not found or not tradable")
+            print(f"❌ {symbol}: Not found or not tradable")
 
-    print("\n" + "="*50)
+    print("\n" + "=" * 50)
     print("VALID SYMBOLS FOR .env:")
-    print("="*50)
+    print("=" * 50)
     result = ",".join(valid_symbols)
     print(result)
 
     with open("valid_assets.txt", "w") as f:
         f.write(result)
+
 
 if __name__ == "__main__":
     validate_assets()
