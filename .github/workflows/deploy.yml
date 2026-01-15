@@ -151,7 +151,7 @@ jobs:
             -e DISCORD_BOT_TOKEN=${{ secrets.DISCORD_BOT_TOKEN }} \
             -e CRYPTO_SYMBOLS="${{ vars.CRYPTO_SYMBOLS }}" \
             "$IMAGE_SHA" \
-            --smoke-test
+            python -m crypto_signals.main --smoke-test
 
           echo "✅ Container validation complete"
 
