@@ -193,12 +193,12 @@ jobs:
         run: |
           gcloud run jobs execute crypto-signals-job \
             --region=${{ vars.GCP_REGION }} \
-            --update-env-vars TEST_MODE=true \
+            --update-env-vars TEST_MODE=true,DISABLE_SECRET_MANAGER=true \
             --args="--smoke-test" \
             --wait
 
       - name: Auto-Rollback on Failure
-        if: steps.smoke_test.conclusion == 'failure'
+        if: steps.smoke_test.outcome == 'failure'
         run: |
           gcloud run jobs update crypto-signals-job \
             --region=${{ vars.GCP_REGION }} \
