@@ -86,7 +86,14 @@ jobs:
 
   cd:
     needs: [ci, validate-deployment]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # Run on push to main when CI passes. validate-deployment is skipped on push (only runs on PRs)
+    # so we accept both 'success' and 'skipped' for that job.
+    if: |
+      always() &&
+      needs.ci.result == 'success' &&
+      (needs.validate-deployment.result == 'success' || needs.validate-deployment.result == 'skipped') &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     env:
       IMAGE_BASE: ${{ secrets.GAR_REPOSITORY }}
