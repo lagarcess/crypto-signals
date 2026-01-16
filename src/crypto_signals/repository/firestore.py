@@ -186,11 +186,14 @@ class SignalRepository:
             logger.error(f"Atomic update failed for {signal_id}: {e}")
             return False
 
-    def cleanup_expired_signals(self, days_old: int = 30) -> int:
-        """Delete signals older than specified days. Returns count deleted.
+    def cleanup_expired_signals(self) -> int:
+        """Delete signals past their TTL. Returns count deleted.
 
-        Uses delete_at field for native GCP TTL support. Simply queries:
-        delete_at < now (signals past their TTL are cleaned up)
+        Uses delete_at field for native GCP TTL support. Queries for signals where
+        delete_at < now (signals past their physical TTL are cleaned up).
+        
+        Note: The delete_at field is set to 30 days for live signals and 7 days
+        for rejected signals when they are created.
         """
         cutoff_date = datetime.now(timezone.utc)
 

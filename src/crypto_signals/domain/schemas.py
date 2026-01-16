@@ -463,9 +463,15 @@ class Position(BaseModel):
         description="Aggregate realized PnL as percentage of entry. Updated in real-time.",
     )
     # === TTL for GCP Firestore Cleanup ===
+    # TODO: Ensure delete_at is set when creating Position instances (e.g., in execution.py)
+    #       to enforce the 90-day TTL via GCP Firestore TTL policies.
     delete_at: Optional[datetime] = Field(
         default=None,
-        description="Physical expiration for database TTL cleanup (90 days). Used by GCP TTL policy.",
+        description=(
+            "Physical expiration for database TTL cleanup (90 days). "
+            "Used by GCP TTL policy and expected to be populated at creation time "
+            "by the execution layer."
+        ),
     )
 
 
