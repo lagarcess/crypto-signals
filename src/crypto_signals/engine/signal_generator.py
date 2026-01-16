@@ -9,6 +9,7 @@ from typing import Optional, Type
 
 import numpy as np
 import pandas as pd
+from crypto_signals.analysis.harmonics import HarmonicAnalyzer
 from crypto_signals.analysis.indicators import TechnicalIndicators
 from crypto_signals.analysis.patterns import (
     PatternAnalyzer,
@@ -95,51 +96,72 @@ class SignalGenerator:
         # Check the LATEST completed candle (last row)
         latest = analyzed_df.iloc[-1]
 
+        # 3a. Analyze Harmonic Patterns
+        harmonic_pattern = None
+        if hasattr(analyzer, "pivots") and analyzer.pivots:
+            harmonic_analyzer = HarmonicAnalyzer(analyzer.pivots)
+            harmonic_patterns = harmonic_analyzer.scan_all_patterns()
+            # Select the most recent harmonic pattern if multiple detected
+            harmonic_pattern = harmonic_patterns[-1] if harmonic_patterns else None
+
         pattern_name = None
+        geometric_pattern_name = None
 
         # Check patterns in order of priority (Highest Historical Success First)
         if latest.get("inverse_head_shoulders"):
-            pattern_name = "INVERSE_HEAD_SHOULDERS"  # 89%
+            geometric_pattern_name = "INVERSE_HEAD_SHOULDERS"  # 89%
         elif latest.get("bullish_kicker"):
-            pattern_name = "BULLISH_KICKER"  # 75%
+            geometric_pattern_name = "BULLISH_KICKER"  # 75%
         elif latest.get("falling_wedge"):
-            pattern_name = "FALLING_WEDGE"  # 74%
+            geometric_pattern_name = "FALLING_WEDGE"  # 74%
         elif latest.get("rising_three_methods"):
-            pattern_name = "RISING_THREE_METHODS"  # 70%
+            geometric_pattern_name = "RISING_THREE_METHODS"  # 70%
         elif latest.get("morning_star"):
-            pattern_name = "MORNING_STAR"  # 70%
+            geometric_pattern_name = "MORNING_STAR"  # 70%
         elif latest.get("ascending_triangle"):
-            pattern_name = "ASCENDING_TRIANGLE"  # 68%
+            geometric_pattern_name = "ASCENDING_TRIANGLE"  # 68%
         elif latest.get("three_inside_up"):
-            pattern_name = "THREE_INSIDE_UP"  # 65%
+            geometric_pattern_name = "THREE_INSIDE_UP"  # 65%
         elif latest.get("dragonfly_doji"):
-            pattern_name = "DRAGONFLY_DOJI"  # 65%
+            geometric_pattern_name = "DRAGONFLY_DOJI"  # 65%
         elif latest.get("three_white_soldiers"):
-            pattern_name = "THREE_WHITE_SOLDIERS"  # 64%
+            geometric_pattern_name = "THREE_WHITE_SOLDIERS"  # 64%
         elif latest.get("cup_and_handle"):
-            pattern_name = "CUP_AND_HANDLE"  # 63%
+            geometric_pattern_name = "CUP_AND_HANDLE"  # 63%
         elif latest.get("double_bottom"):
-            pattern_name = "DOUBLE_BOTTOM"  # 62%
+            geometric_pattern_name = "DOUBLE_BOTTOM"  # 62%
         elif latest.get("bull_flag"):
-            pattern_name = "BULL_FLAG"  # 61%
+            geometric_pattern_name = "BULL_FLAG"  # 61%
         elif latest.get("bullish_belt_hold"):
-            pattern_name = "BULLISH_BELT_HOLD"  # 60%
+            geometric_pattern_name = "BULLISH_BELT_HOLD"  # 60%
         elif latest.get("bullish_engulfing"):
-            pattern_name = "BULLISH_ENGULFING"  # 58%
+            geometric_pattern_name = "BULLISH_ENGULFING"  # 58%
         elif latest.get("bullish_hammer"):
-            pattern_name = "BULLISH_HAMMER"  # 57%
+            geometric_pattern_name = "BULLISH_HAMMER"  # 57%
         elif latest.get("piercing_line"):
-            pattern_name = "PIERCING_LINE"  # 55%
+            geometric_pattern_name = "PIERCING_LINE"  # 55%
         elif latest.get("inverted_hammer"):
-            pattern_name = "INVERTED_HAMMER"  # 55%
+            geometric_pattern_name = "INVERTED_HAMMER"  # 55%
         elif latest.get("bullish_marubozu"):
-            pattern_name = "BULLISH_MARUBOZU"  # 54%
+            geometric_pattern_name = "BULLISH_MARUBOZU"  # 54%
         elif latest.get("bullish_harami"):
-            pattern_name = "BULLISH_HARAMI"  # 53%
+            geometric_pattern_name = "BULLISH_HARAMI"  # 53%
         elif latest.get("tweezer_bottoms"):
-            pattern_name = "TWEEZER_BOTTOMS"  # 52%
+            geometric_pattern_name = "TWEEZER_BOTTOMS"  # 52%
 
-        if not pattern_name:
+        # Merging/Priority Logic: Harmonic takes precedence if both exist
+        if harmonic_pattern and geometric_pattern_name:
+            # Harmonic pattern is primary
+            pattern_name = harmonic_pattern.pattern_type
+            # Geometric pattern goes into confluence_factors (handled in _create_signal)
+        elif harmonic_pattern:
+            # Only harmonic pattern detected
+            pattern_name = harmonic_pattern.pattern_type
+        elif geometric_pattern_name:
+            # Only geometric pattern detected
+            pattern_name = geometric_pattern_name
+        else:
+            # No patterns detected
             return None
 
         # ============================================================
@@ -214,6 +236,7 @@ class SignalGenerator:
                 analyzer,
                 combined_reason,
                 confluence_snapshot,
+                harmonic_pattern=harmonic_pattern,
             )
 
         # 4. Construct Signal
@@ -226,6 +249,8 @@ class SignalGenerator:
             latest,
             sig_id,
             analyzer,
+            harmonic_pattern=harmonic_pattern,
+            geometric_pattern_name=geometric_pattern_name,
         )
 
         # 5. RISK-TO-REWARD (R:R) FILTER (Post-construction)
@@ -252,6 +277,7 @@ class SignalGenerator:
                         analyzer,
                         rejection_reason,
                         confluence_snapshot,
+                        harmonic_pattern=harmonic_pattern,
                     )
 
         return signal
@@ -264,8 +290,21 @@ class SignalGenerator:
         latest: pd.Series,
         sig_id: str,
         analyzer: PatternAnalyzer,
+        harmonic_pattern=None,
+        geometric_pattern_name: Optional[str] = None,
     ) -> Signal:
-        """Create a Signal object with all fields populated, including structural metadata."""
+        """Create a Signal object with all fields populated, including structural metadata.
+        
+        Args:
+            symbol: Trading symbol
+            asset_class: Asset class (CRYPTO/EQUITY)
+            pattern_name: Primary pattern name (harmonic takes precedence)
+            latest: Latest candle data
+            sig_id: Signal ID
+            analyzer: Pattern analyzer instance
+            harmonic_pattern: Optional HarmonicPattern object
+            geometric_pattern_name: Optional geometric pattern name (for confluence when harmonic is primary)
+        """
 
         # Extract Prices
         close_price = float(latest["close"])
@@ -374,6 +413,10 @@ class SignalGenerator:
             and latest[col]
         ]
 
+        # If harmonic pattern is primary and geometric pattern exists, add to confluence
+        if harmonic_pattern and geometric_pattern_name:
+            confluence_factors.append(geometric_pattern_name)
+
         # ============================================================
         # STRUCTURAL METADATA EXTRACTION
         # ============================================================
@@ -432,6 +475,18 @@ class SignalGenerator:
             else:
                 pattern_classification = "STANDARD_PATTERN"
 
+        # ============================================================
+        # HARMONIC METADATA EXTRACTION
+        # ============================================================
+        harmonic_metadata = None
+        if harmonic_pattern:
+            # Populate harmonic ratios from the pattern
+            harmonic_metadata = harmonic_pattern.ratios.copy()
+            
+            # Apply classification override: MACRO_HARMONIC if is_macro
+            if harmonic_pattern.is_macro:
+                pattern_classification = "MACRO_HARMONIC"
+
         return Signal(
             signal_id=sig_id,
             strategy_id=strategy_id,
@@ -451,6 +506,7 @@ class SignalGenerator:
             pattern_span_days=pattern_span_days,
             pattern_classification=pattern_classification,
             structural_anchors=structural_anchors,
+            harmonic_metadata=harmonic_metadata,
         )
 
     def _create_rejected_signal(
@@ -462,6 +518,7 @@ class SignalGenerator:
         analyzer: PatternAnalyzer,
         rejection_reason: str,
         confluence_snapshot: dict | None = None,
+        harmonic_pattern=None,
     ) -> Signal:
         """Create a shadow signal for rejected patterns (failed quality gates).
 
@@ -478,12 +535,14 @@ class SignalGenerator:
             analyzer: Pattern analyzer with pivot data
             rejection_reason: Why the signal was rejected
             confluence_snapshot: Indicator values at rejection time
+            harmonic_pattern: Optional HarmonicPattern object for harmonic metadata
         """
         sig_id = get_deterministic_id(f"{symbol}|{pattern_name}|{latest.name}|REJECTED")
 
         # Create base signal with structural metadata
         signal = self._create_signal(
-            symbol, asset_class, pattern_name, latest, sig_id, analyzer
+            symbol, asset_class, pattern_name, latest, sig_id, analyzer,
+            harmonic_pattern=harmonic_pattern,
         )
 
         # Override status and add rejection metadata
