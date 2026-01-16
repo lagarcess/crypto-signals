@@ -60,6 +60,7 @@ def test_save_signal(mock_settings, mock_firestore_client):
         status=SignalStatus.WAITING,
         suggested_stop=45000.0,
         valid_until=datetime(2025, 1, 2, 12, 0, 0, tzinfo=timezone.utc),
+        delete_at=datetime(2025, 1, 31, 12, 0, 0, tzinfo=timezone.utc),  # 30-day TTL
     )
 
     # Execute

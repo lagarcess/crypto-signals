@@ -43,7 +43,7 @@ SIGNAL_EXPECTED_FIELDS = set(Signal.model_fields.keys())
 POSITION_EXPECTED_FIELDS = set(Position.model_fields.keys())
 
 # Additional operational fields added by repository layer
-SIGNAL_OPERATIONAL_FIELDS = {"delete_at", "rejected_at"}
+SIGNAL_OPERATIONAL_FIELDS = {"rejected_at"}
 POSITION_OPERATIONAL_FIELDS = {"created_at", "updated_at"}
 
 
