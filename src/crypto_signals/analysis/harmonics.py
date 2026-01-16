@@ -21,7 +21,6 @@ from typing import Dict, List, Literal, Optional
 
 from crypto_signals.analysis.structural import Pivot
 
-
 # Fibonacci ratios used in harmonic patterns
 FIB_382 = 0.382
 FIB_500 = 0.500
@@ -156,7 +155,7 @@ class HarmonicAnalyzer:
             int: Number of days between pivots
         """
         delta = p_end.timestamp - p_start.timestamp
-        return delta.days
+        return int(delta.days)
 
     def detect_abcd(self) -> Optional[HarmonicPattern]:
         """Detect ABCD measured move pattern.

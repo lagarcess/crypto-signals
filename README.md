@@ -26,7 +26,7 @@ Crypto Sentinel is a production-ready trading bot that:
 
 ### Core Capabilities
 - **Multi-Asset Support**: Trades both cryptocurrencies (BTC, ETH, XRP) and equities (NVDA, QQQ, GLD)
-- **Pattern Recognition**: Detects 22 bullish patterns using O(N) ZigZag pivot detection, including candlestick reversal patterns (Hammer, Engulfing, Morning Star) and structural chart patterns (Bull Flag, Double Bottom, Cup and Handle, Inverse Head & Shoulders)
+- **Pattern Recognition**: Detects 28 patterns using O(N) ZigZag pivot detection, including candlestick reversal patterns (Hammer, Engulfing, Morning Star), structural chart patterns (Bull Flag, Double Bottom, Cup and Handle), and Fibonacci harmonic patterns (Gartley, Bat, Butterfly, Crab, ABCD, Elliott Wave)
 - **Technical Indicators**: RSI, MACD, Bollinger Bands, EMA, and more
 - **Risk Management**: Automatic stop-loss calculation and position sizing
 - **Cloud-Native**: Designed for containerized deployment on GCP
@@ -93,7 +93,8 @@ crypto-signals/
 │   ├── analysis/
 │   │   ├── indicators.py          # Technical indicators (RSI, MACD, etc.)
 │   │   ├── structural.py          # O(N) ZigZag pivot detection (Numba JIT)
-│   │   └── patterns.py            # Pattern detection logic
+│   │   ├── harmonics.py           # Fibonacci harmonic pattern detection
+│   │   └── patterns.py            # Candlestick and chart pattern detection
 │   ├── notifications/
 │   │   └── discord.py             # Discord webhook client (threaded messaging)
 │   ├── repository/
@@ -340,6 +341,8 @@ poetry run python scripts/visual_discord_test.py success      # Signal → TP1 �
 poetry run python scripts/visual_discord_test.py invalidation # Signal → Invalidation
 poetry run python scripts/visual_discord_test.py expiration   # Signal → Expiration
 poetry run python scripts/visual_discord_test.py trail        # Runner trail path
+poetry run python scripts/visual_discord_test.py patterns     # 8 structural patterns
+poetry run python scripts/visual_discord_test.py harmonic     # Harmonic pattern with ratios
 poetry run python scripts/visual_discord_test.py all          # Run all paths
 
 # Test live mode routing (requires LIVE_CRYPTO_DISCORD_WEBHOOK_URL)

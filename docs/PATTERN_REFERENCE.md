@@ -9,6 +9,7 @@ This document provides a comprehensive reference for all bullish candlestick pat
 - [Two-Candle Patterns](#two-candle-patterns)
 - [Three-Candle Patterns](#three-candle-patterns)
 - [Multi-Day Chart Patterns](#multi-day-chart-patterns)
+- [Harmonic Patterns](#harmonic-patterns)
 - [Confluence Factors](#confluence-factors)
 - [Signal Quality Filters](#signal-quality-filters)
 
@@ -16,7 +17,7 @@ This document provides a comprehensive reference for all bullish candlestick pat
 
 ## Pattern Overview
 
-The signal engine detects **22 bullish patterns** organized into four categories based on their formation duration and complexity.
+The signal engine detects **28 patterns** organized into five categories based on their formation duration and complexity.
 
 | Category | Pattern Count | Detection Method |
 |----------|---------------|------------------|
@@ -24,6 +25,7 @@ The signal engine detects **22 bullish patterns** organized into four categories
 | Two-Candle | 5 | Sequential comparison |
 | Three+ Candle | 4 | Multi-bar validation |
 | Multi-Day Chart | 6 | Geometric/structural |
+| Harmonic/Fibonacci | 6 | Fibonacci ratio matching |
 
 All patterns use **vectorized pandas operations** for high performance processing on large datasets.
 
@@ -450,6 +452,138 @@ A powerful reversal pattern with three troughs.
 
 ---
 
+## Harmonic Patterns
+
+> [!NOTE]
+> **Fibonacci-Based Pattern Recognition**: Harmonic patterns use precise Fibonacci ratios with
+> a ±0.1% tolerance gate to identify high-probability reversal zones. Patterns are processed
+> on the most recent 10-15 pivots for sub-2ms scan performance.
+>
+> - **MACRO Classification**: Patterns spanning >90 days from X to D point are classified as
+>   MACRO_HARMONIC for institutional-scale context.
+> - **Discord Integration**: Ratio breakdowns (e.g., "B-Leg: 61.8% | D-Leg: 88.6%") are
+>   automatically displayed in signal alerts.
+
+
+### ABCD Measured Move
+
+
+A price symmetry pattern where the CD leg mirrors the AB leg in both price and time.
+
+![ABCD](images/patterns/abcd.png)
+
+**Detection Logic:**
+- Price symmetry: |AB| ≈ |CD| within ±0.1%
+- Time symmetry: Time(AB) ≈ Time(CD) within ±0.1%
+- Requires 4 consecutive pivots (A, B, C, D)
+
+**Key Characteristics:**
+- Measures price projection based on AB move magnitude
+- Often appears within larger harmonic structures
+
+---
+
+### Gartley Pattern
+
+
+The original harmonic pattern with specific Fibonacci retracement ratios.
+
+![Gartley](images/patterns/gartley.png)
+
+**Detection Logic:**
+- B point: 0.618 retracement of XA leg
+- D point: 0.786 retracement of XA leg
+- Requires 5 consecutive pivots (X, A, B, C, D)
+
+**Key Ratios:**
+| Point | Ratio |
+|-------|-------|
+| B | 0.618 (±0.1%) |
+| D | 0.786 (±0.1%) |
+
+---
+
+### Bat Pattern
+
+
+A precise harmonic pattern with deep D-point retracement.
+
+![Bat](images/patterns/bat.png)
+
+**Detection Logic:**
+- B point: 0.382-0.500 retracement of XA leg
+- D point: 0.886 retracement of XA leg
+- Requires 5 consecutive pivots (X, A, B, C, D)
+
+**Key Ratios:**
+| Point | Ratio Range |
+|-------|-------------|
+| B | 0.382-0.500 |
+| D | 0.886 (±0.1%) |
+
+---
+
+### Butterfly Pattern
+
+
+An extension pattern that completes beyond the initial XA leg.
+
+![Butterfly](images/patterns/butterfly.png)
+
+**Detection Logic:**
+- B point: 0.786 retracement of XA leg
+- D point: 1.270 extension of XA leg
+- Requires 5 consecutive pivots (X, A, B, C, D)
+
+**Key Ratios:**
+| Point | Ratio |
+|-------|-------|
+| B | 0.786 (±0.1%) |
+| D | 1.270 (±0.1%) |
+
+---
+
+### Crab Pattern
+
+
+The most extreme harmonic pattern with maximum extension.
+
+![Crab](images/patterns/crab.png)
+
+**Detection Logic:**
+- B point: 0.382-0.618 retracement of XA leg
+- D point: 1.618 extension of XA leg
+- Requires 5 consecutive pivots (X, A, B, C, D)
+
+**Key Ratios:**
+| Point | Ratio Range |
+|-------|-------------|
+| B | 0.382-0.618 |
+| D | 1.618 (±0.1%) |
+
+---
+
+### Elliott Wave (1-3-5)
+
+
+Impulse wave structure detection based on Elliott Wave theory.
+
+![Elliott Wave](images/patterns/elliott_wave.png)
+
+**Detection Logic:**
+- Wave 3 must be longer than Wave 1 (strict requirement)
+- Wave 4 must not retrace into Wave 1 price territory
+- Alternating pivot structure (Valley-Peak-Valley-Peak-Valley or inverse)
+- Requires 5 consecutive alternating pivots
+
+**Wave Validation:**
+| Rule | Condition |
+|------|-----------|
+| Wave 3 vs Wave 1 | Wave 3 length > Wave 1 length |
+| Wave 4 validity | Wave 4 price above Wave 1 peak (bullish) |
+
+---
+
 ## Confluence Factors
 
 All patterns require validation through multiple confluence filters to improve signal quality.
@@ -512,7 +646,9 @@ All pattern detection uses **vectorized pandas operations** with no loops, ensur
 
 | File | Purpose |
 |------|---------|
-| `src/crypto_signals/analysis/patterns.py` | Pattern detection logic |
+| `src/crypto_signals/analysis/patterns.py` | Candlestick and chart pattern detection |
+| `src/crypto_signals/analysis/harmonics.py` | Harmonic/Fibonacci pattern detection |
 | `src/crypto_signals/engine/signal_generator.py` | Signal generation and filtering |
 | `src/crypto_signals/analysis/indicators.py` | Technical indicator calculations |
 | `tests/analysis/test_patterns.py` | Pattern unit tests |
+| `tests/analysis/test_harmonics.py` | Harmonic pattern unit tests |

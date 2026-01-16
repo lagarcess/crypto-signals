@@ -12,8 +12,6 @@ from crypto_signals.analysis.harmonics import (
     FIB_1270,
     FIB_1618,
     HarmonicAnalyzer,
-    MACRO_THRESHOLD_DAYS,
-    PRECISION_TOLERANCE,
 )
 from crypto_signals.analysis.structural import Pivot
 
