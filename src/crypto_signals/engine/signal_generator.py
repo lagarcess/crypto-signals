@@ -9,11 +9,11 @@ from typing import Optional, Type
 
 import numpy as np
 import pandas as pd
+from loguru import logger
+
 from crypto_signals.analysis.harmonics import HarmonicAnalyzer
 from crypto_signals.analysis.indicators import TechnicalIndicators
-from crypto_signals.analysis.patterns import (
-    PatternAnalyzer,
-)
+from crypto_signals.analysis.patterns import PatternAnalyzer
 from crypto_signals.domain.schemas import (
     AssetClass,
     ExitReason,
@@ -23,7 +23,6 @@ from crypto_signals.domain.schemas import (
     get_deterministic_id,
 )
 from crypto_signals.market.data_provider import MarketDataProvider
-from loguru import logger
 
 
 class SignalGenerator:
@@ -294,7 +293,7 @@ class SignalGenerator:
         geometric_pattern_name: Optional[str] = None,
     ) -> Signal:
         """Create a Signal object with all fields populated, including structural metadata.
-        
+
         Args:
             symbol: Trading symbol
             asset_class: Asset class (CRYPTO/EQUITY)
@@ -482,7 +481,7 @@ class SignalGenerator:
         if harmonic_pattern:
             # Populate harmonic ratios from the pattern
             harmonic_metadata = harmonic_pattern.ratios.copy()
-            
+
             # Apply classification override: MACRO_HARMONIC if is_macro
             if harmonic_pattern.is_macro:
                 pattern_classification = "MACRO_HARMONIC"

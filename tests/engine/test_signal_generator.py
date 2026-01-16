@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
+
 from crypto_signals.domain.schemas import (
     AssetClass,
     ExitReason,
@@ -777,7 +778,7 @@ def test_generate_signal_harmonic_and_geometric_merging(
     signal_generator, mock_market_provider, mock_analyzer_cls
 ):
     """Test merging of harmonic (ABCD) and geometric (Bull Flag) patterns on same candle.
-    
+
     When both patterns occur:
     - Harmonic pattern name is prioritized as main pattern
     - Geometric pattern is added to confluence_factors
@@ -785,7 +786,7 @@ def test_generate_signal_harmonic_and_geometric_merging(
     - harmonic_metadata is populated with ratios
     """
     from datetime import datetime, timezone
-    from crypto_signals.analysis.harmonics import HarmonicPattern
+
     from crypto_signals.analysis.structural import Pivot
 
     # Setup Data
@@ -874,6 +875,7 @@ def test_generate_signal_harmonic_only(
 ):
     """Test signal generation with only harmonic pattern (no geometric pattern)."""
     from datetime import datetime, timezone
+
     from crypto_signals.analysis.structural import Pivot
 
     # Setup Data
@@ -943,7 +945,8 @@ def test_generate_signal_harmonic_macro_classification(
     signal_generator, mock_market_provider, mock_analyzer_cls
 ):
     """Test that MACRO_HARMONIC classification is applied when harmonic pattern is_macro."""
-    from datetime import datetime, timezone, timedelta
+    from datetime import datetime, timedelta, timezone
+
     from crypto_signals.analysis.structural import Pivot
 
     # Setup Data
