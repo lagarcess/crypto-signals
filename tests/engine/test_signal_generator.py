@@ -771,3 +771,241 @@ def test_check_exits_short_trail_initialization(
     assert hasattr(result[0], "_trail_updated")
     assert result[0]._trail_updated is True
     assert result[0]._previous_tp3 == 0.0  # Previous was None/0
+
+
+def test_generate_signal_harmonic_and_geometric_merging(
+    signal_generator, mock_market_provider, mock_analyzer_cls
+):
+    """Test merging of harmonic (ABCD) and geometric (Bull Flag) patterns on same candle.
+    
+    When both patterns occur:
+    - Harmonic pattern name is prioritized as main pattern
+    - Geometric pattern is added to confluence_factors
+    - Single signal is created (no duplicate)
+    - harmonic_metadata is populated with ratios
+    """
+    from datetime import datetime, timezone
+    from crypto_signals.analysis.harmonics import HarmonicPattern
+    from crypto_signals.analysis.structural import Pivot
+
+    # Setup Data
+    today = date(2023, 1, 1)
+    df = pd.DataFrame(
+        {
+            "open": [100.0],
+            "high": [110.0],
+            "low": [90.0],
+            "close": [105.0],
+            "volume": [1000.0],
+        },
+        index=[pd.Timestamp(today)],
+    )
+    mock_market_provider.get_daily_bars.return_value = df
+
+    # Mock Analyzer Instance
+    mock_analyzer_instance = MagicMock()
+    mock_analyzer_cls.return_value = mock_analyzer_instance
+
+    # Result DF with BOTH Bull Flag (geometric) pattern
+    result_df = df.copy()
+    result_df["bull_flag"] = True
+    result_df["bullish_engulfing"] = False
+    mock_analyzer_instance.check_patterns.return_value = result_df
+
+    # Mock pivots for harmonic analysis
+    # Create 4 pivots for ABCD pattern
+    mock_pivots = [
+        Pivot(
+            price=95.0,
+            timestamp=datetime(2023, 1, 1, tzinfo=timezone.utc),
+            pivot_type="VALLEY",
+            index=0,
+        ),
+        Pivot(
+            price=105.0,
+            timestamp=datetime(2023, 1, 5, tzinfo=timezone.utc),
+            pivot_type="PEAK",
+            index=1,
+        ),
+        Pivot(
+            price=98.0,
+            timestamp=datetime(2023, 1, 10, tzinfo=timezone.utc),
+            pivot_type="VALLEY",
+            index=2,
+        ),
+        Pivot(
+            price=108.0,
+            timestamp=datetime(2023, 1, 15, tzinfo=timezone.utc),
+            pivot_type="PEAK",
+            index=3,
+        ),
+    ]
+    mock_analyzer_instance.pivots = mock_pivots
+
+    # Execution
+    signal = signal_generator.generate_signals("BTC/USD", AssetClass.CRYPTO)
+
+    # Verification
+    assert signal is not None, "Signal should be generated"
+
+    # 1. Harmonic pattern name is prioritized
+    assert signal.pattern_name == "ABCD", "Pattern name should be ABCD (harmonic)"
+
+    # 2. Geometric pattern added to confluence_factors
+    assert (
+        "BULL_FLAG" in signal.confluence_factors
+    ), "BULL_FLAG should be in confluence_factors"
+
+    # 3. Single signal (implicit - we only get one signal back)
+    assert signal.symbol == "BTC/USD"
+
+    # 4. Harmonic metadata is populated
+    assert signal.harmonic_metadata is not None, "harmonic_metadata should be populated"
+    assert (
+        "AB_CD_price_ratio" in signal.harmonic_metadata
+    ), "Should have AB_CD_price_ratio"
+    assert (
+        "AB_CD_time_ratio" in signal.harmonic_metadata
+    ), "Should have AB_CD_time_ratio"
+
+
+def test_generate_signal_harmonic_only(
+    signal_generator, mock_market_provider, mock_analyzer_cls
+):
+    """Test signal generation with only harmonic pattern (no geometric pattern)."""
+    from datetime import datetime, timezone
+    from crypto_signals.analysis.structural import Pivot
+
+    # Setup Data
+    today = date(2023, 1, 1)
+    df = pd.DataFrame(
+        {
+            "open": [100.0],
+            "high": [110.0],
+            "low": [90.0],
+            "close": [105.0],
+            "volume": [1000.0],
+        },
+        index=[pd.Timestamp(today)],
+    )
+    mock_market_provider.get_daily_bars.return_value = df
+
+    # Mock Analyzer Instance
+    mock_analyzer_instance = MagicMock()
+    mock_analyzer_cls.return_value = mock_analyzer_instance
+
+    # Result DF with NO geometric patterns
+    result_df = df.copy()
+    result_df["bull_flag"] = False
+    result_df["bullish_engulfing"] = False
+    mock_analyzer_instance.check_patterns.return_value = result_df
+
+    # Mock pivots for harmonic analysis
+    mock_pivots = [
+        Pivot(
+            price=95.0,
+            timestamp=datetime(2023, 1, 1, tzinfo=timezone.utc),
+            pivot_type="VALLEY",
+            index=0,
+        ),
+        Pivot(
+            price=105.0,
+            timestamp=datetime(2023, 1, 5, tzinfo=timezone.utc),
+            pivot_type="PEAK",
+            index=1,
+        ),
+        Pivot(
+            price=98.0,
+            timestamp=datetime(2023, 1, 10, tzinfo=timezone.utc),
+            pivot_type="VALLEY",
+            index=2,
+        ),
+        Pivot(
+            price=108.0,
+            timestamp=datetime(2023, 1, 15, tzinfo=timezone.utc),
+            pivot_type="PEAK",
+            index=3,
+        ),
+    ]
+    mock_analyzer_instance.pivots = mock_pivots
+
+    # Execution
+    signal = signal_generator.generate_signals("BTC/USD", AssetClass.CRYPTO)
+
+    # Verification
+    assert signal is not None, "Signal should be generated"
+    assert signal.pattern_name == "ABCD", "Pattern name should be ABCD"
+    assert signal.harmonic_metadata is not None, "harmonic_metadata should be populated"
+    assert "BULL_FLAG" not in signal.confluence_factors, "No geometric pattern in confluence"
+
+
+def test_generate_signal_harmonic_macro_classification(
+    signal_generator, mock_market_provider, mock_analyzer_cls
+):
+    """Test that MACRO_HARMONIC classification is applied when harmonic pattern is_macro."""
+    from datetime import datetime, timezone, timedelta
+    from crypto_signals.analysis.structural import Pivot
+
+    # Setup Data
+    today = date(2023, 1, 1)
+    df = pd.DataFrame(
+        {
+            "open": [100.0],
+            "high": [110.0],
+            "low": [90.0],
+            "close": [105.0],
+            "volume": [1000.0],
+        },
+        index=[pd.Timestamp(today)],
+    )
+    mock_market_provider.get_daily_bars.return_value = df
+
+    # Mock Analyzer Instance
+    mock_analyzer_instance = MagicMock()
+    mock_analyzer_cls.return_value = mock_analyzer_instance
+
+    # Result DF with NO geometric patterns
+    result_df = df.copy()
+    result_df["bull_flag"] = False
+    mock_analyzer_instance.check_patterns.return_value = result_df
+
+    # Mock pivots for MACRO harmonic pattern (>90 days)
+    # ABCD pattern spanning 100 days
+    base_date = datetime(2023, 1, 1, tzinfo=timezone.utc)
+    mock_pivots = [
+        Pivot(
+            price=95.0,
+            timestamp=base_date,
+            pivot_type="VALLEY",
+            index=0,
+        ),
+        Pivot(
+            price=105.0,
+            timestamp=base_date + timedelta(days=30),
+            pivot_type="PEAK",
+            index=1,
+        ),
+        Pivot(
+            price=98.0,
+            timestamp=base_date + timedelta(days=60),
+            pivot_type="VALLEY",
+            index=2,
+        ),
+        Pivot(
+            price=108.0,
+            timestamp=base_date + timedelta(days=100),
+            pivot_type="PEAK",
+            index=3,
+        ),
+    ]
+    mock_analyzer_instance.pivots = mock_pivots
+
+    # Execution
+    signal = signal_generator.generate_signals("BTC/USD", AssetClass.CRYPTO)
+
+    # Verification
+    assert signal is not None, "Signal should be generated"
+    assert signal.pattern_name == "ABCD", "Pattern name should be ABCD"
+    assert (
+        signal.pattern_classification == "MACRO_HARMONIC"
+    ), "Classification should be MACRO_HARMONIC for macro harmonic patterns"
