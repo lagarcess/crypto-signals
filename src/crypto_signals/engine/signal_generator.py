@@ -9,8 +9,6 @@ from typing import Optional, Type
 
 import numpy as np
 import pandas as pd
-from loguru import logger
-
 from crypto_signals.analysis.harmonics import HarmonicAnalyzer
 from crypto_signals.analysis.indicators import TechnicalIndicators
 from crypto_signals.analysis.patterns import PatternAnalyzer
@@ -23,6 +21,7 @@ from crypto_signals.domain.schemas import (
     get_deterministic_id,
 )
 from crypto_signals.market.data_provider import MarketDataProvider
+from loguru import logger
 
 
 class SignalGenerator:
@@ -540,7 +539,12 @@ class SignalGenerator:
 
         # Create base signal with structural metadata
         signal = self._create_signal(
-            symbol, asset_class, pattern_name, latest, sig_id, analyzer,
+            symbol,
+            asset_class,
+            pattern_name,
+            latest,
+            sig_id,
+            analyzer,
             harmonic_pattern=harmonic_pattern,
         )
 

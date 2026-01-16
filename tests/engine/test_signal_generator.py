@@ -5,7 +5,6 @@ from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
-
 from crypto_signals.domain.schemas import (
     AssetClass,
     ExitReason,
@@ -865,9 +864,7 @@ def test_generate_signal_harmonic_and_geometric_merging(
     assert (
         "AB_CD_price_ratio" in signal.harmonic_metadata
     ), "Should have AB_CD_price_ratio"
-    assert (
-        "AB_CD_time_ratio" in signal.harmonic_metadata
-    ), "Should have AB_CD_time_ratio"
+    assert "AB_CD_time_ratio" in signal.harmonic_metadata, "Should have AB_CD_time_ratio"
 
 
 def test_generate_signal_harmonic_only(
@@ -938,7 +935,9 @@ def test_generate_signal_harmonic_only(
     assert signal is not None, "Signal should be generated"
     assert signal.pattern_name == "ABCD", "Pattern name should be ABCD"
     assert signal.harmonic_metadata is not None, "harmonic_metadata should be populated"
-    assert "BULL_FLAG" not in signal.confluence_factors, "No geometric pattern in confluence"
+    assert (
+        "BULL_FLAG" not in signal.confluence_factors
+    ), "No geometric pattern in confluence"
 
 
 def test_generate_signal_harmonic_macro_classification(
