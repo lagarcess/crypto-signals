@@ -164,6 +164,13 @@ class Signal(BaseModel):
     broadcast message, enabling traders to follow the complete narrative of
     a single trade in one thread.
 
+    IMPORTANT - Time Fields:
+        - valid_until: Logical expiration (24h from candle close). Use this
+          for expiration checks: `if now > signal.valid_until: # EXPIRE`
+          DO NOT use `sig.ds + timedelta(days=1)` - that ignores time component.
+        - delete_at: Physical TTL for GCP Firestore cleanup (30 days for live,
+          7 days for rejected signals). Do not use for business logic.
+
     WARNING:
         signal_id MUST be a deterministic hash (uuid5) of
         ds + strategy_id + symbol.
@@ -212,9 +219,13 @@ class Signal(BaseModel):
         ...,
         description="Suggested stop-loss price for this signal",
     )
-    expiration_at: datetime = Field(
+    valid_until: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
-        description="UTC timestamp when this signal expires",
+        description="Logical expiration of the trading opportunity (24h window from candle close)",
+    )
+    delete_at: Optional[datetime] = Field(
+        default=None,
+        description="Physical expiration for database TTL cleanup (30 days). Used by GCP TTL policy.",
     )
     invalidation_price: Optional[float] = Field(
         default=None,
@@ -450,6 +461,17 @@ class Position(BaseModel):
     realized_pnl_pct: float = Field(
         default=0.0,
         description="Aggregate realized PnL as percentage of entry. Updated in real-time.",
+    )
+    # === TTL for GCP Firestore Cleanup ===
+    # TODO: Ensure delete_at is set when creating Position instances (e.g., in execution.py)
+    #       to enforce the 90-day TTL via GCP Firestore TTL policies.
+    delete_at: Optional[datetime] = Field(
+        default=None,
+        description=(
+            "Physical expiration for database TTL cleanup (90 days). "
+            "Used by GCP TTL policy and expected to be populated at creation time "
+            "by the execution layer."
+        ),
     )
 
 

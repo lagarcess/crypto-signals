@@ -53,7 +53,7 @@ gcloud firestore databases list
 gcloud firestore fields ttls list --collection-group=live_signals
 ```
 
-*Expected: `expireAt` field with `state: ACTIVE`.*
+*Expected: `delete_at` field with `state: ACTIVE`.*
 
 ---
 
@@ -186,7 +186,7 @@ gcloud scheduler jobs describe crypto-signals-daily --location=us-central1
 | **Cloud Run Job** | `gcloud run jobs list --region=us-central1` | `crypto-signals-job` listed |
 | **Secrets** | `gcloud secrets list` | 5 secrets present |
 | **Firestore** | `gcloud firestore databases list` | `(default)` is `READY` |
-| **Firestore TTL** | `gcloud firestore fields ttls list --collection-group=live_signals` | `expireAt` is `ACTIVE` |
+| **Firestore TTL** | `gcloud firestore fields ttls list --collection-group=live_signals` | `delete_at` is `ACTIVE` |
 | **Alerts** | `gcloud alpha monitoring policies list` | Policies are `True` |
 | **Scheduler** | `gcloud scheduler jobs list --location=us-central1` | `crypto-signals-daily` `ENABLED` |
 | **Images** | `gcloud artifacts docker images list ...` | Recent image exists |

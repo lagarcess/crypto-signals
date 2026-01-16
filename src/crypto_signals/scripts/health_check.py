@@ -130,7 +130,7 @@ def verify_firestore(settings) -> bool:
         {
             "test": "write_permission",
             "timestamp": datetime.now(timezone.utc).isoformat(),
-            "expireAt": datetime.now(timezone.utc) + timedelta(minutes=5),
+            "delete_at": datetime.now(timezone.utc) + timedelta(minutes=5),
         }
     )
     shadow_ref.delete()

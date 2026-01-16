@@ -9,7 +9,7 @@ import atexit
 import signal
 import sys
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import typer
 from loguru import logger
@@ -494,7 +494,6 @@ def main(
 
                         # 1. Run Expiration Check (24h Rule)
                         now_utc = datetime.now(timezone.utc)
-                        today_date = now_utc.date()
 
                         # Check exits first
                         exited_signals = generator.check_exits(
@@ -731,10 +730,10 @@ def main(
                             if sig.status != SignalStatus.WAITING:
                                 continue
 
-                            cutoff_date = sig.ds + timedelta(days=1)
-                            if today_date > cutoff_date:
+                            # Use valid_until (24h from candle close) for expiration check
+                            if now_utc > sig.valid_until:
                                 logger.info(
-                                    f"EXPIRING Signal {sig.signal_id} (Date: {sig.ds})",
+                                    f"EXPIRING Signal {sig.signal_id} (Valid Until: {sig.valid_until})",
                                     extra={"symbol": symbol, "signal_id": sig.signal_id},
                                 )
                                 sig.status = SignalStatus.EXPIRED
@@ -749,7 +748,7 @@ def main(
                                 # Reply in thread if available, fallback to main channel
                                 discord.send_message(
                                     f"⏳ **SIGNAL EXPIRED: {symbol}** ⏳\n"
-                                    f"Signal from {sig.ds} expired (24h Limit).",
+                                    f"Signal expired (24h limit reached).",
                                     thread_id=sig.discord_thread_id,
                                     asset_class=asset_class,
                                 )

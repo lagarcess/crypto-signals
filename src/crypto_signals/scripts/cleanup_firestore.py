@@ -85,7 +85,7 @@ def main():
         else:
             # Default cleanup behavior
             logger.info("Starting Firestore cleanup job...")
-            deleted_count = repo.cleanup_expired_signals(days_old=30)
+            deleted_count = repo.cleanup_expired_signals()
             logger.info(f"Cleanup job complete. Deleted {deleted_count} expired signals.")
 
         sys.exit(0)

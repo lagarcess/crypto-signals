@@ -88,17 +88,17 @@ gcloud alpha monitoring policies create --policy-from-file="docs/gcp-alerts/job-
 | Setting | Value |
 |---------|-------|
 | Collection | `live_signals` |
-| Timestamp Field | `expireAt` |
+| Timestamp Field | `delete_at` |
 | State | ACTIVE |
 
 **How it works:**
-1. When creating a document, set the `expireAt` field to a timestamp 30 days in the future
-2. Google automatically deletes documents when `expireAt` is in the past
+1. When creating a document, set the `delete_at` field to a timestamp 30 days in the future
+2. Google automatically deletes documents when `delete_at` is in the past
 3. Deletion happens within 72 hours of expiration (usually faster)
 
 **CLI Command:**
 ```powershell
-gcloud firestore fields ttls update expireAt --collection-group=live_signals --enable-ttl
+gcloud firestore fields ttls update delete_at --collection-group=live_signals --enable-ttl
 ```
 
 **Verification:**
@@ -107,14 +107,14 @@ gcloud firestore fields ttls list --collection-group=live_signals
 ```
 
 > [!IMPORTANT]
-> Your application code must set the `expireAt` field on documents for TTL to work. Example in Python:
+> Your application code must set the `delete_at` field on documents for TTL to work. Example in Python:
 > ```python
-> from datetime import datetime, timedelta
+> from datetime import datetime, timedelta, timezone
 >
 > doc_data = {
 >     "symbol": "BTC/USD",
 >     "signal": "BUY",
->     "expireAt": datetime.utcnow() + timedelta(days=30)
+>     "delete_at": datetime.now(timezone.utc) + timedelta(days=30)
 > }
 > ```
 
@@ -154,7 +154,7 @@ gcloud alpha monitoring policies create --policy-from-file="docs/gcp-alerts/memo
 ### Enable Firestore TTL
 
 ```powershell
-gcloud firestore fields ttls update expireAt --collection-group=live_signals --enable-ttl
+gcloud firestore fields ttls update delete_at --collection-group=live_signals --enable-ttl
 ```
 
 ### Verification Commands

@@ -5,6 +5,7 @@ This module orchestrates the fetching of market data, application of technical
 indicators, and detection of price patterns to generate trading signals.
 """
 
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Type
 
 import numpy as np
@@ -485,6 +486,21 @@ class SignalGenerator:
             if harmonic_pattern.is_macro:
                 pattern_classification = "MACRO_HARMONIC"
 
+        # ============================================================
+        # TIMESTAMP CALCULATIONS (Centralized for consistency)
+        # ============================================================
+        # valid_until: Logical expiration anchored to candle timestamp + 24h
+        # This ensures accuracy for backtesting even if bot runs late
+        candle_timestamp = latest.name
+        if hasattr(candle_timestamp, "to_pydatetime"):
+            candle_timestamp = candle_timestamp.to_pydatetime()
+        if candle_timestamp.tzinfo is None:
+            candle_timestamp = candle_timestamp.replace(tzinfo=timezone.utc)
+        valid_until = candle_timestamp + timedelta(hours=24)
+
+        # delete_at: Physical TTL for GCP Firestore cleanup (30 days from creation)
+        delete_at = datetime.now(timezone.utc) + timedelta(days=30)
+
         return Signal(
             signal_id=sig_id,
             strategy_id=strategy_id,
@@ -500,6 +516,8 @@ class SignalGenerator:
             take_profit_1=take_profit_1,
             take_profit_2=take_profit_2,
             take_profit_3=take_profit_3,
+            valid_until=valid_until,
+            delete_at=delete_at,
             pattern_duration_days=pattern_duration_days,
             pattern_span_days=pattern_span_days,
             pattern_classification=pattern_classification,
@@ -552,6 +570,9 @@ class SignalGenerator:
         signal.status = SignalStatus.REJECTED_BY_FILTER
         signal.rejection_reason = rejection_reason
         signal.confluence_snapshot = confluence_snapshot
+
+        # Rejected signals have shorter TTL (7 days) - for audit only
+        signal.delete_at = datetime.now(timezone.utc) + timedelta(days=7)
 
         return signal
 
