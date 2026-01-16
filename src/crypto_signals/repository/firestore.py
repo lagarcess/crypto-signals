@@ -191,7 +191,7 @@ class SignalRepository:
 
         Uses delete_at field for native GCP TTL support. Queries for signals where
         delete_at < now (signals past their physical TTL are cleaned up).
-        
+
         Note: The delete_at field is set to 30 days for live signals and 7 days
         for rejected signals when they are created.
         """
