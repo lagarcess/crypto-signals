@@ -1013,7 +1013,7 @@ def test_harmonic_alert(client: DiscordClient) -> None:
 
 
 def run_all_tests(client: DiscordClient) -> None:
-    """Run all test paths."""
+    """Run all seven test paths."""
     test_success_path(client)
     print("\n" + "=" * 70 + "\n")
     time.sleep(1)

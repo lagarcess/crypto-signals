@@ -28,8 +28,8 @@ FIB_500 = 0.500
 FIB_618 = 0.618
 FIB_786 = 0.786
 FIB_886 = 0.886
-FIB_127 = 1.270
-FIB_162 = 1.618
+FIB_1270 = 1.270
+FIB_1618 = 1.618
 
 # Precision gate: ±0.1% tolerance for ratio matching
 PRECISION_TOLERANCE = 0.001  # 0.1% = 0.001
@@ -299,7 +299,7 @@ class HarmonicAnalyzer:
 
             # Butterfly: B=0.786, D=1.27
             if self._matches_ratio(b_ratio, FIB_786) and self._matches_ratio(
-                d_ratio, FIB_127
+                d_ratio, FIB_1270
             ):
                 time_span = self._calculate_time_span_days(X, D)
                 is_macro = time_span > MACRO_THRESHOLD_DAYS
@@ -337,7 +337,7 @@ class HarmonicAnalyzer:
 
             # Crab: B in [0.382, 0.618], D=1.618
             if self._matches_range(b_ratio, FIB_382, FIB_618) and self._matches_ratio(
-                d_ratio, FIB_162
+                d_ratio, FIB_1618
             ):
                 time_span = self._calculate_time_span_days(X, D)
                 is_macro = time_span > MACRO_THRESHOLD_DAYS

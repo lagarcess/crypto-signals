@@ -9,8 +9,8 @@ from crypto_signals.analysis.harmonics import (
     FIB_618,
     FIB_786,
     FIB_886,
-    FIB_127,
-    FIB_162,
+    FIB_1270,
+    FIB_1618,
     HarmonicAnalyzer,
     MACRO_THRESHOLD_DAYS,
     PRECISION_TOLERANCE,
@@ -271,9 +271,10 @@ class TestPrecisionGate:
         """Should match ratio within ±0.1% tolerance."""
         analyzer = HarmonicAnalyzer(sample_pivots)
 
-        # 0.618 ± 0.1% = [0.617382, 0.618618]
-        assert analyzer._matches_ratio(0.6174, FIB_618)  # Just inside lower bound
-        assert analyzer._matches_ratio(0.6186, FIB_618)  # Just inside upper bound
+        # 0.618 ± 0.1% = [0.617382, 0.618618] (but floating point precision matters)
+        assert analyzer._matches_ratio(0.617382, FIB_618)  # Lower bound
+        assert analyzer._matches_ratio(0.618, FIB_618)  # Exact value
+        assert analyzer._matches_ratio(0.618617, FIB_618)  # Just below upper bound
 
     def test_matches_ratio_outside_tolerance(self, sample_pivots):
         """Should reject ratio outside tolerance."""
@@ -299,8 +300,9 @@ class TestPrecisionGate:
         # Range [0.382, 0.50] with ±0.1% tolerance
         # Lower: 0.382 * 0.999 = 0.381618
         # Upper: 0.50 * 1.001 = 0.5005
-        assert analyzer._matches_range(0.3817, FIB_382, 0.50)  # Just inside
-        assert analyzer._matches_range(0.5004, FIB_382, 0.50)  # Just inside
+        assert analyzer._matches_range(0.381618, FIB_382, 0.50)  # Exact lower bound
+        assert analyzer._matches_range(0.5005, FIB_382, 0.50)  # Exact upper bound
+        assert analyzer._matches_range(0.45, FIB_382, 0.50)  # Middle of range
 
 
 class TestPatternDetection:
@@ -393,7 +395,7 @@ class TestPatternDetection:
         assert pattern is not None
         assert pattern.pattern_type == "BUTTERFLY"
         assert abs(pattern.ratios["B_ratio"] - FIB_786) < 0.01
-        assert abs(pattern.ratios["D_ratio"] - FIB_127) < 0.01
+        assert abs(pattern.ratios["D_ratio"] - FIB_1270) < 0.01
 
     def test_detect_crab(self):
         """Should detect valid Crab pattern."""
@@ -439,7 +441,7 @@ class TestPatternDetection:
         assert pattern is not None
         assert pattern.pattern_type == "CRAB"
         assert 0.382 <= pattern.ratios["B_ratio"] <= 0.618
-        assert abs(pattern.ratios["D_ratio"] - FIB_162) < 0.01
+        assert abs(pattern.ratios["D_ratio"] - FIB_1618) < 0.01
 
     def test_detect_elliott_wave(self):
         """Should detect valid Elliott Wave 1-3-5 pattern."""
