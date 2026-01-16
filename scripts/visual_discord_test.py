@@ -71,6 +71,7 @@ class TestPath(str, Enum):
     short = "short"
     patterns = "patterns"  # 8 structural patterns with geometry
     shadow = "shadow"  # Shadow signal with rejection details
+    harmonic = "harmonic"  # Harmonic pattern with ratio breakdown
     all = "all"
 
 
@@ -945,8 +946,74 @@ def test_shadow_path(client: DiscordClient) -> None:
     print("   Verify: Ghost emoji 👻, Grey Embed, [REJECTED] Header")
 
 
+def test_harmonic_alert(client: DiscordClient) -> None:
+    """Test Harmonic Pattern alert with Ratio Breakdown.
+
+    This simulates a perfect Bat pattern on BTC with harmonic metadata
+    displayed in the Discord message.
+    """
+    print("\n🦇 Starting HARMONIC PATTERN test (Bat)...")
+    print("-" * 50)
+
+    now = datetime.now(timezone.utc)
+    signal_key = f"{date.today()}|visual_test|BTC/USD|harmonic_bat"
+
+    # Create a Bat pattern signal with harmonic metadata
+    signal = Signal(
+        signal_id=get_deterministic_id(signal_key),
+        ds=date.today(),
+        strategy_id="visual_test_harmonic",
+        symbol="BTC/USD",
+        asset_class=AssetClass.CRYPTO,
+        confluence_factors=["Harmonic_Bat", "Fibonacci_Confluence"],
+        entry_price=95000.00,
+        pattern_name="BAT",
+        status=SignalStatus.WAITING,
+        suggested_stop=91000.00,
+        invalidation_price=92500.00,
+        take_profit_1=98500.00,
+        take_profit_2=102000.00,
+        take_profit_3=110000.00,
+        expiration_at=now + timedelta(hours=24),
+        # Harmonic metadata for Bat pattern
+        # Bat: B at 0.45 (0.382-0.50 range), D at 0.886
+        harmonic_metadata={
+            "B_ratio": 0.450,  # 45% retracement of XA
+            "D_ratio": 0.886,  # 88.6% retracement of XA
+        },
+    )
+
+    # Send the signal
+    print("📤 Sending Bat pattern signal with harmonic ratios...")
+    thread_id = client.send_signal(signal, thread_name="🧪 Visual Test: Bat Pattern")
+
+    if not thread_id:
+        print("❌ FAILED: Could not create thread (send_signal returned None)")
+        return
+
+    print(f"✅ Thread created: {thread_id}")
+    print("\n   Expected Discord output:")
+    print("   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    print("   🚀 **BAT** detected on **BTC/USD**")
+    print("   ")
+    print("   **Entry Price:** $95,000.00")
+    print("   **Stop Loss:** $91,000.00")
+    print("   **Take Profit 1 (Conservative):** $98,500.00")
+    print("   **Take Profit 2 (Structural):** $102,000.00")
+    print("   **Take Profit 3 (Runner):** $110,000.00")
+    print("   ")
+    print("   📐 **Ratio Breakdown**")
+    print("   B-Leg: 45.0% | D-Leg: 88.6%")
+    print("   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+
+    print("\n" + "-" * 50)
+    print("✅ HARMONIC PATTERN test complete!")
+    print(f"   Thread ID: {thread_id}")
+    print("   Please verify in Discord that the Ratio Breakdown appears correctly.\n")
+
+
 def run_all_tests(client: DiscordClient) -> None:
-    """Run all six test paths."""
+    """Run all seven test paths."""
     test_success_path(client)
     print("\n" + "=" * 70 + "\n")
     time.sleep(1)
@@ -972,6 +1039,10 @@ def run_all_tests(client: DiscordClient) -> None:
     time.sleep(1)
 
     test_shadow_path(client)
+    print("\n" + "=" * 70 + "\n")
+    time.sleep(1)
+
+    test_harmonic_alert(client)
 
 
 @app.command()
@@ -1030,6 +1101,8 @@ def main(
         test_structural_patterns(client)
     elif path == TestPath.shadow:
         test_shadow_path(client)
+    elif path == TestPath.harmonic:
+        test_harmonic_alert(client)
     elif path == TestPath.all:
         run_all_tests(client)
 

@@ -634,6 +634,12 @@ class DiscordClient:
         if signal.structural_anchors:
             content += self._format_geometry_block(signal)
 
+        # ============================================================
+        # HARMONIC METADATA (Ratio Breakdown for Fibonacci patterns)
+        # ============================================================
+        if signal.harmonic_metadata:
+            content += self._format_harmonic_ratios(signal.harmonic_metadata)
+
         # We can add more fields if needed, like timestamp or status
         payload = {
             "content": content,
@@ -644,6 +650,47 @@ class DiscordClient:
         }
 
         return payload
+
+    def _format_harmonic_ratios(self, harmonic_metadata: dict) -> str:
+        """Format harmonic pattern ratios into a Discord message block.
+
+        Displays Fibonacci ratios in a compact, readable format.
+
+        Example output:
+            📐 **Ratio Breakdown**
+            B-Leg: 61.8% | D-Leg: 88.6%
+
+        Args:
+            harmonic_metadata: Dictionary of ratio data
+
+        Returns:
+            str: Formatted ratio breakdown for Discord message
+        """
+        if not harmonic_metadata:
+            return ""
+
+        # Map ratio keys to display names
+        ratio_map = {
+            "B_ratio": "B-Leg",
+            "D_ratio": "D-Leg",
+            "AB_CD_price_ratio": "AB=CD Price",
+            "AB_CD_time_ratio": "AB=CD Time",
+            "wave3_to_wave1_ratio": "Wave 3/1",
+        }
+
+        # Build ratio parts
+        ratio_parts = []
+        for key, display_name in ratio_map.items():
+            if key in harmonic_metadata:
+                value = harmonic_metadata[key]
+                # Format as percentage for display
+                ratio_parts.append(f"{display_name}: {value * 100:.1f}%")
+
+        if not ratio_parts:
+            return ""
+
+        # Format output
+        return "\n\n📐 **Ratio Breakdown**\n" + " | ".join(ratio_parts)
 
     def _format_geometry_block(self, signal: Signal) -> str:
         """Format structural anchors into a Pattern Geometry text block.

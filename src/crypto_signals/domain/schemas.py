@@ -269,6 +269,11 @@ class Signal(BaseModel):
         default=None,
         description="Snapshot of indicator values at rejection: {rsi, adx, sma_trend, volume_ratio, rr_ratio}",
     )
+    # === Harmonic Pattern Metadata ===
+    harmonic_metadata: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Harmonic pattern ratios for Fibonacci-based patterns: {B_ratio, D_ratio, wave3_to_wave1_ratio, etc.}",
+    )
 
 
 class Position(BaseModel):

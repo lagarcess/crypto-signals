@@ -317,6 +317,223 @@ def generate_inverse_head_shoulders():
     save_pattern(create_ohlc_data(data), "inverse_head_shoulders", "Inverse H&S")
 
 
+# ============================================================================
+# HARMONIC PATTERNS (Fibonacci-based)
+# ============================================================================
+
+
+def save_harmonic_pattern(
+    df: pd.DataFrame,
+    name: str,
+    title: str,
+    pivots: list[tuple[int, float, str]],
+) -> None:
+    """Save harmonic pattern chart with pivot annotations and connecting lines.
+
+    Args:
+        df: OHLC DataFrame
+        name: Output filename
+        title: Chart title
+        pivots: List of (bar_index, price, label) tuples for pivot points
+    """
+    import matplotlib.pyplot as plt
+
+    filepath = OUTPUT_DIR / f"{name}.png"
+
+    # Create custom addplot for pivot lines
+    fig, axes = mpf.plot(
+        df,
+        type="candle",
+        style=DARK_STYLE,
+        title=title,
+        ylabel="",
+        figsize=(5, 3.5),
+        returnfig=True,
+        axisoff=True,
+    )
+
+    ax = axes[0]
+
+    # Draw lines connecting pivots
+    if len(pivots) >= 2:
+        xs = [p[0] for p in pivots]
+        ys = [p[1] for p in pivots]
+        ax.plot(xs, ys, color="#00bfff", linewidth=1.5, linestyle="-", alpha=0.8)
+
+    # Add labels for each pivot point
+    for idx, price, label in pivots:
+        ax.annotate(
+            label,
+            xy=(idx, price),
+            xytext=(0, 8 if label in ["A", "C"] else -12),
+            textcoords="offset points",
+            ha="center",
+            fontsize=9,
+            fontweight="bold",
+            color="#ffffff",
+            bbox=dict(boxstyle="round,pad=0.2", facecolor="#1e3a5f", edgecolor="none"),
+        )
+        ax.plot(idx, price, "o", color="#00bfff", markersize=6)
+
+    fig.savefig(filepath, dpi=100, bbox_inches="tight", pad_inches=0.1)
+    plt.close(fig)
+    print(f"Saved: {filepath}")
+
+
+def generate_abcd():
+    """ABCD Pattern: price and time symmetry AB ≈ CD."""
+    # Create data showing AB move followed by CD move of same magnitude
+    data = [
+        (90, 92, 89, 91),  # Context
+        (91, 93, 90, 92),  # A - start of AB leg
+        (92, 98, 91, 97),  # Rising
+        (97, 103, 96, 102),  # B - peak of AB leg
+        (102, 103, 97, 98),  # Decline - BC retracement
+        (98, 99, 94, 95),  # C - start of CD leg
+        (95, 101, 94, 100),  # Rising
+        (100, 106, 99, 105),  # D - peak of CD leg (≈ AB)
+    ]
+    df = create_ohlc_data(data)
+    pivots = [
+        (1, 91, "A"),  # Valley
+        (3, 102, "B"),  # Peak
+        (5, 95, "C"),  # Valley
+        (7, 105, "D"),  # Peak
+    ]
+    save_harmonic_pattern(df, "abcd", "ABCD Pattern", pivots)
+
+
+def generate_gartley():
+    """Gartley Pattern: B=0.618, D=0.786 of XA."""
+    # X to A is a 50 point move, B retraces 61.8%, D ends at 78.6%
+    data = [
+        (50, 52, 49, 51),  # X valley
+        (51, 65, 50, 64),  # Rising
+        (64, 82, 63, 81),  # Rising
+        (81, 101, 80, 100),  # A peak (X=50, A=100, range=50)
+        (100, 101, 90, 91),  # Decline
+        (91, 92, 68, 69),  # B valley (100 - 50*0.618 = 69.1)
+        (69, 82, 68, 81),  # Rising
+        (81, 92, 80, 91),  # C peak
+        (91, 92, 75, 76),  # Decline
+        (76, 77, 60, 61),  # D valley (100 - 50*0.786 = 60.7)
+    ]
+    df = create_ohlc_data(data)
+    pivots = [
+        (0, 50, "X"),  # Valley
+        (3, 100, "A"),  # Peak
+        (5, 69, "B"),  # Valley (0.618 retracement)
+        (7, 91, "C"),  # Peak
+        (9, 61, "D"),  # Valley (0.786 retracement)
+    ]
+    save_harmonic_pattern(df, "gartley", "Gartley Pattern", pivots)
+
+
+def generate_bat():
+    """Bat Pattern: B=0.382-0.50, D=0.886 of XA."""
+    # X to A is a 50 point move, B retraces 45%, D ends at 88.6%
+    data = [
+        (50, 52, 49, 51),  # X valley
+        (51, 68, 50, 67),  # Rising
+        (67, 85, 66, 84),  # Rising
+        (84, 101, 83, 100),  # A peak (X=50, A=100, range=50)
+        (100, 101, 92, 93),  # Decline
+        (93, 94, 76, 77.5),  # B valley (100 - 50*0.45 = 77.5)
+        (77.5, 88, 76.5, 87),  # Rising
+        (87, 96, 86, 95),  # C peak
+        (95, 96, 80, 81),  # Decline
+        (81, 82, 55, 56),  # D valley (100 - 50*0.886 = 55.7)
+    ]
+    df = create_ohlc_data(data)
+    pivots = [
+        (0, 50, "X"),  # Valley
+        (3, 100, "A"),  # Peak
+        (5, 77.5, "B"),  # Valley (0.45 retracement)
+        (7, 95, "C"),  # Peak
+        (9, 56, "D"),  # Valley (0.886 retracement)
+    ]
+    save_harmonic_pattern(df, "bat", "Bat Pattern", pivots)
+
+
+def generate_butterfly():
+    """Butterfly Pattern: B=0.786, D=1.27 extension of XA."""
+    # X to A is a 40 point move, D extends 27% beyond X
+    data = [
+        (60, 62, 59, 61),  # X valley
+        (61, 75, 60, 74),  # Rising
+        (74, 90, 73, 89),  # Rising
+        (89, 101, 88, 100),  # A peak (X=60, A=100, range=40)
+        (100, 101, 85, 86),  # Decline
+        (86, 87, 68, 69),  # B valley (100 - 40*0.786 = 68.6)
+        (69, 80, 68, 79),  # Rising
+        (79, 92, 78, 91),  # C peak
+        (91, 92, 70, 71),  # Decline
+        (71, 72, 48, 49),  # D valley (100 - 40*1.27 = 49.2) - below X!
+    ]
+    df = create_ohlc_data(data)
+    pivots = [
+        (0, 60, "X"),  # Valley
+        (3, 100, "A"),  # Peak
+        (5, 69, "B"),  # Valley (0.786 retracement)
+        (7, 91, "C"),  # Peak
+        (9, 49, "D"),  # Valley (1.27 extension - below X)
+    ]
+    save_harmonic_pattern(df, "butterfly", "Butterfly Pattern", pivots)
+
+
+def generate_crab():
+    """Crab Pattern: B=0.382-0.618, D=1.618 extension of XA."""
+    # X to A is a 35 point move, D extends to 1.618
+    data = [
+        (65, 67, 64, 66),  # X valley
+        (66, 78, 65, 77),  # Rising
+        (77, 90, 76, 89),  # Rising
+        (89, 101, 88, 100),  # A peak (X=65, A=100, range=35)
+        (100, 101, 90, 91),  # Decline
+        (91, 92, 81, 82),  # B valley (100 - 35*0.50 = 82.5)
+        (82, 90, 81, 89),  # Rising
+        (89, 96, 88, 95),  # C peak
+        (95, 96, 75, 76),  # Decline
+        (76, 77, 42, 43),  # D valley (100 - 35*1.618 = 43.4) - far below X!
+    ]
+    df = create_ohlc_data(data)
+    pivots = [
+        (0, 65, "X"),  # Valley
+        (3, 100, "A"),  # Peak
+        (5, 82, "B"),  # Valley (0.50 retracement)
+        (7, 95, "C"),  # Peak
+        (9, 43, "D"),  # Valley (1.618 extension)
+    ]
+    save_harmonic_pattern(df, "crab", "Crab Pattern", pivots)
+
+
+def generate_elliott_wave():
+    """Elliott Wave 1-3-5: Wave 3 > Wave 1, Wave 4 above Wave 1 peak."""
+    # Classic 5-wave impulse structure
+    data = [
+        (50, 52, 49, 51),  # Wave 0 start
+        (51, 60, 50, 59),  # Wave 1 rise
+        (59, 68, 58, 67),  # Wave 1 peak
+        (67, 68, 60, 61),  # Wave 2 correction
+        (61, 75, 60, 74),  # Wave 3 start
+        (74, 90, 73, 89),  # Wave 3 rise (longest)
+        (89, 100, 88, 99),  # Wave 3 peak
+        (99, 100, 80, 81),  # Wave 4 correction (stays above Wave 1 peak)
+        (81, 95, 80, 94),  # Wave 5 rise
+        (94, 110, 93, 109),  # Wave 5 peak (final)
+    ]
+    df = create_ohlc_data(data)
+    pivots = [
+        (0, 50, "0"),  # Start
+        (2, 67, "1"),  # Wave 1 peak
+        (3, 61, "2"),  # Wave 2 valley
+        (6, 99, "3"),  # Wave 3 peak
+        (7, 81, "4"),  # Wave 4 valley (above Wave 1 peak)
+        (9, 109, "5"),  # Wave 5 peak
+    ]
+    save_harmonic_pattern(df, "elliott_wave", "Elliott Wave 1-3-5", pivots)
+
+
 def main():
     """Generate all pattern visualizations."""
     print("Generating pattern visualizations...")
@@ -348,6 +565,14 @@ def main():
     generate_falling_wedge()
     generate_bull_flag()
     generate_inverse_head_shoulders()
+
+    # Harmonic patterns
+    generate_abcd()
+    generate_gartley()
+    generate_bat()
+    generate_butterfly()
+    generate_crab()
+    generate_elliott_wave()
 
     print(f"\nAll patterns saved to: {OUTPUT_DIR}")
 
