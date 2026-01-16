@@ -1,4 +1,9 @@
-"""Firestore Repository for persisting signals and positions."""
+"""Firestore Repository for persisting signals and positions.
+
+Dev Note: Enable GCP native TTL policy with:
+  gcloud firestore fields ttls update delete_at --collection-group=live_signals --enable-ttl
+  gcloud firestore fields ttls update delete_at --collection-group=rejected_signals --enable-ttl
+"""
 
 from datetime import datetime, timedelta, timezone
 
@@ -81,12 +86,11 @@ class SignalRepository:
     DEFAULT_TTL_DAYS = 30
 
     def save(self, signal: Signal) -> None:
-        """Save a signal to Firestore with 30-day TTL."""
-        signal_data = signal.model_dump(mode="json")
-        signal_data["expireAt"] = datetime.now(timezone.utc) + timedelta(
-            days=self.DEFAULT_TTL_DAYS
-        )
+        """Save a signal to Firestore.
 
+        Note: delete_at is already populated by SignalGenerator (30-day TTL).
+        """
+        signal_data = signal.model_dump(mode="json")
         doc_ref = self.db.collection(self.collection_name).document(signal.signal_id)
         doc_ref.set(signal_data)
 
@@ -183,21 +187,17 @@ class SignalRepository:
             return False
 
     def cleanup_expired_signals(self, days_old: int = 30) -> int:
-        """Delete signals older than specified days. Returns count deleted."""
-        # Calculate cutoff based on expireAt (which is Creation + TTL)
-        # We want to find docs where: creation < Now - days_old
-        # Substitute creation = expireAt - TTL
-        # expireAt - TTL < Now - days_old
-        # expireAt < Now + (TTL - days_old)
-        threshold_offset = self.DEFAULT_TTL_DAYS - days_old
-        cutoff_date = datetime.now(timezone.utc) + timedelta(days=threshold_offset)
+        """Delete signals older than specified days. Returns count deleted.
 
-        logger.info(
-            f"Cleaning up signals with expireAt before {cutoff_date} (effectively older than {days_old} days)"
-        )
+        Uses delete_at field for native GCP TTL support. Simply queries:
+        delete_at < now (signals past their TTL are cleaned up)
+        """
+        cutoff_date = datetime.now(timezone.utc)
+
+        logger.info(f"Cleaning up signals with delete_at before {cutoff_date}")
 
         query = self.db.collection(self.collection_name).where(
-            filter=FieldFilter("expireAt", "<", cutoff_date)
+            filter=FieldFilter("delete_at", "<", cutoff_date)
         )
 
         # Batch delete for efficiency
@@ -287,9 +287,8 @@ class RejectedSignalRepository:
             return
 
         signal_data = signal.model_dump(mode="json")
-        signal_data["expireAt"] = datetime.now(timezone.utc) + timedelta(
-            days=self.DEFAULT_TTL_DAYS
-        )
+        # rejected_at is set here (repository-level metadata)
+        # delete_at is already set by SignalGenerator (7-day TTL for rejected signals)
         signal_data["rejected_at"] = datetime.now(timezone.utc)
 
         doc_ref = self.db.collection(self.collection_name).document(signal.signal_id)
@@ -352,11 +351,14 @@ class RejectedSignalRepository:
         return stats
 
     def cleanup_expired(self) -> int:
-        """Delete expired rejected signals. Returns count deleted."""
+        """Delete expired rejected signals. Returns count deleted.
+
+        Uses delete_at field for native GCP TTL support.
+        """
         cutoff_date = datetime.now(timezone.utc)
 
         query = self.db.collection(self.collection_name).where(
-            filter=FieldFilter("expireAt", "<", cutoff_date)
+            filter=FieldFilter("delete_at", "<", cutoff_date)
         )
 
         batch = self.db.batch()

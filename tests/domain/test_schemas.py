@@ -270,7 +270,7 @@ class TestSignalModel:
             pattern_name="bullish_engulfing",
             status=SignalStatus.WAITING,
             suggested_stop=48000.00,
-            expiration_at=datetime(2024, 1, 16, tzinfo=timezone.utc),
+            valid_until=datetime(2024, 1, 16, tzinfo=timezone.utc),
         )
 
         assert signal.suggested_stop == 48000.00

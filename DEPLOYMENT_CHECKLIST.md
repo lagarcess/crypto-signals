@@ -78,7 +78,7 @@ Use this checklist before deploying Crypto Sentinel to production.
 - [ ] Collection `live_signals` exists
 - [ ] Collection `live_positions` exists (for execution engine)
 - [ ] Test document created and read successfully
-- [ ] Cleanup query tested (expiration_at filter)
+- [ ] Cleanup query tested (valid_until filter)
 - [ ] TTL field verified on saved signals
 
 ## ✅ BigQuery Setup

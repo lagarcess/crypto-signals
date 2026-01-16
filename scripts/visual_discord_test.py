@@ -102,7 +102,7 @@ def create_test_signal(scenario: str) -> Signal:
         take_profit_1=98500.00,  # Conservative: +3.7%
         take_profit_2=102000.00,  # Structural: +7.4%
         take_profit_3=110000.00,  # Runner: +15.8%
-        expiration_at=now + timedelta(hours=24),
+        valid_until=now + timedelta(hours=24),
     )
 
     if scenario == "shadow":
@@ -178,7 +178,7 @@ def create_structural_signal(
         take_profit_1=entry_price * 1.05,
         take_profit_2=entry_price * 1.10,
         take_profit_3=entry_price * 1.15,
-        expiration_at=now + timedelta(hours=24),
+        valid_until=now + timedelta(hours=24),
         # Structural metadata
         pattern_duration_days=pattern_duration_days,
         pattern_classification=pattern_classification,
@@ -974,7 +974,7 @@ def test_harmonic_alert(client: DiscordClient) -> None:
         take_profit_1=98500.00,
         take_profit_2=102000.00,
         take_profit_3=110000.00,
-        expiration_at=now + timedelta(hours=24),
+        valid_until=now + timedelta(hours=24),
         # Harmonic metadata for Bat pattern
         # Bat: B at 0.45 (0.382-0.50 range), D at 0.886
         harmonic_metadata={

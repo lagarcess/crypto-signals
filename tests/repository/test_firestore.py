@@ -59,7 +59,7 @@ def test_save_signal(mock_settings, mock_firestore_client):
         pattern_name="bullish_engulfing",
         status=SignalStatus.WAITING,
         suggested_stop=45000.0,
-        expiration_at=datetime(2025, 1, 2, 12, 0, 0, tzinfo=timezone.utc),
+        valid_until=datetime(2025, 1, 2, 12, 0, 0, tzinfo=timezone.utc),
     )
 
     # Execute
@@ -69,17 +69,15 @@ def test_save_signal(mock_settings, mock_firestore_client):
     mock_db.collection.assert_called_once_with("live_signals")
     mock_collection.document.assert_called_once_with("test-signal-id")
 
-    # Verify data passed to set()
-    # model_dump(mode="json") converts dates/datetimes to ISO strings
-    expected_data = signal.model_dump(mode="json")
-    # Verify data passed to set() manually to handle expireAt
+    # Verify data passed to set() - delete_at now comes from Signal model
     mock_document.set.assert_called_once()
     args, _ = mock_document.set.call_args
     actual_data = args[0]
 
-    # Check expireAt exists then remove it for equality check
-    assert "expireAt" in actual_data
-    del actual_data["expireAt"]
+    # Verify snake_case naming and no legacy camelCase
+    assert "delete_at" in actual_data
+    assert "valid_until" in actual_data
+    assert "expireAt" not in actual_data  # Ensure consistent naming convention
 
     expected_data = signal.model_dump(mode="json")
     assert actual_data == expected_data
