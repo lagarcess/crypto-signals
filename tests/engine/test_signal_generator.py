@@ -1016,7 +1016,8 @@ def test_generate_signal_harmonic_macro_classification(
 
 
 # =============================================================================
-# ISSUE 99 FIX TESTS - Signal Lifecycle Hardening
+# SIGNAL LIFECYCLE HARDENING TESTS (Issue 99)
+# Tests for 5-minute cooldown gate, dynamic TTL, and Elliott Wave ATR stop loss
 # =============================================================================
 
 
@@ -1157,7 +1158,7 @@ def test_generate_signal_dynamic_ttl_standard_pattern(
 
     # Verification
     assert signal is not None
-    # STANDARD pattern classification (or None) should get 48h TTL
+    # STANDARD pattern should get 48h TTL
     candle_timestamp = pd.Timestamp(today).to_pydatetime().replace(tzinfo=timezone.utc)
     expected_valid_until = candle_timestamp + timedelta(hours=48)
     assert signal.valid_until == expected_valid_until
