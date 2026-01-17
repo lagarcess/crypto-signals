@@ -13,6 +13,7 @@ import pandas as pd
 from crypto_signals.analysis.harmonics import HarmonicAnalyzer
 from crypto_signals.analysis.indicators import TechnicalIndicators
 from crypto_signals.analysis.patterns import PatternAnalyzer
+from crypto_signals.config import get_settings
 from crypto_signals.domain.schemas import (
     AssetClass,
     ExitReason,
@@ -518,15 +519,14 @@ class SignalGenerator:
 
         # delete_at: Physical TTL for GCP Firestore cleanup
         # PROD: settings.TTL_DAYS_PROD (default 30 days)
-        # DEV/TEST: settings.TTL_DAYS_TEST (default 7 days)
-        from crypto_signals.config import get_settings
+        # DEV: settings.TTL_DAYS_DEV (default 7 days)
 
         settings = get_settings()
 
         ttl_days = (
             settings.TTL_DAYS_PROD
             if settings.ENVIRONMENT == "PROD"
-            else settings.TTL_DAYS_TEST
+            else settings.TTL_DAYS_DEV
         )
         delete_at = datetime.now(timezone.utc) + timedelta(days=ttl_days)
 

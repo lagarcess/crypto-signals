@@ -97,14 +97,17 @@ def main(
     with console.status(f"[bold red]Deleting {len(docs)} signals...[/bold red]"):
         batch = db.batch()
         count = 0
+        batch_size = 0
         for doc in docs:
             batch.delete(doc.reference)
             count += 1
-            if count % 400 == 0:
+            batch_size += 1
+            if batch_size >= 400:
                 batch.commit()
                 batch = db.batch()
+                batch_size = 0
 
-        if count % 400 != 0:
+        if batch_size > 0:
             batch.commit()
 
     console.print(f"[bold green]Successfully deleted {count} documents.[/bold green]")
