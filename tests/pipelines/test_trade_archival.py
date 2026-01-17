@@ -32,7 +32,9 @@ def pipeline(mock_alpaca, mock_firestore, mock_market_provider):
             "crypto_signals.pipelines.trade_archival.firestore.Client",
             return_value=mock_firestore,
         ),
-        patch("crypto_signals.pipelines.trade_archival.settings") as mock_settings,
+        patch(
+            "crypto_signals.pipelines.trade_archival.get_settings"
+        ) as mock_get_settings,
         patch(
             "crypto_signals.pipelines.trade_archival.MarketDataProvider",
             return_value=mock_market_provider,
@@ -40,7 +42,8 @@ def pipeline(mock_alpaca, mock_firestore, mock_market_provider):
         # Patch BigQuery client in the base class to prevent credentials error
         patch("crypto_signals.pipelines.base.bigquery.Client") as mock_bq,
     ):
-        mock_settings.return_value.GOOGLE_CLOUD_PROJECT = "test-project"
+        mock_get_settings.return_value.GOOGLE_CLOUD_PROJECT = "test-project"
+        mock_get_settings.return_value.ENVIRONMENT = "PROD"  # Set default environment
 
         # Instantiate pipeline
         pipe = TradeArchivalPipeline()

@@ -14,7 +14,7 @@ from crypto_signals.pipelines.account_snapshot import AccountSnapshotPipeline
 @pytest.fixture
 def mock_settings():
     """Mock the settings object."""
-    with patch("crypto_signals.pipelines.account_snapshot.settings") as mock:
+    with patch("crypto_signals.pipelines.account_snapshot.get_settings") as mock:
         mock.return_value.GOOGLE_CLOUD_PROJECT = "test-project"
         yield mock
 

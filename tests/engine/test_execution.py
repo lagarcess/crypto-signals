@@ -76,8 +76,7 @@ def execution_engine(mock_settings, mock_trading_client):
         "crypto_signals.engine.execution.get_settings", return_value=mock_settings
     ):
         engine = ExecutionEngine(trading_client=mock_trading_client)
-        engine.settings = mock_settings
-        return engine
+        yield engine
 
 
 class TestExecuteSignal:
@@ -212,7 +211,6 @@ class TestExecuteSignal:
             "crypto_signals.engine.execution.get_settings", return_value=mock_settings
         ):
             engine = ExecutionEngine(trading_client=mock_trading_client)
-            engine.settings = mock_settings
 
             # Execute
             position = engine.execute_signal(sample_signal)
@@ -232,7 +230,6 @@ class TestExecuteSignal:
             "crypto_signals.engine.execution.get_settings", return_value=mock_settings
         ):
             engine = ExecutionEngine(trading_client=mock_trading_client)
-            engine.settings = mock_settings
 
             # Execute
             position = engine.execute_signal(sample_signal)

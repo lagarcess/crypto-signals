@@ -227,9 +227,8 @@ class Settings(BaseSettings):
 @lru_cache()
 def get_settings() -> Settings:
     """
-    Get cached application settings.
-
-    Uses lru_cache to ensure settings are only loaded once.
+    Get application settings.
+    Uses lru_cache to ensure singleton behavior (settings are loaded once).
     Also bridges Pydantic settings to os.environ for Google Cloud SDKs.
 
     Returns:
@@ -256,7 +255,6 @@ def get_settings() -> Settings:
 
 
 # Convenience singleton for quick access
-settings = get_settings()
 
 
 def get_trading_client() -> TradingClient:

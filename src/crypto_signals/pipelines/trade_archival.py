@@ -22,9 +22,9 @@ from loguru import logger
 
 from crypto_signals.config import (
     get_crypto_data_client,
+    get_settings,
     get_stock_data_client,
     get_trading_client,
-    settings,
 )
 from crypto_signals.domain.schemas import ExitReason, OrderSide, TradeExecution
 from crypto_signals.market.data_provider import MarketDataProvider
@@ -42,6 +42,7 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
         """Initialize the pipeline with specific configuration."""
         # Configure BigQuery settings
         # Environment-aware table routing
+        settings = get_settings()
         env_suffix = "" if settings.ENVIRONMENT == "PROD" else "_test"
 
         super().__init__(
