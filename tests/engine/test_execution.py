@@ -20,6 +20,7 @@ def mock_settings():
     mock.is_paper_trading = True
     mock.ENABLE_EXECUTION = True
     mock.RISK_PER_TRADE = 100.0
+    mock.ENVIRONMENT = "PROD"
     return mock
 
 
