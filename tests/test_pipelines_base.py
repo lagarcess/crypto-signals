@@ -41,7 +41,7 @@ def mock_bq_client():
 def pipeline(mock_bq_client):
     """Return a concrete pipeline instance with mocked clients."""
     # Mock settings to avoid loading .env
-    with patch("crypto_signals.pipelines.base.settings") as mock_settings:
+    with patch("crypto_signals.pipelines.base.get_settings") as mock_settings:
         mock_settings.return_value.GOOGLE_CLOUD_PROJECT = "test-project"
 
         return ConcretePipeline(

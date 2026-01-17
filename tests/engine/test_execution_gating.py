@@ -1,7 +1,6 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from crypto_signals.config import Settings
 from crypto_signals.domain.schemas import (
     AssetClass,
     Position,
@@ -12,8 +11,8 @@ from crypto_signals.engine.execution import ExecutionEngine
 
 class TestExecutionGating(unittest.TestCase):
     def setUp(self):
-        # Mock settings
-        self.mock_settings = MagicMock(spec=Settings)
+        # Mock settings (no spec to allow custom attributes)
+        self.mock_settings = MagicMock()
         # Default to Paper Trading = True (so we only fail on ENVIRONMENT check)
         self.mock_settings.is_paper_trading = True
         self.mock_settings.ENABLE_EXECUTION = True

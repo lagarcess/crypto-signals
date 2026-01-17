@@ -16,7 +16,7 @@ from google.cloud import bigquery
 from loguru import logger
 from pydantic import BaseModel
 
-from crypto_signals.config import settings
+from crypto_signals.config import get_settings
 
 
 class BigQueryPipelineBase(ABC):
@@ -55,7 +55,7 @@ class BigQueryPipelineBase(ABC):
 
         # Initialize BigQuery Client
         # We use the project from settings to ensure we target the right GCP env
-        self.bq_client = bigquery.Client(project=settings.GOOGLE_CLOUD_PROJECT)
+        self.bq_client = bigquery.Client(project=get_settings().GOOGLE_CLOUD_PROJECT)
 
     @abstractmethod
     def extract(self) -> List[Any]:

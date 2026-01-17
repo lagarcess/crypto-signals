@@ -61,15 +61,13 @@ class ExecutionEngine:
             trading_client: Optional TradingClient for dependency injection.
                            If not provided, uses get_trading_client().
         """
-        self.settings = get_settings()
-        self._client = trading_client
+        settings = get_settings()
+        self.alpaca = trading_client if trading_client else get_trading_client()
 
-    @property
-    def client(self) -> TradingClient:
-        """Lazy-load trading client."""
-        if self._client is None:
-            self._client = get_trading_client()
-        return self._client
+        # Environment Logging
+        logger.info(
+            f"Execution Engine Initialized [Env: {settings.ENVIRONMENT} | Mode: {'PAPER' if settings.is_paper_trading else 'LIVE'}]"
+        )
 
     def execute_signal(self, signal: Signal) -> Optional[Position]:
         """
@@ -81,24 +79,27 @@ class ExecutionEngine:
         Returns:
             Position: The created Position object if successful, None otherwise.
         """
+        settings = get_settings()
+
         # Safety check: Only execute in paper trading mode
-        if not self.settings.is_paper_trading:
+        if not settings.is_paper_trading:
             logger.warning(
                 "Execution blocked: ALPACA_PAPER_TRADING must be True. "
                 "Set ALPACA_PAPER_TRADING=True to enable order execution."
             )
             return None
 
-        # ENVIRONMENT GATE: Block execution in non-PROD environments
-        if self.settings.ENVIRONMENT != "PROD":
-            logger.info(
-                f"[THEORETICAL MODE] Execution skipped for {signal.symbol} "
-                f"(Environment: {self.settings.ENVIRONMENT})"
+        # === Execution Gating (SAFETY GUARD) ===
+        if settings.ENVIRONMENT != "PROD":
+            logger.warning(
+                f"[THEORETICAL MODE] Signal {signal.signal_id} skipped. "
+                f"Reason: Execution is restricted to PROD environment only. "
+                f"(Current Env: {settings.ENVIRONMENT})"
             )
             return None
 
         # Safety check: Execution must be explicitly enabled
-        if not getattr(self.settings, "ENABLE_EXECUTION", False):
+        if not getattr(settings, "ENABLE_EXECUTION", False):
             logger.debug(
                 "Execution disabled: Set ENABLE_EXECUTION=True to execute orders."
             )
@@ -146,7 +147,7 @@ class ExecutionEngine:
                 },
             )
 
-            order = self.client.submit_order(order_request)
+            order = self.alpaca.submit_order(order_request)
 
             # Log success
             logger.info(
@@ -157,6 +158,11 @@ class ExecutionEngine:
                     "qty": qty,
                     "status": str(order.status),
                 },
+            )
+
+            # PROD: settings.TTL_DAYS_POSITION (default 90 days)
+            delete_at = datetime.now(timezone.utc) + timedelta(
+                days=settings.TTL_DAYS_POSITION
             )
 
             position = Position(
@@ -175,8 +181,7 @@ class ExecutionEngine:
                 target_entry_price=signal.entry_price,
                 tp_order_id=None,
                 sl_order_id=None,
-                delete_at=datetime.now(timezone.utc)
-                + timedelta(days=self.settings.TTL_DAYS_POSITION),
+                delete_at=delete_at,
             )
 
             return position
@@ -219,7 +224,8 @@ class ExecutionEngine:
         For crypto, allows fractional quantities (6 decimals).
         For equities, uses 4 decimal precision.
         """
-        risk_per_trade = getattr(self.settings, "RISK_PER_TRADE", 100.0)
+        settings = get_settings()
+        risk_per_trade = getattr(settings, "RISK_PER_TRADE", 100.0)
 
         # Calculate risk per share (distance from entry to stop)
         risk_per_share = abs(signal.entry_price - signal.suggested_stop)
@@ -284,7 +290,7 @@ class ExecutionEngine:
             Order object if found, None if not found or on error.
         """
         try:
-            order = self.client.get_order_by_id(order_id)
+            order = self.alpaca.get_order_by_id(order_id)
             logger.debug(
                 f"Retrieved order {order_id}: status={order.status}",
                 extra={"order_id": order_id, "status": str(order.status)},
@@ -316,7 +322,7 @@ class ExecutionEngine:
             Updated Position object with latest broker state.
         """
         # ENVIRONMENT GATE: Skip sync in non-PROD environments
-        if self.settings.ENVIRONMENT != "PROD":
+        if get_settings().ENVIRONMENT != "PROD":
             return position
 
         if not position.alpaca_order_id:
@@ -450,7 +456,7 @@ class ExecutionEngine:
                 try:
                     # Check actual open position on Alpaca
                     # get_open_position raises 404 if no position exists
-                    self.client.get_open_position(position.symbol)
+                    self.alpaca.get_open_position(position.symbol)
                 except Exception as e:
                     # 404 means no position -> It was closed manually/externally
                     if "not found" in str(e).lower() or "404" in str(e):
@@ -467,7 +473,7 @@ class ExecutionEngine:
                                 else OrderSide.BUY
                             )
 
-                            recent_orders = self.client.get_orders(
+                            recent_orders = self.alpaca.get_orders(
                                 filter={
                                     "status": "filled",
                                     "symbols": [position.symbol],
@@ -536,7 +542,7 @@ class ExecutionEngine:
             True if replacement succeeded, False otherwise.
         """
         # ENVIRONMENT GATE: Skip modification in non-PROD environments
-        if self.settings.ENVIRONMENT != "PROD":
+        if get_settings().ENVIRONMENT != "PROD":
             logger.info(
                 f"[THEORETICAL MODE] Stop modification skipped for {position.position_id}"
             )
@@ -571,7 +577,7 @@ class ExecutionEngine:
 
             replace_request = ReplaceOrderRequest(stop_price=round(new_stop, 2))
 
-            replaced_order = self.client.replace_order_by_id(
+            replaced_order = self.alpaca.replace_order_by_id(
                 order_id=position.sl_order_id, order_data=replace_request
             )
 
@@ -615,7 +621,7 @@ class ExecutionEngine:
             True if scale-out order submitted successfully
         """
         # ENVIRONMENT GATE: Skip scale-out in non-PROD environments
-        if self.settings.ENVIRONMENT != "PROD":
+        if get_settings().ENVIRONMENT != "PROD":
             logger.info(
                 f"[THEORETICAL MODE] Scale-out skipped for {position.position_id}"
             )
@@ -653,7 +659,7 @@ class ExecutionEngine:
                 time_in_force=TimeInForce.GTC,
             )
 
-            close_order = self.client.submit_order(close_request)
+            close_order = self.alpaca.submit_order(close_request)
 
             # Get fill price from order (if immediate fill)
             fill_price = None
@@ -813,7 +819,7 @@ class ExecutionEngine:
             since orders may already be filled/canceled.
         """
         # ENVIRONMENT GATE: Skip emergency close in non-PROD environments
-        if self.settings.ENVIRONMENT != "PROD":
+        if get_settings().ENVIRONMENT != "PROD":
             logger.info(
                 f"[THEORETICAL MODE] Emergency close skipped for {position.position_id}"
             )
@@ -822,7 +828,7 @@ class ExecutionEngine:
         # 1. Cancel TP order (best effort - may already be filled/canceled)
         if position.tp_order_id:
             try:
-                self.client.cancel_order_by_id(position.tp_order_id)
+                self.alpaca.cancel_order_by_id(position.tp_order_id)
                 logger.info(f"Canceled TP order {position.tp_order_id}")
             except Exception as e:
                 # Not an error - order may already be filled or canceled
@@ -831,7 +837,7 @@ class ExecutionEngine:
         # 2. Cancel SL order (best effort - may already be filled/canceled)
         if position.sl_order_id:
             try:
-                self.client.cancel_order_by_id(position.sl_order_id)
+                self.alpaca.cancel_order_by_id(position.sl_order_id)
                 logger.info(f"Canceled SL order {position.sl_order_id}")
             except Exception as e:
                 # Not an error - order may already be filled or canceled
@@ -852,7 +858,7 @@ class ExecutionEngine:
                 time_in_force=TimeInForce.GTC,
             )
 
-            close_order = self.client.submit_order(close_request)
+            close_order = self.alpaca.submit_order(close_request)
 
             logger.info(
                 f"EMERGENCY CLOSE: {position.position_id}",

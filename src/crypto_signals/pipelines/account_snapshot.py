@@ -16,7 +16,7 @@ from typing import Any, List
 from alpaca.common.exceptions import APIError
 from loguru import logger
 
-from crypto_signals.config import get_trading_client, settings
+from crypto_signals.config import get_settings, get_trading_client
 from crypto_signals.domain.schemas import StagingAccount
 from crypto_signals.pipelines.base import BigQueryPipelineBase
 
@@ -29,10 +29,10 @@ class AccountSnapshotPipeline(BigQueryPipelineBase):
         super().__init__(
             job_name="account_snapshot",
             staging_table_id=(
-                f"{settings().GOOGLE_CLOUD_PROJECT}.crypto_sentinel.stg_accounts_import"
+                f"{get_settings().GOOGLE_CLOUD_PROJECT}.crypto_sentinel.stg_accounts_import"
             ),
             fact_table_id=(
-                f"{settings().GOOGLE_CLOUD_PROJECT}.crypto_sentinel.snapshot_accounts"
+                f"{get_settings().GOOGLE_CLOUD_PROJECT}.crypto_sentinel.snapshot_accounts"
             ),
             id_column="account_id",
             partition_column="ds",
