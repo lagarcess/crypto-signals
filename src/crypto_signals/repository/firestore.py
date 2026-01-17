@@ -247,7 +247,9 @@ class SignalRepository:
         Returns:
             int: Number of documents deleted.
         """
-        logger.warning("FLUSH ALL: Deleting all documents from live_signals collection")
+        logger.warning(
+            f"FLUSH ALL: Deleting all documents from {self.collection_name} collection"
+        )
 
         # Batch delete for efficiency
         batch = self.db.batch()
