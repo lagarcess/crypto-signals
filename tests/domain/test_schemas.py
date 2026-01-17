@@ -7,7 +7,7 @@ Verifies the data contract defined in src/schemas.py:
 - Position model completeness
 """
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 from crypto_signals.domain.schemas import (
@@ -339,6 +339,69 @@ class TestSignalModel:
 
         assert "discord_thread_id" in serialized
         assert serialized["discord_thread_id"] == "9876543210987654321"
+
+    def test_signal_legacy_fallback_created_at_standard_pattern(self):
+        """Signal must populate created_at from valid_until for STANDARD patterns (Issue 99)."""
+        valid_until = datetime(2024, 1, 16, 12, 0, tzinfo=timezone.utc)
+        signal = Signal(
+            signal_id="legacy_signal",
+            ds=date(2024, 1, 15),
+            strategy_id="momentum",
+            symbol="BTC/USD",
+            asset_class=AssetClass.CRYPTO,
+            entry_price=50000.0,
+            pattern_name="bullish_engulfing",
+            suggested_stop=48000.00,
+            valid_until=valid_until,
+            pattern_classification="STANDARD_PATTERN",
+            created_at=None,  # Missing (simulating legacy data)
+        )
+
+        # Fallback: created_at = valid_until - 48h for STANDARD patterns
+        expected_created_at = valid_until - timedelta(hours=48)
+        assert signal.created_at == expected_created_at
+
+    def test_signal_legacy_fallback_created_at_macro_pattern(self):
+        """Signal must populate created_at from valid_until for MACRO patterns (Issue 99)."""
+        valid_until = datetime(2024, 1, 16, 12, 0, tzinfo=timezone.utc)
+        signal = Signal(
+            signal_id="legacy_signal_macro",
+            ds=date(2024, 1, 15),
+            strategy_id="momentum",
+            symbol="BTC/USD",
+            asset_class=AssetClass.CRYPTO,
+            entry_price=50000.0,
+            pattern_name="ABCD",
+            suggested_stop=48000.00,
+            valid_until=valid_until,
+            pattern_classification="MACRO_PATTERN",
+            created_at=None,  # Missing (simulating legacy data)
+        )
+
+        # Fallback: created_at = valid_until - 120h for MACRO patterns
+        expected_created_at = valid_until - timedelta(hours=120)
+        assert signal.created_at == expected_created_at
+
+    def test_signal_legacy_fallback_created_at_no_classification(self):
+        """Signal must use conservative 120h TTL for legacy signals without classification (Issue 99)."""
+        valid_until = datetime(2024, 1, 16, 12, 0, tzinfo=timezone.utc)
+        signal = Signal(
+            signal_id="legacy_signal_no_class",
+            ds=date(2024, 1, 15),
+            strategy_id="momentum",
+            symbol="BTC/USD",
+            asset_class=AssetClass.CRYPTO,
+            entry_price=50000.0,
+            pattern_name="bullish_hammer",
+            suggested_stop=48000.00,
+            valid_until=valid_until,
+            pattern_classification=None,  # No classification (legacy)
+            created_at=None,  # Missing (simulating legacy data)
+        )
+
+        # Fallback: created_at = valid_until - 120h for safety (conservative)
+        expected_created_at = valid_until - timedelta(hours=120)
+        assert signal.created_at == expected_created_at
 
 
 # =============================================================================

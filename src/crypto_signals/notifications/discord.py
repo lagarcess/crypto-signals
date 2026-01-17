@@ -45,6 +45,26 @@ class DiscordClient:
         """
         self.settings = settings or get_settings()
 
+    def format_currency(self, value: float) -> str:
+        """
+        Format price with dynamic precision based on magnitude.
+        - Price < $0.01: 8 decimal places (Micro-assets like SHIB/PEPE)
+        - Price < $1.00: 6 decimal places (Mid-range altcoins)
+        - Price >= $1.00: 2 decimal places (Standard assets)
+        """
+        if value is None:
+            return "N/A"
+
+        if value < 0.01:
+            # Micro-assets (e.g. 0.00002500)
+            return f"${value:,.8f}"
+        elif value < 1.0:
+            # Sub-dollar assets (e.g. 0.501234)
+            return f"${value:,.6f}"
+        else:
+            # Standard assets (e.g. 45,000.00)
+            return f"${value:,.2f}"
+
     def _get_webhook_url(self, asset_class: AssetClass | None = None) -> str | None:
         """
         Determine the correct webhook URL based on TEST_MODE and asset class.
@@ -373,10 +393,11 @@ class DiscordClient:
         # Test mode label for differentiating test messages
         test_label = "[TEST] " if self.settings.TEST_MODE else ""
 
+        # Updated Formatting using format_currency
         content = (
             f"{emoji} **{test_label}TRAIL UPDATE: {signal.symbol}** {emoji}\n"
-            f"New Stop: ${new_stop:,.2f} {direction}\n"
-            f"Previous: ${old_stop:,.2f}"
+            f"New Stop: {self.format_currency(new_stop)} {direction}\n"
+            f"Previous: {self.format_currency(old_stop)}"
         )
 
         # Use provided asset_class, or fall back to signal's asset_class
@@ -491,7 +512,9 @@ class DiscordClient:
 
             # Format exit price
             exit_price_str = (
-                f"${position.exit_fill_price:,.2f}" if position.exit_fill_price else "N/A"
+                self.format_currency(position.exit_fill_price)
+                if position.exit_fill_price
+                else "N/A"
             )
 
             # Test mode label for differentiating test messages in Discord
@@ -505,7 +528,7 @@ class DiscordClient:
                 f"**Result**: {pnl_sign}${abs(pnl_usd):,.2f} ({pnl_sign}{abs(pnl_pct):.2f}%)\n"
                 f"**Duration**: {duration_str}\n"
                 f"**Exit**: {exit_reason} ({exit_price_str})\n"
-                f"**Entry**: ${position.entry_fill_price:,.2f} | Qty: {position.qty}"
+                f"**Entry**: {self.format_currency(position.entry_fill_price)} | Qty: {position.qty}"
             )
 
             # Add slippage info if available
@@ -585,11 +608,12 @@ class DiscordClient:
             macro_label = "[MACRO SETUP] "
 
         # Format the main content
+        # Format the main content using dynamic currency formatter
         content = (
             f"{emoji} **{test_label}{macro_label}{signal.pattern_name.replace('_', ' ').upper()}** "
             f"detected on **{signal.symbol}**\n\n"
-            f"**Entry Price:** ${signal.entry_price:,.2f}\n"
-            f"**Stop Loss:** ${signal.suggested_stop:,.2f}"
+            f"**Entry Price:** {self.format_currency(signal.entry_price)}\n"
+            f"**Stop Loss:** {self.format_currency(signal.suggested_stop)}"
         )
 
         # Add Invalidation Price if it exists and is different from suggested_stop
@@ -597,15 +621,15 @@ class DiscordClient:
             signal.invalidation_price is not None
             and signal.invalidation_price != signal.suggested_stop
         ):
-            content += f"\n**Invalidation Price:** ${signal.invalidation_price:,.2f}"
+            content += f"\n**Invalidation Price:** {self.format_currency(signal.invalidation_price)}"
 
         # Add Take Profit targets
         if signal.take_profit_1:
-            content += f"\n**Take Profit 1 (Conservative):** ${signal.take_profit_1:,.2f}"
+            content += f"\n**Take Profit 1 (Conservative):** {self.format_currency(signal.take_profit_1)}"
         if signal.take_profit_2:
-            content += f"\n**Take Profit 2 (Structural):** ${signal.take_profit_2:,.2f}"
+            content += f"\n**Take Profit 2 (Structural):** {self.format_currency(signal.take_profit_2)}"
         if signal.take_profit_3:
-            content += f"\n**Take Profit 3 (Runner):** ${signal.take_profit_3:,.2f}"
+            content += f"\n**Take Profit 3 (Runner):** {self.format_currency(signal.take_profit_3)}"
 
         # ============================================================
         # STRUCTURAL METADATA (Formation Scale & Pattern Geometry)
@@ -748,10 +772,12 @@ class DiscordClient:
                     days_ago_text = ""
 
             # Format line
+            # Format line with dynamic pricing
+            formatted_price = self.format_currency(price)
             if days_ago_text:
-                lines.append(f"• {pivot_type}: ${price:,.2f} ({days_ago_text})")
+                lines.append(f"• {pivot_type}: {formatted_price} ({days_ago_text})")
             else:
-                lines.append(f"• {pivot_type}: ${price:,.2f}")
+                lines.append(f"• {pivot_type}: {formatted_price}")
 
         return "\n".join(lines)
 

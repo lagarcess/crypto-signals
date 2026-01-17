@@ -79,8 +79,8 @@ class SignalRepository:
 
     def __init__(self):
         """Initialize Firestore client."""
-        settings = get_settings()
-        self.db = firestore.Client(project=settings.GOOGLE_CLOUD_PROJECT)
+        self.settings = get_settings()
+        self.db = firestore.Client(project=self.settings.GOOGLE_CLOUD_PROJECT)
         self.collection_name = "live_signals"
 
     DEFAULT_TTL_DAYS = 30
@@ -120,9 +120,15 @@ class SignalRepository:
             except ValidationError as e:
                 # Display Rich error panel for database drift
                 log_validation_error(doc.id, e)
-                # Auto-delete invalid legacy document
-                doc.reference.delete()
-                logger.info(f"Deleted invalid legacy signal: {doc.id}")
+
+                # Auto-delete invalid legacy document if enabled
+                if self.settings.CLEANUP_ON_FAILURE:
+                    doc.reference.delete()
+                    logger.info(f"Auto-deleted invalid legacy signal: {doc.id}")
+                else:
+                    logger.warning(
+                        f"Skipping invalid signal: {doc.id} (cleanup disabled)"
+                    )
 
         return results
 
@@ -153,6 +159,12 @@ class SignalRepository:
                 return Signal(**doc.to_dict())
             except ValidationError as e:
                 log_validation_error(doc.id, e)
+
+                # Auto-delete invalid legacy document if enabled
+                if self.settings.CLEANUP_ON_FAILURE:
+                    doc.reference.delete()
+                    logger.info(f"Auto-deleted invalid legacy signal: {doc.id}")
+
                 return None
         return None
 
@@ -251,6 +263,45 @@ class SignalRepository:
             batch.commit()
 
         logger.warning(f"FLUSH ALL complete: Deleted {count} total signals")
+        return count
+
+    def purge_poison_signals(self) -> int:
+        """
+        Scan the entire collection and delete documents that fail validation.
+
+        This is a diagnostic cleanup tool. Use with caution.
+
+        Returns:
+            int: Number of documents purged.
+        """
+        logger.info(f"Starting purge of poison signals in '{self.collection_name}'...")
+
+        count = 0
+        batch = self.db.batch()
+
+        # Scan ALL documents (expensive operation, use sparingly)
+        for doc in self.db.collection(self.collection_name).stream():
+            try:
+                # Attempt to validate
+                Signal(**doc.to_dict())
+            except ValidationError:
+                # Found a poison document
+                batch.delete(doc.reference)
+                count += 1
+
+                if count >= 400:
+                    batch.commit()
+                    batch = self.db.batch()
+                    logger.info(f"Purged {count} poison signals (batch)")
+
+        if count > 0 and count % 400 != 0:
+            batch.commit()
+
+        if count > 0:
+            logger.info(f"Purge complete: Deleted {count} poison signals")
+        else:
+            logger.info("No poison signals found during purge.")
+
         return count
 
 

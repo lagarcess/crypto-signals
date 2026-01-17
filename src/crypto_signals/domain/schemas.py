@@ -15,11 +15,11 @@ Architecture Overview (9 Tables):
 """
 
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 # =============================================================================
 # CONSTANTS
@@ -285,6 +285,36 @@ class Signal(BaseModel):
         default=None,
         description="Harmonic pattern ratios for Fibonacci-based patterns: {B_ratio, D_ratio, wave3_to_wave1_ratio, etc.}",
     )
+    # === Signal Age Tracking (Issue 99 Fix) ===
+    created_at: Optional[datetime] = Field(
+        default=None,
+        description="UTC timestamp when signal was created. Used for skip-on-creation cooldown in check_exits.",
+    )
+
+    @model_validator(mode="after")
+    def set_fallback_created_at(self):
+        """
+        Fallback for legacy signals missing created_at.
+
+        Legacy signals (pre-fix) had valid_until set to created_at + TTL.
+        New dynamic TTL: 48h for STANDARD patterns, 120h for MACRO patterns.
+
+        We use pattern_classification to determine the correct TTL, falling back
+        to the maximum TTL (120h) for safety if classification is unknown. This
+        ensures the cooldown gate works correctly even if created_at is slightly
+        off - erring on the side of skipping signals is safer than premature exit.
+        """
+        if self.created_at is None and self.valid_until:
+            # Determine TTL based on pattern classification
+            is_macro = (
+                self.pattern_classification and "MACRO" in self.pattern_classification
+            )
+            ttl_hours = 120 if is_macro else 48
+            # For legacy signals without classification, use conservative 120h
+            if self.pattern_classification is None:
+                ttl_hours = 120
+            self.created_at = self.valid_until - timedelta(hours=ttl_hours)
+        return self
 
 
 class Position(BaseModel):
