@@ -516,8 +516,19 @@ class SignalGenerator:
         ttl_hours = 120 if is_macro else 48
         valid_until = candle_timestamp + timedelta(hours=ttl_hours)
 
-        # delete_at: Physical TTL for GCP Firestore cleanup (30 days from creation)
-        delete_at = datetime.now(timezone.utc) + timedelta(days=30)
+        # delete_at: Physical TTL for GCP Firestore cleanup
+        # PROD: settings.TTL_DAYS_PROD (default 30 days)
+        # DEV/TEST: settings.TTL_DAYS_TEST (default 7 days)
+        from crypto_signals.config import get_settings
+
+        settings = get_settings()
+
+        ttl_days = (
+            settings.TTL_DAYS_PROD
+            if settings.ENVIRONMENT == "PROD"
+            else settings.TTL_DAYS_TEST
+        )
+        delete_at = datetime.now(timezone.utc) + timedelta(days=ttl_days)
 
         # created_at: For skip-on-creation cooldown in check_exits (Issue 99 Fix)
         created_at = datetime.now(timezone.utc)

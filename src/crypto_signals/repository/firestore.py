@@ -81,7 +81,12 @@ class SignalRepository:
         """Initialize Firestore client."""
         self.settings = get_settings()
         self.db = firestore.Client(project=self.settings.GOOGLE_CLOUD_PROJECT)
-        self.collection_name = "live_signals"
+
+        # Environment Isolation: Route non-prod traffic to test_signals
+        if self.settings.ENVIRONMENT == "PROD":
+            self.collection_name = "live_signals"
+        else:
+            self.collection_name = "test_signals"
 
     DEFAULT_TTL_DAYS = 30
 
@@ -325,7 +330,12 @@ class RejectedSignalRepository:
         """Initialize Firestore client."""
         settings = get_settings()
         self.db = firestore.Client(project=settings.GOOGLE_CLOUD_PROJECT)
-        self.collection_name = "rejected_signals"
+
+        # Environment Isolation
+        if settings.ENVIRONMENT == "PROD":
+            self.collection_name = "rejected_signals"
+        else:
+            self.collection_name = "test_rejected_signals"
 
     def save(self, signal: Signal) -> None:
         """Save a rejected signal to Firestore with 7-day TTL.
@@ -442,7 +452,12 @@ class PositionRepository:
         """Initialize Firestore client."""
         settings = get_settings()
         self.db = firestore.Client(project=settings.GOOGLE_CLOUD_PROJECT)
-        self.collection_name = "live_positions"
+
+        # Environment Isolation
+        if settings.ENVIRONMENT == "PROD":
+            self.collection_name = "live_positions"
+        else:
+            self.collection_name = "test_positions"
 
     def save(self, position: Position) -> None:
         """

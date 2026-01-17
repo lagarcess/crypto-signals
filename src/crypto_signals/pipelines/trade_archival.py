@@ -41,13 +41,16 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
     def __init__(self):
         """Initialize the pipeline with specific configuration."""
         # Configure BigQuery settings
+        # Environment-aware table routing
+        env_suffix = "" if settings().ENVIRONMENT == "PROD" else "_test"
+
         super().__init__(
             job_name="trade_archival",
             staging_table_id=(
-                f"{settings().GOOGLE_CLOUD_PROJECT}.crypto_sentinel.stg_trades_import"
+                f"{settings().GOOGLE_CLOUD_PROJECT}.crypto_sentinel.stg_trades_import{env_suffix}"
             ),
             fact_table_id=(
-                f"{settings().GOOGLE_CLOUD_PROJECT}.crypto_sentinel.fact_trades"
+                f"{settings().GOOGLE_CLOUD_PROJECT}.crypto_sentinel.fact_trades{env_suffix}"
             ),
             id_column="trade_id",
             partition_column="ds",
@@ -57,6 +60,12 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
         # Initialize Source Clients
         # Note: We use the project from settings, same as BQ
         self.firestore_client = firestore.Client(project=settings().GOOGLE_CLOUD_PROJECT)
+
+        # Environment-aware collection routing
+        self.source_collection = (
+            "live_positions" if settings().ENVIRONMENT == "PROD" else "test_positions"
+        )
+
         self.alpaca = get_trading_client()
 
         # Initialize MarketDataProvider with required clients
@@ -75,7 +84,7 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
 
         # Query CLOSED positions (deleted after successful merge via cleanup)
         docs = (
-            self.firestore_client.collection("live_positions")
+            self.firestore_client.collection(self.source_collection)
             .where(field_path="status", op_string="==", value="CLOSED")
             .stream()
         )
@@ -338,7 +347,9 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
             # If Doc ID was random, we'd need to have passed it through.
             # Let's assume Doc ID KEY strategy is used or we query ID.
             # Usually: collection('live_positions').document(position_id)
-            ref = self.firestore_client.collection("live_positions").document(doc_id)
+            ref = self.firestore_client.collection(self.source_collection).document(
+                doc_id
+            )
             batch.delete(ref)
             count += 1
 
