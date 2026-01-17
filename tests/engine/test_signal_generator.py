@@ -1126,7 +1126,7 @@ def test_generate_signal_dynamic_ttl_standard_pattern(
     signal_generator, mock_market_provider, mock_analyzer_cls
 ):
     """Test that STANDARD patterns get 48h TTL (Issue 99)."""
-    from datetime import datetime, timezone
+    from datetime import timezone
 
     # Setup Data
     today = date(2023, 1, 1)

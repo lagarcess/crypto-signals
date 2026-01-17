@@ -298,7 +298,7 @@ class Signal(BaseModel):
 
         Legacy signals (pre-fix) had valid_until set to created_at + TTL.
         New dynamic TTL: 48h for STANDARD patterns, 120h for MACRO patterns.
-        
+
         We use pattern_classification to determine the correct TTL, falling back
         to the maximum TTL (120h) for safety if classification is unknown. This
         ensures the cooldown gate works correctly even if created_at is slightly
@@ -306,7 +306,9 @@ class Signal(BaseModel):
         """
         if self.created_at is None and self.valid_until:
             # Determine TTL based on pattern classification
-            is_macro = self.pattern_classification and "MACRO" in self.pattern_classification
+            is_macro = (
+                self.pattern_classification and "MACRO" in self.pattern_classification
+            )
             ttl_hours = 120 if is_macro else 48
             # For legacy signals without classification, use conservative 120h
             if self.pattern_classification is None:
