@@ -80,25 +80,45 @@ gcloud alpha monitoring policies create --policy-from-file="docs/gcp-alerts/job-
 
 ---
 
-## 2. Firestore TTL
+## 2. Firestore TTL & Cleanup
 
-**Purpose:** Automatically delete old signal documents after 30 days, reducing storage costs without manual cleanup scripts.
+**Purpose:** Automatically delete old operational data to manage storage costs and maintain database hygiene.
+- **Signals**: 30 days (PROD) / 7 days (DEV)
+- **Positions**: 90 days (Fixed)
+- **Rejected Signals**: 7 days (Fixed)
 
-**Configuration:**
-| Setting | Value |
-|---------|-------|
-| Collection | `live_signals` |
-| Timestamp Field | `delete_at` |
-| State | ACTIVE |
+### 2.1 Native GCP TTL (Self-Cleaning)
 
-**How it works:**
-1. When creating a document, set the `delete_at` field to a timestamp 30 days in the future
-2. Google automatically deletes documents when `delete_at` is in the past
-3. Deletion happens within 72 hours of expiration (usually faster)
+The application uses the `delete_at` field to leverage Firestore's native TTL feature. Documents are automatically deleted by GCP when `delete_at` is in the past.
 
-**CLI Command:**
+**Setup Commands:**
+Run these commands to enable the TTL policy across all collections:
+
 ```powershell
+# Production Collections
 gcloud firestore fields ttls update delete_at --collection-group=live_signals --enable-ttl
+gcloud firestore fields ttls update delete_at --collection-group=live_positions --enable-ttl
+gcloud firestore fields ttls update delete_at --collection-group=rejected_signals --enable-ttl
+
+# Development/Test Collections
+gcloud firestore fields ttls update delete_at --collection-group=test_signals --enable-ttl
+gcloud firestore fields ttls update delete_at --collection-group=test_positions --enable-ttl
+gcloud firestore fields ttls update delete_at --collection-group=test_rejected_signals --enable-ttl
+```
+
+### 2.2 Standardized Cleanup Script
+
+While GCP TTL handles physical deletion, a standardized cleanup script is available for manual maintenance or "Flush All" emergency scenarios.
+
+**Script Path:** `src/crypto_signals/scripts/cleanup_firestore.py`
+
+**Usage:**
+```powershell
+# Run standard logical cleanup (across all collections)
+poetry run python -m crypto_signals.scripts.cleanup_firestore --cleanup
+
+# Flush ALL data in current environment collections (USE WITH CAUTION)
+poetry run python -m crypto_signals.scripts.cleanup_firestore --flush-all
 ```
 
 **Verification:**

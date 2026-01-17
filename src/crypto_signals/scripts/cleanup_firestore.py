@@ -16,7 +16,11 @@ import sys
 
 from loguru import logger
 
-from crypto_signals.repository.firestore import SignalRepository
+from crypto_signals.repository.firestore import (
+    PositionRepository,
+    RejectedSignalRepository,
+    SignalRepository,
+)
 from crypto_signals.secrets_manager import init_secrets
 
 # Configure logging (optional if main configures it, but this is a script)
@@ -66,11 +70,15 @@ def main():
             logger.critical("Failed to load required secrets. Exiting.")
             sys.exit(1)
 
-        # Initialize repository
-        repo = SignalRepository()
+        # Initialize repositories
+        signal_repo = SignalRepository()
+        rejected_repo = RejectedSignalRepository()
+        position_repo = PositionRepository()
 
         if args.flush_all:
-            logger.warning("⚠️  FLUSH ALL MODE - This will delete ALL signals!")
+            logger.warning(
+                f"⚠️  FLUSH ALL MODE - Deleting all signals in {signal_repo.collection_name} and {rejected_repo.collection_name}!"
+            )
 
             if not args.force:
                 confirm = input(
@@ -80,13 +88,26 @@ def main():
                     logger.info("Flush cancelled by user.")
                     sys.exit(0)
 
-            deleted_count = repo.flush_all_signals()
-            logger.info(f"Flush complete. Deleted {deleted_count} signals.")
+            deleted_signals = signal_repo.flush_all()
+            deleted_rejected = rejected_repo.flush_all()
+            deleted_positions = position_repo.flush_all()
+
+            logger.info(
+                f"Flush complete. Deleted {deleted_signals} signals, "
+                f"{deleted_rejected} rejected signals, {deleted_positions} positions."
+            )
         else:
             # Default cleanup behavior
-            logger.info("Starting Firestore cleanup job...")
-            deleted_count = repo.cleanup_expired_signals()
-            logger.info(f"Cleanup job complete. Deleted {deleted_count} expired signals.")
+            logger.info(
+                f"Starting Firestore cleanup job (Env: {signal_repo.collection_name})..."
+            )
+            deleted_signals = signal_repo.cleanup_expired()
+            deleted_rejected = rejected_repo.cleanup_expired()
+            deleted_positions = position_repo.cleanup_expired()
+            logger.info(
+                f"Cleanup job complete: {deleted_signals} signals, "
+                f"{deleted_rejected} rejected signals, {deleted_positions} positions."
+            )
 
         sys.exit(0)
 

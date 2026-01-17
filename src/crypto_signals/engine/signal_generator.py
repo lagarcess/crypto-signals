@@ -13,6 +13,7 @@ import pandas as pd
 from crypto_signals.analysis.harmonics import HarmonicAnalyzer
 from crypto_signals.analysis.indicators import TechnicalIndicators
 from crypto_signals.analysis.patterns import PatternAnalyzer
+from crypto_signals.config import get_settings
 from crypto_signals.domain.schemas import (
     AssetClass,
     ExitReason,
@@ -516,8 +517,18 @@ class SignalGenerator:
         ttl_hours = 120 if is_macro else 48
         valid_until = candle_timestamp + timedelta(hours=ttl_hours)
 
-        # delete_at: Physical TTL for GCP Firestore cleanup (30 days from creation)
-        delete_at = datetime.now(timezone.utc) + timedelta(days=30)
+        # delete_at: Physical TTL for GCP Firestore cleanup
+        # PROD: settings.TTL_DAYS_PROD (default 30 days)
+        # DEV: settings.TTL_DAYS_DEV (default 7 days)
+
+        settings = get_settings()
+
+        ttl_days = (
+            settings.TTL_DAYS_PROD
+            if settings.ENVIRONMENT == "PROD"
+            else settings.TTL_DAYS_DEV
+        )
+        delete_at = datetime.now(timezone.utc) + timedelta(days=ttl_days)
 
         # created_at: For skip-on-creation cooldown in check_exits (Issue 99 Fix)
         created_at = datetime.now(timezone.utc)
@@ -852,7 +863,8 @@ class SignalGenerator:
                 # 2. Dynamic Invalidation (Color Flip / Indicators)
                 # Note: bearish_engulfing, rsi_overbought, adx_peaking are Long-specific
                 # For Short positions, these would indicate favorable conditions, not invalidation
-                # NOTE: Bullish equivalents for Short invalidation not yet implemented.\n                # Short signals use structural invalidation only, not pattern-based exits\n                # (e.g., bullish_engulfing). This is a known Phase 8 enhancement.
+                # NOTE: Bullish equivalents for Short invalidation not yet implemented.
+                # Short signals use structural invalidation only for now.
                 elif is_long and (is_bearish_engulfing or rsi_overbought or adx_peaking):
                     signal.status = SignalStatus.INVALIDATED
                     signal.exit_reason = ExitReason.COLOR_FLIP

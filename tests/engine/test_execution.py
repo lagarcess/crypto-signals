@@ -20,6 +20,8 @@ def mock_settings():
     mock.is_paper_trading = True
     mock.ENABLE_EXECUTION = True
     mock.RISK_PER_TRADE = 100.0
+    mock.ENVIRONMENT = "PROD"
+    mock.TTL_DAYS_POSITION = 90
     return mock
 
 
@@ -256,6 +258,7 @@ class TestExecuteSignal:
         # Verify position was created
         assert position is not None
         assert position.position_id == sample_signal.signal_id
+        assert position.delete_at is not None
         assert position.signal_id == sample_signal.signal_id
         assert position.current_stop_loss == sample_signal.suggested_stop
         assert position.entry_fill_price == sample_signal.entry_price

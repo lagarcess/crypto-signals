@@ -5,13 +5,11 @@ This module defines the strict "Data Contract" between Python logic,
 Firestore (NoSQL), and BigQuery (SQL). All models use Pydantic for
 validation and serialization.
 
-Architecture Overview (9 Tables):
-- Firestore Configuration: dim_strategies (1 table)
-- Firestore Operational: live_signals, live_positions (2 tables)
-- BigQuery Staging: stg_trades_import, stg_accounts_import,
-  stg_performance_import (3 tables)
-- BigQuery Analytics: fact_trades, snapshot_accounts,
-  summary_strategy_performance (3 tables)
+Architecture Overview (Environment Isolated):
+- Firestore Configuration: dim_strategies
+- Firestore Operational: live_signals, live_positions, rejected_signals
+- Firestore Development: test_signals, test_positions, test_rejected_signals
+- BigQuery Analytics: fact_trades, fact_trades_test
 """
 
 import uuid
@@ -493,14 +491,12 @@ class Position(BaseModel):
         description="Aggregate realized PnL as percentage of entry. Updated in real-time.",
     )
     # === TTL for GCP Firestore Cleanup ===
-    # TODO: Ensure delete_at is set when creating Position instances (e.g., in execution.py)
-    #       to enforce the 90-day TTL via GCP Firestore TTL policies.
     delete_at: Optional[datetime] = Field(
         default=None,
         description=(
             "Physical expiration for database TTL cleanup (90 days). "
-            "Used by GCP TTL policy and expected to be populated at creation time "
-            "by the execution layer."
+            "Used by GCP TTL policy and populated at creation time "
+            "by the execution layer (driven by config.py)."
         ),
     )
 

@@ -3,6 +3,10 @@
 Dev Note: Enable GCP native TTL policy with:
   gcloud firestore fields ttls update delete_at --collection-group=live_signals --enable-ttl
   gcloud firestore fields ttls update delete_at --collection-group=rejected_signals --enable-ttl
+  gcloud firestore fields ttls update delete_at --collection-group=live_positions --enable-ttl
+  gcloud firestore fields ttls update delete_at --collection-group=test_signals --enable-ttl
+  gcloud firestore fields ttls update delete_at --collection-group=test_rejected_signals --enable-ttl
+  gcloud firestore fields ttls update delete_at --collection-group=test_positions --enable-ttl
 """
 
 from datetime import datetime, timedelta, timezone
@@ -81,14 +85,17 @@ class SignalRepository:
         """Initialize Firestore client."""
         self.settings = get_settings()
         self.db = firestore.Client(project=self.settings.GOOGLE_CLOUD_PROJECT)
-        self.collection_name = "live_signals"
 
-    DEFAULT_TTL_DAYS = 30
+        # Environment Isolation: Route non-prod traffic to test_signals
+        if self.settings.ENVIRONMENT == "PROD":
+            self.collection_name = "live_signals"
+        else:
+            self.collection_name = "test_signals"
 
     def save(self, signal: Signal) -> None:
         """Save a signal to Firestore.
 
-        Note: delete_at is already populated by SignalGenerator (30-day TTL).
+        Note: delete_at is populated by SignalGenerator (driven by config.py).
         """
         signal_data = signal.model_dump(mode="json")
         doc_ref = self.db.collection(self.collection_name).document(signal.signal_id)
@@ -137,11 +144,6 @@ class SignalRepository:
         doc_ref = self.db.collection(self.collection_name).document(signal.signal_id)
         signal_data = signal.model_dump(mode="json")
         doc_ref.set(signal_data, merge=True)
-
-    def update_status(self, signal_id: str, status: SignalStatus) -> None:
-        """Update only the status of a signal (Legacy method)."""
-        doc_ref = self.db.collection(self.collection_name).document(signal_id)
-        doc_ref.update({"status": status.value})
 
     def get_by_id(self, signal_id: str) -> Signal | None:
         """
@@ -198,14 +200,14 @@ class SignalRepository:
             logger.error(f"Atomic update failed for {signal_id}: {e}")
             return False
 
-    def cleanup_expired_signals(self) -> int:
+    def cleanup_expired(self) -> int:
         """Delete signals past their TTL. Returns count deleted.
 
         Uses delete_at field for native GCP TTL support. Queries for signals where
         delete_at < now (signals past their physical TTL are cleaned up).
 
-        Note: The delete_at field is set to 30 days for live signals and 7 days
-        for rejected signals when they are created.
+        Note: The delete_at field is set by SignalGenerator based on environment
+        TTLs defined in config.py (settings.TTL_DAYS_PROD/DEV).
         """
         cutoff_date = datetime.now(timezone.utc)
 
@@ -236,13 +238,15 @@ class SignalRepository:
         logger.info(f"Cleanup complete: Deleted {count} expired signals")
         return count
 
-    def flush_all_signals(self) -> int:
+    def flush_all(self) -> int:
         """Delete ALL signals in the collection. Use with caution!
 
         Returns:
             int: Number of documents deleted.
         """
-        logger.warning("FLUSH ALL: Deleting all documents from live_signals collection")
+        logger.warning(
+            f"FLUSH ALL: Deleting all documents from {self.collection_name} collection"
+        )
 
         # Batch delete for efficiency
         batch = self.db.batch()
@@ -265,45 +269,6 @@ class SignalRepository:
         logger.warning(f"FLUSH ALL complete: Deleted {count} total signals")
         return count
 
-    def purge_poison_signals(self) -> int:
-        """
-        Scan the entire collection and delete documents that fail validation.
-
-        This is a diagnostic cleanup tool. Use with caution.
-
-        Returns:
-            int: Number of documents purged.
-        """
-        logger.info(f"Starting purge of poison signals in '{self.collection_name}'...")
-
-        count = 0
-        batch = self.db.batch()
-
-        # Scan ALL documents (expensive operation, use sparingly)
-        for doc in self.db.collection(self.collection_name).stream():
-            try:
-                # Attempt to validate
-                Signal(**doc.to_dict())
-            except ValidationError:
-                # Found a poison document
-                batch.delete(doc.reference)
-                count += 1
-
-                if count >= 400:
-                    batch.commit()
-                    batch = self.db.batch()
-                    logger.info(f"Purged {count} poison signals (batch)")
-
-        if count > 0 and count % 400 != 0:
-            batch.commit()
-
-        if count > 0:
-            logger.info(f"Purge complete: Deleted {count} poison signals")
-        else:
-            logger.info("No poison signals found during purge.")
-
-        return count
-
 
 class RejectedSignalRepository:
     """Repository for storing rejected (shadow) signals in Firestore.
@@ -313,22 +278,21 @@ class RejectedSignalRepository:
     - Backtesting analysis (Phase 8)
     - Filter optimization
     - Market regime analysis
-
-    Uses a shorter 7-day TTL since shadow signals are primarily for debugging
-    and analysis, not operational trading.
     """
-
-    # Shadow signals expire after 7 days (shorter than live signals)
-    DEFAULT_TTL_DAYS = 7
 
     def __init__(self):
         """Initialize Firestore client."""
         settings = get_settings()
         self.db = firestore.Client(project=settings.GOOGLE_CLOUD_PROJECT)
-        self.collection_name = "rejected_signals"
+
+        # Environment Isolation
+        if settings.ENVIRONMENT == "PROD":
+            self.collection_name = "rejected_signals"
+        else:
+            self.collection_name = "test_rejected_signals"
 
     def save(self, signal: Signal) -> None:
-        """Save a rejected signal to Firestore with 7-day TTL.
+        """Save a rejected signal to Firestore.
 
         Args:
             signal: Signal with status=REJECTED_BY_FILTER and rejection_reason populated
@@ -434,6 +398,33 @@ class RejectedSignalRepository:
 
         return count
 
+    def flush_all(self) -> int:
+        """Delete ALL rejected signals in the collection. Use with caution!
+
+        Returns:
+            int: Number of documents deleted.
+        """
+        logger.warning(
+            f"FLUSH ALL: Deleting all documents from {self.collection_name} collection"
+        )
+
+        batch = self.db.batch()
+        count = 0
+
+        for doc in self.db.collection(self.collection_name).stream():
+            batch.delete(doc.reference)
+            count += 1
+
+            if count >= 400:
+                batch.commit()
+                batch = self.db.batch()
+
+        if count > 0 and count % 400 != 0:
+            batch.commit()
+
+        logger.warning(f"FLUSH ALL complete: Deleted {count} total rejected signals")
+        return count
+
 
 class PositionRepository:
     """Repository for storing positions in Firestore."""
@@ -442,7 +433,12 @@ class PositionRepository:
         """Initialize Firestore client."""
         settings = get_settings()
         self.db = firestore.Client(project=settings.GOOGLE_CLOUD_PROJECT)
-        self.collection_name = "live_positions"
+
+        # Environment Isolation
+        if settings.ENVIRONMENT == "PROD":
+            self.collection_name = "live_positions"
+        else:
+            self.collection_name = "test_positions"
 
     def save(self, position: Position) -> None:
         """
@@ -513,3 +509,61 @@ class PositionRepository:
         position_data = position.model_dump(mode="json")
         position_data["updated_at"] = datetime.now(timezone.utc)
         doc_ref.set(position_data, merge=True)
+
+    def cleanup_expired(self) -> int:
+        """Delete positions past their TTL. Returns count deleted.
+
+        Uses delete_at field for native GCP TTL support.
+        """
+        cutoff_date = datetime.now(timezone.utc)
+        logger.info(f"Cleaning up positions with delete_at before {cutoff_date}")
+
+        query = self.db.collection(self.collection_name).where(
+            filter=FieldFilter("delete_at", "<", cutoff_date)
+        )
+
+        batch = self.db.batch()
+        count = 0
+
+        for doc in query.stream():
+            batch.delete(doc.reference)
+            count += 1
+
+            if count >= 400:
+                batch.commit()
+                batch = self.db.batch()
+
+        if count > 0 and count % 400 != 0:
+            batch.commit()
+
+        if count > 0:
+            logger.info(f"Cleaned up {count} expired positions")
+
+        return count
+
+    def flush_all(self) -> int:
+        """Delete ALL positions in the collection. Use with caution!
+
+        Returns:
+            int: Number of documents deleted.
+        """
+        logger.warning(
+            f"FLUSH ALL: Deleting all documents from {self.collection_name} collection"
+        )
+
+        batch = self.db.batch()
+        count = 0
+
+        for doc in self.db.collection(self.collection_name).stream():
+            batch.delete(doc.reference)
+            count += 1
+
+            if count >= 400:
+                batch.commit()
+                batch = self.db.batch()
+
+        if count > 0 and count % 400 != 0:
+            batch.commit()
+
+        logger.warning(f"FLUSH ALL complete: Deleted {count} total positions")
+        return count

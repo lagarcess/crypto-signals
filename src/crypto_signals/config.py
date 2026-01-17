@@ -109,6 +109,20 @@ class Settings(BaseSettings):
         description="Enable Google Cloud Logging sink (for Cloud Run/GKE)",
     )
 
+    # Environment Mode (PROD or DEV)
+    ENVIRONMENT: str = Field(
+        default="DEV",
+        description="Execution Environment (PROD or DEV). Controls DB routing and TTL.",
+        pattern="^(PROD|DEV)$",
+    )
+
+    # TTL Configuration (Days)
+    TTL_DAYS_PROD: int = Field(
+        default=30, description="TTL for Production signals (days)."
+    )
+    TTL_DAYS_DEV: int = Field(default=7, description="TTL for Dev signals (days).")
+    TTL_DAYS_POSITION: int = Field(default=90, description="TTL for Positions (days).")
+
     # Portfolio Configuration (Optional - defaults to hardcoded lists)
     CRYPTO_SYMBOLS: List[str] | str = Field(
         default=[
@@ -241,8 +255,8 @@ def get_settings() -> Settings:
     return settings
 
 
-# Convenience function for quick access
-settings = get_settings
+# Convenience singleton for quick access
+settings = get_settings()
 
 
 def get_trading_client() -> TradingClient:

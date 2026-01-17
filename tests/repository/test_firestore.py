@@ -12,7 +12,11 @@ from crypto_signals.domain.schemas import (
     SignalStatus,
     TradeStatus,
 )
-from crypto_signals.repository.firestore import PositionRepository, SignalRepository
+from crypto_signals.repository.firestore import (
+    PositionRepository,
+    RejectedSignalRepository,
+    SignalRepository,
+)
 
 
 @pytest.fixture
@@ -20,6 +24,9 @@ def mock_settings():
     """Mock application settings."""
     with patch("crypto_signals.repository.firestore.get_settings") as mock:
         mock.return_value.GOOGLE_CLOUD_PROJECT = "test-project"
+        mock.return_value.ENVIRONMENT = (
+            "PROD"  # Ensure legacy tests assert against live collections
+        )
         yield mock
 
 
@@ -402,3 +409,57 @@ class TestPositionRepositoryUpdate:
         # Verify updated_at was set
         saved_data = call_args[0]
         assert "updated_at" in saved_data
+
+
+class TestRepositoryRouting:
+    """Tests for environment-based repository routing."""
+
+    def setUp(self):
+        # Clear cache to ensure fresh settings load from env vars
+        from crypto_signals.config import get_settings
+
+        get_settings.cache_clear()
+
+    def tearDown(self):
+        # Reset cache after tests
+        from crypto_signals.config import get_settings
+
+        get_settings.cache_clear()
+
+    @patch("crypto_signals.repository.firestore.firestore.Client")
+    def test_routing_dev_environment(self, mock_client):
+        """Verify repositories route to 'test_' collections in DEV environment."""
+        with patch.dict(
+            "os.environ", {"ENVIRONMENT": "DEV", "GOOGLE_CLOUD_PROJECT": "test-project"}
+        ):
+            # Ensure settings re-read environment
+            from crypto_signals.config import get_settings
+
+            get_settings.cache_clear()
+
+            signal_repo = SignalRepository()
+            position_repo = PositionRepository()
+            rejected_repo = RejectedSignalRepository()
+
+            assert signal_repo.collection_name == "test_signals"
+            assert position_repo.collection_name == "test_positions"
+            assert rejected_repo.collection_name == "test_rejected_signals"
+
+    @patch("crypto_signals.repository.firestore.firestore.Client")
+    def test_routing_prod_environment(self, mock_client):
+        """Verify repositories route to 'live_' collections in PROD environment."""
+        with patch.dict(
+            "os.environ", {"ENVIRONMENT": "PROD", "GOOGLE_CLOUD_PROJECT": "test-project"}
+        ):
+            # Ensure settings re-read environment
+            from crypto_signals.config import get_settings
+
+            get_settings.cache_clear()
+
+            signal_repo = SignalRepository()
+            position_repo = PositionRepository()
+            rejected_repo = RejectedSignalRepository()
+
+            assert signal_repo.collection_name == "live_signals"
+            assert position_repo.collection_name == "live_positions"
+            assert rejected_repo.collection_name == "rejected_signals"
