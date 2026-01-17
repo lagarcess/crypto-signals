@@ -12,7 +12,7 @@ Key Capabilities:
     - get_order_details(): Retrieve order for analytics enrichment
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from alpaca.trading.client import TradingClient
@@ -175,6 +175,8 @@ class ExecutionEngine:
                 target_entry_price=signal.entry_price,
                 tp_order_id=None,
                 sl_order_id=None,
+                delete_at=datetime.now(timezone.utc)
+                + timedelta(days=self.settings.TTL_DAYS_POSITION),
             )
 
             return position

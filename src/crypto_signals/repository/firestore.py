@@ -3,6 +3,10 @@
 Dev Note: Enable GCP native TTL policy with:
   gcloud firestore fields ttls update delete_at --collection-group=live_signals --enable-ttl
   gcloud firestore fields ttls update delete_at --collection-group=rejected_signals --enable-ttl
+  gcloud firestore fields ttls update delete_at --collection-group=live_positions --enable-ttl
+  gcloud firestore fields ttls update delete_at --collection-group=test_signals --enable-ttl
+  gcloud firestore fields ttls update delete_at --collection-group=test_rejected_signals --enable-ttl
+  gcloud firestore fields ttls update delete_at --collection-group=test_positions --enable-ttl
 """
 
 from datetime import datetime, timedelta, timezone
@@ -196,7 +200,7 @@ class SignalRepository:
             logger.error(f"Atomic update failed for {signal_id}: {e}")
             return False
 
-    def cleanup_expired_signals(self) -> int:
+    def cleanup_expired(self) -> int:
         """Delete signals past their TTL. Returns count deleted.
 
         Uses delete_at field for native GCP TTL support. Queries for signals where
@@ -234,7 +238,7 @@ class SignalRepository:
         logger.info(f"Cleanup complete: Deleted {count} expired signals")
         return count
 
-    def flush_all_signals(self) -> int:
+    def flush_all(self) -> int:
         """Delete ALL signals in the collection. Use with caution!
 
         Returns:
@@ -394,6 +398,33 @@ class RejectedSignalRepository:
 
         return count
 
+    def flush_all(self) -> int:
+        """Delete ALL rejected signals in the collection. Use with caution!
+
+        Returns:
+            int: Number of documents deleted.
+        """
+        logger.warning(
+            f"FLUSH ALL: Deleting all documents from {self.collection_name} collection"
+        )
+
+        batch = self.db.batch()
+        count = 0
+
+        for doc in self.db.collection(self.collection_name).stream():
+            batch.delete(doc.reference)
+            count += 1
+
+            if count >= 400:
+                batch.commit()
+                batch = self.db.batch()
+
+        if count > 0 and count % 400 != 0:
+            batch.commit()
+
+        logger.warning(f"FLUSH ALL complete: Deleted {count} total rejected signals")
+        return count
+
 
 class PositionRepository:
     """Repository for storing positions in Firestore."""
@@ -478,3 +509,61 @@ class PositionRepository:
         position_data = position.model_dump(mode="json")
         position_data["updated_at"] = datetime.now(timezone.utc)
         doc_ref.set(position_data, merge=True)
+
+    def cleanup_expired(self) -> int:
+        """Delete positions past their TTL. Returns count deleted.
+
+        Uses delete_at field for native GCP TTL support.
+        """
+        cutoff_date = datetime.now(timezone.utc)
+        logger.info(f"Cleaning up positions with delete_at before {cutoff_date}")
+
+        query = self.db.collection(self.collection_name).where(
+            filter=FieldFilter("delete_at", "<", cutoff_date)
+        )
+
+        batch = self.db.batch()
+        count = 0
+
+        for doc in query.stream():
+            batch.delete(doc.reference)
+            count += 1
+
+            if count >= 400:
+                batch.commit()
+                batch = self.db.batch()
+
+        if count > 0 and count % 400 != 0:
+            batch.commit()
+
+        if count > 0:
+            logger.info(f"Cleaned up {count} expired positions")
+
+        return count
+
+    def flush_all(self) -> int:
+        """Delete ALL positions in the collection. Use with caution!
+
+        Returns:
+            int: Number of documents deleted.
+        """
+        logger.warning(
+            f"FLUSH ALL: Deleting all documents from {self.collection_name} collection"
+        )
+
+        batch = self.db.batch()
+        count = 0
+
+        for doc in self.db.collection(self.collection_name).stream():
+            batch.delete(doc.reference)
+            count += 1
+
+            if count >= 400:
+                batch.commit()
+                batch = self.db.batch()
+
+        if count > 0 and count % 400 != 0:
+            batch.commit()
+
+        logger.warning(f"FLUSH ALL complete: Deleted {count} total positions")
+        return count

@@ -487,11 +487,27 @@ gcloud run jobs update crypto-signals-job \
 | Variable | Value | Purpose |
 |----------|-------|---------|
 | `GOOGLE_CLOUD_PROJECT` | `your-project-id` | **REQUIRED** - Project ID for GCP services |
-| `TEST_MODE` | `false` | Enables real persistence/operations |
+| `ENVIRONMENT` | `PROD` or `DEV` | **NEW** - Controls DB routing and Execution Gating (Default: `DEV`) |
+| `TEST_MODE` | `false` | Enables real Discord notifications (should be `false` for production) |
 | `ALPACA_PAPER_TRADING` | `true` | Uses Alpaca paper trading API |
-| `ENABLE_EXECUTION` | `true` | Enables bracket order execution |
+| `ENABLE_EXECUTION` | `true` | Enables order submission (Gated by `ENVIRONMENT=PROD`) |
 | `ENABLE_EQUITIES` | `false` | Disables stock trading (crypto only) |
 | `ENABLE_GCP_LOGGING` | `true` | Enables structured JSON logging |
+
+### 4.3. Environment Isolation & Execution Gating
+
+The application implements strict isolation between Production and Development/Test environments to prevent accidental trades and data contamination.
+
+**1. Database Routing:**
+Based on the `ENVIRONMENT` variable, repositories route traffic to different collections:
+- **PROD**: `live_signals`, `live_positions`, `rejected_signals`
+- **DEV**: `test_signals`, `test_positions`, `test_rejected_signals`
+
+**2. Execution Gating (Safety Mechanism):**
+The `ExecutionEngine` includes a hard gate:
+- If `ENVIRONMENT=PROD` AND `ENABLE_EXECUTION=true`: Trades are submitted to Alpaca.
+- If `ENVIRONMENT=DEV`: All trading operations are skipped and logged as `[THEORETICAL MODE]`.
+- This ensures that local development or experimental Cloud Run jobs NEVER interact with your trading capital.
 
 ⚠️ **Critical:** `GOOGLE_CLOUD_PROJECT` is required. Without it, you'll get:
 ```

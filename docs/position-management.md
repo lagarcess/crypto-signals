@@ -65,6 +65,13 @@ ALPACA_PAPER_TRADING=true  # Safety guard
 RISK_PER_TRADE=100.0  # Fixed dollar risk per trade
 ```
 
+## Data Life Cycle (Self-Cleaning)
+
+To maintain database hygiene and manage storage costs, positions have a fixed **90-day physical lifecycle**:
+- **Mechanism**: The `delete_at` field is automatically set to `now + 90 days` upon position creation.
+- **TTL Enforcement**: Google Cloud Firestore automatically prunes expired positions via the `delete_at` TTL policy.
+- **Manual Cleanup**: The `cleanup_firestore.py` script can be used to manually trigger pruning across all operational collections.
+
 ## Related Files
 
 - [`execution.py`](../src/crypto_signals/engine/execution.py) - `scale_out_position()`, `move_stop_to_breakeven()`

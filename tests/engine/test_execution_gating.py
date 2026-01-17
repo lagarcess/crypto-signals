@@ -18,6 +18,7 @@ class TestExecutionGating(unittest.TestCase):
         self.mock_settings.is_paper_trading = True
         self.mock_settings.ENABLE_EXECUTION = True
         self.mock_settings.RISK_PER_TRADE = 100.0
+        self.mock_settings.TTL_DAYS_POSITION = 90
 
         # Mock Trading Client
         self.mock_client = MagicMock()

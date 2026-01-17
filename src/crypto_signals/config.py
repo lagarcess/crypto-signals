@@ -121,6 +121,7 @@ class Settings(BaseSettings):
         default=30, description="TTL for Production signals (days)."
     )
     TTL_DAYS_DEV: int = Field(default=7, description="TTL for Dev signals (days).")
+    TTL_DAYS_POSITION: int = Field(default=90, description="TTL for Positions (days).")
 
     # Portfolio Configuration (Optional - defaults to hardcoded lists)
     CRYPTO_SYMBOLS: List[str] | str = Field(

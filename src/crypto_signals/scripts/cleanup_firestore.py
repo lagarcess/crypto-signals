@@ -16,7 +16,11 @@ import sys
 
 from loguru import logger
 
-from crypto_signals.repository.firestore import RejectedSignalRepository, SignalRepository
+from crypto_signals.repository.firestore import (
+    PositionRepository,
+    RejectedSignalRepository,
+    SignalRepository,
+)
 from crypto_signals.secrets_manager import init_secrets
 
 # Configure logging (optional if main configures it, but this is a script)
@@ -69,6 +73,7 @@ def main():
         # Initialize repositories
         signal_repo = SignalRepository()
         rejected_repo = RejectedSignalRepository()
+        position_repo = PositionRepository()
 
         if args.flush_all:
             logger.warning(
@@ -83,19 +88,25 @@ def main():
                     logger.info("Flush cancelled by user.")
                     sys.exit(0)
 
-            deleted_signals = signal_repo.flush_all_signals()
-            # Note: We currently only flush 'live_signals' (or 'test_signals') in flush-all mode.
-            # Rejected signals are less critical to manually flush, but can be added here if needed.
-            logger.info(f"Flush complete. Deleted {deleted_signals} signals.")
+            deleted_signals = signal_repo.flush_all()
+            deleted_rejected = rejected_repo.flush_all()
+            deleted_positions = position_repo.flush_all()
+
+            logger.info(
+                f"Flush complete. Deleted {deleted_signals} signals, "
+                f"{deleted_rejected} rejected signals, {deleted_positions} positions."
+            )
         else:
             # Default cleanup behavior
             logger.info(
                 f"Starting Firestore cleanup job (Env: {signal_repo.collection_name})..."
             )
-            deleted_signals = signal_repo.cleanup_expired_signals()
+            deleted_signals = signal_repo.cleanup_expired()
             deleted_rejected = rejected_repo.cleanup_expired()
+            deleted_positions = position_repo.cleanup_expired()
             logger.info(
-                f"Cleanup job complete: {deleted_signals} signals, {deleted_rejected} rejected signals."
+                f"Cleanup job complete: {deleted_signals} signals, "
+                f"{deleted_rejected} rejected signals, {deleted_positions} positions."
             )
 
         sys.exit(0)
