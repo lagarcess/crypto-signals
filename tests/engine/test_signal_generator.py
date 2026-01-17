@@ -1,6 +1,6 @@
 """Unit tests for the SignalGenerator module."""
 
-from datetime import date
+from datetime import date, timedelta
 from unittest.mock import MagicMock
 
 import pandas as pd
@@ -1013,3 +1013,311 @@ def test_generate_signal_harmonic_macro_classification(
     assert (
         signal.pattern_classification == "MACRO_HARMONIC"
     ), "Classification should be MACRO_HARMONIC for macro harmonic patterns"
+
+
+# =============================================================================
+# SIGNAL LIFECYCLE HARDENING TESTS (Issue 99)
+# Tests for 5-minute cooldown gate, dynamic TTL, and Elliott Wave ATR stop loss
+# =============================================================================
+
+
+def test_check_exits_cooldown_gate_skips_newly_created_signal(
+    signal_generator, mock_market_provider, mock_analyzer_cls
+):
+    """Test that signals created within 5 minutes are skipped by check_exits (Issue 99)."""
+    from datetime import datetime, timezone
+
+    # Setup Active Signal created 2 minutes ago (120 seconds < 300s cooldown)
+    now_utc = datetime.now(timezone.utc)
+    signal = Signal(
+        signal_id="sig_new",
+        ds=date(2023, 1, 1),
+        strategy_id="strat_1",
+        symbol="BTC/USD",
+        asset_class=AssetClass.CRYPTO,
+        entry_price=100.0,
+        pattern_name="TEST",
+        suggested_stop=90.0,
+        status=SignalStatus.WAITING,
+        take_profit_1=110.0,
+        invalidation_price=90.0,
+        created_at=now_utc - timedelta(seconds=120),  # 2 minutes ago
+    )
+
+    # Setup Market Data that would normally trigger invalidation
+    df = pd.DataFrame(
+        {
+            "open": [100.0],
+            "high": [102.0],
+            "low": [85.0],
+            "close": [88.0],  # Below invalidation_price (90.0)
+            "volume": [1000.0],
+            "bearish_engulfing": [False],
+            "RSI_14": [50.0],
+            "ADX_14": [20.0],
+        },
+        index=[pd.Timestamp("2023-01-02")],
+    )
+    mock_market_provider.get_daily_bars.return_value = df
+
+    mock_analyzer_instance = MagicMock()
+    mock_analyzer_cls.return_value = mock_analyzer_instance
+    mock_analyzer_instance.check_patterns.return_value = df
+
+    # Execution
+    exited = signal_generator.check_exits([signal], "BTC/USD", AssetClass.CRYPTO)
+
+    # Verification: Signal should be skipped due to cooldown gate
+    assert len(exited) == 0, "Signal should be skipped during cooldown period"
+
+
+def test_check_exits_cooldown_gate_processes_after_cooldown(
+    signal_generator, mock_market_provider, mock_analyzer_cls
+):
+    """Test that signals older than 5 minutes are processed normally (Issue 99)."""
+    from datetime import datetime, timezone
+
+    # Setup Active Signal created 6 minutes ago (360 seconds > 300s cooldown)
+    now_utc = datetime.now(timezone.utc)
+    signal = Signal(
+        signal_id="sig_old",
+        ds=date(2023, 1, 1),
+        strategy_id="strat_1",
+        symbol="BTC/USD",
+        asset_class=AssetClass.CRYPTO,
+        entry_price=100.0,
+        pattern_name="TEST",
+        suggested_stop=90.0,
+        status=SignalStatus.WAITING,
+        take_profit_1=110.0,
+        invalidation_price=90.0,
+        created_at=now_utc - timedelta(seconds=360),  # 6 minutes ago
+    )
+
+    # Setup Market Data that triggers invalidation
+    df = pd.DataFrame(
+        {
+            "open": [100.0],
+            "high": [102.0],
+            "low": [85.0],
+            "close": [88.0],  # Below invalidation_price (90.0)
+            "volume": [1000.0],
+            "bearish_engulfing": [False],
+            "RSI_14": [50.0],
+            "ADX_14": [20.0],
+        },
+        index=[pd.Timestamp("2023-01-02")],
+    )
+    mock_market_provider.get_daily_bars.return_value = df
+
+    mock_analyzer_instance = MagicMock()
+    mock_analyzer_cls.return_value = mock_analyzer_instance
+    mock_analyzer_instance.check_patterns.return_value = df
+
+    # Execution
+    exited = signal_generator.check_exits([signal], "BTC/USD", AssetClass.CRYPTO)
+
+    # Verification: Signal should be processed and invalidated
+    assert len(exited) == 1, "Signal should be processed after cooldown"
+    assert exited[0].status == SignalStatus.INVALIDATED
+
+
+def test_generate_signal_dynamic_ttl_standard_pattern(
+    signal_generator, mock_market_provider, mock_analyzer_cls
+):
+    """Test that STANDARD patterns get 48h TTL (Issue 99)."""
+    from datetime import datetime, timezone
+
+    # Setup Data
+    today = date(2023, 1, 1)
+    df = pd.DataFrame(
+        {
+            "open": [100.0],
+            "high": [110.0],
+            "low": [90.0],
+            "close": [105.0],
+            "volume": [1000.0],
+        },
+        index=[pd.Timestamp(today)],
+    )
+    mock_market_provider.get_daily_bars.return_value = df
+
+    # Setup Pattern Analysis Result
+    mock_analyzer_instance = MagicMock()
+    mock_analyzer_cls.return_value = mock_analyzer_instance
+
+    # Result DF with bullish_engulfing pattern
+    result_df = df.copy()
+    result_df["bullish_engulfing"] = True
+    result_df["bullish_hammer"] = False
+    mock_analyzer_instance.check_patterns.return_value = result_df
+    mock_analyzer_instance.pivots = []  # No harmonic pattern
+
+    # Execution
+    signal = signal_generator.generate_signals("BTC/USD", AssetClass.CRYPTO)
+
+    # Verification
+    assert signal is not None
+    # STANDARD pattern should get 48h TTL
+    candle_timestamp = pd.Timestamp(today).to_pydatetime().replace(tzinfo=timezone.utc)
+    expected_valid_until = candle_timestamp + timedelta(hours=48)
+    assert signal.valid_until == expected_valid_until
+
+
+def test_generate_signal_dynamic_ttl_macro_pattern(
+    signal_generator, mock_market_provider, mock_analyzer_cls
+):
+    """Test that MACRO patterns get 120h TTL (Issue 99)."""
+    from datetime import datetime, timezone
+
+    from crypto_signals.analysis.structural import Pivot
+
+    # Setup Data
+    today = date(2023, 1, 1)
+    df = pd.DataFrame(
+        {
+            "open": [100.0],
+            "high": [110.0],
+            "low": [90.0],
+            "close": [105.0],
+            "volume": [1000.0],
+        },
+        index=[pd.Timestamp(today)],
+    )
+    mock_market_provider.get_daily_bars.return_value = df
+
+    # Setup Pattern Analysis Result
+    mock_analyzer_instance = MagicMock()
+    mock_analyzer_cls.return_value = mock_analyzer_instance
+
+    # Result DF with NO geometric patterns
+    result_df = df.copy()
+    result_df["bull_flag"] = False
+    result_df["bullish_engulfing"] = False
+    mock_analyzer_instance.check_patterns.return_value = result_df
+
+    # Mock pivots for MACRO harmonic pattern (>90 days)
+    base_date = datetime(2023, 1, 1, tzinfo=timezone.utc)
+    mock_pivots = [
+        Pivot(
+            price=95.0,
+            timestamp=base_date,
+            pivot_type="VALLEY",
+            index=0,
+        ),
+        Pivot(
+            price=105.0,
+            timestamp=base_date + timedelta(days=30),
+            pivot_type="PEAK",
+            index=1,
+        ),
+        Pivot(
+            price=98.0,
+            timestamp=base_date + timedelta(days=60),
+            pivot_type="VALLEY",
+            index=2,
+        ),
+        Pivot(
+            price=108.0,
+            timestamp=base_date + timedelta(days=100),
+            pivot_type="PEAK",
+            index=3,
+        ),
+    ]
+    mock_analyzer_instance.pivots = mock_pivots
+
+    # Execution
+    signal = signal_generator.generate_signals("BTC/USD", AssetClass.CRYPTO)
+
+    # Verification
+    assert signal is not None
+    # MACRO pattern should get 120h TTL
+    candle_timestamp = pd.Timestamp(today).to_pydatetime().replace(tzinfo=timezone.utc)
+    expected_valid_until = candle_timestamp + timedelta(hours=120)
+    assert signal.valid_until == expected_valid_until
+    assert signal.pattern_classification == "MACRO_HARMONIC"
+
+
+# =============================================================================
+# ELLIOTT WAVE ATR-BASED STOP LOSS TESTS (Issue 99)
+# =============================================================================
+
+
+def test_generate_signal_elliott_wave_atr_stop_loss(
+    signal_generator, mock_market_provider, mock_analyzer_cls
+):
+    """Test that Elliott Wave patterns use ATR-based stop loss (Issue 99)."""
+    # Setup Data with ATR
+    today = date(2023, 1, 1)
+    df = pd.DataFrame(
+        {
+            "open": [100.0],
+            "high": [110.0],
+            "low": [90.0],
+            "close": [105.0],
+            "volume": [1000.0],
+            "ATR_14": [5.0],  # ATR = 5.0
+        },
+        index=[pd.Timestamp(today)],
+    )
+    mock_market_provider.get_daily_bars.return_value = df
+
+    # Setup Pattern Analysis Result for Elliott Wave
+    mock_analyzer_instance = MagicMock()
+    mock_analyzer_cls.return_value = mock_analyzer_instance
+
+    result_df = df.copy()
+    result_df["elliott_impulse_wave"] = True
+    result_df["bullish_engulfing"] = False
+    mock_analyzer_instance.check_patterns.return_value = result_df
+    mock_analyzer_instance.pivots = []  # No harmonic pattern
+
+    # Execution
+    signal = signal_generator.generate_signals("BTC/USD", AssetClass.CRYPTO)
+
+    # Verification
+    assert signal is not None
+    assert signal.pattern_name == "ELLIOTT_IMPULSE_WAVE"
+    # Stop should be Low - (0.5 * ATR) = 90.0 - (0.5 * 5.0) = 87.5
+    assert signal.suggested_stop == 87.5
+    assert signal.invalidation_price == 90.0  # Low price
+
+
+def test_generate_signal_elliott_wave_fallback_stop_loss(
+    signal_generator, mock_market_provider, mock_analyzer_cls
+):
+    """Test that Elliott Wave patterns fall back to 1% stop when ATR is 0 (Issue 99)."""
+    # Setup Data with ATR = 0
+    today = date(2023, 1, 1)
+    df = pd.DataFrame(
+        {
+            "open": [100.0],
+            "high": [110.0],
+            "low": [90.0],
+            "close": [105.0],
+            "volume": [1000.0],
+            "ATR_14": [0.0],  # ATR = 0.0 (edge case)
+        },
+        index=[pd.Timestamp(today)],
+    )
+    mock_market_provider.get_daily_bars.return_value = df
+
+    # Setup Pattern Analysis Result for Elliott Wave
+    mock_analyzer_instance = MagicMock()
+    mock_analyzer_cls.return_value = mock_analyzer_instance
+
+    result_df = df.copy()
+    result_df["elliott_impulse_wave"] = True
+    result_df["bullish_engulfing"] = False
+    mock_analyzer_instance.check_patterns.return_value = result_df
+    mock_analyzer_instance.pivots = []  # No harmonic pattern
+
+    # Execution
+    signal = signal_generator.generate_signals("BTC/USD", AssetClass.CRYPTO)
+
+    # Verification
+    assert signal is not None
+    assert signal.pattern_name == "ELLIOTT_IMPULSE_WAVE"
+    # Stop should fall back to Low * 0.99 = 90.0 * 0.99 = 89.1
+    assert signal.suggested_stop == 89.1
+    assert signal.invalidation_price == 90.0  # Low price

@@ -147,6 +147,8 @@ class SignalGenerator:
             geometric_pattern_name = "BULLISH_HARAMI"  # 53%
         elif latest.get("tweezer_bottoms"):
             geometric_pattern_name = "TWEEZER_BOTTOMS"  # 52%
+        elif latest.get("elliott_impulse_wave"):
+            geometric_pattern_name = "ELLIOTT_IMPULSE_WAVE"  # ATR-based stop (Issue 99)
 
         # Merging/Priority Logic: Harmonic takes precedence if both exist
         if harmonic_pattern and geometric_pattern_name:
