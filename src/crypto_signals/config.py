@@ -159,6 +159,11 @@ class Settings(BaseSettings):
         ),
     )
 
+    CLEANUP_ON_FAILURE: bool = Field(
+        default=True,
+        description="Auto-delete documents from Firestore if they fail Pydantic validation",
+    )
+
     @field_validator("CRYPTO_SYMBOLS", "EQUITY_SYMBOLS", mode="before")
     @classmethod
     def parse_list_from_str(cls, v: Any) -> Any:

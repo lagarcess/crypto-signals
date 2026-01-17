@@ -377,6 +377,16 @@ class SignalGenerator:
             invalidation_price = low_price
             suggested_stop = invalidation_price * 0.99
 
+        elif "ELLIOTT" in pattern_name:
+            # Volatility Buffer (Issue 99): Use ATR-based stop for Elliott Wave
+            # Fixed 1% stop is too tight for crypto volatility.
+            # Stop = Low - (0.5 * ATR)
+            if atr > 0:
+                suggested_stop = low_price - (0.5 * atr)
+            else:
+                suggested_stop = low_price * 0.99
+            invalidation_price = low_price
+
         # Take Profits (ATR Based) - Only set if not already defined by pattern-specific logic
         entry_ref = close_price
 
@@ -489,17 +499,26 @@ class SignalGenerator:
         # ============================================================
         # TIMESTAMP CALCULATIONS (Centralized for consistency)
         # ============================================================
-        # valid_until: Logical expiration anchored to candle timestamp + 24h
-        # This ensures accuracy for backtesting even if bot runs late
+        # valid_until: Logical expiration anchored to candle timestamp
+        # Issue 99 Fix: Dynamic TTL based on pattern classification
+        # - MACRO patterns (>90 days): 120h (5 days) to survive multiple cron cycles
+        # - STANDARD patterns: 48h (2 days) to guarantee at least 2 evaluations
         candle_timestamp = latest.name
         if hasattr(candle_timestamp, "to_pydatetime"):
             candle_timestamp = candle_timestamp.to_pydatetime()
         if candle_timestamp.tzinfo is None:
             candle_timestamp = candle_timestamp.replace(tzinfo=timezone.utc)
-        valid_until = candle_timestamp + timedelta(hours=24)
+
+        # Dynamic TTL: MACRO patterns get 5 days, STANDARD gets 2 days
+        is_macro = pattern_classification and "MACRO" in pattern_classification
+        ttl_hours = 120 if is_macro else 48
+        valid_until = candle_timestamp + timedelta(hours=ttl_hours)
 
         # delete_at: Physical TTL for GCP Firestore cleanup (30 days from creation)
         delete_at = datetime.now(timezone.utc) + timedelta(days=30)
+
+        # created_at: For skip-on-creation cooldown in check_exits (Issue 99 Fix)
+        created_at = datetime.now(timezone.utc)
 
         return Signal(
             signal_id=sig_id,
@@ -523,6 +542,7 @@ class SignalGenerator:
             pattern_classification=pattern_classification,
             structural_anchors=structural_anchors,
             harmonic_metadata=harmonic_metadata,
+            created_at=created_at,
         )
 
     def _create_rejected_signal(
@@ -676,6 +696,23 @@ class SignalGenerator:
             trail_updated = False
             original_status = signal.status
 
+            # ============================================================
+            # SKIP-ON-CREATION GATE (Issue 99 Fix)
+            # Prevent same-run evaluation of newly created signals.
+            # Signals created within the last 5 minutes are skipped to avoid
+            # "Immediate Invalidation" where a signal is invalidated using the
+            # same candle data that triggered its creation.
+            # ============================================================
+            now_utc = datetime.now(timezone.utc)
+            if signal.created_at:
+                signal_age_seconds = (now_utc - signal.created_at).total_seconds()
+                if signal_age_seconds < 300:  # 5-minute cooldown
+                    logger.debug(
+                        f"Skip newly created signal {signal.signal_id} "
+                        f"(age={signal_age_seconds:.0f}s < 300s cooldown)"
+                    )
+                    continue
+
             # Determine side once for this signal
             is_long = signal.side != OrderSide.SELL
 
@@ -824,6 +861,29 @@ class SignalGenerator:
                 f"End of loop: exit_triggered={exit_triggered}, trail_updated={trail_updated}"
             )
             if exit_triggered:
+                # Log signal age at exit for Issue 99 debugging
+                if signal.created_at:
+                    system_age_hours = (
+                        now_utc - signal.created_at
+                    ).total_seconds() / 3600
+
+                    # Calculate Market Age (time since candle date) for pattern debugging
+                    market_age_hours = 0.0
+                    try:
+                        # ds is date, convert to datetime at midnight UTC
+                        ds_dt = datetime.combine(signal.ds, datetime.min.time()).replace(
+                            tzinfo=timezone.utc
+                        )
+                        market_age_hours = (now_utc - ds_dt).total_seconds() / 3600
+                    except Exception:
+                        pass  # robust fallback
+
+                    logger.info(
+                        f"Exit triggered for {signal.signal_id}: "
+                        f"system_age={system_age_hours:.1f}h, market_age={market_age_hours:.1f}h, "
+                        f"reason={signal.exit_reason}, pattern={signal.pattern_name}"
+                    )
+
                 # Detect Status Jump (e.g., WAITING -> TP2_HIT)
                 if (
                     original_status == SignalStatus.WAITING

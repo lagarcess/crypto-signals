@@ -271,6 +271,7 @@ def test_check_exits_invalidation(
     signal.take_profit_2 = None
     signal.invalidation_price = 95.0
     signal.status = SignalStatus.WAITING
+    signal.created_at = None  # Skip cooldown gate in check_exits
 
     # Setup Market Data (Close below invalidation)
     df = pd.DataFrame(
@@ -308,6 +309,7 @@ def test_check_exits_none(signal_generator, mock_market_provider, mock_analyzer_
     signal.take_profit_2 = None
     signal.invalidation_price = 90.0
     signal.status = SignalStatus.WAITING
+    signal.created_at = None  # Skip cooldown gate in check_exits
 
     # Setup Market Data (Normal day)
     df = pd.DataFrame(

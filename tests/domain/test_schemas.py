@@ -7,7 +7,7 @@ Verifies the data contract defined in src/schemas.py:
 - Position model completeness
 """
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 from crypto_signals.domain.schemas import (
@@ -339,6 +339,26 @@ class TestSignalModel:
 
         assert "discord_thread_id" in serialized
         assert serialized["discord_thread_id"] == "9876543210987654321"
+
+    def test_signal_legacy_fallback_created_at(self):
+        """Signal must populate created_at from valid_until if missing (Issue 99)."""
+        valid_until = datetime(2024, 1, 16, 12, 0, tzinfo=timezone.utc)
+        signal = Signal(
+            signal_id="legacy_signal",
+            ds=date(2024, 1, 15),
+            strategy_id="momentum",
+            symbol="BTC/USD",
+            asset_class=AssetClass.CRYPTO,
+            entry_price=50000.0,
+            pattern_name="bullish_engulfing",
+            suggested_stop=48000.00,
+            valid_until=valid_until,
+            created_at=None,  # Missing (simulating legacy data)
+        )
+
+        # Fallback: created_at = valid_until - 24h
+        expected_created_at = valid_until - timedelta(hours=24)
+        assert signal.created_at == expected_created_at
 
 
 # =============================================================================

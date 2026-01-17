@@ -15,11 +15,11 @@ Architecture Overview (9 Tables):
 """
 
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 # =============================================================================
 # CONSTANTS
@@ -285,6 +285,24 @@ class Signal(BaseModel):
         default=None,
         description="Harmonic pattern ratios for Fibonacci-based patterns: {B_ratio, D_ratio, wave3_to_wave1_ratio, etc.}",
     )
+    # === Signal Age Tracking (Issue 99 Fix) ===
+    created_at: Optional[datetime] = Field(
+        default=None,
+        description="UTC timestamp when signal was created. Used for skip-on-creation cooldown in check_exits.",
+    )
+
+    @model_validator(mode="after")
+    def set_fallback_created_at(self):
+        """
+        Fallback for legacy signals missing created_at.
+
+        Legacy signals (pre-fix) had valid_until set to created_at + 24h.
+        We approximate created_at = valid_until - 24h to ensure the
+        skip-on-creation gate works safely for legacy data.
+        """
+        if self.created_at is None and self.valid_until:
+            self.created_at = self.valid_until - timedelta(hours=24)
+        return self
 
 
 class Position(BaseModel):
