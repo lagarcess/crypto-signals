@@ -89,6 +89,14 @@ class ExecutionEngine:
             )
             return None
 
+        # ENVIRONMENT GATE: Block execution in non-PROD environments
+        if self.settings.ENVIRONMENT != "PROD":
+            logger.info(
+                f"[THEORETICAL MODE] Execution skipped for {signal.symbol} "
+                f"(Environment: {self.settings.ENVIRONMENT})"
+            )
+            return None
+
         # Safety check: Execution must be explicitly enabled
         if not getattr(self.settings, "ENABLE_EXECUTION", False):
             logger.debug(
@@ -305,6 +313,10 @@ class ExecutionEngine:
         Returns:
             Updated Position object with latest broker state.
         """
+        # ENVIRONMENT GATE: Skip sync in non-PROD environments
+        if self.settings.ENVIRONMENT != "PROD":
+            return position
+
         if not position.alpaca_order_id:
             logger.warning(
                 f"Cannot sync position {position.position_id}: no alpaca_order_id"
@@ -521,6 +533,13 @@ class ExecutionEngine:
         Returns:
             True if replacement succeeded, False otherwise.
         """
+        # ENVIRONMENT GATE: Skip modification in non-PROD environments
+        if self.settings.ENVIRONMENT != "PROD":
+            logger.info(
+                f"[THEORETICAL MODE] Stop modification skipped for {position.position_id}"
+            )
+            return True  # Return True to simulate success in logic flow
+
         if not position.sl_order_id:
             logger.warning(
                 f"Cannot modify stop for {position.position_id}: no sl_order_id"
@@ -593,6 +612,13 @@ class ExecutionEngine:
         Returns:
             True if scale-out order submitted successfully
         """
+        # ENVIRONMENT GATE: Skip scale-out in non-PROD environments
+        if self.settings.ENVIRONMENT != "PROD":
+            logger.info(
+                f"[THEORETICAL MODE] Scale-out skipped for {position.position_id}"
+            )
+            return True  # Return True to simulate success
+
         if not position.qty or position.qty <= 0:
             logger.warning(f"Cannot scale out {position.position_id}: no quantity")
             return False
@@ -784,6 +810,13 @@ class ExecutionEngine:
             Note: Cancellation failures are logged but don't affect return value
             since orders may already be filled/canceled.
         """
+        # ENVIRONMENT GATE: Skip emergency close in non-PROD environments
+        if self.settings.ENVIRONMENT != "PROD":
+            logger.info(
+                f"[THEORETICAL MODE] Emergency close skipped for {position.position_id}"
+            )
+            return True
+
         # 1. Cancel TP order (best effort - may already be filled/canceled)
         if position.tp_order_id:
             try:

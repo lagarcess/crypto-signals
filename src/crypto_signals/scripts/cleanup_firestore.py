@@ -84,11 +84,8 @@ def main():
                     sys.exit(0)
 
             deleted_signals = signal_repo.flush_all_signals()
-            # Also flush rejected signals in flush-all mode if you want?
-            # For now let's just do signal_repo as it's the main concern.
-            # Actually, usually flush-all should be collection specific or all.
-            # Let's keep it to SignalRepository for now to avoid side effects if not intended.
-            # Wait, if I'm "flushing all", I probably mean the environment's signals.
+            # Note: We currently only flush 'live_signals' (or 'test_signals') in flush-all mode.
+            # Rejected signals are less critical to manually flush, but can be added here if needed.
             logger.info(f"Flush complete. Deleted {deleted_signals} signals.")
         else:
             # Default cleanup behavior
