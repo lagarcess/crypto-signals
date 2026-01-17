@@ -863,7 +863,8 @@ class SignalGenerator:
                 # 2. Dynamic Invalidation (Color Flip / Indicators)
                 # Note: bearish_engulfing, rsi_overbought, adx_peaking are Long-specific
                 # For Short positions, these would indicate favorable conditions, not invalidation
-                # NOTE: Bullish equivalents for Short invalidation not yet implemented.\n                # Short signals use structural invalidation only, not pattern-based exits\n                # (e.g., bullish_engulfing). This is a known Phase 8 enhancement.
+                # NOTE: Bullish equivalents for Short invalidation not yet implemented.
+                # Short signals use structural invalidation only for now.
                 elif is_long and (is_bearish_engulfing or rsi_overbought or adx_peaking):
                     signal.status = SignalStatus.INVALIDATED
                     signal.exit_reason = ExitReason.COLOR_FLIP

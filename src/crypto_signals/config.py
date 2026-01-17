@@ -254,8 +254,8 @@ def get_settings() -> Settings:
     return settings
 
 
-# Convenience function for quick access
-settings = get_settings
+# Convenience singleton for quick access
+settings = get_settings()
 
 
 def get_trading_client() -> TradingClient:

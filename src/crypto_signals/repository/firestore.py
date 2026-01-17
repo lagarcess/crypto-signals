@@ -88,12 +88,10 @@ class SignalRepository:
         else:
             self.collection_name = "test_signals"
 
-    DEFAULT_TTL_DAYS = 30
-
     def save(self, signal: Signal) -> None:
         """Save a signal to Firestore.
 
-        Note: delete_at is already populated by SignalGenerator (30-day TTL).
+        Note: delete_at is populated by SignalGenerator (driven by config.py).
         """
         signal_data = signal.model_dump(mode="json")
         doc_ref = self.db.collection(self.collection_name).document(signal.signal_id)
@@ -142,11 +140,6 @@ class SignalRepository:
         doc_ref = self.db.collection(self.collection_name).document(signal.signal_id)
         signal_data = signal.model_dump(mode="json")
         doc_ref.set(signal_data, merge=True)
-
-    def update_status(self, signal_id: str, status: SignalStatus) -> None:
-        """Update only the status of a signal (Legacy method)."""
-        doc_ref = self.db.collection(self.collection_name).document(signal_id)
-        doc_ref.update({"status": status.value})
 
     def get_by_id(self, signal_id: str) -> Signal | None:
         """
@@ -209,8 +202,8 @@ class SignalRepository:
         Uses delete_at field for native GCP TTL support. Queries for signals where
         delete_at < now (signals past their physical TTL are cleaned up).
 
-        Note: The delete_at field is set to 30 days for live signals and 7 days
-        for rejected signals when they are created.
+        Note: The delete_at field is set by SignalGenerator based on environment
+        TTLs defined in config.py (settings.TTL_DAYS_PROD/DEV).
         """
         cutoff_date = datetime.now(timezone.utc)
 
@@ -272,45 +265,6 @@ class SignalRepository:
         logger.warning(f"FLUSH ALL complete: Deleted {count} total signals")
         return count
 
-    def purge_poison_signals(self) -> int:
-        """
-        Scan the entire collection and delete documents that fail validation.
-
-        This is a diagnostic cleanup tool. Use with caution.
-
-        Returns:
-            int: Number of documents purged.
-        """
-        logger.info(f"Starting purge of poison signals in '{self.collection_name}'...")
-
-        count = 0
-        batch = self.db.batch()
-
-        # Scan ALL documents (expensive operation, use sparingly)
-        for doc in self.db.collection(self.collection_name).stream():
-            try:
-                # Attempt to validate
-                Signal(**doc.to_dict())
-            except ValidationError:
-                # Found a poison document
-                batch.delete(doc.reference)
-                count += 1
-
-                if count >= 400:
-                    batch.commit()
-                    batch = self.db.batch()
-                    logger.info(f"Purged {count} poison signals (batch)")
-
-        if count > 0 and count % 400 != 0:
-            batch.commit()
-
-        if count > 0:
-            logger.info(f"Purge complete: Deleted {count} poison signals")
-        else:
-            logger.info("No poison signals found during purge.")
-
-        return count
-
 
 class RejectedSignalRepository:
     """Repository for storing rejected (shadow) signals in Firestore.
@@ -320,13 +274,7 @@ class RejectedSignalRepository:
     - Backtesting analysis (Phase 8)
     - Filter optimization
     - Market regime analysis
-
-    Uses a shorter 7-day TTL since shadow signals are primarily for debugging
-    and analysis, not operational trading.
     """
-
-    # Shadow signals expire after 7 days (shorter than live signals)
-    DEFAULT_TTL_DAYS = 7
 
     def __init__(self):
         """Initialize Firestore client."""
@@ -340,7 +288,7 @@ class RejectedSignalRepository:
             self.collection_name = "test_rejected_signals"
 
     def save(self, signal: Signal) -> None:
-        """Save a rejected signal to Firestore with 7-day TTL.
+        """Save a rejected signal to Firestore.
 
         Args:
             signal: Signal with status=REJECTED_BY_FILTER and rejection_reason populated

@@ -55,7 +55,7 @@ class BigQueryPipelineBase(ABC):
 
         # Initialize BigQuery Client
         # We use the project from settings to ensure we target the right GCP env
-        self.bq_client = bigquery.Client(project=settings().GOOGLE_CLOUD_PROJECT)
+        self.bq_client = bigquery.Client(project=settings.GOOGLE_CLOUD_PROJECT)
 
     @abstractmethod
     def extract(self) -> List[Any]:
