@@ -20,7 +20,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 # Initialize Typer app
-app = typer.Typer(help="Inspect and optionaly purge invalid Firestore signals")
+app = typer.Typer(help="Inspect and optionally purge invalid Firestore signals")
 
 # Required fields for Signal model validation
 REQUIRED_FIELDS = {
@@ -153,7 +153,8 @@ def main(
                         if count % 400 == 0:
                             batch.commit()
                             batch = db.batch()
-                    batch.commit()
+                    if count % 400 != 0:
+                        batch.commit()
 
                 console.print(
                     Panel(
