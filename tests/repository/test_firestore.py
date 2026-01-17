@@ -20,6 +20,9 @@ def mock_settings():
     """Mock application settings."""
     with patch("crypto_signals.repository.firestore.get_settings") as mock:
         mock.return_value.GOOGLE_CLOUD_PROJECT = "test-project"
+        mock.return_value.ENVIRONMENT = (
+            "PROD"  # Ensure legacy tests assert against live collections
+        )
         yield mock
 
 
