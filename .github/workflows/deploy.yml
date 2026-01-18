@@ -163,6 +163,7 @@ jobs:
           TEST_MODE: "$(clean_var "${{ vars.TEST_MODE }}")"
           ALPACA_PAPER_TRADING: "$(clean_var "${{ vars.ALPACA_PAPER_TRADING }}")"
           ENABLE_EXECUTION: "$(clean_var "${{ vars.ENABLE_EXECUTION }}")"
+          ENVIRONMENT: "$(clean_var "${{ vars.ENVIRONMENT }}")"
           ENABLE_EQUITIES: "$(clean_var "${{ vars.ENABLE_EQUITIES }}")"
           ENABLE_GCP_LOGGING: "$(clean_var "${{ vars.ENABLE_GCP_LOGGING }}")"
           DISABLE_SECRET_MANAGER: "$(clean_var "${{ vars.DISABLE_SECRET_MANAGER }}")"
