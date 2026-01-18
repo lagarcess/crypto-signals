@@ -304,7 +304,7 @@ class DiscordClient:
         thread_id: Optional[str] = None,
         thread_name: Optional[str] = None,
         asset_class: AssetClass | None = None,
-    ) -> bool:
+    ) -> bool | str:
         """
         Send a generic text message to Discord, optionally as a reply in a thread.
 
@@ -317,7 +317,9 @@ class DiscordClient:
             asset_class: Optional asset class for routing. If None, routes to test webhook.
 
         Returns:
-            bool: True if the message was sent successfully, False otherwise.
+            True if successful, False on error, or "thread_stale" if thread was
+            deleted/archived (Discord error 10003). Callers should clear discord_thread_id
+            when "thread_stale" is returned to enable self-healing on next run.
         """
         webhook_url = self._get_webhook_url(asset_class)
         if not webhook_url:
@@ -352,8 +354,22 @@ class DiscordClient:
                 logger.info("Sent generic message to Discord.")
             return True
         except requests.RequestException as e:
-            if getattr(e, "response", None) is not None:
-                logger.error(f"Discord Response: {e.response.text}")
+            # Check for stale/deleted thread (Discord error 10003 = Unknown Channel)
+            error_response = getattr(e, "response", None)
+            if error_response is not None:
+                logger.error(f"Discord Response: {error_response.text}")
+                # Detect "Unknown Channel" error (thread deleted/archived)
+                try:
+                    error_json = error_response.json()
+                    if error_json.get("code") == 10003 and thread_id:
+                        logger.warning(
+                            f"Thread {thread_id} is stale (deleted/archived). "
+                            "Returning 'thread_stale' for caller to clear."
+                        )
+                        return "thread_stale"
+                except (ValueError, KeyError):
+                    pass  # Not JSON or missing code field
+
             # Robust fallback: log error but don't crash if thread reply fails
             if thread_id:
                 logger.error(
@@ -415,7 +431,7 @@ class DiscordClient:
         self,
         signal: Signal,
         asset_class: AssetClass | None = None,
-    ) -> bool:
+    ) -> bool | str:
         """
         Send signal status update notification.
 
@@ -427,7 +443,7 @@ class DiscordClient:
             asset_class: Optional asset class for routing
 
         Returns:
-            bool: True if message sent successfully
+            True if sent, False on error, or "thread_stale" if thread deleted/archived.
         """
         from crypto_signals.domain.schemas import SignalStatus
 

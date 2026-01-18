@@ -630,9 +630,19 @@ def main(
                                 )
                             else:
                                 # Normal case: use dedicated method
-                                discord.send_signal_update(
+                                result = discord.send_signal_update(
                                     exited, asset_class=asset_class
                                 )
+                                # Self-healing: Clear stale thread_id for next run
+                                if result == "thread_stale":
+                                    logger.warning(
+                                        f"Self-healing: Clearing stale discord_thread_id "
+                                        f"for signal {exited.signal_id}"
+                                    )
+                                    repo.update_signal_atomic(
+                                        exited.signal_id,
+                                        {"discord_thread_id": None},
+                                    )
 
                             # === TP AUTOMATION ===
                             # Progressive stop management on each TP stage
