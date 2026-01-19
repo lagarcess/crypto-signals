@@ -70,6 +70,28 @@ def sample_sell_signal():
 
 
 @pytest.fixture
+def sample_equity_signal():
+    """Create a sample equity BUY signal for testing bracket orders.
+
+    Bracket orders (OTOCO) are only supported for equities, not crypto.
+    """
+    return Signal(
+        signal_id="test-signal-equity-789",
+        ds=date(2025, 1, 15),
+        strategy_id="BULLISH_ENGULFING",
+        symbol="AAPL",
+        asset_class=AssetClass.EQUITY,
+        entry_price=150.0,
+        pattern_name="BULLISH_ENGULFING",
+        suggested_stop=145.0,
+        status=SignalStatus.WAITING,
+        take_profit_1=160.0,
+        take_profit_2=170.0,
+        side=OrderSide.BUY,
+    )
+
+
+@pytest.fixture
 def execution_engine(mock_settings, mock_trading_client):
     """Create an ExecutionEngine with mocked dependencies."""
     with patch(
@@ -83,18 +105,21 @@ class TestExecuteSignal:
     """Tests for the execute_signal method."""
 
     def test_bracket_order_construction(
-        self, execution_engine, sample_signal, mock_trading_client
+        self, execution_engine, sample_equity_signal, mock_trading_client
     ):
-        """Verify MarketOrderRequest is constructed with OrderClass.BRACKET."""
+        """Verify MarketOrderRequest is constructed with OrderClass.BRACKET for equity.
+
+        Note: Bracket orders (OTOCO) are only supported for equities, not crypto.
+        """
         # Setup
         mock_order = MagicMock()
         mock_order.id = "alpaca-order-123"
-        mock_order.client_order_id = sample_signal.signal_id
+        mock_order.client_order_id = sample_equity_signal.signal_id
         mock_order.status = "accepted"
         mock_trading_client.submit_order.return_value = mock_order
 
         # Execute
-        position = execution_engine.execute_signal(sample_signal)
+        position = execution_engine.execute_signal(sample_equity_signal)
 
         # Verify order was submitted and position returned
         assert position is not None
@@ -110,18 +135,18 @@ class TestExecuteSignal:
         assert order_request.order_class == OrderClass.BRACKET
 
     def test_take_profit_matches_signal(
-        self, execution_engine, sample_signal, mock_trading_client
+        self, execution_engine, sample_equity_signal, mock_trading_client
     ):
-        """Verify take_profit param matches signal's take_profit_1."""
+        """Verify take_profit param matches signal's take_profit_1 for equity bracket orders."""
         # Setup
         mock_order = MagicMock()
         mock_order.id = "alpaca-order-123"
-        mock_order.client_order_id = sample_signal.signal_id
+        mock_order.client_order_id = sample_equity_signal.signal_id
         mock_order.status = "accepted"
         mock_trading_client.submit_order.return_value = mock_order
 
         # Execute
-        execution_engine.execute_signal(sample_signal)
+        execution_engine.execute_signal(sample_equity_signal)
 
         # Get the order request
         call_args = mock_trading_client.submit_order.call_args
@@ -129,22 +154,22 @@ class TestExecuteSignal:
 
         # Verify take profit
         assert order_request.take_profit.limit_price == round(
-            sample_signal.take_profit_1, 2
+            sample_equity_signal.take_profit_1, 2
         )
 
     def test_stop_loss_matches_signal(
-        self, execution_engine, sample_signal, mock_trading_client
+        self, execution_engine, sample_equity_signal, mock_trading_client
     ):
-        """Verify stop_loss param matches signal's suggested_stop."""
+        """Verify stop_loss param matches signal's suggested_stop for equity bracket orders."""
         # Setup
         mock_order = MagicMock()
         mock_order.id = "alpaca-order-123"
-        mock_order.client_order_id = sample_signal.signal_id
+        mock_order.client_order_id = sample_equity_signal.signal_id
         mock_order.status = "accepted"
         mock_trading_client.submit_order.return_value = mock_order
 
         # Execute
-        execution_engine.execute_signal(sample_signal)
+        execution_engine.execute_signal(sample_equity_signal)
 
         # Get the order request
         call_args = mock_trading_client.submit_order.call_args
@@ -152,7 +177,7 @@ class TestExecuteSignal:
 
         # Verify stop loss
         assert order_request.stop_loss.stop_price == round(
-            sample_signal.suggested_stop, 2
+            sample_equity_signal.suggested_stop, 2
         )
 
     def test_client_order_id_matches_signal_id(
@@ -288,6 +313,127 @@ class TestExecuteSignal:
 
         assert order_request.side == AlpacaOrderSide.SELL
         assert position.side == OrderSide.SELL
+
+
+class TestCryptoOrderFlow:
+    """Tests for crypto-specific order flow (simple market orders, no bracket).
+
+    Alpaca doesn't support OTOCO/bracket orders for crypto. Instead, we use
+    simple market orders for entry and track SL/TP manually for exits.
+    """
+
+    def test_crypto_uses_simple_market_order(
+        self, execution_engine, sample_signal, mock_trading_client
+    ):
+        """Verify crypto orders do NOT include order_class (no bracket)."""
+        # Setup
+        mock_order = MagicMock()
+        mock_order.id = "alpaca-order-crypto-123"
+        mock_order.client_order_id = sample_signal.signal_id
+        mock_order.status = "accepted"
+        mock_trading_client.submit_order.return_value = mock_order
+
+        # Execute
+        position = execution_engine.execute_signal(sample_signal)
+
+        # Verify order was submitted
+        assert position is not None
+        mock_trading_client.submit_order.assert_called_once()
+
+        # Get the order request
+        call_args = mock_trading_client.submit_order.call_args
+        order_request = call_args[0][0]
+
+        # Verify NO order_class parameter (simple market order)
+        assert order_request.order_class is None
+
+    def test_crypto_uses_gtc_time_in_force(
+        self, execution_engine, sample_signal, mock_trading_client
+    ):
+        """Verify crypto orders use GTC time_in_force (required by Alpaca)."""
+        from alpaca.trading.enums import TimeInForce
+
+        # Setup
+        mock_order = MagicMock()
+        mock_order.id = "alpaca-order-crypto-gtc"
+        mock_order.client_order_id = sample_signal.signal_id
+        mock_order.status = "accepted"
+        mock_trading_client.submit_order.return_value = mock_order
+
+        # Execute
+        execution_engine.execute_signal(sample_signal)
+
+        # Get the order request
+        call_args = mock_trading_client.submit_order.call_args
+        order_request = call_args[0][0]
+
+        # Verify GTC time_in_force
+        assert order_request.time_in_force == TimeInForce.GTC
+
+    def test_crypto_position_has_manual_sl_tp_fields(
+        self, execution_engine, sample_signal, mock_trading_client
+    ):
+        """Verify Position stores SL/TP for manual exit tracking."""
+        # Setup
+        mock_order = MagicMock()
+        mock_order.id = "alpaca-order-crypto-sltp"
+        mock_order.client_order_id = sample_signal.signal_id
+        mock_order.status = "accepted"
+        mock_trading_client.submit_order.return_value = mock_order
+
+        # Execute
+        position = execution_engine.execute_signal(sample_signal)
+
+        # Verify Position has SL/TP for manual tracking
+        assert position is not None
+        assert position.current_stop_loss == sample_signal.suggested_stop
+        # TP order IDs should be None (no bracket legs)
+        assert position.tp_order_id is None
+        assert position.sl_order_id is None
+
+    def test_crypto_no_take_profit_in_order(
+        self, execution_engine, sample_signal, mock_trading_client
+    ):
+        """Verify crypto orders do NOT include take_profit parameter."""
+        # Setup
+        mock_order = MagicMock()
+        mock_order.id = "alpaca-order-crypto-notp"
+        mock_order.client_order_id = sample_signal.signal_id
+        mock_order.status = "accepted"
+        mock_trading_client.submit_order.return_value = mock_order
+
+        # Execute
+        execution_engine.execute_signal(sample_signal)
+
+        # Get the order request
+        call_args = mock_trading_client.submit_order.call_args
+        order_request = call_args[0][0]
+
+        # Verify no take_profit in request (crypto uses manual tracking)
+        assert (
+            not hasattr(order_request, "take_profit") or order_request.take_profit is None
+        )
+
+    def test_crypto_no_stop_loss_in_order(
+        self, execution_engine, sample_signal, mock_trading_client
+    ):
+        """Verify crypto orders do NOT include stop_loss parameter."""
+        # Setup
+        mock_order = MagicMock()
+        mock_order.id = "alpaca-order-crypto-nosl"
+        mock_order.client_order_id = sample_signal.signal_id
+        mock_order.status = "accepted"
+        mock_trading_client.submit_order.return_value = mock_order
+
+        # Execute
+        execution_engine.execute_signal(sample_signal)
+
+        # Get the order request
+        call_args = mock_trading_client.submit_order.call_args
+        order_request = call_args[0][0]
+
+        # Verify no stop_loss in request (crypto uses manual tracking)
+        assert not hasattr(order_request, "stop_loss") or order_request.stop_loss is None
 
 
 class TestValidateSignal:
