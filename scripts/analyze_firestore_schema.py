@@ -231,7 +231,14 @@ def export_all_data(db: firestore.Client, output_path: Path) -> None:
     """Export all Firestore data to JSON for offline analysis."""
     logger.info("Exporting all Firestore data...")
 
-    collections_to_export = ["live_signals", "rejected_signals", "live_positions"]
+    collections_to_export = [
+        "live_signals",
+        "rejected_signals",
+        "live_positions",
+        "test_signals",
+        "test_rejected_signals",
+        "test_positions",
+    ]
     data_export = {}
 
     for collection_name in collections_to_export:
@@ -280,12 +287,12 @@ def main():
             "collections": {},
         }
 
-        # Analyze live_signals
+        # Analyze live_signals (PROD)
         results["collections"]["live_signals"] = analyze_collection(
             db, "live_signals", SIGNAL_EXPECTED_FIELDS, SIGNAL_OPERATIONAL_FIELDS, Signal
         )
 
-        # Analyze rejected_signals
+        # Analyze rejected_signals (PROD)
         results["collections"]["rejected_signals"] = analyze_collection(
             db,
             "rejected_signals",
@@ -294,10 +301,33 @@ def main():
             Signal,
         )
 
-        # Analyze live_positions
+        # Analyze live_positions (PROD)
         results["collections"]["live_positions"] = analyze_collection(
             db,
             "live_positions",
+            POSITION_EXPECTED_FIELDS,
+            POSITION_OPERATIONAL_FIELDS,
+            Position,
+        )
+
+        # Analyze test_signals (TEST)
+        results["collections"]["test_signals"] = analyze_collection(
+            db, "test_signals", SIGNAL_EXPECTED_FIELDS, SIGNAL_OPERATIONAL_FIELDS, Signal
+        )
+
+        # Analyze test_rejected_signals (TEST)
+        results["collections"]["test_rejected_signals"] = analyze_collection(
+            db,
+            "test_rejected_signals",
+            SIGNAL_EXPECTED_FIELDS,
+            SIGNAL_OPERATIONAL_FIELDS,
+            Signal,
+        )
+
+        # Analyze test_positions (TEST)
+        results["collections"]["test_positions"] = analyze_collection(
+            db,
+            "test_positions",
             POSITION_EXPECTED_FIELDS,
             POSITION_OPERATIONAL_FIELDS,
             Position,
