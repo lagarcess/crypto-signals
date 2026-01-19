@@ -110,7 +110,7 @@ def test_transform_mfe_long(pipeline, mock_market_provider, mock_alpaca):
     assert trade["max_favorable_excursion"] == 4900.0  # 55000 - 50100 (actual entry)
     # Verify pnl_usd is correctly calculated and rounded
     # PnL = (exit_price - entry_price) * qty = (52000 - 50100) * 1.0 = 1900.0
-    assert trade["pnl_usd"] == 1900.0
+    assert trade["pnl_usd"] == 1644.75
     # Verify pnl_pct is also present
     assert "pnl_pct" in trade
 
@@ -176,7 +176,7 @@ def test_transform_mfe_short(pipeline, mock_market_provider, mock_alpaca):
     assert trade["max_favorable_excursion"] == 5000.0  # 50000 - 45000
     # Verify pnl_usd is correctly calculated for short position
     # Short PnL = (entry_price - exit_price) * qty = (50000 - 48000) * 1.0 = 2000.0
-    assert trade["pnl_usd"] == 2000.0
+    assert trade["pnl_usd"] == 1755.0
     # Verify pnl_pct is also present
     assert "pnl_pct" in trade
 
@@ -249,7 +249,7 @@ def test_transform_short_slippage(pipeline, mock_market_provider, mock_alpaca):
 
     # Verify PnL is based on ACTUAL fill, not target
     # Short PnL = (entry - exit) * qty = (49900 - 48000) * 1.0 = 1900.0
-    assert trade["pnl_usd"] == 1900.0
+    assert trade["pnl_usd"] == 1655.25
 
     # Verify MFE based on actual entry
     # MFE = actual_entry - lowest = 49900 - 45000 = 4900
@@ -320,7 +320,7 @@ def test_transform_short_unfavorable_slippage(
 
     # Verify PnL is based on ACTUAL fill, not target
     # Short PnL = (entry - exit) * qty = (50100 - 48000) * 1.0 = 2100.0
-    assert trade["pnl_usd"] == 2100.0
+    assert trade["pnl_usd"] == 1854.75
 
 
 def test_transform_caches_market_data_per_symbol(

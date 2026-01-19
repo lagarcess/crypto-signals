@@ -151,7 +151,6 @@ class SignalGenerator:
         elif latest.get("elliott_impulse_wave"):
             geometric_pattern_name = "ELLIOTT_IMPULSE_WAVE"  # ATR-based stop (Issue 99)
 
-        # Merging/Priority Logic: Harmonic takes precedence if both exist
         if harmonic_pattern and geometric_pattern_name:
             # Harmonic pattern is primary
             pattern_name = harmonic_pattern.pattern_type
@@ -254,6 +253,10 @@ class SignalGenerator:
             harmonic_pattern=harmonic_pattern,
             geometric_pattern_name=geometric_pattern_name,
         )
+
+        # Early validation failed (negative stop-loss, zero TP, etc.)
+        if signal is None:
+            return None
 
         # 5. RISK-TO-REWARD (R:R) FILTER (Post-construction)
         # Discard any signal where the R:R ratio is less than 1.5
@@ -394,14 +397,21 @@ class SignalGenerator:
         entry_ref = close_price
 
         if take_profit_1 is None:
-            take_profit_1 = entry_ref + (2.0 * atr) if atr > 0 else None
+            # ATR-based TP, fallback to percentage-based if no ATR
+            take_profit_1 = (
+                entry_ref + (2.0 * atr) if atr > 0 else entry_ref * 1.03
+            )  # 3% default
         if take_profit_2 is None:
-            take_profit_2 = entry_ref + (4.0 * atr) if atr > 0 else None
+            take_profit_2 = (
+                entry_ref + (4.0 * atr) if atr > 0 else entry_ref * 1.06
+            )  # 6% default
         # TP3: Extended runner target (becomes trailing stop after TP1/TP2 hit)
         # Initial target ensures TP3 > TP2 for clean signal display
         # After TP1/TP2, check_exits() updates this to Chandelier Exit for trailing
         if take_profit_3 is None:
-            take_profit_3 = entry_ref + (6.0 * atr) if atr > 0 else None
+            take_profit_3 = (
+                entry_ref + (6.0 * atr) if atr > 0 else entry_ref * 1.10
+            )  # 10% default
 
         # Strategy ID is the pattern name for now
         strategy_id = pattern_name
@@ -532,6 +542,30 @@ class SignalGenerator:
 
         # created_at: For skip-on-creation cooldown in check_exits (Issue 99 Fix)
         created_at = datetime.now(timezone.utc)
+
+        # ============================================================
+        # EARLY VALIDATION (Issue 107 Fix)
+        # Catch invalid signals BEFORE creation/notification
+        # ============================================================
+        if suggested_stop is None or suggested_stop <= 0:
+            logger.warning(
+                f"Signal rejected for {symbol}: invalid suggested_stop={suggested_stop}. "
+                "Low-price assets may produce negative stops due to ATR calculations.",
+                extra={
+                    "symbol": symbol,
+                    "pattern": pattern_name,
+                    "suggested_stop": suggested_stop,
+                    "entry_price": entry_ref,
+                },
+            )
+            return None
+
+        if take_profit_1 is None or take_profit_1 <= 0:
+            logger.warning(
+                f"Signal rejected for {symbol}: invalid take_profit_1={take_profit_1}.",
+                extra={"symbol": symbol, "pattern": pattern_name},
+            )
+            return None
 
         return Signal(
             signal_id=sig_id,

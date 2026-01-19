@@ -193,7 +193,17 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
 
                 # CALCULATIONS
                 # Fees: Hard to get exact without activity ID.
+                # If fees represent 0, calculate based on asset class
                 fees_usd = 0.0
+
+                # Alpaca Crypto Fee Schedule (Tier 0): 0.25% Taker
+                # We apply this if the broker reports 0 fees (common in API)
+                is_crypto = pos.get("asset_class") == "CRYPTO"
+                if is_crypto:
+                    # Fee = (Entry Value + Exit Value) * 0.0025
+                    entry_val = entry_price_val * qty
+                    exit_val = exit_price_val * qty
+                    fees_usd = (entry_val + exit_val) * 0.0025
 
                 # PnL Calculation using ALPACA entry price (Truth) vs
                 # Firestore Exit Price

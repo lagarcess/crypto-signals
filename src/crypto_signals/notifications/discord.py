@@ -1007,7 +1007,7 @@ class DiscordClient:
             "embeds": [embed],
             "username": "Shadow Sentinel",
             "avatar_url": "https://cdn-icons-png.flaticon.com/512/3144/3144456.png",
-            "thread_name": f"{EMOJI_GHOST} [REJECTED] {signal.symbol} {pattern_display}",
+            # Note: No thread_name - shadow webhook is a Text channel, not Forum
         }
 
     def _format_geometry_or_candle_context(self, signal: Signal) -> str:

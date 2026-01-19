@@ -109,6 +109,119 @@ class ExecutionEngine:
         if not self._validate_signal(signal):
             return None
 
+        # Route based on asset class
+        # Crypto: Simple market orders (Alpaca doesn't support bracket/OTOCO for crypto)
+        # Equity: Bracket orders with TP/SL legs
+        if signal.asset_class == AssetClass.CRYPTO:
+            return self._execute_crypto_signal(signal)
+        else:
+            return self._execute_bracket_order(signal)
+
+    def _execute_crypto_signal(self, signal: Signal) -> Optional[Position]:
+        """
+        Execute a crypto signal using a simple market order.
+
+        Alpaca does not support bracket/OTOCO orders for crypto (error 42210000).
+        Instead, we submit a simple market order and track SL/TP manually
+        via check_exits() in main.py.
+
+        Args:
+            signal: The Signal object with entry, TP, and SL levels.
+
+        Returns:
+            Position: The created Position object if successful, None otherwise.
+        """
+        settings = get_settings()
+
+        try:
+            qty = self._calculate_qty(signal)
+            if qty <= 0:
+                logger.error(f"Invalid quantity calculated for {signal.symbol}: {qty}")
+                return None
+
+            # Determine order side
+            effective_side = signal.side or DomainOrderSide.BUY
+            alpaca_side = (
+                OrderSide.BUY if effective_side == DomainOrderSide.BUY else OrderSide.SELL
+            )
+
+            # Simple market order for crypto (NO order_class, NO take_profit/stop_loss)
+            order_request = MarketOrderRequest(
+                symbol=signal.symbol,
+                qty=qty,
+                side=alpaca_side,
+                time_in_force=TimeInForce.GTC,  # GTC required for crypto
+                client_order_id=signal.signal_id,
+            )
+
+            logger.info(
+                f"Submitting crypto market order for {signal.symbol}",
+                extra={
+                    "symbol": signal.symbol,
+                    "qty": qty,
+                    "side": alpaca_side.value,
+                    "client_order_id": signal.signal_id,
+                    "note": "Simple order - SL/TP tracked manually",
+                },
+            )
+
+            order = self.alpaca.submit_order(order_request)
+
+            logger.info(
+                f"CRYPTO ORDER SUBMITTED: {signal.symbol}",
+                extra={
+                    "order_id": str(order.id),
+                    "client_order_id": order.client_order_id,
+                    "qty": qty,
+                    "status": str(order.status),
+                },
+            )
+
+            # Create Position with SL/TP for manual tracking
+            delete_at = datetime.now(timezone.utc) + timedelta(
+                days=settings.TTL_DAYS_POSITION
+            )
+
+            position = Position(
+                position_id=signal.signal_id,
+                ds=signal.ds,
+                account_id="paper",
+                symbol=signal.symbol,
+                signal_id=signal.signal_id,
+                alpaca_order_id=str(order.id),
+                discord_thread_id=signal.discord_thread_id,
+                status=TradeStatus.OPEN,
+                entry_fill_price=signal.entry_price,
+                current_stop_loss=signal.suggested_stop,
+                qty=qty,
+                side=effective_side,
+                target_entry_price=signal.entry_price,
+                tp_order_id=None,  # No TP order - tracked manually
+                sl_order_id=None,  # No SL order - tracked manually
+                delete_at=delete_at,
+            )
+
+            return position
+
+        except Exception as e:
+            self._log_execution_failure(signal, e)
+            return None
+
+    def _execute_bracket_order(self, signal: Signal) -> Optional[Position]:
+        """
+        Execute an equity signal using a bracket order.
+
+        Uses OTOCO (One-Triggers-One-Cancels-Other) for atomic TP/SL management.
+        Bracket orders are only supported for equities, not crypto.
+
+        Args:
+            signal: The Signal object with entry, TP, and SL levels.
+
+        Returns:
+            Position: The created Position object if successful, None otherwise.
+        """
+        settings = get_settings()
+
         try:
             # Calculate position size
             qty = self._calculate_qty(signal)
@@ -529,17 +642,22 @@ class ExecutionEngine:
         """
         Update the stop-loss order for an open position.
 
-        Uses PATCH /v2/orders/{sl_order_id} to replace the stop_price.
+        For EQUITY positions with bracket orders:
+            Uses PATCH /v2/orders/{sl_order_id} to replace the stop_price.
+
+        For CRYPTO positions (no broker SL order):
+            Updates position.current_stop_loss for Firestore persistence.
+            The manual exit checking in check_exits() will use this value.
 
         Note: Cannot replace orders in pending states (pending_new,
         pending_cancel, pending_replace).
 
         Args:
-            position: The Position with an active sl_order_id.
+            position: The Position with an active trade.
             new_stop: The new stop-loss price.
 
         Returns:
-            True if replacement succeeded, False otherwise.
+            True if modification succeeded, False otherwise.
         """
         # ENVIRONMENT GATE: Skip modification in non-PROD environments
         if get_settings().ENVIRONMENT != "PROD":
@@ -548,11 +666,23 @@ class ExecutionEngine:
             )
             return True  # Return True to simulate success in logic flow
 
+        # CRYPTO PATH: No broker SL order - update local tracking
+        # Crypto positions have sl_order_id = None (simple market order entry)
         if not position.sl_order_id:
-            logger.warning(
-                f"Cannot modify stop for {position.position_id}: no sl_order_id"
+            # Update in-memory for Firestore persistence
+            old_stop = position.current_stop_loss
+            position.current_stop_loss = new_stop
+            logger.info(
+                f"CRYPTO STOP UPDATE: {position.position_id}: "
+                f"${old_stop} -> ${new_stop} (manual tracking)",
+                extra={
+                    "position_id": position.position_id,
+                    "old_stop": old_stop,
+                    "new_stop": new_stop,
+                    "note": "Crypto - Firestore only, no broker order",
+                },
             )
-            return False
+            return True
 
         try:
             # Check current SL order status first

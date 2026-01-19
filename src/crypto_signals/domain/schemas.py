@@ -107,6 +107,25 @@ class ExitReason(str, Enum):
     MANUAL_EXIT = "MANUAL_EXIT"
 
 
+class TradeType(str, Enum):
+    """Classification of trade execution for analytics.
+
+    Clear Semantics:
+    - EXECUTED: Real broker order placed and filled (live trading)
+    - FILTERED: Rejected by quality gates (Volume, R:R, etc.)
+      - Goes to separate analysis Discord channel
+      - Tracked for filter tuning analytics
+    - THEORETICAL: Execution failed but tracked for performance analysis
+      - Broker rejection, validation failure, retries exhausted
+      - Appears in LIVE Discord channel (no special indicator to users)
+      - Backend tracks full lifecycle for theoretical P&L
+    """
+
+    EXECUTED = "EXECUTED"  # Real broker order filled
+    FILTERED = "FILTERED"  # Quality gate rejection
+    THEORETICAL = "THEORETICAL"  # Execution failed, simulating trade
+
+
 # =============================================================================
 # FIRESTORE: CONFIGURATION DOMAIN (Collection: dim_strategies)
 # =============================================================================
@@ -288,6 +307,14 @@ class Signal(BaseModel):
         default=None,
         description="UTC timestamp when signal was created. Used for skip-on-creation cooldown in check_exits.",
     )
+    # === Trade Lifecycle Classification (Issue 107) ===
+    trade_type: Optional[str] = Field(
+        default="EXECUTED",
+        description=(
+            "Trade classification: EXECUTED (broker order filled), "
+            "FILTERED (quality gate rejection), THEORETICAL (execution failed, simulating)."
+        ),
+    )
 
     @model_validator(mode="after")
     def set_fallback_created_at(self):
@@ -443,6 +470,14 @@ class Position(BaseModel):
     exit_reason: Optional[ExitReason] = Field(
         default=None,
         description="Reason for trade exit (e.g., TP1, STOP_LOSS, MANUAL_EXIT).",
+    )
+    # === Trade Lifecycle Classification (Issue 107) ===
+    trade_type: Optional[str] = Field(
+        default="EXECUTED",
+        description=(
+            "Trade classification: EXECUTED (broker order filled), "
+            "THEORETICAL (execution failed, tracking simulated P&L)."
+        ),
     )
     # === Scale-Out Tracking (TP1 automation) ===
     original_qty: Optional[float] = Field(
