@@ -3,6 +3,7 @@
 
 ## General
 - [2024-03-20] **Workflow**: Always run `/verify` before PR to catch regression.
+- [2026-01-20] **Architecture**: Engines (`ExecutionEngine`) create domain objects but Repositories (`PositionRepository`) must persist them. Ensure orchestration layer bridges this gap.
 
 ## APIs & Integrations
 ### Alpaca
