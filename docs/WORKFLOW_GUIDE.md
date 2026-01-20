@@ -63,6 +63,18 @@ Follow this sequence for every standard task or issue.
     > *"Run /implement fix for typo in README then /pr"*
     > (Branches, fixes, verifies, and pushes in one go.)
 
+## 🔗 Common Action Sequences (The Menu)
+
+| Goal | Sequence | Description |
+| :--- | :--- | :--- |
+| **New Feature (Standard)** | `/plan` → `/implement` → `/review` → `/verify` → `/pr` | The full Golden Path. Safe, Architected, Verified. |
+| **New Idea (Fast)** | `/plan [idea]` → `/implement` → `/pr` | For non-issue work. Agent auto-names branch. |
+| **Bug Fix (Known)** | `/implement [fix]` → `/verify` → `/pr` | Skip planning if the fix is obvious. |
+| **Code Polish** | `/cleanup` → `/review` → `/verify` | No logic change, just hygiene and refactoring. |
+| **Dependabot/Upgrades** | `/implement [upgrade]` → `/verify` | Updating dependencies and ensuring tests pass. |
+| **Infrastructure Fix** | `/diagnose` → `/fix` | Check cloud health and attempt auto-patching. |
+| **Post-Merge Reset** | `/cleanup_branch` | Switch to main, pull, delete old branch. |
+
 *   **Manual Overrides**:
     - **`/fix`**: Run manually if you see a test failure you want the agent to patch immediately.
     - **`/cleanup`**: Run manualy to tidying up dead code/TODOs without running a full verification.
