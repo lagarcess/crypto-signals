@@ -53,4 +53,11 @@ description: Create a comprehensive Pull Request from current changes
    - Push changes: `git push origin HEAD`
 
 4. **Submission**
-   - Output the PR contents for the user to copy-paste into GitHub, or use `gh pr create` if the user has the CLI configured (ask first).
+   - Infer PR labels from branch type:
+     - `feat/*` -> `enhancement`
+     - `fix/*` -> `bug`
+     - `chore/*` -> `chore`
+     - `docs/*` -> `documentation`
+   - Output the PR command for the user:
+     `gh pr create --title "..." --body "..." --label "[inferred-label]" --assignee "@me" --reviewer "@me"`
+   - **Optional**: Ask user if they want to add specialized reviewers.
