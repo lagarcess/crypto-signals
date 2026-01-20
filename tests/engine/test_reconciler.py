@@ -70,8 +70,13 @@ def sample_alpaca_position():
     return mock_pos
 
 
-class TestStateReconciler:
-    """Test suite for StateReconciler class."""
+# ============================================================================
+# Test Classes organized by functionality
+# ============================================================================
+
+
+class TestStateReconcilerInitialization:
+    """Test StateReconciler initialization and dependency injection."""
 
     def test_init_stores_dependencies(
         self, mock_trading_client, mock_position_repo, mock_discord_client, mock_settings
@@ -89,33 +94,9 @@ class TestStateReconciler:
         assert reconciler.discord == mock_discord_client
         assert reconciler.settings == mock_settings
 
-    def test_reconcile_returns_report(
-        self,
-        mock_trading_client,
-        mock_position_repo,
-        mock_discord_client,
-        mock_settings,
-    ):
-        """reconcile() returns a ReconciliationReport."""
-        # Mock empty positions (no zombies, no orphans)
-        mock_trading_client.get_all_positions.return_value = []
-        mock_position_repo.get_open_positions.return_value = []
 
-        reconciler = StateReconciler(
-            alpaca_client=mock_trading_client,
-            position_repo=mock_position_repo,
-            discord_client=mock_discord_client,
-            settings=mock_settings,
-        )
-
-        report = reconciler.reconcile()
-
-        assert report is not None
-        assert hasattr(report, "zombies")
-        assert hasattr(report, "orphans")
-        assert hasattr(report, "reconciled_count")
-        assert hasattr(report, "timestamp")
-        assert hasattr(report, "duration_seconds")
+class TestDetectZombies:
+    """Test zombie detection: Firestore OPEN, Alpaca closed."""
 
     def test_detect_zombies(
         self,
@@ -146,6 +127,45 @@ class TestStateReconciler:
         assert "BTC/USD" in report.zombies
         assert len(report.zombies) == 1
 
+    def test_reconcile_handles_multiple_zombies(
+        self,
+        mock_trading_client,
+        mock_position_repo,
+        mock_discord_client,
+        mock_settings,
+    ):
+        """Reconciliation handles multiple zombies."""
+        # Create two open positions in Firestore
+        pos1 = MagicMock(spec=Position)
+        pos1.symbol = "BTC/USD"
+        pos1.status = TradeStatus.OPEN
+        pos1.position_id = "signal-1"
+
+        pos2 = MagicMock(spec=Position)
+        pos2.symbol = "ETH/USD"
+        pos2.status = TradeStatus.OPEN
+        pos2.position_id = "signal-2"
+
+        mock_trading_client.get_all_positions.return_value = []
+        mock_position_repo.get_open_positions.return_value = [pos1, pos2]
+
+        reconciler = StateReconciler(
+            alpaca_client=mock_trading_client,
+            position_repo=mock_position_repo,
+            discord_client=mock_discord_client,
+            settings=mock_settings,
+        )
+
+        report = reconciler.reconcile()
+
+        assert len(report.zombies) == 2
+        assert "BTC/USD" in report.zombies
+        assert "ETH/USD" in report.zombies
+
+
+class TestDetectOrphans:
+    """Test orphan detection: Alpaca OPEN, Firestore missing."""
+
     def test_detect_orphans(
         self,
         mock_trading_client,
@@ -173,6 +193,64 @@ class TestStateReconciler:
         # Orphan detected
         assert "BTC/USD" in report.orphans
         assert len(report.orphans) == 1
+
+    def test_reconcile_handles_multiple_orphans(
+        self,
+        mock_trading_client,
+        mock_position_repo,
+        mock_discord_client,
+        mock_settings,
+    ):
+        """Reconciliation handles multiple orphans."""
+        pos1 = MagicMock()
+        pos1.symbol = "BTC/USD"
+
+        pos2 = MagicMock()
+        pos2.symbol = "ETH/USD"
+
+        mock_trading_client.get_all_positions.return_value = [pos1, pos2]
+        mock_position_repo.get_open_positions.return_value = []
+
+        reconciler = StateReconciler(
+            alpaca_client=mock_trading_client,
+            position_repo=mock_position_repo,
+            discord_client=mock_discord_client,
+            settings=mock_settings,
+        )
+
+        report = reconciler.reconcile()
+
+        assert len(report.orphans) == 2
+        assert "BTC/USD" in report.orphans
+        assert "ETH/USD" in report.orphans
+
+    def test_reconcile_reports_critical_issues(
+        self,
+        mock_trading_client,
+        mock_position_repo,
+        mock_discord_client,
+        mock_settings,
+        sample_alpaca_position,
+    ):
+        """Orphan positions are reported as critical issues."""
+        mock_trading_client.get_all_positions.return_value = [sample_alpaca_position]
+        mock_position_repo.get_open_positions.return_value = []
+
+        reconciler = StateReconciler(
+            alpaca_client=mock_trading_client,
+            position_repo=mock_position_repo,
+            discord_client=mock_discord_client,
+            settings=mock_settings,
+        )
+
+        report = reconciler.reconcile()
+
+        assert len(report.critical_issues) > 0
+        assert any("BTC/USD" in issue for issue in report.critical_issues)
+
+
+class TestHealingAndAlerts:
+    """Test zombie healing and orphan alerts."""
 
     def test_heal_zombie_marks_closed_externally(
         self,
@@ -227,6 +305,38 @@ class TestStateReconciler:
         # Verify Discord was called for orphan alert
         assert mock_discord_client.send_message.called
 
+
+class TestReconciliationBehavior:
+    """Test reconciliation behavior, reports, and idempotency."""
+
+    def test_reconcile_returns_report(
+        self,
+        mock_trading_client,
+        mock_position_repo,
+        mock_discord_client,
+        mock_settings,
+    ):
+        """reconcile() returns a ReconciliationReport."""
+        # Mock empty positions (no zombies, no orphans)
+        mock_trading_client.get_all_positions.return_value = []
+        mock_position_repo.get_open_positions.return_value = []
+
+        reconciler = StateReconciler(
+            alpaca_client=mock_trading_client,
+            position_repo=mock_position_repo,
+            discord_client=mock_discord_client,
+            settings=mock_settings,
+        )
+
+        report = reconciler.reconcile()
+
+        assert report is not None
+        assert hasattr(report, "zombies")
+        assert hasattr(report, "orphans")
+        assert hasattr(report, "reconciled_count")
+        assert hasattr(report, "timestamp")
+        assert hasattr(report, "duration_seconds")
+
     def test_reconcile_idempotent(
         self,
         mock_trading_client,
@@ -252,6 +362,33 @@ class TestStateReconciler:
         assert len(report1.zombies) == len(report2.zombies)
         assert len(report1.orphans) == len(report2.orphans)
 
+    def test_reconcile_reports_duration(
+        self,
+        mock_trading_client,
+        mock_position_repo,
+        mock_discord_client,
+        mock_settings,
+    ):
+        """Reconciliation report includes execution duration."""
+        mock_trading_client.get_all_positions.return_value = []
+        mock_position_repo.get_open_positions.return_value = []
+
+        reconciler = StateReconciler(
+            alpaca_client=mock_trading_client,
+            position_repo=mock_position_repo,
+            discord_client=mock_discord_client,
+            settings=mock_settings,
+        )
+
+        report = reconciler.reconcile()
+
+        assert report.duration_seconds >= 0.0
+        assert isinstance(report.duration_seconds, float)
+
+
+class TestEnvironmentGating:
+    """Test environment isolation and gating."""
+
     def test_reconcile_non_prod_environment(
         self,
         mock_trading_client,
@@ -276,117 +413,9 @@ class TestStateReconciler:
         # Execution should be skipped
         mock_trading_client.get_all_positions.assert_not_called()
 
-    def test_reconcile_reports_duration(
-        self,
-        mock_trading_client,
-        mock_position_repo,
-        mock_discord_client,
-        mock_settings,
-    ):
-        """Reconciliation report includes execution duration."""
-        mock_trading_client.get_all_positions.return_value = []
-        mock_position_repo.get_open_positions.return_value = []
 
-        reconciler = StateReconciler(
-            alpaca_client=mock_trading_client,
-            position_repo=mock_position_repo,
-            discord_client=mock_discord_client,
-            settings=mock_settings,
-        )
-
-        report = reconciler.reconcile()
-
-        assert report.duration_seconds >= 0.0
-        assert isinstance(report.duration_seconds, float)
-
-    def test_reconcile_reports_critical_issues(
-        self,
-        mock_trading_client,
-        mock_position_repo,
-        mock_discord_client,
-        mock_settings,
-        sample_alpaca_position,
-    ):
-        """Orphan positions are reported as critical issues."""
-        mock_trading_client.get_all_positions.return_value = [sample_alpaca_position]
-        mock_position_repo.get_open_positions.return_value = []
-
-        reconciler = StateReconciler(
-            alpaca_client=mock_trading_client,
-            position_repo=mock_position_repo,
-            discord_client=mock_discord_client,
-            settings=mock_settings,
-        )
-
-        report = reconciler.reconcile()
-
-        assert len(report.critical_issues) > 0
-        assert any("BTC/USD" in issue for issue in report.critical_issues)
-
-    def test_reconcile_handles_multiple_zombies(
-        self,
-        mock_trading_client,
-        mock_position_repo,
-        mock_discord_client,
-        mock_settings,
-    ):
-        """Reconciliation handles multiple zombies."""
-        # Create two open positions in Firestore
-        pos1 = MagicMock(spec=Position)
-        pos1.symbol = "BTC/USD"
-        pos1.status = TradeStatus.OPEN
-        pos1.position_id = "signal-1"
-
-        pos2 = MagicMock(spec=Position)
-        pos2.symbol = "ETH/USD"
-        pos2.status = TradeStatus.OPEN
-        pos2.position_id = "signal-2"
-
-        mock_trading_client.get_all_positions.return_value = []
-        mock_position_repo.get_open_positions.return_value = [pos1, pos2]
-
-        reconciler = StateReconciler(
-            alpaca_client=mock_trading_client,
-            position_repo=mock_position_repo,
-            discord_client=mock_discord_client,
-            settings=mock_settings,
-        )
-
-        report = reconciler.reconcile()
-
-        assert len(report.zombies) == 2
-        assert "BTC/USD" in report.zombies
-        assert "ETH/USD" in report.zombies
-
-    def test_reconcile_handles_multiple_orphans(
-        self,
-        mock_trading_client,
-        mock_position_repo,
-        mock_discord_client,
-        mock_settings,
-    ):
-        """Reconciliation handles multiple orphans."""
-        pos1 = MagicMock()
-        pos1.symbol = "BTC/USD"
-
-        pos2 = MagicMock()
-        pos2.symbol = "ETH/USD"
-
-        mock_trading_client.get_all_positions.return_value = [pos1, pos2]
-        mock_position_repo.get_open_positions.return_value = []
-
-        reconciler = StateReconciler(
-            alpaca_client=mock_trading_client,
-            position_repo=mock_position_repo,
-            discord_client=mock_discord_client,
-            settings=mock_settings,
-        )
-
-        report = reconciler.reconcile()
-
-        assert len(report.orphans) == 2
-        assert "BTC/USD" in report.orphans
-        assert "ETH/USD" in report.orphans
+class TestErrorHandling:
+    """Test error handling and resilience."""
 
     def test_reconcile_error_handling_get_all_positions_fails(
         self,

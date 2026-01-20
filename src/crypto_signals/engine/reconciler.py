@@ -2,6 +2,21 @@
 
 Detects and resolves synchronization gaps between Alpaca broker state
 and Firestore database state.
+
+Example:
+    >>> from crypto_signals.engine.reconciler import StateReconciler
+    >>> from crypto_signals.market.data_provider import get_trading_client
+    >>> from crypto_signals.repository.firestore import PositionRepository
+    >>> from crypto_signals.notifications.discord import DiscordClient
+    >>>
+    >>> reconciler = StateReconciler(
+    ...     alpaca_client=get_trading_client(),
+    ...     position_repo=PositionRepository(),
+    ...     discord_client=DiscordClient(),
+    ... )
+    >>> report = reconciler.reconcile()
+    >>> if report.critical_issues:
+    ...     print(f"Issues detected: {report.critical_issues}")
 """
 
 import time
@@ -159,7 +174,7 @@ class StateReconciler:
                         self.position_repo.update_position(pos)
                         reconciled_count += 1
 
-                        logger.info(
+                        logger.warning(
                             f"Zombie healed: {symbol}",
                             extra={
                                 "symbol": symbol,
