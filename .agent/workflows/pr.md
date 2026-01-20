@@ -6,7 +6,14 @@ description: Create a comprehensive Pull Request from current changes
    - Execute the `/verify` workflow.
    - If verification fails, **STOP** and report errors.
 
-2. **Knowledge Capture**
+2. **Security & Privacy Scan**
+   // turbo
+   - **Secret Scan**: Scan the `git diff` for potential leaks (High Entropy strings, "BEGIN PRIVATE KEY", "ghp_", etc.).
+   - **PII Scan**: Ensure no personal data (names, IPs) from local logs was accidentally committed.
+   - **Env Check**: Verify that NO changes to `.env` or `secrets/` are included in the commit.
+   - If leaks found -> **STOP** and warn user.
+
+3. **Knowledge Capture**
    - Execute the `/learn` workflow to extract and save lessons from this session.
 
 3. **Documentation & Knowledge Base Update**
