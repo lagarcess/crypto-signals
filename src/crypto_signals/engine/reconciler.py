@@ -5,7 +5,7 @@ and Firestore database state.
 """
 
 import time
-from typing import Any, Optional
+from typing import Optional
 
 from alpaca.trading.client import TradingClient
 from crypto_signals.config import Settings, get_settings
@@ -102,7 +102,10 @@ class StateReconciler:
             logger.info("Fetching positions from Alpaca...")
             try:
                 # alpaca-py uses get_all_positions() to fetch all open positions
-                alpaca_positions: list[Any] = self.alpaca.get_all_positions()
+                alpaca_result = self.alpaca.get_all_positions()
+                alpaca_positions = (
+                    alpaca_result if isinstance(alpaca_result, list) else []
+                )
                 alpaca_symbols = {p.symbol for p in alpaca_positions}
                 logger.info(
                     f"Alpaca state: {len(alpaca_symbols)} open positions",
