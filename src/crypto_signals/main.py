@@ -29,6 +29,7 @@ from crypto_signals.domain.schemas import (
     TradeStatus,
 )
 from crypto_signals.engine.execution import ExecutionEngine
+from crypto_signals.engine.reconciler import StateReconciler
 from crypto_signals.engine.signal_generator import SignalGenerator
 from crypto_signals.market.asset_service import AssetValidationService
 from crypto_signals.market.data_provider import MarketDataProvider
@@ -153,6 +154,38 @@ def main(
 
         # Ensure lock is released on exit
         atexit.register(job_lock_repo.release_lock, job_id)
+
+        # === STATE RECONCILIATION (Issue #113) ===
+        # Detect and heal zombie/orphan positions before main loop
+        logger.info("Running state reconciliation...")
+        try:
+            reconciler = StateReconciler(
+                alpaca_client=get_trading_client(),
+                position_repo=position_repo,
+                discord_client=discord,
+                settings=settings,
+            )
+            reconciliation_report = reconciler.reconcile()
+
+            if reconciliation_report.critical_issues:
+                logger.warning(
+                    f"Reconciliation detected {len(reconciliation_report.critical_issues)} critical issue(s)",
+                    extra={
+                        "issues": reconciliation_report.critical_issues,
+                        "zombies": len(reconciliation_report.zombies),
+                        "orphans": len(reconciliation_report.orphans),
+                    },
+                )
+            else:
+                logger.info(
+                    f"Reconciliation complete: {reconciliation_report.reconciled_count} positions healed"
+                )
+        except Exception as e:
+            logger.error(
+                f"Reconciliation failed: {e}",
+                extra={"error": str(e)},
+            )
+            # Don't halt execution - reconciliation is advisory
 
         # Define Portfolio
         firestore_config = load_config_from_firestore()

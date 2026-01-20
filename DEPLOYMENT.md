@@ -110,29 +110,29 @@ echo "Next: Configure GitHub Secrets and Variables (see docs/GCP_DEPLOYMENT_GUID
 
 Go to **Settings → Secrets and variables → Actions → Repository secrets**:
 
-| Secret | Value |
-|--------|-------|
-| `GOOGLE_APPLICATION_CREDENTIALS` | Service account JSON key (from step 10 above) |
-| `GAR_REPOSITORY` | `us-central1-docker.pkg.dev/PROJECT-ID/crypto-signals/crypto-signals` |
-| `ALPACA_API_KEY` | Your Alpaca API key |
-| `ALPACA_SECRET_KEY` | Your Alpaca secret key |
-| `TEST_DISCORD_WEBHOOK` | Test Discord webhook URL |
-| `DISCORD_DEPLOYS` | **NEW** - Deployment notification webhook |
+| Secret                           | Value                                                                 |
+| -------------------------------- | --------------------------------------------------------------------- |
+| `GOOGLE_APPLICATION_CREDENTIALS` | Service account JSON key (from step 10 above)                         |
+| `GAR_REPOSITORY`                 | `us-central1-docker.pkg.dev/PROJECT-ID/crypto-signals/crypto-signals` |
+| `ALPACA_API_KEY`                 | Your Alpaca API key                                                   |
+| `ALPACA_SECRET_KEY`              | Your Alpaca secret key                                                |
+| `TEST_DISCORD_WEBHOOK`           | Test Discord webhook URL                                              |
+| `DISCORD_DEPLOYS`                | **NEW** - Deployment notification webhook                             |
 
 ### Required Variables
 
 Go to **Settings → Secrets and variables → Actions → Repository variables**:
 
-| Variable | Value |
-|----------|-------|
-| `GOOGLE_CLOUD_PROJECT` | `your-project-id` |
-| `GCP_REGION` | `us-central1` |
-| `TEST_MODE` | `false` |
-| `ALPACA_PAPER_TRADING` | `true` |
-| `ENABLE_EXECUTION` | `true` |
-| `ENABLE_EQUITIES` | `false` |
-| `ENABLE_GCP_LOGGING` | `true` |
-| `DISABLE_SECRET_MANAGER` | `false` |
+| Variable                 | Value             |
+| ------------------------ | ----------------- |
+| `GOOGLE_CLOUD_PROJECT`   | `your-project-id` |
+| `GCP_REGION`             | `us-central1`     |
+| `TEST_MODE`              | `false`           |
+| `ALPACA_PAPER_TRADING`   | `true`            |
+| `ENABLE_EXECUTION`       | `true`            |
+| `ENABLE_EQUITIES`        | `false`           |
+| `ENABLE_GCP_LOGGING`     | `true`            |
+| `DISABLE_SECRET_MANAGER` | `false`           |
 
 ---
 
@@ -184,30 +184,38 @@ Cloud Scheduler (daily 00:01 UTC)
 7. **Promote to Latest** → Tag new image as `latest` only after smoke test passes
 8. **Cloud Scheduler** → Triggers job daily at 00:01 UTC
 9. **Cloud Run Job** → Analyzes markets, generates signals, executes trades
+   - **State Reconciliation** (new): At startup, detects and heals sync gaps between Alpaca and Firestore
+     - Heals **Zombies**: Positions marked OPEN in DB but closed in Alpaca → marks `CLOSED_EXTERNALLY`
+     - Alerts **Orphans**: Positions open in Alpaca but missing from DB → sends Discord alert
 10. **Notifications** → Success/failure sent to Discord
 
 ### CI/CD Features
 
 **Concurrency Control:**
+
 - Only one deployment runs at a time (`cancel-in-progress: true`)
 - Prevents race conditions and conflicting deployments
 
 **Smoke Testing:**
+
 - After deployment, executes job with `--smoke-test` flag
 - Verifies Firestore connectivity and configuration
 - Skips full signal generation for fast validation
 
 **Auto-Rollback:**
+
 - If smoke test fails, automatically reverts to previous `latest` image
 - Uses "Promote-on-Success" pattern: `latest` tag only applied after passing smoke test
 - Failed builds are never promoted, ensuring `latest` always points to a stable release
 
 **Bypass Logic:**
+
 - Add `[skip-smoke]` to commit message to skip smoke test
 - Useful for documentation-only changes or emergency hotfixes
 - Image still promoted to `latest` if deployment succeeds
 
 **Detailed Notifications:**
+
 - Discord notifications include process summary with status emojis:
   - Build & Deploy: 🟢 Passed / 🔴 Failed
   - Smoke Test: 🟢 Passed / 🔴 Failed / ⏭️ Skipped
@@ -219,13 +227,13 @@ Cloud Scheduler (daily 00:01 UTC)
 
 ### Common Errors
 
-| Error | Solution |
-|-------|----------|
-| Permission denied on secret | [Grant secretAccessor role](./docs/TROUBLESHOOTING.md#error-1-permission-denied-on-secret) |
+| Error                        | Solution                                                                                   |
+| ---------------------------- | ------------------------------------------------------------------------------------------ |
+| Permission denied on secret  | [Grant secretAccessor role](./docs/TROUBLESHOOTING.md#error-1-permission-denied-on-secret) |
 | Missing GOOGLE_CLOUD_PROJECT | [Add environment variable](./docs/TROUBLESHOOTING.md#error-2-missing-google_cloud_project) |
-| Boolean parsing error | [Remove trailing newlines](./docs/TROUBLESHOOTING.md#error-3-boolean-parsing-error) |
-| Missing Docker image name | [Set GAR_REPOSITORY secret](./docs/TROUBLESHOOTING.md#error-4-missing-docker-image-name) |
-| Invalid scheduler URI | [Use correct URI format](./docs/TROUBLESHOOTING.md#error-5-invalid-scheduler-uri) |
+| Boolean parsing error        | [Remove trailing newlines](./docs/TROUBLESHOOTING.md#error-3-boolean-parsing-error)        |
+| Missing Docker image name    | [Set GAR_REPOSITORY secret](./docs/TROUBLESHOOTING.md#error-4-missing-docker-image-name)   |
+| Invalid scheduler URI        | [Use correct URI format](./docs/TROUBLESHOOTING.md#error-5-invalid-scheduler-uri)          |
 
 **See the complete [Troubleshooting Guide](./docs/TROUBLESHOOTING.md) for detailed solutions.**
 
