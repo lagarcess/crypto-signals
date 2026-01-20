@@ -444,6 +444,9 @@ def main(
                                 position = execution_engine.execute_signal(trade_signal)
                                 execution_duration = time.time() - execution_start
                                 if position:
+                                    # CRITICAL: Persist position to Firestore for
+                                    # Position Sync Loop and TP Automation to work
+                                    position_repo.save(position)
                                     logger.info(
                                         f"ORDER EXECUTED: {trade_signal.symbol}",
                                         extra={
