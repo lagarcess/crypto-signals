@@ -105,6 +105,9 @@ class ExitReason(str, Enum):
     TP_HIT = "TP_HIT"
     NOTIFICATION_FAILED = "NOTIFICATION_FAILED"
     MANUAL_EXIT = "MANUAL_EXIT"
+    CLOSED_EXTERNALLY = (
+        "CLOSED_EXTERNALLY"  # Position closed outside system (State Reconciler)
+    )
 
 
 class TradeType(str, Enum):
@@ -124,6 +127,45 @@ class TradeType(str, Enum):
     EXECUTED = "EXECUTED"  # Real broker order filled
     FILTERED = "FILTERED"  # Quality gate rejection
     THEORETICAL = "THEORETICAL"  # Execution failed, simulating trade
+
+
+# =============================================================================
+# STATE RECONCILIATION DOMAIN (Issue #113)
+# =============================================================================
+
+
+class ReconciliationReport(BaseModel):
+    """Report of state reconciliation between Alpaca and Firestore.
+
+    Detects and reports discrepancies between broker state and database state,
+    including zombie positions (closed in Alpaca, open in DB) and orphan
+    positions (open in Alpaca, missing from DB).
+    """
+
+    zombies: List[str] = Field(
+        default_factory=list,
+        description="Symbols closed in Alpaca but marked OPEN in Firestore",
+    )
+    orphans: List[str] = Field(
+        default_factory=list,
+        description="Symbols with open positions in Alpaca but no Firestore record",
+    )
+    reconciled_count: int = Field(
+        default=0,
+        description="Number of positions updated during reconciliation",
+    )
+    timestamp: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="When reconciliation was performed",
+    )
+    duration_seconds: float = Field(
+        default=0.0,
+        description="Time taken to run reconciliation (seconds)",
+    )
+    critical_issues: List[str] = Field(
+        default_factory=list,
+        description="Critical alerts (e.g., orphan positions)",
+    )
 
 
 # =============================================================================
