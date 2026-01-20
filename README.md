@@ -12,6 +12,7 @@
 ## Overview
 
 Crypto Sentinel is a production-ready trading bot that:
+
 - 📊 Ingests market data for stocks and cryptocurrencies via Alpaca API
 - 🔍 Analyzes technical indicators and patterns using confluence logic
 - 🚀 Generates trading signals with risk management parameters
@@ -25,6 +26,7 @@ Crypto Sentinel is a production-ready trading bot that:
 ## Features
 
 ### Core Capabilities
+
 - **Multi-Asset Support**: Trades both cryptocurrencies (BTC, ETH, XRP) and equities (NVDA, QQQ, GLD)
 - **Pattern Recognition**: Detects 28 patterns using O(N) ZigZag pivot detection, including candlestick reversal patterns (Hammer, Engulfing, Morning Star), structural chart patterns (Bull Flag, Double Bottom, Cup and Handle), and Fibonacci harmonic patterns (Gartley, Bat, Butterfly, Crab, ABCD, Elliott Wave)
 - **Technical Indicators**: RSI, MACD, Bollinger Bands, EMA, and more
@@ -32,11 +34,13 @@ Crypto Sentinel is a production-ready trading bot that:
 - **Cloud-Native**: Designed for containerized deployment on GCP
 
 ### Discord Notifications
+
 - ✅ **Threaded Signal Lifecycle**: All updates (TP hits, invalidations, expirations) are pinned to a single thread
 - ✅ **Self-Healing**: Orphaned signals automatically create new threads for future updates
 - ✅ **Visual Integration Tests**: Real webhook testing with `scripts/visual_discord_test.py`
 
 ### Production Features
+
 - ✅ **Secret Management**: Google Secret Manager integration
 - ✅ **Rate Limiting**: Automatic throttling to respect API limits (200 req/min)
 - ✅ **Retry Logic**: Exponential backoff for transient failures
@@ -54,6 +58,7 @@ Crypto Sentinel is a production-ready trading bot that:
 - ✅ **Docker Support**: Multi-stage builds with security best practices
 
 ### Automated Execution
+
 - ⚡ **Bracket Orders**: Atomic Entry + Take-Profit + Stop-Loss via Alpaca API
 - 📏 **Risk-Based Position Sizing**: `qty = RISK_PER_TRADE / |entry - stop|`
 - 🔐 **Dual Safety Guards**: Requires `ALPACA_PAPER_TRADING=True` AND `ENABLE_EXECUTION=True`
@@ -61,6 +66,7 @@ Crypto Sentinel is a production-ready trading bot that:
 - 💾 **Position Persistence**: Live positions stored in `live_positions` Firestore collection
 
 ### Order Management (Managed Trade Model)
+
 - 🔄 **Position Sync**: Real-time synchronization with Alpaca broker state
 - 📊 **Leg Management**: Track TP/SL order IDs for targeted operations
 - 📈 **Trailing Stops**: Replace stop-loss orders via `modify_stop_loss()`
@@ -72,11 +78,13 @@ Crypto Sentinel is a production-ready trading bot that:
 ![Crypto Sentinel Architecture](./docs/images/crypto-sentinel-architecture.png)
 
 **Core Engine:**
+
 - **Structural Foundation**: O(N) ZigZag pivot detection with Numba JIT compilation
 - **Pattern Classification**: STANDARD_PATTERN (5-90d) vs MACRO_PATTERN (>90d)
 - **Shadow Signaling**: Rejected signals persisted to `rejected_signals` collection for audit
 
 **External Services:**
+
 - **Alpaca API**: Market data & trading
 - **Google Cloud Firestore**: Signal, position, and rejected signal storage
 - **Google Cloud BigQuery**: Trade analytics
@@ -143,18 +151,21 @@ crypto-signals/
 ### Local Development Setup
 
 1. **Clone the repository**:
+
    ```bash
    git clone https://github.com/lagarcess/crypto-signals.git
    cd crypto-signals
    ```
 
 2. **Install dependencies**:
+
    ```bash
    poetry install
    ```
 
 3. **Configure environment**:
    Create a `.env` file in the project root:
+
    ```env
    # Alpaca API
    ALPACA_API_KEY=your_api_key
@@ -183,6 +194,7 @@ crypto-signals/
    ```
 
 4. **Run health check**:
+
    ```bash
    poetry run python -m crypto_signals.scripts.health_check
    ```
@@ -195,11 +207,13 @@ crypto-signals/
 ### Docker Setup
 
 1. **Build the image**:
+
    ```bash
    docker build -t crypto-signals:latest .
    ```
 
 2. **Run with Docker Compose**:
+
    ```bash
    # Create secrets directory and add GCP key
    mkdir -p secrets
@@ -213,23 +227,23 @@ crypto-signals/
 
 ### Environment Variables
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `ALPACA_API_KEY` | Yes | - | Alpaca API key |
-| `ALPACA_SECRET_KEY` | Yes | - | Alpaca secret key |
-| `ALPACA_PAPER_TRADING` | No | `true` | Use paper trading account |
-| `GOOGLE_CLOUD_PROJECT` | Yes | - | GCP project ID |
-| `GOOGLE_APPLICATION_CREDENTIALS` | No* | - | Path to service account JSON (*auto in cloud) |
-| `TEST_DISCORD_WEBHOOK` | Yes | - | Discord webhook for test/dev messages |
-| `TEST_MODE` | No | `true` | Route all traffic to test webhook (safe default) |
-| `LIVE_CRYPTO_DISCORD_WEBHOOK_URL` | No** | - | Live webhook for CRYPTO signals (**required if TEST_MODE=false) |
-| `LIVE_STOCK_DISCORD_WEBHOOK_URL` | No** | - | Live webhook for EQUITY signals (**required if TEST_MODE=false) |
-| `DISCORD_SHADOW_WEBHOOK_URL` | No | - | Deduplicated shadow signals (rejected patterns) |
-| `RATE_LIMIT_DELAY` | No | `0.5` | Delay between API requests (seconds) |
-| `DISABLE_SECRET_MANAGER` | No | `false` | Disable Secret Manager (local dev) |
-| `ENABLE_EXECUTION` | No | `false` | Enable bracket order execution |
-| `ENABLE_EQUITIES` | No | `false` | Enable stock trading (requires Alpaca SIP data plan) |
-| `RISK_PER_TRADE` | No | `100.0` | Fixed dollar amount to risk per trade |
+| Variable                          | Required | Default | Description                                                       |
+| --------------------------------- | -------- | ------- | ----------------------------------------------------------------- |
+| `ALPACA_API_KEY`                  | Yes      | -       | Alpaca API key                                                    |
+| `ALPACA_SECRET_KEY`               | Yes      | -       | Alpaca secret key                                                 |
+| `ALPACA_PAPER_TRADING`            | No       | `true`  | Use paper trading account                                         |
+| `GOOGLE_CLOUD_PROJECT`            | Yes      | -       | GCP project ID                                                    |
+| `GOOGLE_APPLICATION_CREDENTIALS`  | No\*     | -       | Path to service account JSON (\*auto in cloud)                    |
+| `TEST_DISCORD_WEBHOOK`            | Yes      | -       | Discord webhook for test/dev messages                             |
+| `TEST_MODE`                       | No       | `true`  | Route all traffic to test webhook (safe default)                  |
+| `LIVE_CRYPTO_DISCORD_WEBHOOK_URL` | No\*\*   | -       | Live webhook for CRYPTO signals (\*\*required if TEST_MODE=false) |
+| `LIVE_STOCK_DISCORD_WEBHOOK_URL`  | No\*\*   | -       | Live webhook for EQUITY signals (\*\*required if TEST_MODE=false) |
+| `DISCORD_SHADOW_WEBHOOK_URL`      | No       | -       | Deduplicated shadow signals (rejected patterns)                   |
+| `RATE_LIMIT_DELAY`                | No       | `0.5`   | Delay between API requests (seconds)                              |
+| `DISABLE_SECRET_MANAGER`          | No       | `false` | Disable Secret Manager (local dev)                                |
+| `ENABLE_EXECUTION`                | No       | `false` | Enable bracket order execution                                    |
+| `ENABLE_EQUITIES`                 | No       | `false` | Enable stock trading (requires Alpaca SIP data plan)              |
+| `RISK_PER_TRADE`                  | No       | `100.0` | Fixed dollar amount to risk per trade                             |
 
 ### Portfolio Configuration
 
@@ -252,10 +266,13 @@ EQUITY_SYMBOLS: List[str] = [
 ## Deployment
 
 ### Quick Start
+
 See [DEPLOYMENT.md](DEPLOYMENT.md) for a 5-minute quick-start deployment guide for experienced users.
 
 ### Comprehensive Documentation
+
 For detailed step-by-step deployment instructions, see:
+
 - **[GCP Deployment Guide](docs/GCP_DEPLOYMENT_GUIDE.md)** - Complete production deployment guide including:
   - Service account configuration
   - Secret Manager setup with permission granting
@@ -319,6 +336,7 @@ git push  # Tests run automatically before push
 ```
 
 **Output:**
+
 ```
 🔍 Running pre-push validation...
 📋 Running unit tests...
@@ -327,11 +345,13 @@ git push  # Tests run automatically before push
 ```
 
 **Benefits:**
+
 - ✅ Catches test failures before they hit CI (~5 min saved per failure)
 - ✅ Runs in ~30 seconds locally vs ~3-5 minutes in CI
 - ✅ Prevents embarrassing CI failures
 
 **To bypass (emergency only):**
+
 ```bash
 git push --no-verify
 ```
@@ -372,6 +392,7 @@ These tests verify that all lifecycle updates appear in a single thread.
 ### Structured Logging
 
 All operations include contextual information:
+
 ```
 2024-01-15 10:30:45 - crypto_signals.main - INFO - Analyzing BTC/USD | symbol=BTC/USD | asset_class=CRYPTO
 2024-01-15 10:30:47 - crypto_signals.main - INFO - Completed: signal_generation | duration=2.34s | symbol=BTC/USD
@@ -380,12 +401,14 @@ All operations include contextual information:
 ### Metrics Collection
 
 Built-in metrics tracking:
+
 - Success/failure rates per operation
 - Execution duration (min/avg/max)
 - Total operations count
 - Error rates and types
 
 ### Shadow Signals (Phase 7)
+
 Rejections are routed to `#shadow-signals` (grey embed) and stored in `rejected_signals` collection.
 Key metrics captured in `confluence_snapshot`: RSI, ADX, SMA trend, Volume Ratio.
 
@@ -397,11 +420,13 @@ Ensure composite index exists for `rejected_signals`:
 ### Health Checks
 
 Run health checks to verify connectivity:
+
 ```bash
 poetry run python -m crypto_signals.scripts.health_check
 ```
 
 Verifies:
+
 - ✅ Alpaca Trading API
 - ✅ Alpaca Market Data API
 - ✅ Google Cloud Firestore
@@ -411,6 +436,7 @@ Verifies:
 ## Troubleshooting
 
 For comprehensive troubleshooting of deployment and runtime issues, see the **[Troubleshooting Guide](docs/TROUBLESHOOTING.md)** which covers:
+
 - Permission denied on secrets
 - Missing environment variables
 - Boolean parsing errors
@@ -423,6 +449,7 @@ For comprehensive troubleshooting of deployment and runtime issues, see the **[T
 #### Rate Limit Errors
 
 Increase `RATE_LIMIT_DELAY`:
+
 ```env
 RATE_LIMIT_DELAY=1.0  # Increase from default 0.5s
 ```
@@ -430,6 +457,7 @@ RATE_LIMIT_DELAY=1.0  # Increase from default 0.5s
 #### Memory Issues
 
 Reduce portfolio size or increase container memory:
+
 ```bash
 docker-compose up --scale crypto-signals=1 --memory=2g
 ```
@@ -437,6 +465,7 @@ docker-compose up --scale crypto-signals=1 --memory=2g
 #### Secret Loading Failures
 
 Check Secret Manager permissions:
+
 ```bash
 gcloud projects get-iam-policy $GOOGLE_CLOUD_PROJECT
 ```
