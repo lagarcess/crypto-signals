@@ -184,6 +184,9 @@ Cloud Scheduler (daily 00:01 UTC)
 7. **Promote to Latest** → Tag new image as `latest` only after smoke test passes
 8. **Cloud Scheduler** → Triggers job daily at 00:01 UTC
 9. **Cloud Run Job** → Analyzes markets, generates signals, executes trades
+   - **State Reconciliation** (new): At startup, detects and heals sync gaps between Alpaca and Firestore
+     - Heals **Zombies**: Positions marked OPEN in DB but closed in Alpaca → marks `CLOSED_EXTERNALLY`
+     - Alerts **Orphans**: Positions open in Alpaca but missing from DB → sends Discord alert
 10. **Notifications** → Success/failure sent to Discord
 
 ### CI/CD Features
