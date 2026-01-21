@@ -10,7 +10,7 @@ from typing import Optional
 import requests
 from crypto_signals.analysis.patterns import MACRO_PATTERN
 from crypto_signals.config import Settings, get_settings
-from crypto_signals.domain.schemas import AssetClass, Position, Signal
+from crypto_signals.domain.schemas import AssetClass, Position, Signal, TradeType
 from loguru import logger
 
 # =============================================================================
@@ -622,6 +622,11 @@ class DiscordClient:
         if signal.pattern_classification == MACRO_PATTERN:
             emoji = "🏛️"  # Building emoji for institutional-scale patterns
             macro_label = "[MACRO SETUP] "
+
+        # RISK BLOCK OVERRIDE
+        if getattr(signal, "trade_type", None) == TradeType.RISK_BLOCKED.value:
+            emoji = "⚠️"
+            macro_label = "[RISK LIMIT] "
 
         # Format the main content
         # Format the main content using dynamic currency formatter

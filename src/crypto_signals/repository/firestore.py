@@ -12,7 +12,13 @@ Dev Note: Enable GCP native TTL policy with:
 from datetime import datetime, timedelta, timezone
 
 from crypto_signals.config import get_settings
-from crypto_signals.domain.schemas import Position, Signal, SignalStatus, TradeStatus
+from crypto_signals.domain.schemas import (
+    AssetClass,
+    Position,
+    Signal,
+    SignalStatus,
+    TradeStatus,
+)
 from crypto_signals.observability import log_validation_error
 from google.cloud import firestore
 from google.cloud.firestore import FieldFilter
@@ -469,6 +475,31 @@ class PositionRepository:
                 "status": position.status.value,
             },
         )
+
+    def count_open_positions_by_class(self, asset_class: AssetClass) -> int:
+        """
+        Count number of OPEN positions for a specific asset class.
+        Used by RiskEngine for sector capping.
+
+        Requires Composite Index: status (ASC) + asset_class (ASC)
+        """
+        try:
+            # Optimize: Use Count Query (Aggregation) which is cheaper/faster than fetching docs
+            query = (
+                self.db.collection(self.collection_name)
+                .where(filter=FieldFilter("status", "==", TradeStatus.OPEN.value))
+                .where(filter=FieldFilter("asset_class", "==", asset_class))
+                .count()
+            )
+
+            # Execute aggregation
+            results = query.get()
+            return int(results[0][0].value)
+
+        except Exception as e:
+            logger.error(f"Error counting open positions for {asset_class}: {e}")
+            # Safety first -> block trading on DB error.
+            return 9999
 
     def get_open_positions(self) -> list[Position]:
         """Get all OPEN positions."""

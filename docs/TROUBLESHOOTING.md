@@ -277,15 +277,26 @@ gcloud run jobs add-iam-policy-binding crypto-signals-job \
 
 **Verification:**
 
+
+---
+
+### Error 7: Firestore Index GRPC Error
+
+**Error Message:**
+```
+grpc.StatusCode.FAILED_PRECONDITION: The query requires an index.
+```
+
+**Cause:**
+Missing Composite Index for sector cap queries (`status` + `asset_class`) in `RiskEngine`.
+
+**Solution:**
+Create the index via CLI:
 ```bash
-# Check IAM policy on the Cloud Run job
-gcloud run jobs get-iam-policy crypto-signals-job --region=us-central1
-
-# Test scheduler - should now trigger the job
-gcloud scheduler jobs run crypto-signals-daily --location=us-central1
-
-# Wait a few seconds and check for new execution
-gcloud run jobs executions list --job=crypto-signals-job --region=us-central1 --limit=3
+gcloud firestore indexes composite create \
+    --collection-group=live_positions \
+    --field-config field-path=status,order=ascending \
+    --field-config field-path=asset_class,order=ascending
 ```
 
 **How to distinguish manual vs scheduled runs:**

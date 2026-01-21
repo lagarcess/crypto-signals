@@ -263,6 +263,28 @@ gcloud firestore databases create \
 gcloud firestore databases list
 ```
 
+
+### 1.5. Configure Firestore Indexes
+
+The Risk Engine requires a **Composite Index** to efficiently enforce sector caps (`MAX_CRYPTO_POSITIONS`). Without this, the application will crash with a GRPC Error.
+
+**Run this command to create the index:**
+
+```bash
+gcloud firestore indexes composite create \
+    --collection-group=live_positions \
+    --field-config field-path=status,order=ascending \
+    --field-config field-path=asset_class,order=ascending
+```
+
+*Note: Index creation can take 5-10 minutes.*
+
+**Verification:**
+
+```bash
+gcloud firestore indexes composite list
+```
+
 ---
 
 ### 1.4. Initialize BigQuery

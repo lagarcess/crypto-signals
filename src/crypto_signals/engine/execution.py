@@ -35,7 +35,9 @@ from crypto_signals.domain.schemas import (
 from crypto_signals.domain.schemas import (
     OrderSide as DomainOrderSide,
 )
+from crypto_signals.engine.risk import RiskEngine
 from crypto_signals.observability import console
+from crypto_signals.repository.firestore import PositionRepository
 from loguru import logger
 from rich.panel import Panel
 
@@ -55,16 +57,24 @@ class ExecutionEngine:
         close_position_emergency: Cancel legs and exit at market
     """
 
-    def __init__(self, trading_client: Optional[TradingClient] = None):
+    def __init__(
+        self,
+        trading_client: Optional[TradingClient] = None,
+        repository: Optional[PositionRepository] = None,
+    ):
         """
         Initialize the ExecutionEngine.
 
         Args:
             trading_client: Optional TradingClient for dependency injection.
-                           If not provided, uses get_trading_client().
+            repository: Optional PositionRepository for risk checks.
         """
         settings = get_settings()
         self.alpaca = trading_client if trading_client else get_trading_client()
+
+        # Initialize Repo for Risk Engine
+        self.repo = repository if repository else PositionRepository()
+        self.risk_engine = RiskEngine(self.alpaca, self.repo)
 
         # Environment Logging
         logger.info(
@@ -84,8 +94,6 @@ class ExecutionEngine:
         settings = get_settings()
 
         # === Execution Gating (SAFETY GUARD) ===
-
-        # === Execution Gating (SAFETY GUARD) ===
         # If explicitly enabled in PROD, execute LIVE.
         # If disabled OR not PROD, execute THEORETICAL (Simulated).
         should_execute_live = (
@@ -97,6 +105,15 @@ class ExecutionEngine:
         # Validate required signal fields
         if not self._validate_signal(signal):
             return None
+
+        # === Risk Management (Issue #114) ===
+        # Gate 1: Check Risk Constraints (Buying Power, Sector Limits, Drawdown)
+        risk_result = self.risk_engine.validate_signal(signal)
+
+        if not risk_result.passed:
+            logger.warning(f"RISK BLOCK: {signal.symbol} - {risk_result.reason}")
+            # Create "Risk Blocked" Position for Shadow Tracking
+            return self._execute_risk_blocked_order(signal, risk_result.reason)
 
         # Route based on execution mode
         if should_execute_live:
@@ -363,6 +380,45 @@ class ExecutionEngine:
             trade_type=TradeType.THEORETICAL.value,
             entry_slippage_pct=entry_slippage_pct,
             filled_at=datetime.now(timezone.utc),
+        )
+
+    def _execute_risk_blocked_order(
+        self, signal: Signal, reason: str = "Unknown Risk"
+    ) -> Position:
+        """
+        Create a 'Shadow' Position for trades blocked by the Risk Engine.
+        Used for theoretical tracking of opportunities missed due to risk limits.
+        """
+        settings = get_settings()
+        qty = self._calculate_qty(signal)
+
+        delete_at = datetime.now(timezone.utc) + timedelta(
+            days=settings.TTL_DAYS_POSITION
+        )
+
+        return Position(
+            position_id=signal.signal_id,
+            ds=signal.ds,
+            account_id="risk_blocked",
+            symbol=signal.symbol,
+            signal_id=signal.signal_id,
+            alpaca_order_id=None,
+            discord_thread_id=signal.discord_thread_id,
+            status=TradeStatus.CLOSED,  # Immediately closed as it never opened
+            entry_fill_price=signal.entry_price,  # Theoretical fill
+            current_stop_loss=signal.suggested_stop,
+            qty=qty,
+            side=signal.side or DomainOrderSide.BUY,
+            target_entry_price=signal.entry_price,
+            tp_order_id=None,
+            sl_order_id=None,
+            delete_at=delete_at,
+            trade_type=TradeType.RISK_BLOCKED.value,  # Special type
+            failed_reason=f"Risk Rejection: {reason}",
+            # Optional: Set valid metrics to 0 or None since it didn't run
+            filled_at=datetime.now(timezone.utc),
+            exit_time=datetime.now(timezone.utc),  # Exit immediately
+            exit_reason=ExitReason.CLOSED_EXTERNALLY,  # Closest match or new enum?
         )
 
     def _validate_signal(self, signal: Signal) -> bool:
