@@ -60,5 +60,5 @@ description: Create a comprehensive Pull Request from current changes
      - `chore/*` -> `chore`
      - `docs/*` -> `documentation`
    - Output the PR command for the user (referencing the temp file):
-     - `gh pr create --title "[Title]" --body-file temp/PR_DESCRIPTION.md --label "[Label]" --assignee "@me" --reviewer "@me"`
+     - `gh pr create --title "[Title]" --body-file temp/PR_DESCRIPTION.md --label "[Label]"`
    - **Optional**: Ask user if they want to add specialized reviewers.

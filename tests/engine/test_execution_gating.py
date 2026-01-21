@@ -41,8 +41,11 @@ class TestExecutionGating(unittest.TestCase):
             passed=True
         )
 
-        # Initialize engine with mocked client
-        self.engine = ExecutionEngine(trading_client=self.mock_client)
+        # Initialize engine with mocked client and repo
+        self.mock_repo = MagicMock()
+        self.engine = ExecutionEngine(
+            trading_client=self.mock_client, repository=self.mock_repo
+        )
 
     def tearDown(self):
         self.settings_patcher.stop()
