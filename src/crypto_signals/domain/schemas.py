@@ -127,6 +127,7 @@ class TradeType(str, Enum):
     EXECUTED = "EXECUTED"  # Real broker order filled
     FILTERED = "FILTERED"  # Quality gate rejection
     THEORETICAL = "THEORETICAL"  # Execution failed, simulating trade
+    RISK_BLOCKED = "RISK_BLOCKED"  # Blocked by RiskEngine (Shadow P&L)
 
 
 # =============================================================================

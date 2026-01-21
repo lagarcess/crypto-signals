@@ -164,6 +164,24 @@ class Settings(BaseSettings):
         le=10000.0,
     )
 
+    # === Risk Management (Issue #114) ===
+    MAX_CRYPTO_POSITIONS: int = Field(
+        default=5,
+        description="Maximum concurrent open positions for Crypto asset class.",
+    )
+    MAX_EQUITY_POSITIONS: int = Field(
+        default=5,
+        description="Maximum concurrent open positions for Equity asset class.",
+    )
+    MAX_DAILY_DRAWDOWN_PCT: float = Field(
+        default=0.02,
+        description="Maximum daily drawdown (2% default). Halts execution if reached.",
+    )
+    MIN_ASSET_BP_USD: float = Field(
+        default=100.0,
+        description="Minimum buying power required to perform a trade.",
+    )
+
     ENABLE_EXECUTION: bool = Field(
         default=False,
         description="Enable order execution (requires ALPACA_PAPER_TRADING=True)",
