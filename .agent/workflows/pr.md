@@ -8,7 +8,7 @@ description: Create a comprehensive Pull Request from current changes
 
 2. **Security & Privacy Scan**
    // turbo
-   - **Secret Scan**: Scan the `git diff` for potential leaks (High Entropy strings, "BEGIN PRIVATE KEY", "ghp_", etc.).
+   - **Secret Scan**: Scan the `git diff` for potential leaks (High Entropy strings, "BEGIN PRIVATE KEY", "ghp\_", etc.).
    - **PII Scan**: Ensure no personal data (names, IPs) from local logs was accidentally committed.
    - **Env Check**: Verify that NO changes to `.env` or `secrets/` are included in the commit.
    - If leaks found -> **STOP** and warn user.
@@ -16,7 +16,7 @@ description: Create a comprehensive Pull Request from current changes
 3. **Knowledge Capture**
    - Execute the `/learn` workflow to extract and save lessons from this session.
 
-3. **Documentation & Knowledge Base Update**
+4. **Documentation & Knowledge Base Update**
    - Review `README.md`, `DEPLOYMENT.md`, and any files in `docs/`.
    - Update them to reflect:
      - New features or changed functionality.
@@ -25,35 +25,40 @@ description: Create a comprehensive Pull Request from current changes
    - **Privacy Check**: Ensure no sensitive internal logs or secrets are exposed in public docs.
    - Commit these documentation changes.
 
-3. **PR Documentation Generation**
+5. **PR Documentation Generation**
    - analyze the git diff and `artifacts/IMPLEMENTATION_PLAN.md`.
    - generate a PR Title and Description following this template:
    - Save this description to `temp/PR_DESCRIPTION.md` (ensure this file is gitignored). DO NOT commit this file to the repo.
+
      ```markdown
      ## Problem
+
      [Link to Issue #]
      [Description of the problem this PR solves]
 
      ## Solution
+
      [High-level technical approach]
      [Key architectural decisions]
 
      ## Changes
+
      - [File/Component]: [Change description]
      - [File/Component]: [Change description]
 
      ## Verification
+
      - [ ] Unit Tests passed
      - [ ] System checks passed
      - [ ] Manual verification step (if any)
      ```
 
-3. **Branch & Push**
+6. **Branch & Push**
    // turbo
    - Create a new branch (if not already on one): `git checkout -b feat/issue-number-description`
    - Push changes: `git push origin HEAD`
 
-4. **Submission**
+7. **Submission**
    - Infer PR labels from branch type:
      - `feat/*` -> `enhancement`
      - `fix/*` -> `bug`
