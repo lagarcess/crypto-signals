@@ -32,7 +32,15 @@ def mock_trading_client():
 
 @pytest.fixture
 def execution_engine(mock_trading_client):
-    return ExecutionEngine(trading_client=mock_trading_client)
+    with patch("crypto_signals.engine.execution.RiskEngine") as MockRiskEngine:
+        # Default behavior: Risk Checks PASS
+        from crypto_signals.engine.risk import RiskCheckResult
+
+        MockRiskEngine.return_value.validate_signal.return_value = RiskCheckResult(
+            passed=True
+        )
+
+        yield ExecutionEngine(trading_client=mock_trading_client)
 
 
 def test_theoretical_execution_long(execution_engine, mock_settings, mock_trading_client):
