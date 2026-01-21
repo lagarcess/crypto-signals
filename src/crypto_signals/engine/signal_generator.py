@@ -29,6 +29,12 @@ from loguru import logger
 class SignalGenerator:
     """Orchestrates signal generation from market data."""
 
+    # Safe Hydration Constants (for Shadow Validation)
+    SAFE_STOP_VAL = 0.0001
+    SAFE_TP1_VAL = 0.0001
+    SAFE_TP2_VAL = 0.0002
+    SAFE_TP3_VAL = 0.0003
+
     def __init__(
         self,
         market_provider: MarketDataProvider,
@@ -258,34 +264,21 @@ class SignalGenerator:
         if signal is None:
             return None
 
-        # 5. RISK-TO-REWARD (R:R) FILTER (Post-construction)
-        # Discard any signal where the R:R ratio is less than 1.5
-        rr_ratio = 0.0
-        if signal.take_profit_1 and signal.suggested_stop and signal.entry_price:
-            potential_profit = abs(signal.take_profit_1 - signal.entry_price)
-            potential_risk = abs(signal.entry_price - signal.suggested_stop)
+        # 5. RISK-TO-REWARD (R:R) FILTER
+        # Logic is now handled internally by _create_signal during pre-construction validation
+        # (check validation block ~lines 550+) to support Shadow Validation.
 
-            if potential_risk > 0:
-                rr_ratio = potential_profit / potential_risk
-                confluence_snapshot["rr_ratio"] = round(rr_ratio, 2)
-
-                if rr_ratio < 1.5:
-                    rejection_reason = f"R:R {rr_ratio:.1f} < 1.5"
-                    logger.warning(
-                        f"[REJECTION] {symbol} {pattern_name} rejected: {rejection_reason}"
-                    )
-                    return self._create_rejected_signal(
-                        symbol,
-                        asset_class,
-                        pattern_name,
-                        latest,
-                        analyzer,
-                        rejection_reason,
-                        confluence_snapshot,
-                        harmonic_pattern=harmonic_pattern,
-                    )
-
-        return signal
+        return self._create_signal(
+            symbol,
+            asset_class,
+            pattern_name,
+            latest,
+            sig_id,
+            analyzer,
+            harmonic_pattern=harmonic_pattern,
+            geometric_pattern_name=geometric_pattern_name,
+            confluence_snapshot=confluence_snapshot,  # PASS SNAPSHOT
+        )
 
     def _create_signal(
         self,
@@ -297,19 +290,10 @@ class SignalGenerator:
         analyzer: PatternAnalyzer,
         harmonic_pattern=None,
         geometric_pattern_name: Optional[str] = None,
+        confluence_snapshot: Optional[dict] = None,
+        skip_validation: bool = False,
     ) -> Signal:
-        """Create a Signal object with all fields populated, including structural metadata.
-
-        Args:
-            symbol: Trading symbol
-            asset_class: Asset class (CRYPTO/EQUITY)
-            pattern_name: Primary pattern name (harmonic takes precedence)
-            latest: Latest candle data
-            sig_id: Signal ID
-            analyzer: Pattern analyzer instance
-            harmonic_pattern: Optional HarmonicPattern object
-            geometric_pattern_name: Optional geometric pattern name (for confluence when harmonic is primary)
-        """
+        """Create a Signal object with all fields populated, including structural metadata."""
 
         # Extract Prices
         close_price = float(latest["close"])
@@ -547,26 +531,68 @@ class SignalGenerator:
         # EARLY VALIDATION (Issue 107 Fix)
         # Catch invalid signals BEFORE creation/notification
         # ============================================================
+        rejection_reasons = []
+
+        # 1. Negative/Zero Stop Validation
         if suggested_stop is None or suggested_stop <= 0:
-            logger.warning(
-                f"Signal rejected for {symbol}: invalid suggested_stop={suggested_stop}. "
-                "Low-price assets may produce negative stops due to ATR calculations.",
-                extra={
-                    "symbol": symbol,
-                    "pattern": pattern_name,
-                    "suggested_stop": suggested_stop,
-                    "entry_price": entry_ref,
-                },
-            )
-            return None
+            rejection_reasons.append(f"Invalid Stop: {suggested_stop}")
 
+        # 2. Invalid Take Profit Validation
         if take_profit_1 is None or take_profit_1 <= 0:
-            logger.warning(
-                f"Signal rejected for {symbol}: invalid take_profit_1={take_profit_1}.",
-                extra={"symbol": symbol, "pattern": pattern_name},
-            )
-            return None
+            rejection_reasons.append(f"Invalid TP1: {take_profit_1}")
 
+        # 3. R:R Validation (Risk-to-Reward)
+        if suggested_stop > 0 and take_profit_1 is not None and entry_ref > 0:
+            potential_profit = abs(take_profit_1 - entry_ref)
+            potential_risk = abs(entry_ref - suggested_stop)
+
+            if potential_risk > 0:
+                rr_ratio = potential_profit / potential_risk
+                if confluence_snapshot:
+                    confluence_snapshot["rr_ratio"] = round(rr_ratio, 2)
+
+                if rr_ratio < 1.5:
+                    rejection_reasons.append(f"R:R {rr_ratio:.1f} < 1.5")
+
+        # Handling Validation Failures
+        if rejection_reasons:
+            combined_reason = f"VALIDATION_FAILED: {', '.join(rejection_reasons)}"
+
+            if not skip_validation:
+                # Normal flow: Create a rejected signal (Shadow Path)
+                logger.warning(
+                    f"[SHADOW REJECTION] {symbol} {pattern_name}: {combined_reason}"
+                )
+                return self._create_rejected_signal(
+                    symbol,
+                    asset_class,
+                    pattern_name,
+                    latest,
+                    analyzer,
+                    combined_reason,
+                    confluence_snapshot,
+                    harmonic_pattern=harmonic_pattern,
+                )
+            else:
+                # Recursive safety / Forcing creation: Hydrate with SAFE values
+                # This allows the Rejected Signal to be created without pydantic errors
+                logger.debug(
+                    f"Hydrating INVALID signal (skip_validation=True). Stats: Stop={suggested_stop}, TP={take_profit_1}"
+                )
+
+                # Force safe values (Safe Hydration)
+                # We keep the invalidation_price as None if it was causing issues?
+                # No, schemas.py expects floats.
+                if suggested_stop <= 0:
+                    suggested_stop = self.SAFE_STOP_VAL  # Min positive float
+                if take_profit_1 <= 0:
+                    take_profit_1 = self.SAFE_TP1_VAL
+                if take_profit_2 is None or take_profit_2 <= 0:
+                    take_profit_2 = self.SAFE_TP2_VAL
+                if take_profit_3 is None or take_profit_3 <= 0:
+                    take_profit_3 = self.SAFE_TP3_VAL
+
+        # Construct Safe Signal
         return Signal(
             signal_id=sig_id,
             strategy_id=strategy_id,
@@ -623,6 +649,7 @@ class SignalGenerator:
         sig_id = get_deterministic_id(f"{symbol}|{pattern_name}|{latest.name}|REJECTED")
 
         # Create base signal with structural metadata
+        # ENABLE SKIP_VALIDATION to permit safe hydration of invalid parameters
         signal = self._create_signal(
             symbol,
             asset_class,
@@ -631,6 +658,8 @@ class SignalGenerator:
             sig_id,
             analyzer,
             harmonic_pattern=harmonic_pattern,
+            confluence_snapshot=confluence_snapshot,
+            skip_validation=True,  # Prevent infinite recursion
         )
 
         # Override status and add rejection metadata

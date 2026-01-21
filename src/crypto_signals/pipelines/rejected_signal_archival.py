@@ -13,6 +13,7 @@ Pattern: Extract-Transform-Load
 from datetime import datetime, timezone
 from typing import Any, List
 
+import pandas as pd
 from google.cloud import firestore
 from loguru import logger
 
@@ -129,21 +130,35 @@ class RejectedSignalArchival(BigQueryPipelineBase):
                     )
                     continue
 
-                # Fetch market data since signal creation
-                bars_df = self.market_provider.get_daily_bars(
-                    symbol=symbol,
-                    asset_class=asset_class,
-                    lookback_days=30,
+                # Market Data Fetching Bypass for Validation Failures
+                rejection_reason = signal.get("rejection_reason", "")
+                is_validation_failure = (
+                    rejection_reason and "VALIDATION_FAILED" in rejection_reason
                 )
 
-                if bars_df.empty:
-                    logger.warning(f"No market data for {symbol}")
-                    continue
+                if is_validation_failure:
+                    # Logic Skip: Do not fetch market data.
+                    # Rationale: Validation failures often have invalid parameters (stop=0)
+                    # or happen on assets where data might be questionable.
+                    # We just archive the failure record with neutral Stats.
+                    bars_df = pd.DataFrame()  # Empty
+                    logger.info(
+                        f"Skipping market data for validation failure: {signal.get('signal_id')}"
+                    )
+                else:
+                    # Fetch market data since signal creation
+                    bars_df = self.market_provider.get_daily_bars(
+                        symbol=symbol,
+                        asset_class=asset_class,
+                        lookback_days=30,
+                    )
+
+                    if bars_df.empty:
+                        logger.warning(f"No market data for {symbol}")
+                        continue
 
                 # Filter bars after signal creation
                 if created_at:
-                    import pandas as pd
-
                     bars_df = bars_df[
                         bars_df.index >= pd.Timestamp(created_at).floor("D")
                     ]
@@ -153,55 +168,66 @@ class RejectedSignalArchival(BigQueryPipelineBase):
                 exit_reason = None
                 exit_time = None
 
-                for idx, bar in bars_df.iterrows():
-                    high = float(bar["high"])
-                    low = float(bar["low"])
-
-                    if side == OrderSide.BUY.value:
-                        # Long: check if TP1 hit (high >= TP1) or SL hit (low <= SL)
-                        if high >= take_profit_1:
-                            exit_price = take_profit_1
-                            exit_reason = "THEORETICAL_TP1"
-                            exit_time = idx
-                            break
-                        elif low <= stop_loss:
-                            exit_price = stop_loss
-                            exit_reason = "THEORETICAL_SL"
-                            exit_time = idx
-                            break
-                    else:
-                        # Short: check if TP1 hit (low <= TP1) or SL hit (high >= SL)
-                        if low <= take_profit_1:
-                            exit_price = take_profit_1
-                            exit_reason = "THEORETICAL_TP1"
-                            exit_time = idx
-                            break
-                        elif high >= stop_loss:
-                            exit_price = stop_loss
-                            exit_reason = "THEORETICAL_SL"
-                            exit_time = idx
-                            break
-
-                # If no exit triggered, use latest close as theoretical exit
-                if exit_price is None:
-                    exit_price = float(bars_df.iloc[-1]["close"])
-                    exit_reason = "THEORETICAL_OPEN"
-                    exit_time = bars_df.index[-1]
-
-                # Calculate theoretical P&L
-                qty = 1.0  # Normalized unit calculation
-                if side == OrderSide.BUY.value:
-                    pnl_gross = (exit_price - entry_price) * qty
+                if is_validation_failure:
+                    exit_reason = "VALIDATION_FAILED_NO_EXECUTION"
+                    pnl_net = 0.0
+                    pnl_pct = 0.0
+                    total_fees = 0.0
+                    exit_time = created_at
                 else:
-                    pnl_gross = (entry_price - exit_price) * qty
+                    # Standard Theoretical Simulation Loop
+                    for idx, bar in bars_df.iterrows():
+                        high = float(bar["high"])
+                        low = float(bar["low"])
 
-                # Calculate fees (crypto: 0.25% each way)
-                entry_fee = entry_price * qty * CRYPTO_TAKER_FEE_PCT
-                exit_fee = exit_price * qty * CRYPTO_TAKER_FEE_PCT
-                total_fees = entry_fee + exit_fee
+                        if side == OrderSide.BUY.value:
+                            # Long: check if TP1 hit (high >= TP1) or SL hit (low <= SL)
+                            if high >= take_profit_1:
+                                exit_price = take_profit_1
+                                exit_reason = "THEORETICAL_TP1"
+                                exit_time = idx
+                                break
+                            elif low <= stop_loss:
+                                exit_price = stop_loss
+                                exit_reason = "THEORETICAL_SL"
+                                exit_time = idx
+                                break
+                        else:
+                            # Short: check if TP1 hit (low <= TP1) or SL hit (high >= SL)
+                            if low <= take_profit_1:
+                                exit_price = take_profit_1
+                                exit_reason = "THEORETICAL_TP1"
+                                exit_time = idx
+                                break
+                            elif high >= stop_loss:
+                                exit_price = stop_loss
+                                exit_reason = "THEORETICAL_SL"
+                                exit_time = idx
+                                break
 
-                pnl_net = pnl_gross - total_fees
-                pnl_pct = (pnl_net / (entry_price * qty)) * 100 if entry_price else 0
+                    # If no exit triggered, use latest close as theoretical exit
+                    if exit_price is None and not is_validation_failure:
+                        exit_price = float(bars_df.iloc[-1]["close"])
+                        exit_reason = "THEORETICAL_OPEN"
+                        exit_time = bars_df.index[-1]
+
+                    # Calculate theoretical P&L
+                    qty = 1.0  # Normalized unit calculation
+                    if not is_validation_failure:
+                        if side == OrderSide.BUY.value:
+                            pnl_gross = (exit_price - entry_price) * qty
+                        else:
+                            pnl_gross = (entry_price - exit_price) * qty
+
+                        # Calculate fees (crypto: 0.25% each way)
+                        entry_fee = entry_price * qty * CRYPTO_TAKER_FEE_PCT
+                        exit_fee = exit_price * qty * CRYPTO_TAKER_FEE_PCT
+                        total_fees = entry_fee + exit_fee
+
+                        pnl_net = pnl_gross - total_fees
+                        pnl_pct = (
+                            (pnl_net / (entry_price * qty)) * 100 if entry_price else 0
+                        )
 
                 # Build record
                 record = {
@@ -213,7 +239,9 @@ class RejectedSignalArchival(BigQueryPipelineBase):
                     "asset_class": asset_class,
                     "pattern_name": signal.get("pattern_name"),
                     "rejection_reason": signal.get("rejection_reason"),
-                    "trade_type": "FILTERED",
+                    "trade_type": "VALIDATION_FAILED"
+                    if is_validation_failure
+                    else "FILTERED",
                     "side": side,
                     "entry_price": entry_price,
                     "suggested_stop": stop_loss,

@@ -28,3 +28,12 @@
 
 ### Alpaca
 - [2026-01-21] **Typing**: Account fields (e.g., `buying_power`) can be returned as strings, decimals, or floats depending on the API version and field. Always use defensive parsing (`float(val)` with try-except) when mapping to strict schemas.
+
+### Pydantic & Data Pipelines
+- [2026-01-21] **Constraint Paradox**: Strict Pydantic validators (e.g., `PositiveFloat`) are excellent for data integrity but can catch "conceptually valid" failures (like a negative stop loss due to weird volatility) and crash the pipeline.
+- [2026-01-21] **Safe Hydration Pattern**: To persist these "invalid" objects for analysis without relaxing the schema, use a "Safe Hydration" strategy:
+  1. Catch the validation error early.
+  2. Populate the strict fields with a safe constant (e.g., `0.0001` for `PositiveFloat` or explicit `SAFE_CONSTANTS`).
+  3. Store the *real* invalid values in a metadata field (e.g., `rejection_reason` string or `trace` dict).
+  4. Flag the object status clearly (e.g., `REJECTED_BY_FILTER`).
+- [2026-01-21] **Zombie Prevention**: When routing these hydrate objects to analytics pipelines, explicitly bypass simulation logic (like market data fetching) that assumes valid data, or implementation will fail downstream. Force `PnL = 0` to preserve statistical integrity.
