@@ -16,6 +16,7 @@ description: AI Code Review (Staff Engineer Persona) to replace Github Copilot
 
 3.  **Report Generation**
     - Generate a "Review Report" markdown artifact.
+    - **Important**: Save this to `temp/REVIEW_REPORT.md` (gitignored).
     - Format:
         ```markdown
         ## Code Review Report
