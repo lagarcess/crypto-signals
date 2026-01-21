@@ -6,6 +6,7 @@
 - [2026-01-20] **Architecture**: Engines (`ExecutionEngine`) create domain objects but Repositories (`PositionRepository`) must persist them. Ensure orchestration layer bridges this gap.
 - [2026-01-20] **Testing**: When mocking execution logic, ensure `ENVIRONMENT` settings match expected behavior (e.g., `PROD` + `ENABLE_EXECUTION=False` -> triggers Theoretical fallback).
 - [2026-01-20] **Testing**: `MagicMock(spec=PydanticModel)` does not automatically populate model fields as attributes. You must explicitly set them (e.g., `mock_pos.side = ...`) or use a helper, otherwise `AttributeError` occurs on access.
+- [2026-01-20] **Testing**: When introducing new dependencies (e.g., `RiskEngine` inside `ExecutionEngine`), ensure existing unit tests patch the new dependency to avoid side effects (e.g., network calls or unexpected rejections) in legacy tests.
 
 ## APIs & Integrations
 ### Alpaca
@@ -14,6 +15,7 @@
 
 ### Firestore
 - [2024-XX-XX] **Queries**: Composite queries require an index. Check logs for the creation link.
+- [2026-01-20] **Aggregation**: `count()` queries with filters (e.g., `.where("status", "==", "OPEN")`) REQUIRE a Composite Index (e.g., `status` ASC + `asset_class` ASC). Missing index causes GRPC errors.
 
 ### GCP
 - [2024-XX-XX] **Cloud Run**: Cold starts can exceed 10s. JIT warmup is essential.
