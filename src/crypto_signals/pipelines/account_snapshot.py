@@ -30,10 +30,10 @@ class AccountSnapshotPipeline(BigQueryPipelineBase):
         super().__init__(
             job_name="account_snapshot",
             staging_table_id=(
-                f"{get_settings().GOOGLE_CLOUD_PROJECT}.crypto_sentinel.stg_accounts_import"
+                f"{get_settings().GOOGLE_CLOUD_PROJECT}.crypto_analytics.stg_accounts_import"
             ),
             fact_table_id=(
-                f"{get_settings().GOOGLE_CLOUD_PROJECT}.crypto_sentinel.snapshot_accounts"
+                f"{get_settings().GOOGLE_CLOUD_PROJECT}.crypto_analytics.snapshot_accounts"
             ),
             id_column="account_id",
             partition_column="ds",

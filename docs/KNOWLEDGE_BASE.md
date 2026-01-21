@@ -22,3 +22,7 @@
 
 ### GCP
 - [2024-XX-XX] **Cloud Run**: Cold starts can exceed 10s. JIT warmup is essential.
+- [2026-01-21] **BigQuery**: `insert_rows_json` does NOT support automatic schema evolution (adding new columns). Columns must exist in the table definition beforehand. Use `ALTER TABLE` for migrations.
+
+### Alpaca
+- [2026-01-21] **Typing**: Account fields (e.g., `buying_power`) can be returned as strings, decimals, or floats depending on the API version and field. Always use defensive parsing (`float(val)` with try-except) when mapping to strict schemas.
