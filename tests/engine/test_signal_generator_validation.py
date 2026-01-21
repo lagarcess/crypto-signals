@@ -36,7 +36,6 @@ def test_generate_signal_with_negative_stop(signal_generator):
 
     # Create a dummy dataframe/series simulating a signal
     # We need to mock the pattern analyzer to return a pattern
-    mock_analyzer = MagicMock()
     # Mock check_patterns to return a dataframe with a pattern
     data = {
         "close": 100.0,
