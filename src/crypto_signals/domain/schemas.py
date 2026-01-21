@@ -336,6 +336,10 @@ class Signal(BaseModel):
         default=None,
         description="Reason for rejection if status is REJECTED_BY_FILTER (e.g., 'Volume 1.2x < 1.5x Required')",
     )
+    rejection_metadata: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Forensic data for validation failures (e.g., raw invalid stops for audit)",
+    )
     confluence_snapshot: Optional[Dict[str, Any]] = Field(
         default=None,
         description="Snapshot of indicator values at rejection: {rsi, adx, sma_trend, volume_ratio, rr_ratio}",
