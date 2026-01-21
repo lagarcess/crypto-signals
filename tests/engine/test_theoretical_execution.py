@@ -40,7 +40,8 @@ def execution_engine(mock_trading_client):
             passed=True
         )
 
-        yield ExecutionEngine(trading_client=mock_trading_client)
+        mock_repo = MagicMock()
+        yield ExecutionEngine(trading_client=mock_trading_client, repository=mock_repo)
 
 
 def test_theoretical_execution_long(execution_engine, mock_settings, mock_trading_client):
