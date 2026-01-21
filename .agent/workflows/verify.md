@@ -4,7 +4,7 @@ description: strict code review, system verifiction, and auto-commit
 
 1. **System Health Check**
    // turbo
-   - run the full test suite: `poetry run pytest`
+   - **CRITICAL**: Run the **FULL** test suite: `poetry run pytest` (Do not rely on partial file runs for final verification).
    - run type checking (if applicable): `poetry run mypy src`
    - run linting: `poetry run ruff check src` (or equivalent).
    - run smoke test (Main Flow check):

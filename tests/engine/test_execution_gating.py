@@ -3,8 +3,10 @@ from unittest.mock import MagicMock, patch
 
 from crypto_signals.domain.schemas import (
     AssetClass,
+    OrderSide,
     Position,
     Signal,
+    TradeType,
 )
 from crypto_signals.engine.execution import ExecutionEngine
 
@@ -46,12 +48,16 @@ class TestExecutionGating(unittest.TestCase):
         signal.suggested_stop = 40000
         signal.entry_price = 45000
         signal.asset_class = AssetClass.CRYPTO
+        signal.side = OrderSide.BUY
+        signal.ds = "2023-01-01"
+        signal.discord_thread_id = None
 
         result = self.engine.execute_signal(signal)
 
-        # Should return None
-        self.assertIsNone(result)
-        # Should NOT call submit_order
+        # Should return a THEORETICAL Position (Simulated)
+        self.assertIsNotNone(result)
+        self.assertEqual(result.trade_type, "THEORETICAL")
+        # Should NOT call submit_order (broker)
         self.mock_client.submit_order.assert_not_called()
 
     def test_gate_execute_signal_prod(self):
@@ -86,9 +92,17 @@ class TestExecutionGating(unittest.TestCase):
         """Test that sync_position skipped in DEV."""
         self.mock_settings.ENVIRONMENT = "DEV"
 
-        pos = MagicMock(spec=Position)
+        pos = MagicMock()
         pos.position_id = "pos_1"
         pos.alpaca_order_id = "ord_1"
+        pos.trade_type = TradeType.THEORETICAL
+        pos.sl_order_id = None
+        pos.tp_order_id = None
+        pos.current_stop_loss = 40000.0
+        pos.qty = 1.0
+        pos.entry_fill_price = 50000.0
+        pos.symbol = "BTC/USD"
+        pos.side = OrderSide.BUY
 
         # Call sync
         self.engine.sync_position_status(pos)
@@ -100,8 +114,16 @@ class TestExecutionGating(unittest.TestCase):
         """Test that modify_stop_loss is skipped (simulated success) in DEV."""
         self.mock_settings.ENVIRONMENT = "DEV"
 
-        pos = MagicMock(spec=Position)
+        pos = MagicMock()
         pos.position_id = "pos_1"
+        pos.trade_type = TradeType.THEORETICAL
+        pos.sl_order_id = None
+        pos.tp_order_id = None
+        pos.current_stop_loss = 40000.0
+        pos.qty = 1.0
+        pos.entry_fill_price = 50000.0
+        pos.symbol = "BTC/USD"
+        pos.side = OrderSide.BUY
 
         result = self.engine.modify_stop_loss(pos, 42000)
 

@@ -156,7 +156,7 @@ class ExecutionEngine:
                 },
             )
 
-            order = self.alpaca.submit_order(order_request)
+            order = cast(Order, self.alpaca.submit_order(order_request))
 
             logger.info(
                 f"CRYPTO ORDER SUBMITTED: {signal.symbol}",
@@ -251,7 +251,7 @@ class ExecutionEngine:
                 },
             )
 
-            order = self.alpaca.submit_order(order_request)
+            order = cast(Order, self.alpaca.submit_order(order_request))
 
             # Log success
             logger.info(
@@ -465,7 +465,7 @@ class ExecutionEngine:
             Order object if found, None if not found or on error.
         """
         try:
-            order = self.alpaca.get_order_by_id(order_id)
+            order = cast(Order, self.alpaca.get_order_by_id(order_id))
             logger.debug(
                 f"Retrieved order {order_id}: status={order.status}",
                 extra={"order_id": order_id, "status": str(order.status)},
@@ -859,7 +859,7 @@ class ExecutionEngine:
                 time_in_force=TimeInForce.GTC,
             )
 
-            close_order = self.alpaca.submit_order(close_request)
+            close_order = cast(Order, self.alpaca.submit_order(close_request))
 
             # Get fill price from order (if immediate fill)
             fill_price = None
@@ -1072,7 +1072,7 @@ class ExecutionEngine:
                 time_in_force=TimeInForce.GTC,
             )
 
-            close_order = self.alpaca.submit_order(close_request)
+            close_order = cast(Order, self.alpaca.submit_order(close_request))
 
             logger.info(
                 f"EMERGENCY CLOSE: {position.position_id}",
