@@ -2,6 +2,8 @@
 description: code hygiene and clarity pass before final review
 ---
 
+**PRE-CLEANUP NOTE**: This workflow removes dead code and TODOs. After cleanup is complete, run `/verify` workflow to ensure pre-commit hooks pass (hooks will detect any trailing whitespace, file formatting, etc. that cleanup may have introduced).
+
 1. **Static Analysis**
    - scan the recently edited files.
    - look for:
