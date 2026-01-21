@@ -140,11 +140,13 @@ class TestDetectZombies:
         pos1.symbol = "BTC/USD"
         pos1.status = TradeStatus.OPEN
         pos1.position_id = "signal-1"
+        pos1.trade_type = "EXECUTED"
 
         pos2 = MagicMock(spec=Position)
         pos2.symbol = "ETH/USD"
         pos2.status = TradeStatus.OPEN
         pos2.position_id = "signal-2"
+        pos2.trade_type = "EXECUTED"
 
         mock_trading_client.get_all_positions.return_value = []
         mock_position_repo.get_open_positions.return_value = [pos1, pos2]

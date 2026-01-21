@@ -28,6 +28,7 @@ from crypto_signals.domain.schemas import (
     ExitReason,
     ReconciliationReport,
     TradeStatus,
+    TradeType,
 )
 from crypto_signals.notifications.discord import DiscordClient
 from crypto_signals.repository.firestore import PositionRepository
@@ -136,6 +137,15 @@ class StateReconciler:
             logger.info("Fetching positions from Firestore...")
             try:
                 firestore_positions = self.position_repo.get_open_positions()
+
+                # Filter out THEORETICAL trades (simulated state, not in Alpaca)
+                # These would otherwise be detected as Zombies (Open in DB, Missing in Broker)
+                firestore_positions = [
+                    p
+                    for p in firestore_positions
+                    if p.trade_type != TradeType.THEORETICAL.value
+                ]
+
                 firestore_symbols = {p.symbol for p in firestore_positions}
                 symbol_to_position = {p.symbol: p for p in firestore_positions}
                 logger.info(
