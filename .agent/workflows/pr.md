@@ -4,7 +4,15 @@ description: Create a comprehensive Pull Request from current changes
 
 1. **Final Verification**
    - Execute the `/verify` workflow.
-   - If verification fails, **STOP** and report errors.
+   - **VERIFICATION SCOPE**: The workflow will run and capture:
+     - Full test suite execution (pass/fail count)
+     - Pre-commit hook execution (all hooks, with specific violations if any)
+     - Type checking and linting (mypy, ruff - both checks and format)
+   - **DECISION LOGIC**:
+     - ✅ **All checks PASS**: Proceed to step 2 (Security & Privacy Scan)
+     - ⚠️ **Pre-commit hooks FAIL**: Fix immediately and re-run `/verify` (repeat until pass)
+     - ❌ **Test failures**: Run `/fix` workflow for self-correction, then re-run `/verify`
+   - **REPORT OUTPUT**: Display all test/lint/hook results before proceeding
 
 2. **Security & Privacy Scan**
    // turbo

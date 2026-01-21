@@ -628,6 +628,11 @@ class DiscordClient:
             emoji = "⚠️"
             macro_label = "[RISK LIMIT] "
 
+        # VALIDATION FAILURE OVERRIDE (Shadow Path)
+        if signal.rejection_reason and "VALIDATION_FAILED" in signal.rejection_reason:
+            emoji = "⚠️"
+            macro_label = "[VALIDATION FAIL] "
+
         # Format the main content
         # Format the main content using dynamic currency formatter
         content = (

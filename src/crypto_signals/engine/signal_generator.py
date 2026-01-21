@@ -6,7 +6,7 @@ indicators, and detection of price patterns to generate trading signals.
 """
 
 from datetime import datetime, timedelta, timezone
-from typing import Optional, Type
+from typing import List, Optional, Type
 
 import numpy as np
 import pandas as pd
@@ -28,6 +28,13 @@ from loguru import logger
 
 class SignalGenerator:
     """Orchestrates signal generation from market data."""
+
+    # Safe Hydration Constants (for Shadow Validation)
+    # P0: Use 1e-8 to accommodate micro-cap tokens (e.g. SHIB) while staying positive
+    SAFE_STOP_VAL = 0.00000001
+    SAFE_TP1_VAL = 0.00000001
+    SAFE_TP2_VAL = 0.00000002
+    SAFE_TP3_VAL = 0.00000003
 
     def __init__(
         self,
@@ -169,7 +176,7 @@ class SignalGenerator:
         # SIGNAL QUALITY FILTERS (Confluence Validation)
         # ============================================================
         # Collect all rejection reasons and indicator values for transparency
-        rejection_reasons: list[str] = []
+        rejection_reasons: List[str] = []
 
         # Extract indicator values for confluence snapshot
         current_volume = float(latest.get("volume", 0))
@@ -258,34 +265,109 @@ class SignalGenerator:
         if signal is None:
             return None
 
-        # 5. RISK-TO-REWARD (R:R) FILTER (Post-construction)
-        # Discard any signal where the R:R ratio is less than 1.5
-        rr_ratio = 0.0
-        if signal.take_profit_1 and signal.suggested_stop and signal.entry_price:
-            potential_profit = abs(signal.take_profit_1 - signal.entry_price)
-            potential_risk = abs(signal.entry_price - signal.suggested_stop)
+        # 5. RISK-TO-REWARD (R:R) FILTER
+        # Logic is now handled internally by _create_signal during pre-construction validation
+        # (check validation block ~lines 550+) to support Shadow Validation.
+
+        return self._create_signal(
+            symbol,
+            asset_class,
+            pattern_name,
+            latest,
+            sig_id,
+            analyzer,
+            harmonic_pattern=harmonic_pattern,
+            geometric_pattern_name=geometric_pattern_name,
+            confluence_snapshot=confluence_snapshot,  # PASS SNAPSHOT
+        )
+
+    def _validate_signal_parameters(
+        self, params: dict, confluence_snapshot: Optional[dict] = None
+    ) -> List[str]:
+        """Pure logic validation of signal parameters."""
+        rejection_reasons = []
+        suggested_stop = params.get("suggested_stop")
+        take_profit_1 = params.get("take_profit_1")
+        entry_ref = params.get("entry_price")
+
+        # 1. Negative Stop Loss
+        if suggested_stop is None or suggested_stop <= 0:
+            rejection_reasons.append(f"Invalid Stop: {suggested_stop}")
+
+        # 2. Invalid Take Profit
+        if take_profit_1 is None or take_profit_1 <= 0:
+            rejection_reasons.append(f"Invalid TP1: {take_profit_1}")
+
+        # 3. R:R Validation
+        if (
+            suggested_stop is not None
+            and suggested_stop > 0
+            and take_profit_1 is not None
+            and entry_ref is not None
+            and entry_ref > 0
+        ):
+            potential_profit = abs(take_profit_1 - entry_ref)
+            potential_risk = abs(entry_ref - suggested_stop)
 
             if potential_risk > 0:
                 rr_ratio = potential_profit / potential_risk
-                confluence_snapshot["rr_ratio"] = round(rr_ratio, 2)
+                if confluence_snapshot:
+                    confluence_snapshot["rr_ratio"] = round(rr_ratio, 2)
 
                 if rr_ratio < 1.5:
-                    rejection_reason = f"R:R {rr_ratio:.1f} < 1.5"
-                    logger.warning(
-                        f"[REJECTION] {symbol} {pattern_name} rejected: {rejection_reason}"
-                    )
-                    return self._create_rejected_signal(
-                        symbol,
-                        asset_class,
-                        pattern_name,
-                        latest,
-                        analyzer,
-                        rejection_reason,
-                        confluence_snapshot,
-                        harmonic_pattern=harmonic_pattern,
-                    )
+                    rejection_reasons.append(f"R:R {rr_ratio:.1f} < 1.5")
 
-        return signal
+        return rejection_reasons
+
+    def _construct_signal(
+        self,
+        params: dict,
+        status: SignalStatus,
+        rejection_reason: Optional[str] = None,
+        rejection_metadata: Optional[dict] = None,
+    ) -> Signal:
+        """Pure Factory: Builds the Signal object."""
+        return Signal(
+            signal_id=params["signal_id"],
+            strategy_id=params["strategy_id"],
+            symbol=params["symbol"],
+            ds=params["ds"],
+            asset_class=params["asset_class"],
+            confluence_factors=params.get("confluence_factors", []),
+            entry_price=params["entry_price"],
+            pattern_name=params["pattern_name"],
+            status=status,
+            suggested_stop=params["suggested_stop"],
+            invalidation_price=params.get("invalidation_price"),
+            take_profit_1=params["take_profit_1"],
+            take_profit_2=params.get("take_profit_2"),
+            take_profit_3=params.get("take_profit_3"),
+            valid_until=params["valid_until"],
+            delete_at=params.get("delete_at"),
+            pattern_duration_days=params.get("pattern_duration_days"),
+            pattern_span_days=params.get("pattern_span_days"),
+            pattern_classification=params.get("pattern_classification"),
+            structural_anchors=params.get("structural_anchors"),
+            harmonic_metadata=params.get("harmonic_metadata"),
+            created_at=params["created_at"],
+            rejection_reason=rejection_reason,
+            rejection_metadata=rejection_metadata,
+            confluence_snapshot=params.get("confluence_snapshot"),
+            side=params.get("side", OrderSide.BUY),
+        )
+
+    def _hydrate_safe_values(self, params: dict) -> dict:
+        """Hydrates invalid parameters with safe constants."""
+        safe_params = params.copy()
+        if safe_params.get("suggested_stop", 0) <= 0:
+            safe_params["suggested_stop"] = self.SAFE_STOP_VAL
+        if safe_params.get("take_profit_1", 0) <= 0:
+            safe_params["take_profit_1"] = self.SAFE_TP1_VAL
+        if safe_params.get("take_profit_2") is None or safe_params["take_profit_2"] <= 0:
+            safe_params["take_profit_2"] = self.SAFE_TP2_VAL
+        if safe_params.get("take_profit_3") is None or safe_params["take_profit_3"] <= 0:
+            safe_params["take_profit_3"] = self.SAFE_TP3_VAL
+        return safe_params
 
     def _create_signal(
         self,
@@ -297,24 +379,16 @@ class SignalGenerator:
         analyzer: PatternAnalyzer,
         harmonic_pattern=None,
         geometric_pattern_name: Optional[str] = None,
+        confluence_snapshot: Optional[dict] = None,
+        force_rejection_reason: Optional[str] = None,
     ) -> Signal:
-        """Create a Signal object with all fields populated, including structural metadata.
-
-        Args:
-            symbol: Trading symbol
-            asset_class: Asset class (CRYPTO/EQUITY)
-            pattern_name: Primary pattern name (harmonic takes precedence)
-            latest: Latest candle data
-            sig_id: Signal ID
-            analyzer: Pattern analyzer instance
-            harmonic_pattern: Optional HarmonicPattern object
-            geometric_pattern_name: Optional geometric pattern name (for confluence when harmonic is primary)
-        """
+        """Orchestrates signal creation: Calculate -> Validate -> Construct."""
 
         # Extract Prices
         close_price = float(latest["close"])
         low_price = float(latest["low"])
         open_price = float(latest["open"])
+        entry_ref = close_price  # Entry is always close of signal candle
 
         # ATR for Dynamic Exits
         atr = float(latest["ATRr_14"]) if "ATRr_14" in latest else 0.0
@@ -332,101 +406,65 @@ class SignalGenerator:
 
         # Specific Structural Invalidation
         if pattern_name == "BULLISH_HAMMER":
-            # Invalidation: Close below candle low
             invalidation_price = low_price
             suggested_stop = invalidation_price * 0.99
 
         elif pattern_name == "BULLISH_ENGULFING":
-            # Invalidation: Close below Open of engulfing candle
             invalidation_price = open_price
             suggested_stop = invalidation_price * 0.99
 
-        if pattern_name == "MORNING_STAR":
-            # Exit on close below low of the star candle.
-            # The star is t-1 (middle candle of the 3-candle pattern).
-            # Since we detect on the final candle (t0), use current low as conservative stop.
-            # Full lookback would access df.iloc[-2]["low"] but 'latest' is a Series.
+        elif pattern_name == "MORNING_STAR":
             invalidation_price = low_price
             suggested_stop = invalidation_price * 0.99
 
         elif pattern_name == "BULLISH_MARUBOZU":
-            # Exit below 50% of body
             midpoint = (open_price + close_price) / 2
             invalidation_price = midpoint
-            suggested_stop = invalidation_price * 0.99  # Marubozu fail is strict
+            suggested_stop = invalidation_price * 0.99
 
         elif pattern_name == "BULL_FLAG":
-            # Pattern-specific exits based on flagpole geometry
-            # Calculate flagpole height from recent price action
-
-            # Get pole high (recent high from rolling 15-day max)
-            # and pole low (start of the move)
             pole_high = float(latest.get("high", close_price))
-            pole_low = low_price  # Flag consolidation low
+            pole_low = low_price
 
-            # Estimate flagpole height (use volatility-adjusted calculation)
-            # For Bull Flag, we look at the move that created the pole
             if "ATRr_14" in latest:
-                # Flagpole is typically 2-4x ATR
                 flagpole_height = max(atr * 3.0, pole_high - pole_low)
             else:
                 flagpole_height = pole_high - pole_low
 
-            # TP1 = 50% of flagpole height above breakout
-            # TP2 = 100% of flagpole height above breakout
-            # TP3 = 150% of flagpole height (runner target)
             take_profit_1 = close_price + (0.5 * flagpole_height)
             take_profit_2 = close_price + (1.0 * flagpole_height)
             take_profit_3 = close_price + (1.5 * flagpole_height)
-
-            # SL = below lowest low of flag consolidation
             invalidation_price = low_price
             suggested_stop = invalidation_price * 0.99
 
         elif "ELLIOTT" in pattern_name:
-            # Volatility Buffer (Issue 99): Use ATR-based stop for Elliott Wave
-            # Fixed 1% stop is too tight for crypto volatility.
-            # Stop = Low - (0.5 * ATR)
             if atr > 0:
                 suggested_stop = low_price - (0.5 * atr)
             else:
                 suggested_stop = low_price * 0.99
             invalidation_price = low_price
 
-        # Take Profits (ATR Based) - Only set if not already defined by pattern-specific logic
-        entry_ref = close_price
-
+        # Take Profits (ATR Based) - Only set if not already defined
         if take_profit_1 is None:
-            # ATR-based TP, fallback to percentage-based if no ATR
-            take_profit_1 = (
-                entry_ref + (2.0 * atr) if atr > 0 else entry_ref * 1.03
-            )  # 3% default
+            take_profit_1 = entry_ref + (2.0 * atr) if atr > 0 else entry_ref * 1.03
         if take_profit_2 is None:
-            take_profit_2 = (
-                entry_ref + (4.0 * atr) if atr > 0 else entry_ref * 1.06
-            )  # 6% default
-        # TP3: Extended runner target (becomes trailing stop after TP1/TP2 hit)
-        # Initial target ensures TP3 > TP2 for clean signal display
-        # After TP1/TP2, check_exits() updates this to Chandelier Exit for trailing
+            take_profit_2 = entry_ref + (4.0 * atr) if atr > 0 else entry_ref * 1.06
         if take_profit_3 is None:
-            take_profit_3 = (
-                entry_ref + (6.0 * atr) if atr > 0 else entry_ref * 1.10
-            )  # 10% default
+            take_profit_3 = entry_ref + (6.0 * atr) if atr > 0 else entry_ref * 1.10
 
-        # Strategy ID is the pattern name for now
+        # Strategy ID
         strategy_id = pattern_name
 
-        # DS is the date component of the timestamp
+        # DS
         ds = latest.name.date() if hasattr(latest.name, "date") else latest.name
 
-        # Confluence Factors: boolean flags in whitelist
+        # Confluence Factors
         CONFLUENCE_WHITELIST = [
             "rsi_bullish_divergence",
             "volatility_contraction",
             "volume_expansion",
             "trend_bullish",
         ]
-
         confluence_factors = [
             col
             for col in CONFLUENCE_WHITELIST
@@ -434,20 +472,14 @@ class SignalGenerator:
             and isinstance(latest[col], (bool, np.bool_))
             and latest[col]
         ]
-
-        # If harmonic pattern is primary and geometric pattern exists, add to confluence
         if harmonic_pattern and geometric_pattern_name:
             confluence_factors.append(geometric_pattern_name)
 
-        # ============================================================
-        # STRUCTURAL METADATA EXTRACTION
-        # ============================================================
+        # Structural Metadata
         pattern_duration_days = None
         pattern_classification = None
         structural_anchors = None
 
-        # Extract pattern-specific duration/classification from metadata columns
-        # Map pattern names to their corresponding metadata column prefixes
         structural_patterns = {
             "DOUBLE_BOTTOM": "double_bottom",
             "INVERSE_HEAD_SHOULDERS": "inv_hs",
@@ -468,12 +500,9 @@ class SignalGenerator:
             if class_col in latest.index and pd.notna(latest.get(class_col)):
                 pattern_classification = str(latest[class_col])
 
-        # Extract structural pivots (limit to 5 most recent for memory efficiency)
         pattern_span_days = None
         if hasattr(analyzer, "pivots") and analyzer.pivots:
-            # Get the 5 most recent pivots, sorted chronologically
             recent_pivots = sorted(analyzer.pivots[-5:], key=lambda p: p.index)
-
             structural_anchors = [
                 {
                     "price": p.price,
@@ -483,113 +512,115 @@ class SignalGenerator:
                 }
                 for p in recent_pivots
             ]
-
-            # Calculate pattern span (first to last pivot in the cluster)
             if len(structural_anchors) >= 2:
                 pivot_indices = [p["index"] for p in structural_anchors]
                 pattern_span_days = max(pivot_indices) - min(pivot_indices)
 
-        # Classification Fix: MACRO only if pattern_span_days > 90 days
-        # This overrides any classification from metadata columns
         if pattern_span_days is not None:
             if pattern_span_days > 90:
                 pattern_classification = "MACRO_PATTERN"
             else:
                 pattern_classification = "STANDARD_PATTERN"
 
-        # ============================================================
-        # HARMONIC METADATA EXTRACTION
-        # ============================================================
+        # Harmonic Metadata
         harmonic_metadata = None
         if harmonic_pattern:
-            # Populate harmonic ratios from the pattern
-            harmonic_metadata = harmonic_pattern.ratios.copy()
-
-            # Apply classification override: MACRO_HARMONIC if is_macro
+            strategy_id = "strategies/S002-HARMONIC-PATTERN"
+            pattern_classification = "HARMONIC_PATTERN"
+            harmonic_metadata = (
+                harmonic_pattern.ratios.copy()
+                if hasattr(harmonic_pattern, "ratios")
+                else None
+            )
+            # Revert to default stop/loss logic for harmonics (attributes do not exist on HarmonicPattern)
             if harmonic_pattern.is_macro:
                 pattern_classification = "MACRO_HARMONIC"
 
-        # ============================================================
-        # TIMESTAMP CALCULATIONS (Centralized for consistency)
-        # ============================================================
-        # valid_until: Logical expiration anchored to candle timestamp
-        # Issue 99 Fix: Dynamic TTL based on pattern classification
-        # - MACRO patterns (>90 days): 120h (5 days) to survive multiple cron cycles
-        # - STANDARD patterns: 48h (2 days) to guarantee at least 2 evaluations
+        # Timestamp Calculations
         candle_timestamp = latest.name
         if hasattr(candle_timestamp, "to_pydatetime"):
             candle_timestamp = candle_timestamp.to_pydatetime()
         if candle_timestamp.tzinfo is None:
             candle_timestamp = candle_timestamp.replace(tzinfo=timezone.utc)
 
-        # Dynamic TTL: MACRO patterns get 5 days, STANDARD gets 2 days
-        is_macro = pattern_classification and "MACRO" in pattern_classification
-        ttl_hours = 120 if is_macro else 48
-        valid_until = candle_timestamp + timedelta(hours=ttl_hours)
+        valid_time = (
+            120 if pattern_classification and "MACRO" in pattern_classification else 48
+        )
+        valid_until = candle_timestamp + timedelta(hours=valid_time)
+        created_at = datetime.now(timezone.utc)
 
-        # delete_at: Physical TTL for GCP Firestore cleanup
-        # PROD: settings.TTL_DAYS_PROD (default 30 days)
-        # DEV: settings.TTL_DAYS_DEV (default 7 days)
+        # Pack Parameters
+        params = {
+            "signal_id": sig_id,
+            "strategy_id": strategy_id,
+            "symbol": symbol,
+            "ds": ds,
+            "asset_class": asset_class,
+            "confluence_factors": confluence_factors,
+            "entry_price": entry_ref,
+            "pattern_name": pattern_name,
+            "suggested_stop": suggested_stop,
+            "invalidation_price": invalidation_price,
+            "take_profit_1": take_profit_1,
+            "take_profit_2": take_profit_2,
+            "take_profit_3": take_profit_3,
+            "valid_until": valid_until,
+            "delete_at": None,
+            "pattern_duration_days": pattern_duration_days,
+            "pattern_span_days": pattern_span_days,
+            "pattern_classification": pattern_classification,
+            "structural_anchors": structural_anchors,
+            "harmonic_metadata": harmonic_metadata,
+            "created_at": created_at,
+            "confluence_snapshot": confluence_snapshot,
+            "side": OrderSide.BUY,
+        }
 
+        # Delete At
         settings = get_settings()
-
         ttl_days = (
             settings.TTL_DAYS_PROD
             if settings.ENVIRONMENT == "PROD"
             else settings.TTL_DAYS_DEV
         )
-        delete_at = datetime.now(timezone.utc) + timedelta(days=ttl_days)
+        params["delete_at"] = datetime.now(timezone.utc) + timedelta(days=ttl_days)
 
-        # created_at: For skip-on-creation cooldown in check_exits (Issue 99 Fix)
-        created_at = datetime.now(timezone.utc)
+        # Status Logic
+        final_status = SignalStatus.WAITING
+        final_reason = None
+        rejection_metadata = None
 
-        # ============================================================
-        # EARLY VALIDATION (Issue 107 Fix)
-        # Catch invalid signals BEFORE creation/notification
-        # ============================================================
-        if suggested_stop is None or suggested_stop <= 0:
-            logger.warning(
-                f"Signal rejected for {symbol}: invalid suggested_stop={suggested_stop}. "
-                "Low-price assets may produce negative stops due to ATR calculations.",
-                extra={
-                    "symbol": symbol,
-                    "pattern": pattern_name,
-                    "suggested_stop": suggested_stop,
-                    "entry_price": entry_ref,
-                },
-            )
-            return None
+        if force_rejection_reason:
+            final_status = SignalStatus.REJECTED_BY_FILTER
+            final_reason = force_rejection_reason
+            # Op Bloat Fix: 24h TTL
+            params["delete_at"] = datetime.now(timezone.utc) + timedelta(hours=24)
+            # Hydrate to be safe
+            params = self._hydrate_safe_values(params)
+        else:
+            # Internal Validation
+            errors = self._validate_signal_parameters(params, confluence_snapshot)
+            if errors:
+                final_status = SignalStatus.REJECTED_BY_FILTER
+                final_reason = f"VALIDATION_FAILED: {', '.join(errors)}"
+                # Capture Forensic Data
+                rejection_metadata = {
+                    "original_stop": params.get("suggested_stop"),
+                    "original_tp1": params.get("take_profit_1"),
+                    "entry_price": params.get("entry_price"),
+                }
+                logger.warning(
+                    f"[SHADOW REJECTION] {symbol} {pattern_name}: {final_reason}"
+                )
 
-        if take_profit_1 is None or take_profit_1 <= 0:
-            logger.warning(
-                f"Signal rejected for {symbol}: invalid take_profit_1={take_profit_1}.",
-                extra={"symbol": symbol, "pattern": pattern_name},
-            )
-            return None
+                # Op Bloat Fix: 24h TTL
+                params["delete_at"] = datetime.now(timezone.utc) + timedelta(hours=24)
 
-        return Signal(
-            signal_id=sig_id,
-            strategy_id=strategy_id,
-            symbol=symbol,
-            ds=ds,
-            asset_class=asset_class,
-            confluence_factors=confluence_factors,
-            entry_price=entry_ref,
-            pattern_name=pattern_name,
-            status=SignalStatus.WAITING,
-            suggested_stop=suggested_stop,
-            invalidation_price=invalidation_price,
-            take_profit_1=take_profit_1,
-            take_profit_2=take_profit_2,
-            take_profit_3=take_profit_3,
-            valid_until=valid_until,
-            delete_at=delete_at,
-            pattern_duration_days=pattern_duration_days,
-            pattern_span_days=pattern_span_days,
-            pattern_classification=pattern_classification,
-            structural_anchors=structural_anchors,
-            harmonic_metadata=harmonic_metadata,
-            created_at=created_at,
+                # Hydrate
+                params = self._hydrate_safe_values(params)
+
+        return self._construct_signal(
+            params, final_status, final_reason, rejection_metadata
         )
 
     def _create_rejected_signal(
@@ -623,6 +654,7 @@ class SignalGenerator:
         sig_id = get_deterministic_id(f"{symbol}|{pattern_name}|{latest.name}|REJECTED")
 
         # Create base signal with structural metadata
+        # ENABLE SKIP_VALIDATION to permit safe hydration of invalid parameters
         signal = self._create_signal(
             symbol,
             asset_class,
@@ -631,6 +663,8 @@ class SignalGenerator:
             sig_id,
             analyzer,
             harmonic_pattern=harmonic_pattern,
+            confluence_snapshot=confluence_snapshot,
+            force_rejection_reason=rejection_reason,  # Force shadow path
         )
 
         # Override status and add rejection metadata
@@ -638,8 +672,8 @@ class SignalGenerator:
         signal.rejection_reason = rejection_reason
         signal.confluence_snapshot = confluence_snapshot
 
-        # Rejected signals have shorter TTL (7 days) - for audit only
-        signal.delete_at = datetime.now(timezone.utc) + timedelta(days=7)
+        # Rejected signals have shorter TTL (24 hours) - for operational audit only (Staff Review P4)
+        signal.delete_at = datetime.now(timezone.utc) + timedelta(hours=24)
 
         return signal
 
