@@ -31,11 +31,25 @@ class TestExecutionGating(unittest.TestCase):
         )
         self.settings_patcher.start()
 
-        # Initialize engine with mocked client
-        self.engine = ExecutionEngine(trading_client=self.mock_client)
+        # Patch RiskEngine to pass validation by default
+        self.risk_patcher = patch("crypto_signals.engine.execution.RiskEngine")
+        self.MockRiskEngine = self.risk_patcher.start()
+        # Configure RiskEngine instance to return passed=True
+        from crypto_signals.engine.risk import RiskCheckResult
+
+        self.MockRiskEngine.return_value.validate_signal.return_value = RiskCheckResult(
+            passed=True
+        )
+
+        # Initialize engine with mocked client and repo
+        self.mock_repo = MagicMock()
+        self.engine = ExecutionEngine(
+            trading_client=self.mock_client, repository=self.mock_repo
+        )
 
     def tearDown(self):
         self.settings_patcher.stop()
+        self.risk_patcher.stop()
 
     def test_gate_execute_signal_dev(self):
         """Test that execute_signal is BLOCKED in DEV environment."""

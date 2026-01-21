@@ -94,10 +94,19 @@ def sample_equity_signal():
 @pytest.fixture
 def execution_engine(mock_settings, mock_trading_client):
     """Create an ExecutionEngine with mocked dependencies."""
-    with patch(
-        "crypto_signals.engine.execution.get_settings", return_value=mock_settings
+    with (
+        patch("crypto_signals.engine.execution.get_settings", return_value=mock_settings),
+        patch("crypto_signals.engine.execution.RiskEngine") as MockRiskEngine,
     ):
-        engine = ExecutionEngine(trading_client=mock_trading_client)
+        # Configure default RiskEngine behavior to Pass
+        mock_risk_instance = MockRiskEngine.return_value
+        from crypto_signals.engine.risk import RiskCheckResult
+
+        mock_risk_instance.validate_signal.return_value = RiskCheckResult(passed=True)
+
+        # Mock Repository to avoid Firestore Auth
+        mock_repo = MagicMock()
+        engine = ExecutionEngine(trading_client=mock_trading_client, repository=mock_repo)
         yield engine
 
 
@@ -235,10 +244,20 @@ class TestExecuteSignal:
         # Determine environment to test fallback
         mock_settings.ENVIRONMENT = "PROD"
 
-        with patch(
-            "crypto_signals.engine.execution.get_settings", return_value=mock_settings
+        with (
+            patch(
+                "crypto_signals.engine.execution.get_settings", return_value=mock_settings
+            ),
+            patch("crypto_signals.engine.execution.RiskEngine") as MockRiskEngine,
         ):
-            engine = ExecutionEngine(trading_client=mock_trading_client)
+            # Configure RiskEngine to PASS
+            MockRiskEngine.return_value.validate_signal.return_value.passed = True
+
+            # Mock Repo to avoid Firestore Auth
+            mock_repo = MagicMock()
+            engine = ExecutionEngine(
+                trading_client=mock_trading_client, repository=mock_repo
+            )
 
             # Execute
             position = engine.execute_signal(sample_signal)
@@ -259,10 +278,21 @@ class TestExecuteSignal:
         mock_settings.ENVIRONMENT = "PROD"
         mock_settings.TTL_DAYS_POSITION = 90
 
-        with patch(
-            "crypto_signals.engine.execution.get_settings", return_value=mock_settings
+        with (
+            patch(
+                "crypto_signals.engine.execution.get_settings", return_value=mock_settings
+            ),
+            patch("crypto_signals.engine.execution.RiskEngine") as MockRiskEngine,
         ):
-            engine = ExecutionEngine(trading_client=mock_trading_client)
+            # Configure RiskEngine to PASS
+            # Configure RiskEngine to PASS
+            MockRiskEngine.return_value.validate_signal.return_value.passed = True
+
+            # Mock Repo to avoid Firestore Auth
+            mock_repo = MagicMock()
+            engine = ExecutionEngine(
+                trading_client=mock_trading_client, repository=mock_repo
+            )
 
             # Execute
             position = engine.execute_signal(sample_signal)

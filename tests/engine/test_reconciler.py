@@ -1,7 +1,7 @@
 """Unit tests for the StateReconciler module."""
 
 from datetime import date
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from crypto_signals.domain.schemas import (
@@ -464,3 +464,222 @@ class TestErrorHandling:
         report = reconciler.reconcile()
 
         assert len(report.critical_issues) > 0
+
+
+class TestReconcilerEdgeCases:
+    """Test edge cases and boundary conditions."""
+
+    def test_reconcile_with_empty_symbols(
+        self,
+        mock_trading_client,
+        mock_position_repo,
+        mock_discord_client,
+        mock_settings,
+    ):
+        """Reconciliation handles empty symbol sets gracefully."""
+        mock_trading_client.get_all_positions.return_value = []
+        mock_position_repo.get_open_positions.return_value = []
+
+        reconciler = StateReconciler(
+            alpaca_client=mock_trading_client,
+            position_repo=mock_position_repo,
+            discord_client=mock_discord_client,
+            settings=mock_settings,
+        )
+
+        report = reconciler.reconcile()
+
+        assert len(report.zombies) == 0
+        assert len(report.orphans) == 0
+        assert report.reconciled_count == 0
+
+    def test_reconcile_zombie_update_failure_not_blocking(
+        self,
+        mock_trading_client,
+        mock_position_repo,
+        mock_discord_client,
+        mock_settings,
+        sample_open_position,
+    ):
+        """Zombie healing failure doesn't block orphan alerts."""
+        mock_trading_client.get_all_positions.return_value = []
+        mock_position_repo.get_open_positions.return_value = [sample_open_position]
+
+        # Fail on update_position, succeed on other calls
+        mock_position_repo.update_position.side_effect = Exception("DB Write Error")
+
+        reconciler = StateReconciler(
+            alpaca_client=mock_trading_client,
+            position_repo=mock_position_repo,
+            discord_client=mock_discord_client,
+            settings=mock_settings,
+        )
+
+        # Should still return report with critical issues
+        report = reconciler.reconcile()
+
+        assert len(report.critical_issues) > 0
+        assert "BTC/USD" in report.zombies  # Zombie still detected
+
+    def test_reconcile_discord_notification_failure_not_blocking(
+        self,
+        mock_trading_client,
+        mock_position_repo,
+        mock_discord_client,
+        mock_settings,
+        sample_alpaca_position,
+    ):
+        """Discord notification failure doesn't block reconciliation."""
+        mock_trading_client.get_all_positions.return_value = [sample_alpaca_position]
+        mock_position_repo.get_open_positions.return_value = []
+
+        # Fail on Discord send
+        mock_discord_client.send_message.side_effect = Exception("Discord Error")
+
+        reconciler = StateReconciler(
+            alpaca_client=mock_trading_client,
+            position_repo=mock_position_repo,
+            discord_client=mock_discord_client,
+            settings=mock_settings,
+        )
+
+        # Should still return report
+        report = reconciler.reconcile()
+
+        assert len(report.orphans) > 0  # Orphan still detected
+        assert "ORPHAN: BTC/USD" in report.critical_issues
+
+    def test_reconcile_report_timestamp_is_set(
+        self,
+        mock_trading_client,
+        mock_position_repo,
+        mock_discord_client,
+        mock_settings,
+    ):
+        """Reconciliation report includes current timestamp."""
+        from datetime import datetime
+
+        mock_trading_client.get_all_positions.return_value = []
+        mock_position_repo.get_open_positions.return_value = []
+
+        reconciler = StateReconciler(
+            alpaca_client=mock_trading_client,
+            position_repo=mock_position_repo,
+            discord_client=mock_discord_client,
+            settings=mock_settings,
+        )
+
+        before = datetime.now(datetime.now().astimezone().tzinfo)
+        report = reconciler.reconcile()
+        after = datetime.now(datetime.now().astimezone().tzinfo)
+
+        assert before <= report.timestamp <= after
+
+    def test_reconcile_only_processes_open_positions(
+        self,
+        mock_trading_client,
+        mock_position_repo,
+        mock_discord_client,
+        mock_settings,
+        sample_open_position,
+    ):
+        """Reconciliation only checks open positions from Firestore."""
+        # Alpaca has nothing
+        mock_trading_client.get_all_positions.return_value = []
+
+        # Firestore returns only open positions (as per method contract)
+        # Using sample_open_position which has all required attributes
+        mock_position_repo.get_open_positions.return_value = [sample_open_position]
+
+        reconciler = StateReconciler(
+            alpaca_client=mock_trading_client,
+            position_repo=mock_position_repo,
+            discord_client=mock_discord_client,
+            settings=mock_settings,
+        )
+
+        report = reconciler.reconcile()
+
+        # Only BTC/USD should be detected as zombie
+        assert "BTC/USD" in report.zombies
+        assert len(report.zombies) == 1
+
+    def test_reconcile_with_same_symbols_in_both_states(
+        self,
+        mock_trading_client,
+        mock_position_repo,
+        mock_discord_client,
+        mock_settings,
+        sample_open_position,
+    ):
+        """Reconciliation detects no issues when symbols match."""
+        alpaca_pos = MagicMock()
+        alpaca_pos.symbol = "BTC/USD"
+
+        # Use sample_open_position which has all required attributes
+        sample_open_position.status = TradeStatus.OPEN
+        mock_trading_client.get_all_positions.return_value = [alpaca_pos]
+        mock_position_repo.get_open_positions.return_value = [sample_open_position]
+
+        reconciler = StateReconciler(
+            alpaca_client=mock_trading_client,
+            position_repo=mock_position_repo,
+            discord_client=mock_discord_client,
+            settings=mock_settings,
+        )
+
+        report = reconciler.reconcile()
+
+        # No zombies or orphans when in sync
+        assert len(report.zombies) == 0
+        assert len(report.orphans) == 0
+        assert report.reconciled_count == 0
+
+
+class TestReconcilerSettings:
+    """Test reconciler behavior with different settings."""
+
+    def test_reconcile_uses_provided_settings(
+        self,
+        mock_trading_client,
+        mock_position_repo,
+        mock_discord_client,
+    ):
+        """Reconciler uses provided settings instead of global defaults."""
+        custom_settings = MagicMock()
+        custom_settings.ENVIRONMENT = "STAGING"
+
+        reconciler = StateReconciler(
+            alpaca_client=mock_trading_client,
+            position_repo=mock_position_repo,
+            discord_client=mock_discord_client,
+            settings=custom_settings,
+        )
+
+        assert reconciler.settings == custom_settings
+        assert reconciler.settings.ENVIRONMENT == "STAGING"
+
+    def test_reconcile_defaults_to_get_settings_when_none(
+        self,
+        mock_trading_client,
+        mock_position_repo,
+        mock_discord_client,
+    ):
+        """Reconciler uses get_settings() when settings param is None."""
+        with patch("crypto_signals.engine.reconciler.get_settings") as mock_get_settings:
+            mock_settings = MagicMock()
+            mock_settings.ENVIRONMENT = "PROD"
+            mock_get_settings.return_value = mock_settings
+
+            mock_trading_client.get_all_positions.return_value = []
+            mock_position_repo.get_open_positions.return_value = []
+
+            reconciler = StateReconciler(
+                alpaca_client=mock_trading_client,
+                position_repo=mock_position_repo,
+                discord_client=mock_discord_client,
+                settings=None,
+            )
+
+            assert reconciler.settings == mock_settings
+            mock_get_settings.assert_called_once()

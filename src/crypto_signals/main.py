@@ -480,18 +480,32 @@ def main(
                                     # CRITICAL: Persist position to Firestore for
                                     # Position Sync Loop and TP Automation to work
                                     position_repo.save(position)
-                                    logger.info(
-                                        f"ORDER EXECUTED: {trade_signal.symbol}",
-                                        extra={
-                                            "signal_id": trade_signal.signal_id,
-                                            "symbol": trade_signal.symbol,
-                                            "position_id": position.position_id,
-                                            "qty": position.qty,
-                                            "duration_seconds": round(
-                                                execution_duration, 3
-                                            ),
-                                        },
-                                    )
+
+                                    # Log differentiation for Risk Blocked vs Executed
+                                    if position.trade_type == "RISK_BLOCKED":
+                                        logger.info(
+                                            f"LIFECYCLE PERSISTED: {trade_signal.symbol} (Type: {position.trade_type})",
+                                            extra={
+                                                "signal_id": trade_signal.signal_id,
+                                                "symbol": trade_signal.symbol,
+                                                "position_id": position.position_id,
+                                                "trade_type": position.trade_type,
+                                                "qty": position.qty,
+                                            },
+                                        )
+                                    else:
+                                        logger.info(
+                                            f"ORDER EXECUTED: {trade_signal.symbol}",
+                                            extra={
+                                                "signal_id": trade_signal.signal_id,
+                                                "symbol": trade_signal.symbol,
+                                                "position_id": position.position_id,
+                                                "qty": position.qty,
+                                                "duration_seconds": round(
+                                                    execution_duration, 3
+                                                ),
+                                            },
+                                        )
                                     metrics.record_success(
                                         "order_execution", execution_duration
                                     )
