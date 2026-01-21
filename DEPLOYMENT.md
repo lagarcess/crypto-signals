@@ -138,6 +138,18 @@ Go to **Settings → Secrets and variables → Actions → Repository variables*
 
 ## ✅ Verification
 
+ ### BigQuery Schema Migration (Issue 116)
+
+ If you encounter errors about missing columns (e.g., `buying_power`), you may need to manually update the BigQuery schema.
+
+ 1. Check `scripts/schema_migration.sql` ensuring it uses `{{PROJECT_ID}}`.
+ 2. Run the migration utility (injects credentials automatically):
+    ```bash
+    poetry run python scripts/run_migration.py
+    ```
+
+ ### Verification Commands
+
 ```bash
 # Test manual execution
 gcloud run jobs execute crypto-signals-job --region=us-central1 --wait

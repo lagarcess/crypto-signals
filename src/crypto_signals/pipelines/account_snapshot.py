@@ -2,7 +2,8 @@
 Account Snapshot Pipeline.
 
 This pipeline runs daily to capture the state of the trading account (Equity, Cash)
-and calculate performance metrics (Drawdown, Calmar Ratio) based on the equity curve.
+and expanded risk metrics (Buying Power, Margin) to calculate performance metrics
+(Drawdown, Calmar Ratio) based on the equity curve.
 
 Pattern: "Extract-Transform-Load"
 1. Extract: Fetch current Account and Portfolio History (1 Year) from Alpaca.
@@ -14,6 +15,7 @@ from datetime import datetime, timezone
 from typing import Any, List
 
 from alpaca.common.exceptions import APIError
+from alpaca.trading.requests import GetPortfolioHistoryRequest
 from loguru import logger
 
 from crypto_signals.config import get_settings, get_trading_client
@@ -26,13 +28,16 @@ class AccountSnapshotPipeline(BigQueryPipelineBase):
 
     def __init__(self):
         """Initialize pipeline with configuration."""
+        settings = get_settings()
+        env_suffix = "" if settings.ENVIRONMENT == "PROD" else "_test"
+
         super().__init__(
             job_name="account_snapshot",
             staging_table_id=(
-                f"{get_settings().GOOGLE_CLOUD_PROJECT}.crypto_sentinel.stg_accounts_import"
+                f"{get_settings().GOOGLE_CLOUD_PROJECT}.crypto_analytics.stg_accounts_import{env_suffix}"
             ),
             fact_table_id=(
-                f"{get_settings().GOOGLE_CLOUD_PROJECT}.crypto_sentinel.snapshot_accounts"
+                f"{get_settings().GOOGLE_CLOUD_PROJECT}.crypto_analytics.snapshot_accounts{env_suffix}"
             ),
             id_column="account_id",
             partition_column="ds",
@@ -58,12 +63,13 @@ class AccountSnapshotPipeline(BigQueryPipelineBase):
 
             # 2. Get Portfolio History (1 Year) to calculate Peak Equity
             # We need this for Drawdown calculation (Peak - Current / Peak)
-            history = self.alpaca.get_portfolio_history(
+            history_req = GetPortfolioHistoryRequest(
                 period="1A",
                 timeframe="1D",
-                date_end=None,  # Default to now
+                date_end=None,
                 extended_hours=False,
             )
+            history = self.alpaca.get_portfolio_history(history_req)
 
             # Combine into a single raw payload
             raw_data = {"account": account, "history": history}
@@ -88,6 +94,29 @@ class AccountSnapshotPipeline(BigQueryPipelineBase):
         """
         transformed = []
 
+        # Helper for safe parsing
+        def _parse_float(value: Any) -> float:
+            if value is None:
+                return 0.0
+            try:
+                return float(value)
+            except (ValueError, TypeError):
+                return 0.0
+
+        def _parse_bool(value: Any) -> bool:
+            if isinstance(value, bool):
+                return value
+            if isinstance(value, str):
+                return value.lower() == "true"
+            return False
+
+        def _parse_str(value: Any, default: str) -> str:
+            if value is None:
+                return default
+            if isinstance(value, str):
+                return value
+            return str(value)
+
         for item in raw_data:
             account = item["account"]
             history = item["history"]
@@ -96,8 +125,8 @@ class AccountSnapshotPipeline(BigQueryPipelineBase):
             # 1. Parse Basic Account Info
             # -----------------------------------------------------------------
             account_id = str(account.id)
-            current_equity = float(account.equity) if account.equity else 0.0
-            cash = float(account.cash) if account.cash else 0.0
+            current_equity = _parse_float(account.equity)
+            cash = _parse_float(account.cash)
 
             # -----------------------------------------------------------------
             # 2. Calculate Drawdown (Current)
@@ -195,6 +224,44 @@ class AccountSnapshotPipeline(BigQueryPipelineBase):
                 cash=round(cash, 2),
                 calmar_ratio=round(calmar_ratio, 2),
                 drawdown_pct=round(drawdown_pct, 4),
+                # === NEW FIELDS (Issue 116) ===
+                buying_power=_parse_float(getattr(account, "buying_power", 0.0)),
+                regt_buying_power=_parse_float(
+                    getattr(account, "regt_buying_power", 0.0)
+                ),
+                daytrading_buying_power=_parse_float(
+                    getattr(account, "daytrading_buying_power", 0.0)
+                ),
+                crypto_buying_power=_parse_float(
+                    getattr(account, "non_marginable_buying_power", 0.0)
+                ),
+                initial_margin=_parse_float(getattr(account, "initial_margin", 0.0)),
+                maintenance_margin=_parse_float(
+                    getattr(account, "maintenance_margin", 0.0)
+                ),
+                last_equity=_parse_float(getattr(account, "last_equity", 0.0)),
+                long_market_value=_parse_float(
+                    getattr(account, "long_market_value", 0.0)
+                ),
+                short_market_value=_parse_float(
+                    getattr(account, "short_market_value", 0.0)
+                ),
+                currency=_parse_str(getattr(account, "currency", "USD"), "USD"),
+                status=_parse_str(getattr(account, "status", "ACTIVE"), "ACTIVE"),
+                pattern_day_trader=_parse_bool(
+                    getattr(account, "pattern_day_trader", False)
+                ),
+                daytrade_count=int(getattr(account, "daytrade_count", 0) or 0),
+                account_blocked=_parse_bool(getattr(account, "account_blocked", False)),
+                trade_suspended_by_user=_parse_bool(
+                    getattr(account, "trade_suspended_by_user", False)
+                ),
+                trading_blocked=_parse_bool(getattr(account, "trading_blocked", False)),
+                transfers_blocked=_parse_bool(
+                    getattr(account, "transfers_blocked", False)
+                ),
+                multiplier=_parse_float(getattr(account, "multiplier", 1.0)),
+                sma=_parse_float(getattr(account, "sma", 0.0)),
             )
 
             transformed.append(record.model_dump(mode="json"))

@@ -22,3 +22,9 @@
 
 ### GCP
 - [2024-XX-XX] **Cloud Run**: Cold starts can exceed 10s. JIT warmup is essential.
+- [2026-01-21] **BigQuery**: `insert_rows_json` does NOT support automatic schema evolution. Columns must exist in the table definition.
+- [2026-01-21] **Staging Tables**: When altering a Fact table, the Staging table MUST be dropped and recreated (`CREATE TABLE ... LIKE ...`) to match the new schema.
+- [2026-01-21] **Secrets**: Never commit SQL scripts with hardcoded Project IDs. Use placeholders and injection.
+
+### Alpaca
+- [2026-01-21] **Typing**: Account fields (e.g., `buying_power`) can be returned as strings, decimals, or floats depending on the API version and field. Always use defensive parsing (`float(val)` with try-except) when mapping to strict schemas.

@@ -1,0 +1,85 @@
+-- Migration Script for Issue 116 (Expanded Account Snapshot)
+-- To be run via scripts/run_migration.py (handles substitutions)
+
+-- 1. Apply Schema Changes to Fact Table (Critical Data)
+-- We use IF NOT EXISTS to make this idempotent.
+ALTER TABLE `{{PROJECT_ID}}.crypto_analytics.snapshot_accounts`
+ADD COLUMN IF NOT EXISTS buying_power FLOAT64,
+ADD COLUMN IF NOT EXISTS regt_buying_power FLOAT64,
+ADD COLUMN IF NOT EXISTS daytrading_buying_power FLOAT64,
+ADD COLUMN IF NOT EXISTS crypto_buying_power FLOAT64,
+ADD COLUMN IF NOT EXISTS initial_margin FLOAT64,
+ADD COLUMN IF NOT EXISTS maintenance_margin FLOAT64,
+ADD COLUMN IF NOT EXISTS last_equity FLOAT64,
+ADD COLUMN IF NOT EXISTS long_market_value FLOAT64,
+ADD COLUMN IF NOT EXISTS short_market_value FLOAT64,
+ADD COLUMN IF NOT EXISTS currency STRING,
+ADD COLUMN IF NOT EXISTS status STRING,
+ADD COLUMN IF NOT EXISTS pattern_day_trader BOOL,
+ADD COLUMN IF NOT EXISTS daytrade_count INT64,
+ADD COLUMN IF NOT EXISTS account_blocked BOOL,
+ADD COLUMN IF NOT EXISTS trade_suspended_by_user BOOL,
+ADD COLUMN IF NOT EXISTS trading_blocked BOOL,
+ADD COLUMN IF NOT EXISTS transfers_blocked BOOL,
+ADD COLUMN IF NOT EXISTS multiplier FLOAT64,
+ADD COLUMN IF NOT EXISTS sma FLOAT64;
+
+-- 2. Reset Staging Table (Transient Data)
+-- Dropping and recreating LIKE the fact table guarantees strictly identical schemas.
+-- This prevents any "missing column" errors during insert_rows_json.
+DROP TABLE IF EXISTS `{{PROJECT_ID}}.crypto_analytics.stg_accounts_import`;
+
+CREATE TABLE `{{PROJECT_ID}}.crypto_analytics.stg_accounts_import`
+LIKE `{{PROJECT_ID}}.crypto_analytics.snapshot_accounts`;
+
+-- 3. Reset Staging Table for TRADES (Missing Table Fix)
+DROP TABLE IF EXISTS `{{PROJECT_ID}}.crypto_analytics.stg_trades_import`;
+
+CREATE TABLE `{{PROJECT_ID}}.crypto_analytics.stg_trades_import`
+LIKE `{{PROJECT_ID}}.crypto_analytics.fact_trades`;
+
+-- ==========================================
+-- TEST ENVIRONMENT (Schema Mirroring)
+-- ==========================================
+
+-- 4. Trades (Test)
+CREATE TABLE IF NOT EXISTS `{{PROJECT_ID}}.crypto_analytics.fact_trades_test`
+LIKE `{{PROJECT_ID}}.crypto_analytics.fact_trades`;
+
+DROP TABLE IF EXISTS `{{PROJECT_ID}}.crypto_analytics.stg_trades_import_test`;
+CREATE TABLE `{{PROJECT_ID}}.crypto_analytics.stg_trades_import_test`
+LIKE `{{PROJECT_ID}}.crypto_analytics.fact_trades_test`;
+
+-- 5. Account Snapshots (Test)
+CREATE TABLE IF NOT EXISTS `{{PROJECT_ID}}.crypto_analytics.snapshot_accounts_test`
+LIKE `{{PROJECT_ID}}.crypto_analytics.snapshot_accounts`;
+
+DROP TABLE IF EXISTS `{{PROJECT_ID}}.crypto_analytics.stg_accounts_import_test`;
+CREATE TABLE `{{PROJECT_ID}}.crypto_analytics.stg_accounts_import_test`
+LIKE `{{PROJECT_ID}}.crypto_analytics.snapshot_accounts_test`;
+
+-- 6. Rejected Signals (Test & Prod)
+-- Ensure PROD exists (was missing in migration)
+CREATE TABLE IF NOT EXISTS `{{PROJECT_ID}}.crypto_analytics.fact_rejected_signals`
+(
+    ds DATE,
+    signal_id STRING,
+    rejection_reason STRING,
+    theoretical_pnl_usd FLOAT64,
+    theoretical_pnl_pct FLOAT64,
+    theoretical_fees_usd FLOAT64,
+    created_at TIMESTAMP
+)
+PARTITION BY ds;
+
+DROP TABLE IF EXISTS `{{PROJECT_ID}}.crypto_analytics.stg_rejected_signals`;
+CREATE TABLE `{{PROJECT_ID}}.crypto_analytics.stg_rejected_signals`
+LIKE `{{PROJECT_ID}}.crypto_analytics.fact_rejected_signals`;
+
+-- Test
+CREATE TABLE IF NOT EXISTS `{{PROJECT_ID}}.crypto_analytics.fact_rejected_signals_test`
+LIKE `{{PROJECT_ID}}.crypto_analytics.fact_rejected_signals`;
+
+DROP TABLE IF EXISTS `{{PROJECT_ID}}.crypto_analytics.stg_rejected_signals_test`;
+CREATE TABLE `{{PROJECT_ID}}.crypto_analytics.stg_rejected_signals_test`
+LIKE `{{PROJECT_ID}}.crypto_analytics.fact_rejected_signals_test`;

@@ -48,10 +48,10 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
         super().__init__(
             job_name="trade_archival",
             staging_table_id=(
-                f"{settings.GOOGLE_CLOUD_PROJECT}.crypto_sentinel.stg_trades_import{env_suffix}"
+                f"{settings.GOOGLE_CLOUD_PROJECT}.crypto_analytics.stg_trades_import{env_suffix}"
             ),
             fact_table_id=(
-                f"{settings.GOOGLE_CLOUD_PROJECT}.crypto_sentinel.fact_trades{env_suffix}"
+                f"{settings.GOOGLE_CLOUD_PROJECT}.crypto_analytics.fact_trades{env_suffix}"
             ),
             id_column="trade_id",
             partition_column="ds",
