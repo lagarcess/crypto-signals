@@ -78,6 +78,34 @@ def test_transform_calculation(pipeline):
     mock_account.equity = "100000.0"
     mock_account.cash = "50000.0"
 
+    # === NEW FIELDS (Issue 116) ===
+    # Buying Power / Leverage
+    mock_account.buying_power = "200000.0"
+    mock_account.regt_buying_power = "100000.0"
+    mock_account.daytrading_buying_power = "400000.0"
+    mock_account.non_marginable_buying_power = "30000.0"  # Crypto BP
+    mock_account.multiplier = "4.0"
+
+    # Margin Risk
+    mock_account.initial_margin = "25000.0"
+    mock_account.maintenance_margin = "20000.0"
+
+    # Portfolio Value
+    mock_account.last_equity = "99000.0"
+    mock_account.long_market_value = "50000.0"
+    mock_account.short_market_value = "0.0"
+
+    # Status Flags
+    mock_account.currency = "USD"
+    mock_account.status = "ACTIVE"
+    mock_account.pattern_day_trader = True  # Boolean in SDK (sometimes) or string "true"
+    mock_account.daytrade_count = 3
+    mock_account.account_blocked = False
+    mock_account.trade_suspended_by_user = False
+    mock_account.trading_blocked = False
+    mock_account.transfers_blocked = False
+    mock_account.sma = "120.5"
+
     # Need > 30 items to trigger Calmar calculation
     # Simulate 30 days of growth then a dip
     # Start 80k -> Peak 120k -> Current 100k
@@ -117,6 +145,15 @@ def test_transform_calculation(pipeline):
 
     # Verify Calmar matches logic
     assert record["calmar_ratio"] == round(expected_calmar, 2)
+
+    # === VERIFY NEW FIELDS ===
+    assert record["buying_power"] == 200000.0
+    assert record["crypto_buying_power"] == 30000.0  # Mapped from non_marginable
+    assert record["pattern_day_trader"] is True
+    assert record["daytrade_count"] == 3
+    assert record["multiplier"] == 4.0
+    assert record["currency"] == "USD"
+    assert record["sma"] == 120.5
 
 
 def test_calmar_guardrail_new_account(pipeline):

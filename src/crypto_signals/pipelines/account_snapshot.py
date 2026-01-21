@@ -2,7 +2,8 @@
 Account Snapshot Pipeline.
 
 This pipeline runs daily to capture the state of the trading account (Equity, Cash)
-and calculate performance metrics (Drawdown, Calmar Ratio) based on the equity curve.
+and expanded risk metrics (Buying Power, Margin) to calculate performance metrics
+(Drawdown, Calmar Ratio) based on the equity curve.
 
 Pattern: "Extract-Transform-Load"
 1. Extract: Fetch current Account and Portfolio History (1 Year) from Alpaca.
@@ -88,6 +89,29 @@ class AccountSnapshotPipeline(BigQueryPipelineBase):
         """
         transformed = []
 
+        # Helper for safe parsing
+        def _parse_float(value: Any) -> float:
+            if value is None:
+                return 0.0
+            try:
+                return float(value)
+            except (ValueError, TypeError):
+                return 0.0
+
+        def _parse_bool(value: Any) -> bool:
+            if isinstance(value, bool):
+                return value
+            if isinstance(value, str):
+                return value.lower() == "true"
+            return False
+
+        def _parse_str(value: Any, default: str) -> str:
+            if value is None:
+                return default
+            if isinstance(value, str):
+                return value
+            return str(value)
+
         for item in raw_data:
             account = item["account"]
             history = item["history"]
@@ -96,8 +120,8 @@ class AccountSnapshotPipeline(BigQueryPipelineBase):
             # 1. Parse Basic Account Info
             # -----------------------------------------------------------------
             account_id = str(account.id)
-            current_equity = float(account.equity) if account.equity else 0.0
-            cash = float(account.cash) if account.cash else 0.0
+            current_equity = _parse_float(account.equity)
+            cash = _parse_float(account.cash)
 
             # -----------------------------------------------------------------
             # 2. Calculate Drawdown (Current)
@@ -195,6 +219,44 @@ class AccountSnapshotPipeline(BigQueryPipelineBase):
                 cash=round(cash, 2),
                 calmar_ratio=round(calmar_ratio, 2),
                 drawdown_pct=round(drawdown_pct, 4),
+                # === NEW FIELDS (Issue 116) ===
+                buying_power=_parse_float(getattr(account, "buying_power", 0.0)),
+                regt_buying_power=_parse_float(
+                    getattr(account, "regt_buying_power", 0.0)
+                ),
+                daytrading_buying_power=_parse_float(
+                    getattr(account, "daytrading_buying_power", 0.0)
+                ),
+                crypto_buying_power=_parse_float(
+                    getattr(account, "non_marginable_buying_power", 0.0)
+                ),
+                initial_margin=_parse_float(getattr(account, "initial_margin", 0.0)),
+                maintenance_margin=_parse_float(
+                    getattr(account, "maintenance_margin", 0.0)
+                ),
+                last_equity=_parse_float(getattr(account, "last_equity", 0.0)),
+                long_market_value=_parse_float(
+                    getattr(account, "long_market_value", 0.0)
+                ),
+                short_market_value=_parse_float(
+                    getattr(account, "short_market_value", 0.0)
+                ),
+                currency=_parse_str(getattr(account, "currency", "USD"), "USD"),
+                status=_parse_str(getattr(account, "status", "ACTIVE"), "ACTIVE"),
+                pattern_day_trader=_parse_bool(
+                    getattr(account, "pattern_day_trader", False)
+                ),
+                daytrade_count=int(getattr(account, "daytrade_count", 0) or 0),
+                account_blocked=_parse_bool(getattr(account, "account_blocked", False)),
+                trade_suspended_by_user=_parse_bool(
+                    getattr(account, "trade_suspended_by_user", False)
+                ),
+                trading_blocked=_parse_bool(getattr(account, "trading_blocked", False)),
+                transfers_blocked=_parse_bool(
+                    getattr(account, "transfers_blocked", False)
+                ),
+                multiplier=_parse_float(getattr(account, "multiplier", 1.0)),
+                sma=_parse_float(getattr(account, "sma", 0.0)),
             )
 
             transformed.append(record.model_dump(mode="json"))

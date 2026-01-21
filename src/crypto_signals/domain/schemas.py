@@ -825,6 +825,83 @@ class AccountSnapshot(BaseModel):
         ...,
         description="Current drawdown percentage from peak",
     )
+    # === NEW FIELDS (Issue 116) ===
+    buying_power: Optional[float] = Field(
+        default=None,
+        description="Current available buying power (Reg T)",
+    )
+    regt_buying_power: Optional[float] = Field(
+        default=None,
+        description="Reg T buying power",
+    )
+    daytrading_buying_power: Optional[float] = Field(
+        default=None,
+        description="Day trading buying power",
+    )
+    crypto_buying_power: Optional[float] = Field(
+        default=None,
+        description="Non-marginable buying power (Crypto BP)",
+    )
+    initial_margin: Optional[float] = Field(
+        default=None,
+        description="Initial margin requirement",
+    )
+    maintenance_margin: Optional[float] = Field(
+        default=None,
+        description="Maintenance margin requirement",
+    )
+    last_equity: Optional[float] = Field(
+        default=None,
+        description="Equity value at last close",
+    )
+    long_market_value: Optional[float] = Field(
+        default=None,
+        description="Total market value of long positions",
+    )
+    short_market_value: Optional[float] = Field(
+        default=None,
+        description="Total market value of short positions",
+    )
+    currency: Optional[str] = Field(
+        default=None,
+        description="Account currency (e.g., USD)",
+    )
+    status: Optional[str] = Field(
+        default=None,
+        description="Account status (e.g., ACTIVE)",
+    )
+    pattern_day_trader: Optional[bool] = Field(
+        default=None,
+        description="Pattern Day Trader (PDT) flag",
+    )
+    daytrade_count: Optional[int] = Field(
+        default=None,
+        description="Number of day trades in last 5 days",
+    )
+    account_blocked: Optional[bool] = Field(
+        default=None,
+        description="Whether account is blocked",
+    )
+    trade_suspended_by_user: Optional[bool] = Field(
+        default=None,
+        description="Whether trading is suspended by user",
+    )
+    trading_blocked: Optional[bool] = Field(
+        default=None,
+        description="Whether trading is blocked",
+    )
+    transfers_blocked: Optional[bool] = Field(
+        default=None,
+        description="Whether transfers are blocked",
+    )
+    multiplier: Optional[float] = Field(
+        default=None,
+        description="Account leverage multiplier",
+    )
+    sma: Optional[float] = Field(
+        default=None,
+        description="SMA value (Special Memorandum Account)",
+    )
 
 
 class StagingAccount(BaseModel):
@@ -858,6 +935,83 @@ class StagingAccount(BaseModel):
     drawdown_pct: float = Field(
         ...,
         description="Current drawdown percentage from peak",
+    )
+    # === NEW FIELDS (Issue 116) ===
+    buying_power: Optional[float] = Field(
+        default=None,
+        description="Current available buying power (Reg T)",
+    )
+    regt_buying_power: Optional[float] = Field(
+        default=None,
+        description="Reg T buying power",
+    )
+    daytrading_buying_power: Optional[float] = Field(
+        default=None,
+        description="Day trading buying power",
+    )
+    crypto_buying_power: Optional[float] = Field(
+        default=None,
+        description="Non-marginable buying power (Crypto BP)",
+    )
+    initial_margin: Optional[float] = Field(
+        default=None,
+        description="Initial margin requirement",
+    )
+    maintenance_margin: Optional[float] = Field(
+        default=None,
+        description="Maintenance margin requirement",
+    )
+    last_equity: Optional[float] = Field(
+        default=None,
+        description="Equity value at last close",
+    )
+    long_market_value: Optional[float] = Field(
+        default=None,
+        description="Total market value of long positions",
+    )
+    short_market_value: Optional[float] = Field(
+        default=None,
+        description="Total market value of short positions",
+    )
+    currency: Optional[str] = Field(
+        default=None,
+        description="Account currency (e.g., USD)",
+    )
+    status: Optional[str] = Field(
+        default=None,
+        description="Account status (e.g., ACTIVE)",
+    )
+    pattern_day_trader: Optional[bool] = Field(
+        default=None,
+        description="Pattern Day Trader (PDT) flag",
+    )
+    daytrade_count: Optional[int] = Field(
+        default=None,
+        description="Number of day trades in last 5 days",
+    )
+    account_blocked: Optional[bool] = Field(
+        default=None,
+        description="Whether account is blocked",
+    )
+    trade_suspended_by_user: Optional[bool] = Field(
+        default=None,
+        description="Whether trading is suspended by user",
+    )
+    trading_blocked: Optional[bool] = Field(
+        default=None,
+        description="Whether trading is blocked",
+    )
+    transfers_blocked: Optional[bool] = Field(
+        default=None,
+        description="Whether transfers are blocked",
+    )
+    multiplier: Optional[float] = Field(
+        default=None,
+        description="Account leverage multiplier",
+    )
+    sma: Optional[float] = Field(
+        default=None,
+        description="SMA value (Special Memorandum Account)",
     )
 
 
