@@ -148,7 +148,11 @@ class Settings(BaseSettings):
         le=10.0,
     )
 
-    # Execution Configuration
+    # Execution Engine
+    ENABLE_EXECUTION: bool = Field(
+        default=False,
+        description="Enable order execution (requires ALPACA_PAPER_TRADING=True)",
+    )
     RISK_PER_TRADE: float = Field(
         default=100.0,
         description=(

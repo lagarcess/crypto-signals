@@ -13,10 +13,11 @@ Key Capabilities:
 """
 
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Optional, cast
 
 from alpaca.trading.client import TradingClient
 from alpaca.trading.enums import OrderClass, OrderSide, TimeInForce
+from alpaca.trading.models import Order
 from alpaca.trading.requests import (
     MarketOrderRequest,
     StopLossRequest,
@@ -29,6 +30,7 @@ from crypto_signals.domain.schemas import (
     Position,
     Signal,
     TradeStatus,
+    TradeType,
 )
 from crypto_signals.domain.schemas import (
     OrderSide as DomainOrderSide,
@@ -81,41 +83,30 @@ class ExecutionEngine:
         """
         settings = get_settings()
 
-        # Safety check: Only execute in paper trading mode
-        if not settings.is_paper_trading:
-            logger.warning(
-                "Execution blocked: ALPACA_PAPER_TRADING must be True. "
-                "Set ALPACA_PAPER_TRADING=True to enable order execution."
-            )
-            return None
+        # === Execution Gating (SAFETY GUARD) ===
 
         # === Execution Gating (SAFETY GUARD) ===
-        if settings.ENVIRONMENT != "PROD":
-            logger.warning(
-                f"[THEORETICAL MODE] Signal {signal.signal_id} skipped. "
-                f"Reason: Execution is restricted to PROD environment only. "
-                f"(Current Env: {settings.ENVIRONMENT})"
-            )
-            return None
-
-        # Safety check: Execution must be explicitly enabled
-        if not getattr(settings, "ENABLE_EXECUTION", False):
-            logger.debug(
-                "Execution disabled: Set ENABLE_EXECUTION=True to execute orders."
-            )
-            return None
+        # If explicitly enabled in PROD, execute LIVE.
+        # If disabled OR not PROD, execute THEORETICAL (Simulated).
+        should_execute_live = (
+            settings.ENVIRONMENT == "PROD"
+            and getattr(settings, "ENABLE_EXECUTION", False)
+            and settings.is_paper_trading  # Always require paper=True for now (safety)
+        )
 
         # Validate required signal fields
         if not self._validate_signal(signal):
             return None
 
-        # Route based on asset class
-        # Crypto: Simple market orders (Alpaca doesn't support bracket/OTOCO for crypto)
-        # Equity: Bracket orders with TP/SL legs
-        if signal.asset_class == AssetClass.CRYPTO:
-            return self._execute_crypto_signal(signal)
+        # Route based on execution mode
+        if should_execute_live:
+            if signal.asset_class == AssetClass.CRYPTO:
+                return self._execute_crypto_signal(signal)
+            else:
+                return self._execute_bracket_order(signal)
         else:
-            return self._execute_bracket_order(signal)
+            # Theoretical execution (Simulated with slippage)
+            return self._execute_theoretical_order(signal)
 
     def _execute_crypto_signal(self, signal: Signal) -> Optional[Position]:
         """
@@ -170,10 +161,10 @@ class ExecutionEngine:
             logger.info(
                 f"CRYPTO ORDER SUBMITTED: {signal.symbol}",
                 extra={
-                    "order_id": str(order.id),
-                    "client_order_id": order.client_order_id,
+                    "order_id": str(cast(Order, order).id),
+                    "client_order_id": cast(Order, order).client_order_id,
                     "qty": qty,
-                    "status": str(order.status),
+                    "status": str(cast(Order, order).status),
                 },
             )
 
@@ -188,7 +179,7 @@ class ExecutionEngine:
                 account_id="paper",
                 symbol=signal.symbol,
                 signal_id=signal.signal_id,
-                alpaca_order_id=str(order.id),
+                alpaca_order_id=str(cast(Order, order).id),
                 discord_thread_id=signal.discord_thread_id,
                 status=TradeStatus.OPEN,
                 entry_fill_price=signal.entry_price,
@@ -266,10 +257,10 @@ class ExecutionEngine:
             logger.info(
                 f"ORDER SUBMITTED: {signal.symbol}",
                 extra={
-                    "order_id": str(order.id),
-                    "client_order_id": order.client_order_id,
+                    "order_id": str(cast(Order, order).id),
+                    "client_order_id": cast(Order, order).client_order_id,
                     "qty": qty,
-                    "status": str(order.status),
+                    "status": str(cast(Order, order).status),
                 },
             )
 
@@ -284,7 +275,7 @@ class ExecutionEngine:
                 account_id="paper",  # All trades use paper account; TEST_MODE only controls Discord routing
                 symbol=signal.symbol,
                 signal_id=signal.signal_id,
-                alpaca_order_id=str(order.id),
+                alpaca_order_id=str(cast(Order, order).id),
                 discord_thread_id=signal.discord_thread_id,
                 status=TradeStatus.OPEN,
                 entry_fill_price=signal.entry_price,
@@ -302,6 +293,77 @@ class ExecutionEngine:
         except Exception as e:
             self._log_execution_failure(signal, e)
             return None
+
+    def _execute_theoretical_order(self, signal: Signal) -> Position:
+        """
+        Create a simulated Position with synthetic slippage.
+        """
+        settings = get_settings()
+        slippage_pct = getattr(settings, "THEORETICAL_SLIPPAGE_PCT", 0.001)
+
+        # Determine order side
+        side = signal.side or DomainOrderSide.BUY
+
+        # Calculate synthetic fill price
+        # Long: Price spikes UP (slippage against you) -> entry * (1 + slippage)
+        # Short: Price drops DOWN (slippage against you) -> entry * (1 - slippage)
+        if side == DomainOrderSide.BUY:
+            fill_price = signal.entry_price * (1 + slippage_pct)
+        else:
+            fill_price = signal.entry_price * (1 - slippage_pct)
+
+        fill_price = (
+            round(fill_price, 4)
+            if signal.asset_class == AssetClass.EQUITY
+            else fill_price
+        )
+
+        # Calculate quantity (same logic as live)
+        qty = self._calculate_qty(signal)
+
+        # Calculate slippage percentage for reporting
+        entry_slippage_pct = round(
+            (fill_price - signal.entry_price) / signal.entry_price * 100, 4
+        )
+
+        logger.info(
+            f"SIMULATING {side.value.upper()} for {signal.symbol}",
+            extra={
+                "signal_id": signal.signal_id,
+                "target_entry": signal.entry_price,
+                "simulated_fill": fill_price,
+                "slippage_pct": entry_slippage_pct,
+                "qty": qty,
+            },
+        )
+
+        # Create Position
+        delete_at = datetime.now(timezone.utc) + timedelta(
+            days=settings.TTL_DAYS_POSITION
+        )
+
+        return Position(
+            position_id=signal.signal_id,
+            ds=signal.ds,
+            account_id="theoretical",
+            symbol=signal.symbol,
+            signal_id=signal.signal_id,
+            alpaca_order_id=f"theo-{signal.signal_id[:8]}",  # Dummy ID
+            discord_thread_id=signal.discord_thread_id,
+            status=TradeStatus.OPEN,
+            entry_fill_price=fill_price,
+            current_stop_loss=signal.suggested_stop,
+            qty=qty,
+            side=side,
+            target_entry_price=signal.entry_price,
+            # Theoretical trades are self-managed, no broker leg IDs
+            tp_order_id=None,
+            sl_order_id=None,
+            delete_at=delete_at,
+            trade_type=TradeType.THEORETICAL.value,
+            entry_slippage_pct=entry_slippage_pct,
+            filled_at=datetime.now(timezone.utc),
+        )
 
     def _validate_signal(self, signal: Signal) -> bool:
         """Validate that signal has required fields for execution."""
@@ -435,6 +497,10 @@ class ExecutionEngine:
             Updated Position object with latest broker state.
         """
         # ENVIRONMENT GATE: Skip sync in non-PROD environments
+        # Theoretical trades are self-managed, so synchronization is a no-op (they are always "synced")
+        if position.trade_type == TradeType.THEORETICAL.value:
+            return position
+
         if get_settings().ENVIRONMENT != "PROD":
             return position
 
@@ -659,8 +725,10 @@ class ExecutionEngine:
         Returns:
             True if modification succeeded, False otherwise.
         """
-        # ENVIRONMENT GATE: Skip modification in non-PROD environments
-        if get_settings().ENVIRONMENT != "PROD":
+        # ENVIRONMENT GATE: Skip modification in non-PROD environments,
+        # UNLESS it's a theoretical trade (simulated state update).
+        is_theoretical = position.trade_type == TradeType.THEORETICAL.value
+        if get_settings().ENVIRONMENT != "PROD" and not is_theoretical:
             logger.info(
                 f"[THEORETICAL MODE] Stop modification skipped for {position.position_id}"
             )
@@ -751,7 +819,9 @@ class ExecutionEngine:
             True if scale-out order submitted successfully
         """
         # ENVIRONMENT GATE: Skip scale-out in non-PROD environments
-        if get_settings().ENVIRONMENT != "PROD":
+        # UNLESS it's a theoretical trade (simulated state update).
+        is_theoretical = position.trade_type == TradeType.THEORETICAL.value
+        if get_settings().ENVIRONMENT != "PROD" and not is_theoretical:
             logger.info(
                 f"[THEORETICAL MODE] Scale-out skipped for {position.position_id}"
             )
@@ -793,8 +863,11 @@ class ExecutionEngine:
 
             # Get fill price from order (if immediate fill)
             fill_price = None
-            if hasattr(close_order, "filled_avg_price") and close_order.filled_avg_price:
-                fill_price = float(close_order.filled_avg_price)
+            if (
+                hasattr(close_order, "filled_avg_price")
+                and cast(Order, close_order).filled_avg_price
+            ):
+                fill_price = float(cast(Order, close_order).filled_avg_price)
 
             # Record scale-out in position
             position.scaled_out_qty += scale_qty
@@ -949,10 +1022,21 @@ class ExecutionEngine:
             since orders may already be filled/canceled.
         """
         # ENVIRONMENT GATE: Skip emergency close in non-PROD environments
-        if get_settings().ENVIRONMENT != "PROD":
+        # UNLESS it's a theoretical trade (simulated state update).
+        is_theoretical = position.trade_type == TradeType.THEORETICAL.value
+        if get_settings().ENVIRONMENT != "PROD" and not is_theoretical:
             logger.info(
                 f"[THEORETICAL MODE] Emergency close skipped for {position.position_id}"
             )
+            return True
+
+        if is_theoretical:
+            position.status = TradeStatus.CLOSED
+            position.exit_reason = ExitReason.MANUAL_EXIT
+            if not position.exit_fill_price:
+                # Estimate exit at current stop if not provided (safe fallback) or handle via caller
+                pass
+            logger.info(f"THEORETICAL CLOSE: {position.position_id}")
             return True
 
         # 1. Cancel TP order (best effort - may already be filled/canceled)
@@ -995,7 +1079,7 @@ class ExecutionEngine:
                 extra={
                     "position_id": position.position_id,
                     "symbol": position.symbol,
-                    "close_order_id": str(close_order.id),
+                    "close_order_id": str(cast(Order, close_order).id),
                     "qty": position.qty,
                     "side": close_side.value,
                 },

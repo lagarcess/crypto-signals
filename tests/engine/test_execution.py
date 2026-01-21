@@ -231,6 +231,9 @@ class TestExecuteSignal:
         mock_settings = MagicMock()
         mock_settings.is_paper_trading = False
         mock_settings.ENABLE_EXECUTION = True
+        mock_settings.TTL_DAYS_POSITION = 90
+        # Determine environment to test fallback
+        mock_settings.ENVIRONMENT = "PROD"
 
         with patch(
             "crypto_signals.engine.execution.get_settings", return_value=mock_settings
@@ -240,9 +243,12 @@ class TestExecuteSignal:
             # Execute
             position = engine.execute_signal(sample_signal)
 
-            # Verify no order was submitted
+            # Verify no LIVE order was submitted
             mock_trading_client.submit_order.assert_not_called()
-            assert position is None
+
+            # Verify THEORETICAL position was created (fallback)
+            assert position is not None
+            assert position.trade_type == "THEORETICAL"
 
     def test_execution_blocked_when_disabled(self, sample_signal, mock_trading_client):
         """Verify execution is blocked when ENABLE_EXECUTION=False."""
@@ -250,6 +256,8 @@ class TestExecuteSignal:
         mock_settings = MagicMock()
         mock_settings.is_paper_trading = True
         mock_settings.ENABLE_EXECUTION = False
+        mock_settings.ENVIRONMENT = "PROD"
+        mock_settings.TTL_DAYS_POSITION = 90
 
         with patch(
             "crypto_signals.engine.execution.get_settings", return_value=mock_settings
@@ -259,9 +267,12 @@ class TestExecuteSignal:
             # Execute
             position = engine.execute_signal(sample_signal)
 
-            # Verify no order was submitted
+            # Verify no LIVE order was submitted
             mock_trading_client.submit_order.assert_not_called()
-            assert position is None
+
+            # Verify THEORETICAL position was created (fallback)
+            assert position is not None
+            assert position.trade_type == "THEORETICAL"
 
     def test_position_created_on_success(
         self, execution_engine, sample_signal, mock_trading_client
