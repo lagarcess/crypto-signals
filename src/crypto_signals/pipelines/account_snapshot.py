@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from typing import Any, List
 
 from alpaca.common.exceptions import APIError
+from alpaca.trading.requests import GetPortfolioHistoryRequest
 from loguru import logger
 
 from crypto_signals.config import get_settings, get_trading_client
@@ -59,12 +60,13 @@ class AccountSnapshotPipeline(BigQueryPipelineBase):
 
             # 2. Get Portfolio History (1 Year) to calculate Peak Equity
             # We need this for Drawdown calculation (Peak - Current / Peak)
-            history = self.alpaca.get_portfolio_history(
+            history_req = GetPortfolioHistoryRequest(
                 period="1A",
                 timeframe="1D",
-                date_end=None,  # Default to now
+                date_end=None,
                 extended_hours=False,
             )
+            history = self.alpaca.get_portfolio_history(history_req)
 
             # Combine into a single raw payload
             raw_data = {"account": account, "history": history}

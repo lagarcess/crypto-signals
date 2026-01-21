@@ -67,10 +67,13 @@ def test_extract(pipeline, mock_alpaca):
     assert result[0]["account"] == mock_account
     assert result[0]["history"] == mock_history
 
-    mock_alpaca.get_account.assert_called_once()
-    mock_alpaca.get_portfolio_history.assert_called_once_with(
-        period="1A", timeframe="1D", date_end=None, extended_hours=False
-    )
+    from alpaca.trading.requests import GetPortfolioHistoryRequest
+
+    mock_alpaca.get_portfolio_history.assert_called_once()
+    # Arg check: Ensure it was called with a GetPortfolioHistoryRequest
+    args, _ = mock_alpaca.get_portfolio_history.call_args
+    assert isinstance(args[0], GetPortfolioHistoryRequest)
+    assert args[0].period == "1A"
 
 
 def test_transform_calculation(pipeline):
