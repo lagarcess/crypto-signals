@@ -37,6 +37,11 @@ valid_assets.txt
 tmp/
 temp/
 *.tmp
+PR_DESCRIPTION.md
+task.md
+instructions.md
+implementation_plan.md
+walkthrough.md
 
 # OS files
 .DS_Store
