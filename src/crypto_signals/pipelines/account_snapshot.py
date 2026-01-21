@@ -28,13 +28,16 @@ class AccountSnapshotPipeline(BigQueryPipelineBase):
 
     def __init__(self):
         """Initialize pipeline with configuration."""
+        settings = get_settings()
+        env_suffix = "" if settings.ENVIRONMENT == "PROD" else "_test"
+
         super().__init__(
             job_name="account_snapshot",
             staging_table_id=(
-                f"{get_settings().GOOGLE_CLOUD_PROJECT}.crypto_analytics.stg_accounts_import"
+                f"{get_settings().GOOGLE_CLOUD_PROJECT}.crypto_analytics.stg_accounts_import{env_suffix}"
             ),
             fact_table_id=(
-                f"{get_settings().GOOGLE_CLOUD_PROJECT}.crypto_analytics.snapshot_accounts"
+                f"{get_settings().GOOGLE_CLOUD_PROJECT}.crypto_analytics.snapshot_accounts{env_suffix}"
             ),
             id_column="account_id",
             partition_column="ds",

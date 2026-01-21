@@ -92,6 +92,10 @@ Crypto Sentinel is a production-ready trading bot that:
 - **Discord Webhooks**: Threaded notifications
 - **Google Secret Manager**: Credentials
 
+- **Staff Level Architecture**:
+  - `docs/DATA_ARCHITECTURE.md`: Detailed view of Hot/Cold storage and Data Flow.
+  - `docs/current_schema.dbml`: Visual schema definition (DBML).
+
 ## Project Structure
 
 ```

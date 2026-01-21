@@ -16,6 +16,7 @@ def mock_settings():
     """Mock the settings object."""
     with patch("crypto_signals.pipelines.account_snapshot.get_settings") as mock:
         mock.return_value.GOOGLE_CLOUD_PROJECT = "test-project"
+        mock.return_value.ENVIRONMENT = "PROD"
         yield mock
 
 

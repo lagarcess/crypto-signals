@@ -47,10 +47,10 @@ class RejectedSignalArchival(BigQueryPipelineBase):
         super().__init__(
             job_name="rejected_signal_archival",
             staging_table_id=(
-                f"{settings.GOOGLE_CLOUD_PROJECT}.crypto_sentinel.stg_rejected_signals{env_suffix}"
+                f"{settings.GOOGLE_CLOUD_PROJECT}.crypto_analytics.stg_rejected_signals{env_suffix}"
             ),
             fact_table_id=(
-                f"{settings.GOOGLE_CLOUD_PROJECT}.crypto_sentinel.fact_rejected_signals{env_suffix}"
+                f"{settings.GOOGLE_CLOUD_PROJECT}.crypto_analytics.fact_rejected_signals{env_suffix}"
             ),
             id_column="signal_id",
             partition_column="ds",

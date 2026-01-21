@@ -31,3 +31,55 @@ DROP TABLE IF EXISTS `{{PROJECT_ID}}.crypto_analytics.stg_accounts_import`;
 
 CREATE TABLE `{{PROJECT_ID}}.crypto_analytics.stg_accounts_import`
 LIKE `{{PROJECT_ID}}.crypto_analytics.snapshot_accounts`;
+
+-- 3. Reset Staging Table for TRADES (Missing Table Fix)
+DROP TABLE IF EXISTS `{{PROJECT_ID}}.crypto_analytics.stg_trades_import`;
+
+CREATE TABLE `{{PROJECT_ID}}.crypto_analytics.stg_trades_import`
+LIKE `{{PROJECT_ID}}.crypto_analytics.fact_trades`;
+
+-- ==========================================
+-- TEST ENVIRONMENT (Schema Mirroring)
+-- ==========================================
+
+-- 4. Trades (Test)
+CREATE TABLE IF NOT EXISTS `{{PROJECT_ID}}.crypto_analytics.fact_trades_test`
+LIKE `{{PROJECT_ID}}.crypto_analytics.fact_trades`;
+
+DROP TABLE IF EXISTS `{{PROJECT_ID}}.crypto_analytics.stg_trades_import_test`;
+CREATE TABLE `{{PROJECT_ID}}.crypto_analytics.stg_trades_import_test`
+LIKE `{{PROJECT_ID}}.crypto_analytics.fact_trades_test`;
+
+-- 5. Account Snapshots (Test)
+CREATE TABLE IF NOT EXISTS `{{PROJECT_ID}}.crypto_analytics.snapshot_accounts_test`
+LIKE `{{PROJECT_ID}}.crypto_analytics.snapshot_accounts`;
+
+DROP TABLE IF EXISTS `{{PROJECT_ID}}.crypto_analytics.stg_accounts_import_test`;
+CREATE TABLE `{{PROJECT_ID}}.crypto_analytics.stg_accounts_import_test`
+LIKE `{{PROJECT_ID}}.crypto_analytics.snapshot_accounts_test`;
+
+-- 6. Rejected Signals (Test & Prod)
+-- Ensure PROD exists (was missing in migration)
+CREATE TABLE IF NOT EXISTS `{{PROJECT_ID}}.crypto_analytics.fact_rejected_signals`
+(
+    ds DATE,
+    signal_id STRING,
+    rejection_reason STRING,
+    theoretical_pnl_usd FLOAT64,
+    theoretical_pnl_pct FLOAT64,
+    theoretical_fees_usd FLOAT64,
+    created_at TIMESTAMP
+)
+PARTITION BY ds;
+
+DROP TABLE IF EXISTS `{{PROJECT_ID}}.crypto_analytics.stg_rejected_signals`;
+CREATE TABLE `{{PROJECT_ID}}.crypto_analytics.stg_rejected_signals`
+LIKE `{{PROJECT_ID}}.crypto_analytics.fact_rejected_signals`;
+
+-- Test
+CREATE TABLE IF NOT EXISTS `{{PROJECT_ID}}.crypto_analytics.fact_rejected_signals_test`
+LIKE `{{PROJECT_ID}}.crypto_analytics.fact_rejected_signals`;
+
+DROP TABLE IF EXISTS `{{PROJECT_ID}}.crypto_analytics.stg_rejected_signals_test`;
+CREATE TABLE `{{PROJECT_ID}}.crypto_analytics.stg_rejected_signals_test`
+LIKE `{{PROJECT_ID}}.crypto_analytics.fact_rejected_signals_test`;
