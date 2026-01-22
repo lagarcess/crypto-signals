@@ -19,7 +19,10 @@ Welcome to the Crypto Sentinel Wiki. This repository contains detailed guides on
 - **[Infrastructure Health Check](operations/infrastructure-health.md)**: Monitoring system health and connectivity.
 - **[Production Monitoring](operations/monitoring.md)**: Alerting and log analysis.
 - **[Troubleshooting](operations/troubleshooting.md)**: Common issues and fixes.
+
+## 🛠️ Development
 - **[Workflow Guide](development/workflow-guide.md)**: Developer slash commands and AI-agent workflows.
+- **[Scripts Organization](development/scripts-organization.md)**: How to run scripts and diagnostic tools.
 
 ---
 

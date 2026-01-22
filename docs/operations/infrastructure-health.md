@@ -149,6 +149,28 @@ gcloud alpha logging tail "resource.type=cloud_run_job AND resource.labels.job_n
 
 ---
 
+### 6b. Python Diagnostic Tools (Local)
+
+For deeper analysis, use the built-in Python diagnostics:
+
+```bash
+# Full connectivity check (Alpaca, Firestore, BigQuery, Discord)
+poetry run python -m crypto_signals.scripts.diagnostics.health_check
+
+# Account status (balance, open positions, buying power)
+poetry run python -m crypto_signals.scripts.diagnostics.account_status
+
+# Firestore state analysis (before/after runs)
+poetry run python -m crypto_signals.scripts.diagnostics.state_analysis
+
+# Forensic analysis (detect order gaps between Firestore and Alpaca)
+poetry run python -m crypto_signals.scripts.diagnostics.forensic_analysis
+```
+
+Reports are written to `temp/reports/`. See [Scripts Organization](../development/scripts-organization.md) for details.
+
+---
+
 ### 7. Monitoring & Alerts
 
 **List Alert Policies:**

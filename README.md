@@ -107,7 +107,8 @@ crypto-signals/
 │   ├── observability.py           # Structured logging & metrics
 │   ├── engine/
 │   │   ├── signal_generator.py    # Signal generation orchestration
-│   │   └── execution.py           # Alpaca order execution & management
+│   │   ├── execution.py           # Alpaca order execution & management
+│   │   └── reconciler.py          # Alpaca/Firestore sync reconciliation
 │   ├── market/
 │   │   ├── data_provider.py       # Alpaca API wrapper
 │   │   └── exceptions.py          # Custom exceptions
@@ -124,18 +125,33 @@ crypto-signals/
 │   │   ├── base.py                # BigQuery pipeline base
 │   │   ├── trade_archival.py      # Trade archival pipeline
 │   │   └── account_snapshot.py    # Account snapshot pipeline
+│   ├── scripts/
+│   │   ├── cleanup_firestore.py   # Firestore TTL cleanup
+│   │   └── diagnostics/           # System health diagnostics
+│   │       ├── account_status.py  # Alpaca account summary
+│   │       ├── forensic_analysis.py # Order gap detection
+│   │       ├── health_check.py    # Connectivity verification
+│   │       └── state_analysis.py  # Firestore state analysis
 │   └── domain/
 │       └── schemas.py             # Pydantic data models
-├── scripts/
+├── scripts/                       # Standalone setup/verification scripts
 │   ├── visual_discord_test.py     # Visual Discord integration tests
-│   └── verify_firestore_config.py # Firestore configuration verification
+│   ├── verify_firestore_config.py # Firestore configuration verification
+│   └── setup_gcp.sh               # GCP initial setup
 ├── docs/
 │   ├── README.md                  # Main Wiki Hub
 │   ├── architecture/              # Data flows, schemas, integrations
 │   ├── strategy/                  # Cooldowns, pattern refs, management
 │   ├── operations/                # Deployment, monitoring, troubleshooting
-│   ├── development/               # Tips, workflows, knowledge base
+│   ├── development/               # Tips, workflows, scripts guide
 │   └── images/                    # Architecture diagrams
+├── temp/                          # Transient files (gitignored)
+│   ├── reports/                   # Diagnostic output files
+│   ├── issues/                    # GitHub issue drafts
+│   ├── plan/                      # Planning documents
+│   ├── pr/                        # Pull request drafts
+│   ├── review/                    # Code review outputs
+│   └── verify/                    # Verification outputs
 ├── tests/                         # Comprehensive test suite
 ├── Dockerfile                     # Multi-stage production build
 ├── docker-compose.yml             # Local development setup
@@ -203,7 +219,7 @@ crypto-signals/
 4. **Run health check**:
 
    ```bash
-   poetry run python -m crypto_signals.scripts.health_check
+   poetry run python -m crypto_signals.scripts.diagnostics.health_check
    ```
 
 5. **Run the bot**:
@@ -424,12 +440,12 @@ Ensure composite index exists for `rejected_signals`:
 `symbol ASC, rejected_at DESC`
 (Required for Phase 8 audit queries)
 
-### Health Checks
+### Health Checks & Diagnostics
 
 Run health checks to verify connectivity:
 
 ```bash
-poetry run python -m crypto_signals.scripts.health_check
+poetry run python -m crypto_signals.scripts.diagnostics.health_check
 ```
 
 Verifies:
@@ -439,6 +455,21 @@ Verifies:
 - ✅ Google Cloud Firestore
 - ✅ Google Cloud BigQuery
 - ✅ Discord Webhook
+
+### Additional Diagnostic Tools
+
+```bash
+# Account status (balance, positions, buying power)
+poetry run python -m crypto_signals.scripts.diagnostics.account_status
+
+# Firestore state analysis (before/after runs)
+poetry run python -m crypto_signals.scripts.diagnostics.state_analysis
+
+# Forensic analysis (detect order gaps between Firestore and Alpaca)
+poetry run python -m crypto_signals.scripts.diagnostics.forensic_analysis
+```
+
+Reports are written to `temp/reports/`. See [Scripts Organization](docs/development/scripts-organization.md) for details.
 
 ## Troubleshooting
 
