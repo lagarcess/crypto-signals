@@ -15,8 +15,9 @@ description: AI Code Review (Staff Engineer Persona) to replace Github Copilot
     - **Constraint**: Do NOT report styling issues (handled by Ruff/Lint). Focus on Logic/Design.
 
 3.  **Report Generation**
+    - Ensure directory exists: `if (!(Test-Path "temp/review")) { New-Item -ItemType Directory -Path "temp/review" -Force }`
     - Generate a "Review Report" markdown artifact.
-    - **Important**: Save this to `temp/review/review-report.md` (gitignored).
+    - Save to `temp/review/review-report.md` (gitignored).
     - Format:
         ```markdown
         ## Code Review Report

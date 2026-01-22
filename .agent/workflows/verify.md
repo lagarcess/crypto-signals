@@ -2,10 +2,12 @@
 description: strict code review, system verification, and auto-commit
 ---
 
+**Setup**: Ensure directory exists: `if (!(Test-Path "temp/verify")) { New-Item -ItemType Directory -Path "temp/verify" -Force }`
+
 1. **System Health Check**
    // turbo
    - **CRITICAL**: Run the **FULL** test suite: `poetry run pytest`
-   - **Coverage Check**: Ensure coverage meets threshold (63%): `poetry run pytest --cov=src`
+   - **Coverage Check**: Ensure coverage meets threshold (63%): `$env:COVERAGE_FILE="temp/coverage/.coverage"; poetry run pytest --cov=src --cov-report=html:temp/coverage/html --cov-report=xml:temp/coverage/coverage.xml`
    - run type checking (if applicable): `poetry run mypy src`
    - run linting: `poetry run ruff check src` (or equivalent).
    - run smoke test (Main Flow check):
@@ -23,6 +25,15 @@ description: strict code review, system verification, and auto-commit
    - if issues are found, **fix them immediately** (do not ask, just fix, unless it requires design change).
 
 3. **Pre-Commit Hook Execution & Resolution**
+   - **Branch Guard**:
+     ```powershell
+     $currentBranch = git branch --show-current
+     if ($currentBranch -eq 'main') {
+         Write-Error "CRITICAL: You are on 'main'. Please run /implement first to create a feature branch."
+         return
+     }
+     ```
+
    - attempt to commit: `git add . && git commit -m "feat: [description]"`
    - **CAPTURE OUTPUT**: Save full pre-commit hook output with exit code
    - **If ALL hooks pass (exit code 0)**:

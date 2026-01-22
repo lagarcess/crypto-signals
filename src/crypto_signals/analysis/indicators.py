@@ -151,7 +151,7 @@ class TechnicalIndicators:
         # The signature returns DataFrame, so we'll return the modified one.
         # pandas-ta usually appends to the df provided if append=True.
 
-        # We need to ensure the index is DateTime if possible,
+        # Ensure index is DateTime if possible,
         # but pandas-ta usually handles it.
         # We assume standard lowercase columns based on the project context.
 
@@ -171,7 +171,7 @@ class TechnicalIndicators:
         df.ta.atr(length=14, append=True)
 
         # 4. Volume SMA 20
-        # We need to run SMA on the 'volume' column.
+        # Calculate SMA on volume column
         # df.ta.sma(close='volume', length=20, append=True) -> 'SMA_20'
         # But wait, if we have a 'close' column, default sma uses 'close'.
         # We must specify the source series.
