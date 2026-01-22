@@ -616,6 +616,6 @@ If you encounter an error not covered in this guide:
 ---
 
 **Related Documentation:**
-- [GCP Deployment Guide](./GCP_DEPLOYMENT_GUIDE.md)
+- [GCP Deployment Guide](./deployment-guide.md)
 - [Quick Start Deployment](../DEPLOYMENT.md)
 - [GitHub Workflows](../.github/workflows/deploy.yml)

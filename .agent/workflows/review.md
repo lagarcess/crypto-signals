@@ -4,7 +4,7 @@ description: AI Code Review (Staff Engineer Persona) to replace Github Copilot
 
 1.  **Diff Analysis**
     - Capture the changes: `git diff main...HEAD` (or `git diff HEAD~1` if fast-forward).
-    - Read `artifacts/IMPLEMENTATION_PLAN.md` (if exists) to check alignment with the plan.
+    - Read `temp/plan/implementation-plan.md` (if exists) to check alignment with the plan.
 
 2.  **Semantic Critique**
     - Analyze the code against "Staff Engineer" standards:
@@ -16,7 +16,7 @@ description: AI Code Review (Staff Engineer Persona) to replace Github Copilot
 
 3.  **Report Generation**
     - Generate a "Review Report" markdown artifact.
-    - **Important**: Save this to `temp/REVIEW_REPORT.md` (gitignored).
+    - **Important**: Save this to `temp/review/review-report.md` (gitignored).
     - Format:
         ```markdown
         ## Code Review Report

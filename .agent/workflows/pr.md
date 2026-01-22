@@ -34,9 +34,9 @@ description: Create a comprehensive Pull Request from current changes
    - Commit these documentation changes.
 
 5. **PR Documentation Generation**
-   - analyze the git diff and `artifacts/IMPLEMENTATION_PLAN.md`.
+   - analyze the git diff and `temp/plan/implementation-plan.md`.
    - generate a PR Title and Description following this template:
-   - Save this description to `temp/PR_DESCRIPTION.md` (ensure this file is gitignored). DO NOT commit this file to the repo.
+   - Save this description to `temp/pr/description.md` (ensure this file is gitignored). DO NOT commit this file to the repo.
 
      ```markdown
      ## Problem
@@ -73,5 +73,5 @@ description: Create a comprehensive Pull Request from current changes
      - `chore/*` -> `chore`
      - `docs/*` -> `documentation`
    - Output the PR command for the user (referencing the temp file):
-     - `gh pr create --title "[Title]" --body-file temp/PR_DESCRIPTION.md --label "[inferred-label]"`
+     - `gh pr create --title "[Title]" --body-file temp/pr/description.md --label "[inferred-label]"`
    - **Optional**: Ask user if they want to add specialized reviewers.

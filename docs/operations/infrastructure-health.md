@@ -196,8 +196,8 @@ gcloud scheduler jobs describe crypto-signals-daily --location=us-central1
 ## Troubleshooting
 
 If any check fails, refer to:
-- [GCP Deployment Guide](./GCP_DEPLOYMENT_GUIDE.md) - Initial setup steps
-- [Troubleshooting Guide](./TROUBLESHOOTING.md) - Common errors and fixes
+- [GCP Deployment Guide](./deployment-guide.md) - Initial setup steps
+- [Troubleshooting Guide](./troubleshooting.md) - Common errors and fixes
 - [Production Monitoring](./PRODUCTION_MONITORING.md) - Alert configuration
 
 ---

@@ -4,7 +4,7 @@
 
 This document outlines the high-level data flow and storage schema for Crypto Sentinel.
 
-> **Visual Schema**: A DBML file is available at `docs/current_schema.dbml` for generating visual diagrams.
+> **Visual Schema**: A DBML file is available at `./current-schema.dbml` for generating visual diagrams.
 
 ## Architecture Overview
 

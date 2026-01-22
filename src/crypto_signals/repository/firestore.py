@@ -275,6 +275,64 @@ class SignalRepository:
         logger.warning(f"FLUSH ALL complete: Deleted {count} total signals")
         return count
 
+    def get_most_recent_exit(
+        self, symbol: str, hours: int = 48, pattern_name: str | None = None
+    ) -> Signal | None:
+        """Get most recent exit signal for a symbol within specified hours.
+
+        Used by cooldown logic (Issue #117) to prevent double-signal noise.
+        Includes both profit exits (TP1/2/3_HIT) and stop-loss exits (INVALIDATED)
+        to prevent "revenge trading" after losses.
+
+        Args:
+            symbol: Trading pair symbol (e.g., "BTC/USD")
+            hours: Lookback window in hours (default 48)
+            pattern_name: Optional pattern name filter (only return exits from same pattern)
+
+        Returns:
+            Signal | None: Most recent exit signal, or None if no exits found
+
+        Note:
+            This method requires a Firestore composite index on:
+            - symbol (ASC)
+            - status (ASC)
+            - timestamp (DESC)
+
+        Strategic Feedback Applied:
+            - Includes INVALIDATED status (revenge trading prevention)
+            - Exit level mapping: TP1_HIT -> take_profit_1, TP2_HIT -> take_profit_2,
+              TP3_HIT -> take_profit_3, INVALIDATED -> suggested_stop
+        """
+        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
+
+        # Use SignalStatus enum for exit statuses (Fix #3)
+        # Strategic Feedback: Include INVALIDATED to prevent revenge trading (stop-loss hits)
+        exit_statuses = [
+            SignalStatus.TP1_HIT,
+            SignalStatus.TP2_HIT,
+            SignalStatus.TP3_HIT,
+            SignalStatus.INVALIDATED,
+        ]
+
+        query = (
+            self.db.collection(self.collection_name)
+            .where("symbol", "==", symbol)
+            .where("status", "in", [s.value for s in exit_statuses])
+            .where("timestamp", ">=", cutoff_time)
+            .order_by("timestamp", direction=firestore.Query.DESCENDING)
+            .limit(1)
+        )
+
+        # Optional pattern filter (Fix #2 - prevents different patterns from being blocked)
+        if pattern_name:
+            query = query.where("pattern_name", "==", pattern_name)
+
+        docs = query.stream()
+        for doc in docs:
+            return Signal.model_validate(doc.to_dict())
+
+        return None
+
 
 class RejectedSignalRepository:
     """Repository for storing rejected (shadow) signals in Firestore.

@@ -450,7 +450,7 @@ gcloud secrets get-iam-policy ALPACA_API_KEY
 Permission denied on secret: projects/.../secrets/ALPACA_API_KEY/versions/latest
 ```
 
-See [Troubleshooting Guide](./TROUBLESHOOTING.md#error-1-permission-denied-on-secret) for details.
+See [Troubleshooting Guide](./troubleshooting.md#error-1-permission-denied-on-secret) for details.
 
 ---
 
@@ -605,7 +605,7 @@ https://run.googleapis.com/v1/projects/{PROJECT-ID}/locations/{REGION}/jobs/{JOB
 > [!IMPORTANT]
 > You must also grant `roles/run.invoker` on the Cloud Run job itself (not just at the project level). Without this, the scheduler trigger will fail with `status.code: 5` (NOT_FOUND).
 
-See [Troubleshooting Guide](./TROUBLESHOOTING.md#error-5-invalid-scheduler-uri) for details.
+See [Troubleshooting Guide](./troubleshooting.md#error-5-invalid-scheduler-uri) for details.
 
 ---
 
@@ -891,11 +891,11 @@ Use this checklist to verify complete deployment:
 
 For detailed troubleshooting of common errors:
 
-- **Permission denied on secret** → [Error 1](./TROUBLESHOOTING.md#error-1-permission-denied-on-secret)
-- **Missing GOOGLE_CLOUD_PROJECT** → [Error 2](./TROUBLESHOOTING.md#error-2-missing-google_cloud_project)
-- **Boolean parsing error** → [Error 3](./TROUBLESHOOTING.md#error-3-boolean-parsing-error)
-- **Missing Docker image name** → [Error 4](./TROUBLESHOOTING.md#error-4-missing-docker-image-name)
-- **Invalid scheduler URI** → [Error 5](./TROUBLESHOOTING.md#error-5-invalid-scheduler-uri)
+- **Permission denied on secret** → [Error 1](./troubleshooting.md#error-1-permission-denied-on-secret)
+- **Missing GOOGLE_CLOUD_PROJECT** → [Error 2](./troubleshooting.md#error-2-missing-google_cloud_project)
+- **Boolean parsing error** → [Error 3](./troubleshooting.md#error-3-boolean-parsing-error)
+- **Missing Docker image name** → [Error 4](./troubleshooting.md#error-4-missing-docker-image-name)
+- **Invalid scheduler URI** → [Error 5](./troubleshooting.md#error-5-invalid-scheduler-uri)
 
 **Quick Debugging Commands:**
 
@@ -913,13 +913,13 @@ gcloud secrets get-iam-policy ALPACA_API_KEY
 gcloud scheduler jobs run crypto-signals-daily --location=us-central1
 ```
 
-See the complete [Troubleshooting Guide](./TROUBLESHOOTING.md) for more details.
+See the complete [Troubleshooting Guide](./troubleshooting.md) for more details.
 
 ---
 
 ## Related Documentation
 
-- [Troubleshooting Guide](./TROUBLESHOOTING.md) - Common errors and solutions
+- [Troubleshooting Guide](./troubleshooting.md) - Common errors and solutions
 - [Quick Start Deployment](../DEPLOYMENT.md) - Fast-track deployment for experienced users
 - [Position Management](./position-management.md) - Trading execution details
 - [Discord Threading](./discord-threading.md) - Notification system details

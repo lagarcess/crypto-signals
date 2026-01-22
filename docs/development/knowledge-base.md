@@ -37,3 +37,8 @@
   3. Store the *real* invalid values in a metadata field (e.g., `rejection_reason` string or `trace` dict).
   4. Flag the object status clearly (e.g., `REJECTED_BY_FILTER`).
 - [2026-01-21] **Zombie Prevention**: When routing these hydrate objects to analytics pipelines, explicitly bypass simulation logic (like market data fetching) that assumes valid data, or implementation will fail downstream. Force `PnL = 0` to preserve statistical integrity.
+- [2026-01-21] **Dependency Injection**: Initialize GCP-related clients (Firestore, BigQuery) in engine constructors via optional arguments. This allows unit tests to inject `MagicMock` and prevents `DefaultCredentialsError` in CI environments that lack project-level authentication.
+- [2026-01-21] **Pipeline Robustness**: Always guard date-based dataframe filtering (`df[df.index >= dt]`) with an `.empty` check. Pandas comparisons against empty indexes can raise `TypeError` or `ValueError` in certain contexts, crashing the pipeline for illiquid assets.
+
+### Firestore
+- [2026-01-21] **Cooldown Logic**: Queries for most recent status exits (e.g., TP1_HIT) with a limit of 1 MUST have a composite index on `symbol` (ASC), `status` (ASC), and `timestamp` (DESC) to allow 48-hour time window filtering.

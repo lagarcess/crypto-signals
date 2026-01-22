@@ -200,6 +200,18 @@ class Settings(BaseSettings):
         description="Auto-delete documents from Firestore if they fail Pydantic validation",
     )
 
+    # === Cooldown Configuration (Issue #117 Strategic Feedback) ===
+    COOLDOWN_SCOPE: str = Field(
+        default="SYMBOL",
+        description=(
+            "Cooldown scope: 'SYMBOL' blocks all patterns after exit (conservative), "
+            "'PATTERN' blocks only the same pattern (flexible). "
+            "Set to 'PATTERN' to allow different high-probability patterns to trade "
+            "even if recent exit on same symbol but different pattern."
+        ),
+        pattern="^(SYMBOL|PATTERN)$",
+    )
+
     @field_validator("CRYPTO_SYMBOLS", "EQUITY_SYMBOLS", mode="before")
     @classmethod
     def parse_list_from_str(cls, v: Any) -> Any:

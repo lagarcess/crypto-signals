@@ -463,3 +463,116 @@ class TestRepositoryRouting:
             assert signal_repo.collection_name == "live_signals"
             assert position_repo.collection_name == "live_positions"
             assert rejected_repo.collection_name == "rejected_signals"
+
+
+# ============================================================================
+# Tests for Issue #117 Cooldown: get_most_recent_exit
+# ============================================================================
+
+
+class TestGetMostRecentExit:
+    """Test get_most_recent_exit for cooldown logic (Issue #117)."""
+
+    @patch("crypto_signals.repository.firestore.get_settings")
+    @patch("crypto_signals.repository.firestore.firestore.Client")
+    def test_get_most_recent_exit_returns_none_when_no_exits(
+        self, mock_client, mock_settings
+    ):
+        """Verify method returns None when no exits found."""
+        mock_settings.return_value.GOOGLE_CLOUD_PROJECT = "test-project"
+        mock_settings.return_value.ENVIRONMENT = "PROD"
+
+        mock_db = mock_client.return_value
+        mock_collection = mock_db.collection.return_value
+        mock_query = MagicMock()
+        mock_collection.where.return_value = mock_query
+        mock_query.where.return_value = mock_query
+        mock_query.order_by.return_value = mock_query
+        mock_query.limit.return_value = mock_query
+        mock_query.stream.return_value = []  # No documents
+
+        repo = SignalRepository()
+        result = repo.get_most_recent_exit(symbol="BTC/USD", hours=48)
+
+        assert result is None
+
+    @patch("crypto_signals.repository.firestore.get_settings")
+    @patch("crypto_signals.repository.firestore.firestore.Client")
+    def test_get_most_recent_exit_includes_invalidated_status(
+        self, mock_client, mock_settings
+    ):
+        """Verify method includes INVALIDATED status for revenge trading prevention."""
+        mock_settings.return_value.GOOGLE_CLOUD_PROJECT = "test-project"
+        mock_settings.return_value.ENVIRONMENT = "PROD"
+
+        mock_db = mock_client.return_value
+        mock_collection = mock_db.collection.return_value
+        mock_query = MagicMock()
+        mock_collection.where.return_value = mock_query
+        mock_query.where.return_value = mock_query
+        mock_query.order_by.return_value = mock_query
+        mock_query.limit.return_value = mock_query
+        mock_query.stream.return_value = []
+
+        repo = SignalRepository()
+        # Should not raise when calling with get_most_recent_exit
+        result = repo.get_most_recent_exit(symbol="BTC/USD", hours=48)
+        assert result is None, "Should return None when no exits found"
+
+    @patch("crypto_signals.repository.firestore.get_settings")
+    @patch("crypto_signals.repository.firestore.firestore.Client")
+    def test_get_most_recent_exit_with_pattern_filter(self, mock_client, mock_settings):
+        """Verify method applies optional pattern_name filter."""
+        mock_settings.return_value.GOOGLE_CLOUD_PROJECT = "test-project"
+        mock_settings.return_value.ENVIRONMENT = "PROD"
+
+        mock_db = mock_client.return_value
+        mock_collection = mock_db.collection.return_value
+        mock_query = MagicMock()
+        mock_collection.where.return_value = mock_query
+        mock_query.where.return_value = mock_query
+        mock_query.order_by.return_value = mock_query
+        mock_query.limit.return_value = mock_query
+        mock_query.stream.return_value = []
+
+        repo = SignalRepository()
+        repo.get_most_recent_exit(symbol="BTC/USD", hours=48, pattern_name="BULL_FLAG")
+
+        # Verify where was called for pattern_name
+        called_with_pattern = False
+        for call in mock_query.where.call_args_list:
+            if len(call[0]) >= 2 and call[0][0] == "pattern_name":
+                called_with_pattern = True
+                break
+
+        assert called_with_pattern, "Query should filter by pattern_name when provided"
+
+    @patch("crypto_signals.repository.firestore.get_settings")
+    @patch("crypto_signals.repository.firestore.firestore.Client")
+    def test_get_most_recent_exit_respects_hours_parameter(
+        self, mock_client, mock_settings
+    ):
+        """Verify method respects the hours lookback window."""
+        mock_settings.return_value.GOOGLE_CLOUD_PROJECT = "test-project"
+        mock_settings.return_value.ENVIRONMENT = "PROD"
+
+        mock_db = mock_client.return_value
+        mock_collection = mock_db.collection.return_value
+        mock_query = MagicMock()
+        mock_collection.where.return_value = mock_query
+        mock_query.where.return_value = mock_query
+        mock_query.order_by.return_value = mock_query
+        mock_query.limit.return_value = mock_query
+        mock_query.stream.return_value = []
+
+        repo = SignalRepository()
+        repo.get_most_recent_exit(symbol="BTC/USD", hours=24)
+
+        # Verify where was called with timestamp filter
+        called_with_timestamp = False
+        for call in mock_query.where.call_args_list:
+            if len(call[0]) >= 2 and call[0][0] == "timestamp":
+                called_with_timestamp = True
+                break
+
+        assert called_with_timestamp, "Query should filter by timestamp >= cutoff_time"

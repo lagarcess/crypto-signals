@@ -13,8 +13,15 @@ def mock_market_provider():
 
 
 @pytest.fixture
-def signal_generator(mock_market_provider):
-    return SignalGenerator(market_provider=mock_market_provider)
+def mock_repository():
+    return MagicMock()
+
+
+@pytest.fixture
+def signal_generator(mock_market_provider, mock_repository):
+    return SignalGenerator(
+        market_provider=mock_market_provider, signal_repo=mock_repository
+    )
 
 
 def test_validate_signal_parameters_valid(signal_generator):

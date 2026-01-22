@@ -37,12 +37,23 @@ def mock_analyzer_cls():
 
 
 @pytest.fixture
-def signal_generator(mock_market_provider, mock_indicators, mock_analyzer_cls):
+def mock_repository():
+    """Fixture for mocking SignalRepository."""
+    mock = MagicMock()
+    mock.get_most_recent_exit.return_value = None
+    return mock
+
+
+@pytest.fixture
+def signal_generator(
+    mock_market_provider, mock_indicators, mock_analyzer_cls, mock_repository
+):
     """Fixture for creating a SignalGenerator instance with mocks."""
     return SignalGenerator(
         market_provider=mock_market_provider,
         indicators=mock_indicators,
         pattern_analyzer_cls=mock_analyzer_cls,
+        signal_repo=mock_repository,
     )
 
 

@@ -194,8 +194,8 @@ gcloud run jobs executions list --job=crypto-signals-job --region=us-central1 --
 
 ## Related Documentation
 
-- [GCP Deployment Guide](./GCP_DEPLOYMENT_GUIDE.md) - Initial infrastructure setup
-- [Troubleshooting Guide](./TROUBLESHOOTING.md) - Common errors and solutions
+- [GCP Deployment Guide](./deployment-guide.md) - Initial infrastructure setup
+- [Troubleshooting Guide](./troubleshooting.md) - Common errors and solutions
 - [Alert Policy YAML Files](./gcp-alerts/) - Source configuration files
 
 ---

@@ -4,7 +4,7 @@ description: Turn issues into working code with a single command
 
 1. **Strategic Planning**
    - Execute the `/plan` workflow.
-   - Wait for user approval of `artifacts/IMPLEMENTATION_PLAN.md`.
+   - Wait for user approval of `temp/plan/implementation-plan.md`.
 
 2. **Branch Management**
    // turbo
