@@ -334,8 +334,8 @@ def main():
         )
 
         # Output directory
-        output_dir = Path(__file__).parent.parent / "output"
-        output_dir.mkdir(exist_ok=True)
+        output_dir = Path(__file__).parent.parent / "temp" / "output"
+        output_dir.mkdir(parents=True, exist_ok=True)
 
         # Save analysis report
         report_path = output_dir / "firestore_schema_analysis.json"

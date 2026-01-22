@@ -11,6 +11,8 @@ description: strict code review, system verification, and auto-commit
    - run smoke test (Main Flow check):
      `python -m src.crypto_signals.main --smoke-test` (or `poetry run python -m src.crypto_signals.main --smoke-test`)
    - **On Failure**: Automatically trigger the `/fix` workflow to attempt self-correction.
+     - *Note*: If coverage is below 63%, Use `/fix` to identify untested paths and add tests.
+
 
 2. **Deep Agent Review**
    - review the `git diff` of pending changes.
