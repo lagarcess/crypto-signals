@@ -42,3 +42,8 @@
 
 ### Firestore
 - [2026-01-21] **Cooldown Logic**: Queries for most recent status exits (e.g., TP1_HIT) with a limit of 1 MUST have a composite index on `symbol` (ASC), `status` (ASC), and `timestamp` (DESC) to allow 48-hour time window filtering.
+
+## Implementation & Scripting
+- [2026-01-22] **Scripting**: Distinguish between standalone **setup/verification scripts** (`scripts/` root) and **operational module scripts** (`src/crypto_signals/scripts/`). Module scripts enable `python -m` execution and cleaner project imports.
+- [2026-01-22] **Bootstrapping**: If a module requires environment variables (e.g., `ENVIRONMENT=PROD`) to be set *before* importing project configuration (which reads env on load), use `os.environ.setdefault()` followed by `# noqa: E402` on imports. This suppresses linter errors for non-top-level imports where order of execution is critical for proper initialization.
+- [2026-01-22] **Diagnostic Output**: Always direct transient diagnostic outputs to a gitignored `temp/reports/` folder. Standardize workflow temporary files in `temp/` subfolders (issues/, plan/, pr/, etc.) to maintain workspace hygiene.
