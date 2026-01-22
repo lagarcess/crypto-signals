@@ -9,7 +9,7 @@ Follow this sequence for every standard task or issue.
 | Phase | Command | Status | Description |
 | :--- | :--- | :--- | :--- |
 | **0. Health** | `/diagnose` | Optional | **Infrastructure Check**. Verifies GCP, Firestore, and Alpaca health. Run if you suspect environment issues. |
-| **1. Plan** | `/plan [issue]` | **Required** | **The Architect**. Checks logs, validates bugs, reads `KNOWLEDGE_BASE`, and generates `IMPLEMENTATION_PLAN.md`. Stops for user approval. |
+| **1. Plan** | `/plan [issue]` | **Required** | **The Architect**. Checks logs, validates bugs, reads `KNOWLEDGE_BASE`, and generates `temp/plan/implementation-plan.md`. Stops for user approval. |
 | **2. Build** | `/implement` | **Required** | **The Builder**. Creates feature branch, writes **Tests First**, enters TDD Loop (`/tdd`), and performs hygiene (`/cleanup`). |
 | **3. Verify** | `/verify` | **Required** | **The Auditor**. Runs full test suite + Smoke Test. **Auto-triggers `/fix` on failure** (Self-Healing). Auto-commits on success. |
 | **4. Ship** | `/pr` | **Required** | **The Publisher**. Captures lessons (`/learn`), updates `README`/Docs, writes PR description, and pushes branch. |
@@ -23,8 +23,8 @@ Follow this sequence for every standard task or issue.
 *   **Trigger**: Start of every new task.
 *   **Actions**:
     - Forensics (Log analysis for bugs).
-    - System Design Check (`DEPLOYMENT.md`).
-    - Knowledge Retrieval (Reads `docs/KNOWLEDGE_BASE.md`).
+    - System Design Check (`../operations/deployment-guide.md`).
+    - Knowledge Retrieval (Reads `./knowledge-base.md`).
 *   **Outcome**: A solid plan tailored to the architecture.
 
 ### `/implement`
@@ -79,7 +79,7 @@ Follow this sequence for every standard task or issue.
     - **`/fix`**: Run manually if you see a test failure you want the agent to patch immediately.
     - **`/cleanup`**: Run manualy to tidying up dead code/TODOs without running a full verification.
 
-## 🧠 Knowledge Base (`docs/KNOWLEDGE_BASE.md`)
+## 🧠 Knowledge Base (`./knowledge-base.md`)
 This file is the **Long-Term Memory** of the project.
 *   It is updated automatically by `/pr` (via `/learn`).
 *   It is read automatically by `/plan`.

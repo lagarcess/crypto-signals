@@ -2,12 +2,12 @@
 
 **Last Updated:** December 27, 2025
 
-This is a quick-start guide for deploying Crypto Sentinel to Google Cloud Platform. For detailed step-by-step instructions, see the [Complete GCP Deployment Guide](./docs/GCP_DEPLOYMENT_GUIDE.md).
+This is a quick-start guide for deploying Crypto Sentinel to Google Cloud Platform. For detailed step-by-step instructions, see the [Complete GCP Deployment Guide](./docs/operations/deployment-guide.md).
 
 ## 📚 Documentation
 
-- **[Complete GCP Deployment Guide](./docs/GCP_DEPLOYMENT_GUIDE.md)** - Comprehensive deployment instructions with all production details
-- **[Troubleshooting Guide](./docs/TROUBLESHOOTING.md)** - Common errors and solutions from production deployment
+- **[Complete GCP Deployment Guide](./docs/operations/deployment-guide.md)** - Comprehensive deployment instructions with all production details
+- **[Troubleshooting Guide](./docs/operations/troubleshooting.md)** - Common errors and solutions from production deployment
 - **[GitHub Workflow](./.github/workflows/deploy.yml)** - Automated CI/CD configuration
 
 ---
@@ -99,7 +99,7 @@ cat ~/crypto-bot-key.json  # Copy this to GitHub Secrets
 rm ~/crypto-bot-key.json
 
 echo "✅ GCP infrastructure setup complete!"
-echo "Next: Configure GitHub Secrets and Variables (see docs/GCP_DEPLOYMENT_GUIDE.md#6-github-repository-configuration)"
+echo "Next: Configure GitHub Secrets and Variables (see docs/operations/deployment-guide.md#6-github-repository-configuration)"
 ```
 
 ---
@@ -241,13 +241,13 @@ Cloud Scheduler (daily 00:01 UTC)
 
 | Error                        | Solution                                                                                   |
 | ---------------------------- | ------------------------------------------------------------------------------------------ |
-| Permission denied on secret  | [Grant secretAccessor role](./docs/TROUBLESHOOTING.md#error-1-permission-denied-on-secret) |
-| Missing GOOGLE_CLOUD_PROJECT | [Add environment variable](./docs/TROUBLESHOOTING.md#error-2-missing-google_cloud_project) |
-| Boolean parsing error        | [Remove trailing newlines](./docs/TROUBLESHOOTING.md#error-3-boolean-parsing-error)        |
-| Missing Docker image name    | [Set GAR_REPOSITORY secret](./docs/TROUBLESHOOTING.md#error-4-missing-docker-image-name)   |
-| Invalid scheduler URI        | [Use correct URI format](./docs/TROUBLESHOOTING.md#error-5-invalid-scheduler-uri)          |
+| Permission denied on secret  | [Grant secretAccessor role](./docs/operations/troubleshooting.md#error-1-permission-denied-on-secret) |
+| Missing GOOGLE_CLOUD_PROJECT | [Add environment variable](./docs/operations/troubleshooting.md#error-2-missing-google_cloud_project) |
+| Boolean parsing error        | [Remove trailing newlines](./docs/operations/troubleshooting.md#error-3-boolean-parsing-error)        |
+| Missing Docker image name    | [Set GAR_REPOSITORY secret](./docs/operations/troubleshooting.md#error-4-missing-docker-image-name)   |
+| Invalid scheduler URI        | [Use correct URI format](./docs/operations/troubleshooting.md#error-5-invalid-scheduler-uri)          |
 
-**See the complete [Troubleshooting Guide](./docs/TROUBLESHOOTING.md) for detailed solutions.**
+**See the complete [Troubleshooting Guide](./docs/operations/troubleshooting.md) for detailed solutions.**
 
 ### Quick Debug Commands
 
@@ -271,14 +271,14 @@ gcloud run jobs executions list --job=crypto-signals-job --region=us-central1
 
 For comprehensive deployment instructions:
 
-- **[Complete GCP Deployment Guide](./docs/GCP_DEPLOYMENT_GUIDE.md)** - Step-by-step deployment with all production details including:
+- **[Complete GCP Deployment Guide](./docs/operations/deployment-guide.md)** - Step-by-step deployment with all production details including:
   - Service account configuration
   - Secret Manager setup with permission granting
   - Cloud Scheduler configuration for 00:01 UTC
   - All environment variables and their purposes
   - Complete verification procedures
 
-- **[Troubleshooting Guide](./docs/TROUBLESHOOTING.md)** - Real production errors and solutions:
+- **[Troubleshooting Guide](./docs/operations/troubleshooting.md)** - Real production errors and solutions:
   - 5+ documented errors with full solutions
   - Debugging commands for each scenario
   - How to view logs and check status
@@ -319,4 +319,4 @@ All deployment steps and troubleshooting scenarios have been validated through a
 
 ---
 
-**Need Help?** Check the [Troubleshooting Guide](./docs/TROUBLESHOOTING.md) or open an issue on GitHub.
+**Need Help?** Check the [Troubleshooting Guide](./docs/operations/troubleshooting.md) or open an issue on GitHub.

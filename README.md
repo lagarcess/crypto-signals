@@ -93,8 +93,8 @@ Crypto Sentinel is a production-ready trading bot that:
 - **Google Secret Manager**: Credentials
 
 - **Staff Level Architecture**:
-  - `docs/DATA_ARCHITECTURE.md`: Detailed view of Hot/Cold storage and Data Flow.
-  - `docs/current_schema.dbml`: Visual schema definition (DBML).
+  - [Data Architecture](docs/architecture/data-architecture.md): Detailed view of Hot/Cold storage and Data Flow.
+  - [Visual Schema](docs/architecture/current-schema.dbml): Visual schema definition (DBML).
 
 ## Project Structure
 
@@ -130,10 +130,12 @@ crypto-signals/
 │   ├── visual_discord_test.py     # Visual Discord integration tests
 │   └── verify_firestore_config.py # Firestore configuration verification
 ├── docs/
-│   ├── discord-threading.md       # Discord threading documentation
+│   ├── README.md                  # Main Wiki Hub
+│   ├── architecture/              # Data flows, schemas, integrations
+│   ├── strategy/                  # Cooldowns, pattern refs, management
+│   ├── operations/                # Deployment, monitoring, troubleshooting
+│   ├── development/               # Tips, workflows, knowledge base
 │   └── images/                    # Architecture diagrams
-│       ├── crypto-sentinel-architecture.png
-│       └── signal-lifecycle-architecture.png
 ├── tests/                         # Comprehensive test suite
 ├── Dockerfile                     # Multi-stage production build
 ├── docker-compose.yml             # Local development setup
@@ -278,14 +280,14 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for a 5-minute quick-start deployment guide f
 
 For detailed step-by-step deployment instructions, see:
 
-- **[GCP Deployment Guide](docs/GCP_DEPLOYMENT_GUIDE.md)** - Complete production deployment guide including:
+- **[GCP Deployment Guide](docs/operations/deployment-guide.md)** - Complete production deployment guide including:
   - Service account configuration
   - Secret Manager setup with permission granting
   - Cloud Scheduler setup for daily 00:01 UTC execution
   - All environment variables and GitHub configuration
   - Complete verification procedures
 
-- **[Troubleshooting Guide](docs/TROUBLESHOOTING.md)** - Common errors and solutions:
+- **[Troubleshooting Guide](docs/operations/troubleshooting.md)** - Common errors and solutions:
   - Permission denied on secrets
   - Missing environment variables
   - Boolean parsing errors
@@ -362,7 +364,7 @@ git push --no-verify
 ```
 
 > [!NOTE]
-> See the [Pre-Push Hook Guide](./docs/PRE_PUSH_HOOK.md) for troubleshooting and customization.
+> See the [Pre-Push Hook Guide](docs/development/pre-push-hook.md) for troubleshooting and customization.
 
 ### Visual Discord Tests
 
@@ -440,7 +442,7 @@ Verifies:
 
 ## Troubleshooting
 
-For comprehensive troubleshooting of deployment and runtime issues, see the **[Troubleshooting Guide](docs/TROUBLESHOOTING.md)** which covers:
+For comprehensive troubleshooting of deployment and runtime issues, see the **[Troubleshooting Guide](docs/operations/troubleshooting.md)** which covers:
 
 - Permission denied on secrets
 - Missing environment variables

@@ -4,7 +4,7 @@ description: comprehensive planning phase for new tasks or github issues
 
 1. **Context Gathering**
    - ask the user for the specific GitHub Issue number or Task description.
-   - **Fetch Issue Details**: Use `gh issue view [number] > temp/issue_[number].txt` to get the full title, body, and labels. Do NOT rely on truncated summaries.
+   - **Fetch Issue Details**: Use `gh issue view [number] > temp/plan/issue-[number].txt` to get the full title, body, and labels. Do NOT rely on truncated summaries.
    - read `README.md`, `DEPLOYMENT.md` and `SECURITY.md` to ensure alignment with system constraints.
    - search for any existing "Idea" files or `TODO.md` that might be relevant.
 
@@ -22,7 +22,7 @@ description: comprehensive planning phase for new tasks or github issues
    - verify that the solution fits the "most optimal" architectural pattern (e.g., proper separation of concerns in `domain/`, `repository/`, `engine/`).
 
 3. **Draft Implementation Plan**
-   - create or update `artifacts/IMPLEMENTATION_PLAN.md`.
+   - create or update `temp/plan/implementation-plan.md`.
    - the plan MUST include:
      - **Goal**: Clear statement of what we are solving.
      - **Proposed Changes**: Specific files to create or modify.

@@ -15,12 +15,12 @@ description: Recursive self-correction loop for test failures
      - If PASS -> Stop and Report Success.
    - **Attempt 2 (if 1 fails)**:
      - Read the new error message (did it change?).
-     - Check `docs/KNOWLEDGE_BASE.md` for similar past issues.
+     - Check `docs/development/knowledge-base.md` for similar past issues.
      - Apply a different fix.
      - Re-run the test.
      - If PASS -> Stop.
    - **Attempt 3 (if 2 fails)**:
-     - Re-read the `IMPLEMENTATION_PLAN.md` to ensure we aren't violating the design.
+     - Re-read the `temp/plan/implementation-plan.md` to ensure we aren't violating the design.
      - Try a fundamental correction.
      - Re-run the test.
 

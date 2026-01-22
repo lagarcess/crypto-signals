@@ -9,7 +9,7 @@ description: Post-merge cleanup workflow
    - Delete the local feature branch (if applicable, ask user for branch name or infer from previous context).
      `git branch -d [branch_name]` (use -D if not fully merged locally but confirmed merged remotely).
    - Prune remote branches: `git fetch --prune`
-   - Clean up temporary files: `rm temp/*` (or `del temp\*` on Windows). Keep the directory, just empty contents.
+   - Clean up temporary files: `Get-ChildItem temp/* -Recurse | Remove-Item -Force -Recurse`
 
 2. **Environment Refresh**
    - Update dependencies: `poetry install` (if `pyproject.toml` changed).
