@@ -566,6 +566,39 @@ class ExecutionEngine:
             )
             return position
 
+        # =====================================================================
+        # STAFF REVIEW GAP #2: Backfill missing exit_fill_price
+        # If position is CLOSED but exit_fill_price is missing, fetch from exit_order_id
+        # =====================================================================
+        if (
+            position.status == TradeStatus.CLOSED
+            and position.exit_order_id
+            and not position.exit_fill_price
+        ):
+            try:
+                exit_order = self.get_order_details(position.exit_order_id)
+                if exit_order and exit_order.filled_avg_price:
+                    position.exit_fill_price = float(exit_order.filled_avg_price)
+                    if exit_order.filled_at:
+                        position.exit_time = exit_order.filled_at
+                    logger.info(
+                        f"[BACKFILL] Captured missing exit price for {position.position_id}: "
+                        f"${position.exit_fill_price}",
+                        extra={
+                            "position_id": position.position_id,
+                            "exit_order_id": position.exit_order_id,
+                            "exit_fill_price": position.exit_fill_price,
+                        },
+                    )
+                    # Recalculate PnL with the new exit price
+                    pnl_usd, pnl_pct = self._calculate_realized_pnl(position)
+                    position.realized_pnl_usd = pnl_usd
+                    position.realized_pnl_pct = pnl_pct
+            except Exception as e:
+                logger.warning(
+                    f"Exit price backfill failed for {position.position_id}: {e}"
+                )
+
         try:
             # Fetch parent order
             order = self.get_order_details(position.alpaca_order_id)
@@ -1130,6 +1163,51 @@ class ExecutionEngine:
 
             close_order = cast(Order, self.alpaca.submit_order(close_request))
 
+            # === ISSUE 139 FIX: Capture exit order details ===
+            # Store exit order ID for reconciliation and backfill
+            position.exit_order_id = str(close_order.id)
+
+            # Capture fill price (market orders typically fill immediately)
+            if close_order.filled_avg_price:
+                position.exit_fill_price = float(close_order.filled_avg_price)
+            else:
+                # === SHORT-POLL FALLBACK (Staff Review Gap #1) ===
+                # If API returns None, wait briefly and re-fetch order details
+                import time
+
+                time.sleep(0.5)  # 500ms delay for matching engine
+                try:
+                    refreshed_order = self.get_order_details(position.exit_order_id)
+                    if refreshed_order and refreshed_order.filled_avg_price:
+                        position.exit_fill_price = float(refreshed_order.filled_avg_price)
+                        if refreshed_order.filled_at:
+                            position.exit_time = refreshed_order.filled_at
+                        logger.info(
+                            f"[SHORT-POLL] Captured fill price for {position.position_id}: "
+                            f"${position.exit_fill_price}"
+                        )
+                    else:
+                        # Log warning - sync_position_status will backfill later
+                        logger.warning(
+                            f"[DEFERRED SYNC] Exit fill price not available for {position.position_id}. "
+                            f"Will backfill via sync_position_status.",
+                            extra={
+                                "position_id": position.position_id,
+                                "exit_order_id": position.exit_order_id,
+                            },
+                        )
+                except Exception as poll_err:
+                    logger.warning(
+                        f"Short-poll failed for {position.position_id}: {poll_err}"
+                    )
+
+            # Capture fill timestamp
+            if close_order.filled_at:
+                position.exit_time = close_order.filled_at
+            elif not position.exit_time:
+                # Fallback to current time if not immediately filled
+                position.exit_time = datetime.now(timezone.utc)
+
             logger.info(
                 f"EMERGENCY CLOSE: {position.position_id}",
                 extra={
@@ -1138,6 +1216,7 @@ class ExecutionEngine:
                     "close_order_id": str(cast(Order, close_order).id),
                     "qty": position.qty,
                     "side": close_side.value,
+                    "exit_fill_price": position.exit_fill_price,
                 },
             )
 

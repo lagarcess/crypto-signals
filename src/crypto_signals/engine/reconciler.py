@@ -231,6 +231,62 @@ class StateReconciler:
 
                 critical_issues.append(f"ORPHAN: {symbol}")
 
+            # =====================================================================
+            # ISSUE 139 FIX: Detect Reverse Orphans
+            # Positions marked CLOSED in Firestore but still OPEN in Alpaca
+            # This catches cases where exit orders were not properly submitted
+            # =====================================================================
+            logger.info("Checking for reverse orphans (CLOSED in DB, OPEN in Alpaca)...")
+            try:
+                closed_positions = self.position_repo.get_closed_positions(limit=50)
+                reverse_orphans = []
+
+                for closed_pos in closed_positions:
+                    try:
+                        # Check if this position is still open in Alpaca
+                        alpaca_pos = self.alpaca.get_open_position(closed_pos.symbol)
+                        if alpaca_pos:
+                            # REVERSE ORPHAN DETECTED
+                            reverse_orphans.append(closed_pos.symbol)
+                            logger.critical(
+                                f"REVERSE ORPHAN DETECTED: {closed_pos.symbol}",
+                                extra={
+                                    "symbol": closed_pos.symbol,
+                                    "position_id": closed_pos.position_id,
+                                    "impact": "Position closed in DB but STILL OPEN in Alpaca!",
+                                },
+                            )
+
+                            try:
+                                self.discord.send_message(
+                                    f"🚨 **CRITICAL REVERSE ORPHAN**: {closed_pos.symbol}\n"
+                                    f"Position is CLOSED in Firestore but STILL OPEN in Alpaca!\n"
+                                    f"**Position ID**: {closed_pos.position_id}\n"
+                                    f"**Action Required**: Manual close in Alpaca dashboard."
+                                )
+                            except Exception as e:
+                                logger.warning(
+                                    f"Failed to send reverse orphan alert for {closed_pos.symbol}: {e}"
+                                )
+
+                            critical_issues.append(f"REVERSE_ORPHAN: {closed_pos.symbol}")
+
+                    except Exception as e:
+                        # 404/not found = position is correctly closed in Alpaca
+                        if "not found" not in str(e).lower() and "404" not in str(e):
+                            logger.warning(
+                                f"Error checking closed position {closed_pos.symbol}: {e}"
+                            )
+
+                if reverse_orphans:
+                    logger.warning(
+                        f"Found {len(reverse_orphans)} reverse orphans",
+                        extra={"symbols": reverse_orphans},
+                    )
+
+            except Exception as e:
+                logger.warning(f"Reverse orphan detection failed: {e}")
+
         except Exception as e:
             error_msg = f"Reconciliation execution failed: {e}"
             logger.error(error_msg)
