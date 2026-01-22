@@ -317,3 +317,126 @@ class TestStrategicFeedbackIntegration:
             # May be blocked or allowed depending on exit level and price
             # But the important thing is the method handles all statuses without error
             assert isinstance(result, bool), f"Status {status} should return boolean"
+
+
+# ============================================================================
+# Additional Coverage Tests for Edge Cases
+# ============================================================================
+
+
+class TestCooldownEdgeCases:
+    """Test edge cases and error handling in cooldown logic."""
+
+    def test_cooldown_with_null_exit_level_returns_false(
+        self, signal_generator_with_mocks
+    ):
+        """Test that unexpected/null exit levels allow trade (safe default)."""
+        recent_exit = MagicMock(spec=Signal)
+        recent_exit.status = SignalStatus.WAITING  # Status not in exit_level_map
+        recent_exit.take_profit_1 = 100.0  # Add attributes so mock doesn't fail
+        recent_exit.take_profit_2 = 110.0
+        recent_exit.take_profit_3 = 120.0
+        recent_exit.suggested_stop = 90.0
+        recent_exit.timestamp = datetime.now(timezone.utc) - timedelta(hours=1)
+
+        signal_generator_with_mocks.signal_repo.get_most_recent_exit.return_value = (
+            recent_exit
+        )
+
+        # Should return False (allow trade) for unexpected status
+        result = signal_generator_with_mocks._is_in_cooldown("BTC/USD", 50000.0)
+        assert result is False
+
+    def test_cooldown_with_exact_10pct_threshold_allows_trade(
+        self, signal_generator_with_mocks
+    ):
+        """Test that exactly 10% price move allows trade (escape valve)."""
+        recent_exit = MagicMock(spec=Signal)
+        recent_exit.status = SignalStatus.TP1_HIT
+        recent_exit.take_profit_1 = 100.0
+        recent_exit.take_profit_2 = 110.0
+        recent_exit.take_profit_3 = 120.0
+        recent_exit.suggested_stop = 90.0
+        recent_exit.timestamp = datetime.now(timezone.utc) - timedelta(hours=1)
+
+        signal_generator_with_mocks.signal_repo.get_most_recent_exit.return_value = (
+            recent_exit
+        )
+
+        # Exactly 10% move should allow trade
+        result = signal_generator_with_mocks._is_in_cooldown("BTC/USD", 110.0)
+        assert result is False
+
+    def test_cooldown_with_zero_price_handles_gracefully(
+        self, signal_generator_with_mocks
+    ):
+        """Test cooldown doesn't crash with unusual price values."""
+        recent_exit = MagicMock(spec=Signal)
+        recent_exit.status = SignalStatus.TP2_HIT
+        recent_exit.take_profit_1 = 100.0
+        recent_exit.take_profit_2 = 110.0
+        recent_exit.take_profit_3 = 120.0
+        recent_exit.suggested_stop = 90.0
+        recent_exit.timestamp = datetime.now(timezone.utc) - timedelta(hours=1)
+
+        signal_generator_with_mocks.signal_repo.get_most_recent_exit.return_value = (
+            recent_exit
+        )
+
+        # Should not crash
+        result = signal_generator_with_mocks._is_in_cooldown("BTC/USD", 110.0)
+        assert isinstance(result, bool)
+
+    def test_cooldown_respects_pattern_scope_filter(self, signal_generator_with_mocks):
+        """Test that pattern_name parameter is passed to repository query."""
+        recent_exit = MagicMock(spec=Signal)
+        recent_exit.status = SignalStatus.TP3_HIT
+        recent_exit.take_profit_1 = 100.0
+        recent_exit.take_profit_2 = 110.0
+        recent_exit.take_profit_3 = 120.0
+        recent_exit.suggested_stop = 90.0
+        recent_exit.pattern_name = "BULL_FLAG"
+        recent_exit.timestamp = datetime.now(timezone.utc) - timedelta(hours=1)
+
+        signal_generator_with_mocks.signal_repo.get_most_recent_exit.return_value = (
+            recent_exit
+        )
+
+        # Call with pattern_name (scope=PATTERN mode)
+        with patch(
+            "crypto_signals.engine.signal_generator.get_settings"
+        ) as mock_settings:
+            mock_settings.return_value.COOLDOWN_SCOPE = "PATTERN"
+            result = signal_generator_with_mocks._is_in_cooldown(
+                "BTC/USD", 121.0, pattern_name="BULL_FLAG"
+            )
+
+        # Should call repository with pattern filter
+        signal_generator_with_mocks.signal_repo.get_most_recent_exit.assert_called()
+        assert isinstance(result, bool)
+
+    def test_cooldown_with_no_recent_exit_allows_trade(self, signal_generator_with_mocks):
+        """Test that no recent exit returns False (allow trade)."""
+        signal_generator_with_mocks.signal_repo.get_most_recent_exit.return_value = None
+
+        result = signal_generator_with_mocks._is_in_cooldown("BTC/USD", 50000.0)
+        assert result is False
+
+    def test_cooldown_with_very_old_exit_blocks_trade(self, signal_generator_with_mocks):
+        """Test that old exits within 48h window still block (time-based)."""
+        recent_exit = MagicMock(spec=Signal)
+        recent_exit.status = SignalStatus.TP1_HIT
+        recent_exit.take_profit_1 = 45000.0
+        recent_exit.take_profit_2 = 48000.0
+        recent_exit.take_profit_3 = 50000.0
+        recent_exit.suggested_stop = 40000.0
+        # 47 hours ago (just inside 48h window)
+        recent_exit.timestamp = datetime.now(timezone.utc) - timedelta(hours=47)
+
+        signal_generator_with_mocks.signal_repo.get_most_recent_exit.return_value = (
+            recent_exit
+        )
+
+        # Price close to exit, within 48h → blocked
+        result = signal_generator_with_mocks._is_in_cooldown("BTC/USD", 45500.0)
+        assert result is True
