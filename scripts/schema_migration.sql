@@ -32,7 +32,13 @@ DROP TABLE IF EXISTS `{{PROJECT_ID}}.crypto_analytics.stg_accounts_import`;
 CREATE TABLE `{{PROJECT_ID}}.crypto_analytics.stg_accounts_import`
 LIKE `{{PROJECT_ID}}.crypto_analytics.snapshot_accounts`;
 
--- 3. Reset Staging Table for TRADES (Missing Table Fix)
+-- 3. Add exit_order_id to fact_trades (Exit Order Tracking)
+-- Links BigQuery trade records back to Alpaca exit orders for reconciliation
+ALTER TABLE `{{PROJECT_ID}}.crypto_analytics.fact_trades`
+ADD COLUMN IF NOT EXISTS exit_order_id STRING;
+
+-- 4. Reset Staging Table for TRADES
+-- Dropping and recreating LIKE the fact table guarantees identical schemas.
 DROP TABLE IF EXISTS `{{PROJECT_ID}}.crypto_analytics.stg_trades_import`;
 
 CREATE TABLE `{{PROJECT_ID}}.crypto_analytics.stg_trades_import`
