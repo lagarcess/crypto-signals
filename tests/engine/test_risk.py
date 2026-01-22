@@ -45,7 +45,7 @@ class TestRiskEngine:
     @pytest.fixture
     def risk_engine(self, mock_client, mock_repo, mock_settings):
         # Patch the engine's settings property or injected dependency
-        # Since RiskEngine uses get_settings(), we need to patch that import
+        # Patch get_settings() dependency for RiskEngine
         with pytest.MonkeyPatch.context() as m:
             # Patch at module level where it's imported
             m.setattr("crypto_signals.engine.risk.get_settings", lambda: mock_settings)

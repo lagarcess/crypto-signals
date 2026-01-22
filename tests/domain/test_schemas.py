@@ -492,3 +492,84 @@ class TestTradeExecutionModel:
 
         error_str = str(exc_info.value)
         assert "pnl_pct" in error_str.lower()
+
+    def test_trade_execution_accepts_exit_order_id(self):
+        """TradeExecution must accept exit_order_id for exit order tracking."""
+        trade = TradeExecution(
+            ds=date(2024, 1, 15),
+            trade_id="trade_123",
+            account_id="account_abc",
+            strategy_id="momentum",
+            asset_class=AssetClass.CRYPTO,
+            symbol="BTC/USD",
+            side=OrderSide.BUY,
+            qty=1.0,
+            entry_price=50000.0,
+            exit_price=52000.0,
+            entry_time=datetime(2024, 1, 15, 10, 0, tzinfo=timezone.utc),
+            exit_time=datetime(2024, 1, 16, 10, 0, tzinfo=timezone.utc),
+            exit_reason=ExitReason.TP1,
+            pnl_pct=4.0,
+            pnl_usd=2000.0,
+            fees_usd=10.0,
+            slippage_pct=0.1,
+            trade_duration=86400,
+            exit_order_id="exit-order-uuid-12345",
+        )
+
+        assert trade.exit_order_id == "exit-order-uuid-12345"
+
+    def test_trade_execution_exit_order_id_optional(self):
+        """TradeExecution exit_order_id must default to None (backward compatible)."""
+        trade = TradeExecution(
+            ds=date(2024, 1, 15),
+            trade_id="trade_456",
+            account_id="account_abc",
+            strategy_id="momentum",
+            asset_class=AssetClass.CRYPTO,
+            symbol="BTC/USD",
+            side=OrderSide.BUY,
+            qty=1.0,
+            entry_price=50000.0,
+            exit_price=52000.0,
+            entry_time=datetime(2024, 1, 15, 10, 0, tzinfo=timezone.utc),
+            exit_time=datetime(2024, 1, 16, 10, 0, tzinfo=timezone.utc),
+            exit_reason=ExitReason.TP1,
+            pnl_pct=4.0,
+            pnl_usd=2000.0,
+            fees_usd=10.0,
+            slippage_pct=0.1,
+            trade_duration=86400,
+            # exit_order_id not provided (should default to None)
+        )
+
+        assert trade.exit_order_id is None
+
+    def test_trade_execution_exit_order_id_serializes_to_json(self):
+        """TradeExecution exit_order_id must be included in JSON serialization."""
+        trade = TradeExecution(
+            ds=date(2024, 1, 15),
+            trade_id="trade_789",
+            account_id="account_abc",
+            strategy_id="momentum",
+            asset_class=AssetClass.CRYPTO,
+            symbol="BTC/USD",
+            side=OrderSide.BUY,
+            qty=1.0,
+            entry_price=50000.0,
+            exit_price=52000.0,
+            entry_time=datetime(2024, 1, 15, 10, 0, tzinfo=timezone.utc),
+            exit_time=datetime(2024, 1, 16, 10, 0, tzinfo=timezone.utc),
+            exit_reason=ExitReason.TP1,
+            pnl_pct=4.0,
+            pnl_usd=2000.0,
+            fees_usd=10.0,
+            slippage_pct=0.1,
+            trade_duration=86400,
+            exit_order_id="serialized-exit-order-id",
+        )
+
+        serialized = trade.model_dump(mode="json")
+
+        assert "exit_order_id" in serialized
+        assert serialized["exit_order_id"] == "serialized-exit-order-id"

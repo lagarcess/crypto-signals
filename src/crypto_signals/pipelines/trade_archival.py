@@ -312,6 +312,8 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                     # New fields for slippage analysis and broker auditability
                     target_entry_price=target_price,
                     alpaca_order_id=alpaca_order_id,
+                    # Exit order ID for reconciliation and fill tracking
+                    exit_order_id=pos.get("exit_order_id"),
                 )
 
                 # Validate and Dump to JSON (BasePipeline expects dicts)

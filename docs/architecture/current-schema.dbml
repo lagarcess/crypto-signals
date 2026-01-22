@@ -224,6 +224,7 @@ Table fact_trades [headercolor: #6d9eeb] {
   fees_usd float
   slippage_pct float
   trade_duration int [note: 'Unit: Milliseconds']
+  exit_order_id varchar [note: 'Alpaca exit order UUID']
   Note: 'Immutable Ledger (PROD).'
 }
 
@@ -295,6 +296,7 @@ Table fact_trades_test [headercolor: #a4c2f4] {
   fees_usd float
   slippage_pct float
   trade_duration int
+  exit_order_id varchar [note: 'Alpaca exit order UUID']
   Note: 'Immutable Ledger (TEST).'
 }
 

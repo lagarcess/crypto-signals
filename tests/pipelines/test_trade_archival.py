@@ -404,3 +404,118 @@ def test_transform_caches_market_data_per_symbol(
     called_symbols = [call.kwargs.get("symbol") for call in calls]
     assert "BTC/USD" in called_symbols
     assert "ETH/USD" in called_symbols
+
+
+def test_transform_propagates_exit_order_id(pipeline, mock_market_provider, mock_alpaca):
+    """Test that exit_order_id is propagated from Firestore position to BigQuery trade."""
+    entry_time = datetime(2023, 1, 1, 10, 0, 0, tzinfo=timezone.utc)
+    exit_time = datetime(2023, 1, 3, 10, 0, 0, tzinfo=timezone.utc)
+
+    # Position with exit_order_id (Issue #139 field)
+    raw_position = {
+        "position_id": "trade_exit_order_test",
+        "symbol": "BTC/USD",
+        "asset_class": "CRYPTO",
+        "entry_time": entry_time.isoformat(),
+        "exit_time": exit_time.isoformat(),
+        "exit_fill_price": 52000.0,
+        "entry_fill_price": 50000.0,
+        "qty": 1.0,
+        "side": "buy",
+        "account_id": "acc_1",
+        "strategy_id": "strat_1",
+        "exit_order_id": "exit-order-uuid-abc123",  # NEW FIELD
+    }
+
+    # Mock Alpaca Order
+    mock_order = MagicMock()
+    mock_order.filled_avg_price = "50000.0"
+    mock_order.filled_qty = "1.0"
+    mock_order.side = "buy"
+    mock_order.id = "entry-order-uuid-xyz789"
+    mock_alpaca.get_order_by_client_order_id.return_value = mock_order
+
+    # Mock Market Data
+    dates = pd.date_range("2023-01-01", periods=3, freq="D", tz="UTC")
+    df = pd.DataFrame(
+        {
+            "high": [51000.0, 55000.0, 52000.0],
+            "low": [49000.0, 50000.0, 51000.0],
+            "close": [50500.0, 54000.0, 52000.0],
+            "open": [50000.0, 50500.0, 54000.0],
+            "volume": [100.0, 200.0, 150.0],
+        },
+        index=dates,
+    )
+    mock_market_provider.get_daily_bars.return_value = df
+
+    # Execute
+    transformed = pipeline.transform([raw_position])
+
+    # Verify
+    assert len(transformed) == 1
+    trade = transformed[0]
+
+    # CRITICAL: Verify exit_order_id is propagated
+    assert "exit_order_id" in trade
+    assert trade["exit_order_id"] == "exit-order-uuid-abc123"
+
+    # Also verify alpaca_order_id (entry order) is still present
+    assert trade["alpaca_order_id"] == "entry-order-uuid-xyz789"
+
+
+def test_transform_exit_order_id_defaults_to_none(
+    pipeline, mock_market_provider, mock_alpaca
+):
+    """Test that exit_order_id defaults to None when not present in position."""
+    entry_time = datetime(2023, 1, 1, 10, 0, 0, tzinfo=timezone.utc)
+    exit_time = datetime(2023, 1, 3, 10, 0, 0, tzinfo=timezone.utc)
+
+    # Position WITHOUT exit_order_id (legacy position)
+    raw_position = {
+        "position_id": "trade_no_exit_order",
+        "symbol": "BTC/USD",
+        "asset_class": "CRYPTO",
+        "entry_time": entry_time.isoformat(),
+        "exit_time": exit_time.isoformat(),
+        "exit_fill_price": 52000.0,
+        "entry_fill_price": 50000.0,
+        "qty": 1.0,
+        "side": "buy",
+        "account_id": "acc_1",
+        "strategy_id": "strat_1",
+        # exit_order_id NOT present (legacy)
+    }
+
+    # Mock Alpaca Order
+    mock_order = MagicMock()
+    mock_order.filled_avg_price = "50000.0"
+    mock_order.filled_qty = "1.0"
+    mock_order.side = "buy"
+    mock_order.id = "entry-order-uuid-legacy"
+    mock_alpaca.get_order_by_client_order_id.return_value = mock_order
+
+    # Mock Market Data
+    dates = pd.date_range("2023-01-01", periods=3, freq="D", tz="UTC")
+    df = pd.DataFrame(
+        {
+            "high": [51000.0, 55000.0, 52000.0],
+            "low": [49000.0, 50000.0, 51000.0],
+            "close": [50500.0, 54000.0, 52000.0],
+            "open": [50000.0, 50500.0, 54000.0],
+            "volume": [100.0, 200.0, 150.0],
+        },
+        index=dates,
+    )
+    mock_market_provider.get_daily_bars.return_value = df
+
+    # Execute
+    transformed = pipeline.transform([raw_position])
+
+    # Verify
+    assert len(transformed) == 1
+    trade = transformed[0]
+
+    # CRITICAL: Verify exit_order_id defaults to None for legacy positions
+    assert "exit_order_id" in trade
+    assert trade["exit_order_id"] is None

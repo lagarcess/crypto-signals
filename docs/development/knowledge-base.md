@@ -3,6 +3,7 @@
 
 ## General
 - [2024-03-20] **Workflow**: Always run `/verify` before PR to catch regression.
+- [2026-01-22] **Workflow**: Implement a "Branch Guard" in verification scripts to prevent accidental commits to `main`. This is safer than relying solely on server-side protection during local development.
 - [2026-01-20] **Architecture**: Engines (`ExecutionEngine`) create domain objects but Repositories (`PositionRepository`) must persist them. Ensure orchestration layer bridges this gap.
 - [2026-01-20] **Testing**: When mocking execution logic, ensure `ENVIRONMENT` settings match expected behavior (e.g., `PROD` + `ENABLE_EXECUTION=False` -> triggers Theoretical fallback).
 - [2026-01-20] **Testing**: `MagicMock(spec=PydanticModel)` does not automatically populate model fields as attributes. You must explicitly set them (e.g., `mock_pos.side = ...`) or use a helper, otherwise `AttributeError` occurs on access.
@@ -46,4 +47,5 @@
 ## Implementation & Scripting
 - [2026-01-22] **Scripting**: Distinguish between standalone **setup/verification scripts** (`scripts/` root) and **operational module scripts** (`src/crypto_signals/scripts/`). Module scripts enable `python -m` execution and cleaner project imports.
 - [2026-01-22] **Bootstrapping**: If a module requires environment variables (e.g., `ENVIRONMENT=PROD`) to be set *before* importing project configuration (which reads env on load), use `os.environ.setdefault()` followed by `# noqa: E402` on imports. This suppresses linter errors for non-top-level imports where order of execution is critical for proper initialization.
+- [2026-01-22] **BigQuery**: When bridging from a schema-less (Firestore) to rigid (BigQuery) system, any field added to the source must be manually propagated through the ETL pipeline models (Pydantic) and added to BQ via `ALTER TABLE`. Pydantic handles NoSQL defaults (None), but BigQuery execution will fail on "unknown field" if the SQL schema is not evolved first.
 - [2026-01-22] **Diagnostic Output**: Always direct transient diagnostic outputs to a gitignored `temp/reports/` folder. Standardize workflow temporary files in `temp/` subfolders (issues/, plan/, pr/, etc.) to maintain workspace hygiene.

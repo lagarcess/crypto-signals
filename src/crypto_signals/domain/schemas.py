@@ -518,6 +518,10 @@ class Position(BaseModel):
         default=None,
         description="Reason for trade exit (e.g., TP1, STOP_LOSS, MANUAL_EXIT).",
     )
+    exit_order_id: Optional[str] = Field(
+        default=None,
+        description="Alpaca order ID for the exit order. Used for reconciliation and fill tracking.",
+    )
     # === Trade Lifecycle Classification (Issue 107) ===
     trade_type: Optional[str] = Field(
         default="EXECUTED",
@@ -688,6 +692,10 @@ class TradeExecution(BaseModel):
         default=None,
         description="Alpaca broker's UUID for the entry order. Links to Alpaca dashboard for auditability.",
     )
+    exit_order_id: Optional[str] = Field(
+        default=None,
+        description="Alpaca broker's UUID for the exit order. Used for reconciliation and fill tracking.",
+    )
 
 
 class StagingTrade(BaseModel):
@@ -789,6 +797,10 @@ class StagingTrade(BaseModel):
     alpaca_order_id: Optional[str] = Field(
         default=None,
         description="Alpaca broker's UUID for the entry order. Links to Alpaca dashboard for auditability.",
+    )
+    exit_order_id: Optional[str] = Field(
+        default=None,
+        description="Alpaca broker's UUID for the exit order. Used for reconciliation and fill tracking.",
     )
 
 

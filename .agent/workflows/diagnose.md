@@ -2,7 +2,7 @@
 description: Infrastructure health check (GCP, Firestore, Alpaca)
 ---
 
-All diagnostic reports are written to `temp/reports/` (gitignored).
+**Setup**: Ensure directory exists: `if (!(Test-Path "temp/reports")) { New-Item -ItemType Directory -Path "temp/reports" -Force }`
 
 1. **GCP Health Check**
    // turbo

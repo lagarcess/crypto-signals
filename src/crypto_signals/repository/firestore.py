@@ -599,6 +599,35 @@ class PositionRepository:
         position_data["updated_at"] = datetime.now(timezone.utc)
         doc_ref.set(position_data, merge=True)
 
+    def get_closed_positions(self, limit: int = 50) -> list[Position]:
+        """Get recently closed positions for orphan detection (Issue #139).
+
+        Used by StateReconciler to detect positions marked CLOSED in Firestore
+        but still OPEN in Alpaca (reverse orphans).
+
+        Args:
+            limit: Maximum number of positions to return (default: 50)
+
+        Returns:
+            List of recently closed Position objects
+        """
+        query = (
+            self.db.collection(self.collection_name)
+            .where(filter=FieldFilter("status", "==", TradeStatus.CLOSED.value))
+            .order_by("exit_time", direction=firestore.Query.DESCENDING)
+            .limit(limit)
+        )
+
+        results = []
+        for doc in query.stream():
+            try:
+                results.append(Position(**doc.to_dict()))
+            except ValidationError as e:
+                log_validation_error(doc.id, e)
+                logger.warning(f"Skipped invalid closed position: {doc.id}")
+
+        return results
+
     def cleanup_expired(self) -> int:
         """Delete positions past their TTL. Returns count deleted.
 
