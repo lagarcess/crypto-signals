@@ -56,6 +56,94 @@ class SignalGenerator:
         self.indicators = indicators or TechnicalIndicators()
         self.pattern_analyzer_cls = pattern_analyzer_cls
 
+        # Issue #117: Initialize signal repository for cooldown checks
+        from crypto_signals.repository.firestore import SignalRepository
+
+        self.signal_repo = SignalRepository()
+
+    def _is_in_cooldown(
+        self, symbol: str, current_price: float, pattern_name: str | None = None
+    ) -> bool:
+        """Check if symbol is in post-exit cooldown period (Issue #117).
+
+        Implements hybrid cooldown logic: 48-hour time window + 10% price
+        movement threshold to prevent double-signal noise.
+
+        Args:
+            symbol: Trading pair symbol (e.g., "BTC/USD")
+            current_price: Current market price for the symbol
+            pattern_name: Optional pattern filter (only apply cooldown if patterns match)
+
+        Returns:
+            True if in cooldown (block trade), False if allowed or no recent exit
+
+        Algorithm:
+            1. Query for most recent exit (TP1_HIT/TP2_HIT/TP3_HIT) within 48h
+            2. If no recent exit → Allow trade (return False)
+            3. If recent exit exists:
+               a. Get actual exit level from signal status:
+                  - TP1_HIT → use take_profit_1
+                  - TP2_HIT → use take_profit_2
+                  - TP3_HIT → use take_profit_3
+               b. Calculate price change % from exit level (FIX #1)
+               c. If ≥10% move → Allow trade (escape valve)
+               d. If <10% move → Block trade (cooldown active)
+        """
+        COOLDOWN_HOURS = 48
+        PRICE_THRESHOLD_PCT = 10.0
+
+        # Query Firestore for recent exits (FIX #2: optional pattern filter)
+        recent_exit = self.signal_repo.get_most_recent_exit(
+            symbol=symbol, hours=COOLDOWN_HOURS, pattern_name=pattern_name
+        )
+
+        if not recent_exit:
+            return False  # No recent exit, allow trade
+
+        # FIX #1: Determine actual exit level based on signal status
+        # (not entry_price - this prevents TP3@120, price@121.5 = 21% bug)
+        exit_level_map = {
+            SignalStatus.TP1_HIT: recent_exit.take_profit_1,
+            SignalStatus.TP2_HIT: recent_exit.take_profit_2,
+            SignalStatus.TP3_HIT: recent_exit.take_profit_3,
+        }
+
+        exit_level = exit_level_map.get(recent_exit.status)
+        if not exit_level:
+            logger.warning(
+                f"[COOLDOWN] Unexpected status {recent_exit.status}, allowing trade",
+                extra={"symbol": symbol, "status": recent_exit.status},
+            )
+            return False
+
+        # Calculate price movement from ACTUAL EXIT LEVEL
+        price_change_pct = abs(current_price - exit_level) / exit_level * 100
+
+        if price_change_pct >= PRICE_THRESHOLD_PCT:
+            logger.debug(
+                f"[COOLDOWN_ESCAPE] {symbol}: {price_change_pct:.1f}% move from exit level "
+                f"≥ {PRICE_THRESHOLD_PCT}% threshold",
+                extra={
+                    "symbol": symbol,
+                    "exit_level": exit_level,
+                    "current_price": current_price,
+                    "price_change_pct": price_change_pct,
+                },
+            )
+            return False  # Significant move, allow trade
+
+        logger.debug(
+            f"[COOLDOWN_ACTIVE] {symbol}: Blocked ({price_change_pct:.1f}% < {PRICE_THRESHOLD_PCT}%)",
+            extra={
+                "symbol": symbol,
+                "exit_level": exit_level,
+                "current_price": current_price,
+                "price_change_pct": price_change_pct,
+                "hours_ago": COOLDOWN_HOURS,
+            },
+        )
+        return True  # Block trade
+
     def generate_signals(
         self,
         symbol: str,
