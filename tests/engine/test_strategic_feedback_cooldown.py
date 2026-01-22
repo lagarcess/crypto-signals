@@ -28,9 +28,10 @@ def mock_market_provider():
 @pytest.fixture
 def signal_generator_with_mocks(mock_repository, mock_market_provider):
     """SignalGenerator with mocked repository."""
-    # Create generator with minimal mocked dependencies
-    gen = SignalGenerator(market_provider=mock_market_provider)
-    gen.signal_repo = mock_repository
+    # Create generator with injected mock repository
+    gen = SignalGenerator(
+        market_provider=mock_market_provider, signal_repo=mock_repository
+    )
     return gen
 
 

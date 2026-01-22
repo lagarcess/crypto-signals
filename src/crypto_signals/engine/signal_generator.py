@@ -6,7 +6,7 @@ indicators, and detection of price patterns to generate trading signals.
 """
 
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional, Type
+from typing import Any, List, Optional, Type
 
 import numpy as np
 import pandas as pd
@@ -41,6 +41,7 @@ class SignalGenerator:
         market_provider: MarketDataProvider,
         indicators: Optional[TechnicalIndicators] = None,
         pattern_analyzer_cls: Type[PatternAnalyzer] = PatternAnalyzer,
+        signal_repo: Optional[Any] = None,
     ):
         """
         Initialize the SignalGenerator.
@@ -56,10 +57,13 @@ class SignalGenerator:
         self.indicators = indicators or TechnicalIndicators()
         self.pattern_analyzer_cls = pattern_analyzer_cls
 
-        # Issue #117: Initialize signal repository for cooldown checks
-        from crypto_signals.repository.firestore import SignalRepository
+        if signal_repo:
+            self.signal_repo = signal_repo
+        else:
+            # Issue #117: Initialize signal repository for cooldown checks
+            from crypto_signals.repository.firestore import SignalRepository
 
-        self.signal_repo = SignalRepository()
+            self.signal_repo = SignalRepository()
 
     def _is_in_cooldown(
         self, symbol: str, current_price: float, pattern_name: str | None = None

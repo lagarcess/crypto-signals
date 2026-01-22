@@ -115,6 +115,7 @@ class RejectedSignalArchival(BigQueryPipelineBase):
         transformed = []
 
         for signal in raw_data:
+            print(f"DEBUG: processing signal {signal.get('signal_id')}")
             try:
                 symbol = signal.get("symbol")
                 asset_class = signal.get("asset_class", "CRYPTO")
@@ -157,11 +158,11 @@ class RejectedSignalArchival(BigQueryPipelineBase):
                         logger.warning(f"No market data for {symbol}")
                         continue
 
-                # Filter bars after signal creation
-                if created_at:
-                    bars_df = bars_df[
-                        bars_df.index >= pd.Timestamp(created_at).floor("D")
-                    ]
+                    # Filter bars after signal creation
+                    if created_at:
+                        bars_df = bars_df[
+                            bars_df.index >= pd.Timestamp(created_at).floor("D")
+                        ]
 
                 # Determine theoretical exit
                 exit_price = None
