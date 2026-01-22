@@ -67,7 +67,7 @@ class SignalGenerator:
         """Check if symbol is in post-exit cooldown period (Issue #117).
 
         Implements hybrid cooldown logic: 48-hour time window + 10% price
-        movement threshold to prevent double-signal noise.
+        movement threshold to prevent double-signal noise and revenge trading.
 
         Args:
             symbol: Trading pair symbol (e.g., "BTC/USD")
@@ -78,23 +78,37 @@ class SignalGenerator:
             True if in cooldown (block trade), False if allowed or no recent exit
 
         Algorithm:
-            1. Query for most recent exit (TP1_HIT/TP2_HIT/TP3_HIT) within 48h
+            1. Query for most recent exit (TP1_HIT/TP2_HIT/TP3_HIT/INVALIDATED) within 48h
             2. If no recent exit → Allow trade (return False)
             3. If recent exit exists:
                a. Get actual exit level from signal status:
                   - TP1_HIT → use take_profit_1
                   - TP2_HIT → use take_profit_2
                   - TP3_HIT → use take_profit_3
+                  - INVALIDATED → use suggested_stop (revenge trading prevention)
                b. Calculate price change % from exit level (FIX #1)
                c. If ≥10% move → Allow trade (escape valve)
                d. If <10% move → Block trade (cooldown active)
+
+        Config:
+            COOLDOWN_SCOPE (from config.py):
+            - "SYMBOL": Block all patterns (conservative, default)
+            - "PATTERN": Block only same pattern (flexible)
         """
         COOLDOWN_HOURS = 48
         PRICE_THRESHOLD_PCT = 10.0
 
-        # Query Firestore for recent exits (FIX #2: optional pattern filter)
+        # Strategic Feedback: Use COOLDOWN_SCOPE config to determine blocking behavior
+        settings = get_settings()
+        cooldown_scope = getattr(settings, "COOLDOWN_SCOPE", "SYMBOL")
+
+        # Query Firestore for recent exits
+        # If COOLDOWN_SCOPE is SYMBOL: pass pattern_name=None to query all patterns
+        # If COOLDOWN_SCOPE is PATTERN: pass pattern_name to query only same pattern
+        query_pattern_name = None if cooldown_scope == "SYMBOL" else pattern_name
+
         recent_exit = self.signal_repo.get_most_recent_exit(
-            symbol=symbol, hours=COOLDOWN_HOURS, pattern_name=pattern_name
+            symbol=symbol, hours=COOLDOWN_HOURS, pattern_name=query_pattern_name
         )
 
         if not recent_exit:
@@ -102,10 +116,12 @@ class SignalGenerator:
 
         # FIX #1: Determine actual exit level based on signal status
         # (not entry_price - this prevents TP3@120, price@121.5 = 21% bug)
+        # Strategic Feedback: Include INVALIDATED (stop-loss) to prevent revenge trading
         exit_level_map = {
             SignalStatus.TP1_HIT: recent_exit.take_profit_1,
             SignalStatus.TP2_HIT: recent_exit.take_profit_2,
             SignalStatus.TP3_HIT: recent_exit.take_profit_3,
+            SignalStatus.INVALIDATED: recent_exit.suggested_stop,
         }
 
         exit_level = exit_level_map.get(recent_exit.status)
@@ -128,6 +144,7 @@ class SignalGenerator:
                     "exit_level": exit_level,
                     "current_price": current_price,
                     "price_change_pct": price_change_pct,
+                    "cooldown_scope": cooldown_scope,
                 },
             )
             return False  # Significant move, allow trade
@@ -140,6 +157,7 @@ class SignalGenerator:
                 "current_price": current_price,
                 "price_change_pct": price_change_pct,
                 "hours_ago": COOLDOWN_HOURS,
+                "cooldown_scope": cooldown_scope,
             },
         )
         return True  # Block trade

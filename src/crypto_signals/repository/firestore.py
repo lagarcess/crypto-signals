@@ -281,6 +281,8 @@ class SignalRepository:
         """Get most recent exit signal for a symbol within specified hours.
 
         Used by cooldown logic (Issue #117) to prevent double-signal noise.
+        Includes both profit exits (TP1/2/3_HIT) and stop-loss exits (INVALIDATED)
+        to prevent "revenge trading" after losses.
 
         Args:
             symbol: Trading pair symbol (e.g., "BTC/USD")
@@ -295,11 +297,22 @@ class SignalRepository:
             - symbol (ASC)
             - status (ASC)
             - timestamp (DESC)
+
+        Strategic Feedback Applied:
+            - Includes INVALIDATED status (revenge trading prevention)
+            - Exit level mapping: TP1_HIT -> take_profit_1, TP2_HIT -> take_profit_2,
+              TP3_HIT -> take_profit_3, INVALIDATED -> suggested_stop
         """
         cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
 
         # Use SignalStatus enum for exit statuses (Fix #3)
-        exit_statuses = [SignalStatus.TP1_HIT, SignalStatus.TP2_HIT, SignalStatus.TP3_HIT]
+        # Strategic Feedback: Include INVALIDATED to prevent revenge trading (stop-loss hits)
+        exit_statuses = [
+            SignalStatus.TP1_HIT,
+            SignalStatus.TP2_HIT,
+            SignalStatus.TP3_HIT,
+            SignalStatus.INVALIDATED,
+        ]
 
         query = (
             self.db.collection(self.collection_name)
