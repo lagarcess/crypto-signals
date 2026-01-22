@@ -7,7 +7,7 @@ description: Create a comprehensive Pull Request from current changes
    - **VERIFICATION SCOPE**: The workflow will run and capture:
      - Full test suite execution (pass/fail count)
      - Pre-commit hook execution (all hooks, with specific violations if any)
-     - Type checking and linting (mypy, ruff - both checks and format)
+     - Type checking and linting (mypy (technical debt, skip for now), ruff - both checks and format)
    - **DECISION LOGIC**:
      - ✅ **All checks PASS**: Proceed to step 2 (Security & Privacy Scan)
      - ⚠️ **Pre-commit hooks FAIL**: Fix immediately and re-run `/verify` (repeat until pass)
@@ -34,9 +34,10 @@ description: Create a comprehensive Pull Request from current changes
    - Commit these documentation changes.
 
 5. **PR Documentation Generation**
+   - Ensure directory exists: `if (!(Test-Path "temp/pr")) { New-Item -ItemType Directory -Path "temp/pr" -Force }`
    - analyze the git diff and `temp/plan/implementation-plan.md`.
    - generate a PR Title and Description following this template:
-   - Save this description to `temp/pr/description.md` (ensure this file is gitignored). DO NOT commit this file to the repo.
+   - Save to `temp/pr/description.md` (gitignored). DO NOT commit this file.
 
      ```markdown
      ## Problem

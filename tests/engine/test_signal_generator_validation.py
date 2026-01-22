@@ -42,7 +42,7 @@ def test_generate_signal_with_negative_stop(signal_generator):
     asset_class = AssetClass.CRYPTO
 
     # Create a dummy dataframe/series simulating a signal
-    # We need to mock the pattern analyzer to return a pattern
+    # Mock pattern analyzer to return a test pattern
     # Mock check_patterns to return a dataframe with a pattern
     data = {
         "close": 100.0,
@@ -63,7 +63,7 @@ def test_generate_signal_with_negative_stop(signal_generator):
         mock_instance.pivots = []  # No pivots for now
 
         # 2. Run generate_signals
-        # We need to ensure we are testing the ELLIOTT wave logic or standard logic
+        # Validate logic selection (ELLIOTT vs standard)
         # that uses ATR for stops.
         # Let's force a pattern that uses generic ATR stop logic if possible,
         # or mock the logic inside generate_signals.

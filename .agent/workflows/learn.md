@@ -16,5 +16,5 @@ description: Extract engineering lessons for future reference
 
 3. **Commit**
    // turbo
-   - `git add docs/development/knowledge-base.md`
-   - `git commit -m "docs: update knowledge base"`
+   - **Branch Check**: Run `git branch --show-current`. If on `main`, **SKIP commit** and note: "Knowledge base updates will be included in the current feature branch PR."
+   - If on feature branch: `git add docs/development/knowledge-base.md && git commit -m "docs: update knowledge base"`

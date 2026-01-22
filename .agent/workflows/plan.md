@@ -4,7 +4,8 @@ description: comprehensive planning phase for new tasks or github issues
 
 1. **Context Gathering**
    - ask the user for the specific GitHub Issue number or Task description.
-   - **Fetch Issue Details**: Use `gh issue view [number] > temp/plan/issue-[number].txt` to get the full title, body, and labels. Do NOT rely on truncated summaries.
+   - ensure directory exists: Use `if (!(Test-Path "temp/issues")) { New-Item -ItemType Directory -Path "temp/issues" }`
+   - **Fetch Issue Details**: Use `(gh issue view <number> --json title,body,labels | ConvertFrom-Json) | ForEach-Object { "$($_.title) (Labels: $(($_.labels.name) -join ', '))`n`n$($_.body)" } | Out-File -FilePath "temp/issues/issue-<number>.txt" -Encoding utf8` to get the full title, body, and labels. Do NOT rely on truncated summaries.
    - read `README.md`, `DEPLOYMENT.md` and `SECURITY.md` to ensure alignment with system constraints.
    - search for any existing "Idea" files or `TODO.md` that might be relevant.
 

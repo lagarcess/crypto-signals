@@ -30,3 +30,8 @@ description: code hygiene and clarity pass before final review
      - Accurate workflow folder references (issues/, plan/, pr/, review/, verify/, etc (it evolves, keep it organized and intuitive))
    - **Consistency Check**: Ensure all docs show the same folder structure for `temp/`
    - Update if necessary to match the new code state.
+
+4. **AI Reasoning Sanitization**
+   - **Instruction**: Scan for "stream-of-consciousness" or "reasoning markers" in comments (e.g., "I am choosing this...", "Since we are...", "As an AI...").
+   - **Action**: Replace them with concise engineering notes (e.g., "Refactored for scalability") or remove them if they don't explain the *what* or *why*.
+   - **Scan Patterns**: Search for `We need to`, `I'll now`, `This approach`, `Let me check` in code comments.

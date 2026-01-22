@@ -35,7 +35,7 @@ description: Turn issues into working code with a single command
 
 4. **Code Coverage Check**
    // turbo
-   - Run coverage check: `poetry run pytest --cov=src`
+   - Run coverage check: `$env:COVERAGE_FILE="temp/coverage/.coverage"; poetry run pytest --cov=src --cov-report=html:temp/coverage/html --cov-report=xml:temp/coverage/coverage.xml`
    - If coverage drops significantly, add missing test cases.
 
 5. **Hygiene Pass**
