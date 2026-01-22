@@ -27,6 +27,6 @@ description: code hygiene and clarity pass before final review
    - Verify documentation reflects:
      - Current folder structure (especially `temp/`, `scripts/`, `src/crypto_signals/scripts/`)
      - Correct command paths (e.g., `python -m crypto_signals.scripts.diagnostics.*`)
-     - Accurate workflow folder references (issues/, plan/, pr/, review/, verify/)
+     - Accurate workflow folder references (issues/, plan/, pr/, review/, verify/, etc (it evolves, keep it organized and intuitive))
    - **Consistency Check**: Ensure all docs show the same folder structure for `temp/`
    - Update if necessary to match the new code state.

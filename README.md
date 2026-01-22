@@ -147,11 +147,14 @@ crypto-signals/
 │   └── images/                    # Architecture diagrams
 ├── temp/                          # Transient files (gitignored)
 │   ├── reports/                   # Diagnostic output files
+│   ├── coverage/                  # Code coverage reports (HTML/XML)
+│   ├── output/                    # Script-generated data exports
 │   ├── issues/                    # GitHub issue drafts
 │   ├── plan/                      # Planning documents
 │   ├── pr/                        # Pull request drafts
 │   ├── review/                    # Code review outputs
 │   └── verify/                    # Verification outputs
+
 ├── tests/                         # Comprehensive test suite
 ├── Dockerfile                     # Multi-stage production build
 ├── docker-compose.yml             # Local development setup

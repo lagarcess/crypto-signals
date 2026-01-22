@@ -101,14 +101,14 @@ All diagnostic outputs are written to `temp/reports/`:
 ```
 temp/                           # Transient files (gitignored)
 ├── reports/                    # Diagnostic outputs
-│   ├── account_status.txt      # Account balance report
-│   ├── state_analysis.txt      # Firestore state report
-│   └── ...
+├── coverage/                   # Code coverage data (HTML/XML)
+├── output/                     # Schema analysis and data exports
 ├── issues/                     # GitHub issue drafts (workflow: /implement)
 ├── plan/                       # Planning docs (workflow: /plan)
 ├── pr/                         # Pull request drafts (workflow: /pr)
 ├── review/                     # Code review outputs (workflow: /review)
 └── verify/                     # Verification outputs (workflow: /verify)
+
 ```
 
 These folders are used by AI agent workflows and keep transient files organized and out of version control.
