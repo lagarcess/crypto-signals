@@ -522,6 +522,20 @@ class Position(BaseModel):
         default=None,
         description="Alpaca order ID for the exit order. Used for reconciliation and fill tracking.",
     )
+    # === CFEE Tracking Fields (Issue #140) ===
+    entry_order_id: Optional[str] = Field(
+        default=None,
+        description="Entry order ID for CFEE attribution. Captured from Alpaca order response.",
+    )
+    exit_commission: Optional[float] = Field(
+        default=None,
+        description="Commission from exit order(s). Sum of all scale-out commissions.",
+    )
+    total_fees_actual: Optional[float] = Field(
+        default=None,
+        description="Actual fees from Alpaca CFEE activities (crypto only). Populated during T+1 reconciliation.",
+    )
+
     # === Trade Lifecycle Classification (Issue 107) ===
     trade_type: Optional[str] = Field(
         default="EXECUTED",
@@ -695,6 +709,31 @@ class TradeExecution(BaseModel):
     exit_order_id: Optional[str] = Field(
         default=None,
         description="Alpaca broker's UUID for the exit order. Used for reconciliation and fill tracking.",
+    )
+    # === CFEE Reconciliation Fields (Issue #140) ===
+    fee_finalized: bool = Field(
+        default=False,
+        description="Whether actual fees have been reconciled from Alpaca CFEE activities (T+1 settlement)",
+    )
+    actual_fee_usd: Optional[float] = Field(
+        default=None,
+        description="Actual fee from Alpaca CFEE (T+1 settlement). Replaces estimated fees_usd after reconciliation.",
+    )
+    fee_calculation_type: str = Field(
+        default="ESTIMATED",
+        description="Source of fee data: 'ESTIMATED' (initial), 'ACTUAL_CFEE' (from Activities API), 'ACTUAL_COMMISSION' (from order)",
+    )
+    fee_tier: Optional[str] = Field(
+        default=None,
+        description="Alpaca volume tier at time of trade (e.g., 'Tier 0: 0.25%'). Used for fee estimation and audit.",
+    )
+    entry_order_id: Optional[str] = Field(
+        default=None,
+        description="Entry order ID for CFEE attribution (from Issue #139). Used to match CFEE activities to trades.",
+    )
+    fee_reconciled_at: Optional[datetime] = Field(
+        default=None,
+        description="Timestamp when fees were reconciled from CFEE. NULL if still using estimates.",
     )
 
 

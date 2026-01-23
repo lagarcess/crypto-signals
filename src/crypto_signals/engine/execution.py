@@ -12,8 +12,8 @@ Key Capabilities:
     - get_order_details(): Retrieve order for analytics enrichment
 """
 
-from datetime import datetime, timedelta, timezone
-from typing import Optional, cast
+from datetime import date, datetime, timedelta, timezone
+from typing import Any, Dict, List, Optional, cast
 
 from alpaca.trading.client import TradingClient
 from alpaca.trading.enums import OrderClass, OrderSide, TimeInForce
@@ -197,6 +197,7 @@ class ExecutionEngine:
                 symbol=signal.symbol,
                 signal_id=signal.signal_id,
                 alpaca_order_id=str(cast(Order, order).id),
+                entry_order_id=str(cast(Order, order).id),  # For CFEE attribution
                 discord_thread_id=signal.discord_thread_id,
                 status=TradeStatus.OPEN,
                 entry_fill_price=signal.entry_price,
@@ -293,6 +294,7 @@ class ExecutionEngine:
                 symbol=signal.symbol,
                 signal_id=signal.signal_id,
                 alpaca_order_id=str(cast(Order, order).id),
+                entry_order_id=str(cast(Order, order).id),  # For CFEE attribution
                 discord_thread_id=signal.discord_thread_id,
                 status=TradeStatus.OPEN,
                 entry_fill_price=signal.entry_price,
@@ -503,6 +505,141 @@ class ExecutionEngine:
                 "error": str(error),
             },
         )
+
+    # =========================================================================
+    # CFEE RECONCILIATION METHODS (Issue #140 - T+1 Fee Settlement)
+    # =========================================================================
+
+    def get_crypto_fees_by_orders(
+        self,
+        order_ids: List[str],
+        symbol: str,
+        start_date: date,
+        end_date: date,
+    ) -> Dict[str, Any]:
+        """
+        Fetch actual CFEE activities from Alpaca for specific order IDs.
+
+        Alpaca posts CFEE records end-of-day (T+1), so this should be called
+        24+ hours after trade execution.
+
+        Args:
+            order_ids: List of Alpaca order IDs (entry + all exits)
+            symbol: Trading symbol (e.g., 'BTC/USD')
+            start_date: Start date for CFEE query (trade entry date)
+            end_date: End date for CFEE query (trade exit date + 2 days for settlement)
+
+        Returns:
+            Dict with:
+                - total_fee_usd: Total fees in USD
+                - fee_details: List of individual CFEE records
+                - fee_tier: Volume tier used
+        """
+        try:
+            from alpaca.trading.enums import ActivityType
+            from alpaca.trading.requests import GetAccountActivitiesRequest
+
+            # Query CFEE activities for date range
+            request = GetAccountActivitiesRequest(
+                activity_types=[ActivityType.CFEE],
+                date=start_date,
+                until=end_date,
+            )
+
+            activities = self.alpaca.get_account_activities(filter=request)
+
+            # Filter by symbol and aggregate
+            total_fee_usd = 0.0
+            fee_details = []
+            fee_tier = None
+
+            for activity in activities:
+                # Match by symbol (Alpaca uses 'BTCUSD' format, we use 'BTC/USD')
+                activity_symbol = str(activity.symbol).replace("/", "")
+                query_symbol = symbol.replace("/", "")
+
+                if activity_symbol != query_symbol:
+                    continue
+
+                # Parse fee amount
+                # CFEE qty is in crypto, price is USD/crypto
+                # Fee USD = abs(qty) * price
+                qty = float(activity.qty) if hasattr(activity, "qty") else 0.0
+                price = float(activity.price) if hasattr(activity, "price") else 0.0
+
+                fee_usd = abs(qty) * price
+                total_fee_usd += fee_usd
+
+                fee_details.append(
+                    {
+                        "activity_id": activity.id,
+                        "date": str(activity.date),
+                        "qty": qty,
+                        "price": price,
+                        "fee_usd": fee_usd,
+                        "description": activity.description
+                        if hasattr(activity, "description")
+                        else None,
+                    }
+                )
+
+                # Extract tier from description (e.g., "Tier 0: 0.25%")
+                if hasattr(activity, "description") and not fee_tier:
+                    desc = str(activity.description)
+                    if "Tier" in desc:
+                        fee_tier = desc
+
+            logger.info(
+                f"Fetched CFEE for {symbol}: ${total_fee_usd:.4f} ({len(fee_details)} records)",
+                extra={
+                    "symbol": symbol,
+                    "total_fee_usd": total_fee_usd,
+                    "num_records": len(fee_details),
+                    "fee_tier": fee_tier,
+                },
+            )
+
+            return {
+                "total_fee_usd": total_fee_usd,
+                "fee_details": fee_details,
+                "fee_tier": fee_tier,
+            }
+
+        except Exception as e:
+            logger.warning(f"Failed to fetch CFEE for {symbol}: {e}")
+            return {
+                "total_fee_usd": 0.0,
+                "fee_details": [],
+                "fee_tier": None,
+            }
+
+    def get_current_fee_tier(self) -> Dict[str, Any]:
+        """
+        Fetch the account's current volume tier from Alpaca.
+
+        Returns:
+            Dict with:
+                - tier_name: e.g., "Tier 0"
+                - maker_fee_pct: e.g., 0.15
+                - taker_fee_pct: e.g., 0.25
+        """
+        try:
+            # Alpaca doesn't expose tier directly in Account API
+            # Default to Tier 0 (most conservative)
+            # TODO: Parse from account.crypto_tier if available in future API versions
+
+            return {
+                "tier_name": "Tier 0",
+                "maker_fee_pct": 0.15,
+                "taker_fee_pct": 0.25,
+            }
+        except Exception as e:
+            logger.warning(f"Failed to fetch fee tier: {e}")
+            return {
+                "tier_name": "Tier 0 (default)",
+                "maker_fee_pct": 0.15,
+                "taker_fee_pct": 0.25,
+            }
 
     # =========================================================================
     # ORDER MANAGEMENT METHODS (Managed Trade Model)

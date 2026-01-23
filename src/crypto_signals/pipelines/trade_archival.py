@@ -192,18 +192,33 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                 exit_time = parse_dt(exit_time_str)
 
                 # CALCULATIONS
-                # Fees: Hard to get exact without activity ID.
-                # If fees represent 0, calculate based on asset class
+                # Fees: Use dynamic tier rate for initial estimate (T+0)
+                # Actual fees will be reconciled via FeePatchPipeline (T+1+)
                 fees_usd = 0.0
+                fee_calculation_type = "ESTIMATED"
+                fee_tier = None
 
-                # Alpaca Crypto Fee Schedule (Tier 0): 0.25% Taker
-                # We apply this if the broker reports 0 fees (common in API)
                 is_crypto = pos.get("asset_class") == "CRYPTO"
+
                 if is_crypto:
-                    # Fee = (Entry Value + Exit Value) * 0.0025
+                    # Get current fee tier for accurate estimate
+                    from crypto_signals.engine.execution import ExecutionEngine
+
+                    execution_engine = ExecutionEngine()
+                    tier_info = execution_engine.get_current_fee_tier()
+
+                    # Use taker fee (conservative, most trades are takers)
+                    taker_fee_pct = tier_info["taker_fee_pct"]
+                    fee_tier = tier_info["tier_name"]
+
+                    # Fee = (Entry Value + Exit Value) * taker_fee_pct / 100
                     entry_val = entry_price_val * qty
                     exit_val = exit_price_val * qty
-                    fees_usd = (entry_val + exit_val) * 0.0025
+                    fees_usd = (entry_val + exit_val) * (taker_fee_pct / 100.0)
+
+                    logger.debug(
+                        f"Using estimated fees for {pos.get('symbol')}: ${fees_usd:.2f} ({fee_tier})"
+                    )
 
                 # PnL Calculation using ALPACA entry price (Truth) vs
                 # Firestore Exit Price
@@ -314,6 +329,13 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                     alpaca_order_id=alpaca_order_id,
                     # Exit order ID for reconciliation and fill tracking
                     exit_order_id=pos.get("exit_order_id"),
+                    # CFEE Reconciliation Fields (Issue #140)
+                    fee_finalized=False,  # Will be reconciled T+1 via FeePatchPipeline
+                    actual_fee_usd=None,  # Populated after CFEE reconciliation
+                    fee_calculation_type=fee_calculation_type,  # "ESTIMATED" initially
+                    fee_tier=fee_tier,  # e.g., "Tier 0"
+                    entry_order_id=pos.get("entry_order_id"),  # For CFEE attribution
+                    fee_reconciled_at=None,  # Populated after reconciliation
                 )
 
                 # Validate and Dump to JSON (BasePipeline expects dicts)

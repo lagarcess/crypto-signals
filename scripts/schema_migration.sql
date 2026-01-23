@@ -37,7 +37,17 @@ LIKE `{{PROJECT_ID}}.crypto_analytics.snapshot_accounts`;
 ALTER TABLE `{{PROJECT_ID}}.crypto_analytics.fact_trades`
 ADD COLUMN IF NOT EXISTS exit_order_id STRING;
 
--- 4. Reset Staging Table for TRADES
+-- 4. Add CFEE Reconciliation Fields (Issue #140)
+-- Tracks fee settlement status for T+1 reconciliation with Alpaca Activities API
+ALTER TABLE `{{PROJECT_ID}}.crypto_analytics.fact_trades`
+ADD COLUMN IF NOT EXISTS fee_finalized BOOL,
+ADD COLUMN IF NOT EXISTS actual_fee_usd FLOAT64,
+ADD COLUMN IF NOT EXISTS fee_calculation_type STRING,
+ADD COLUMN IF NOT EXISTS fee_tier STRING,
+ADD COLUMN IF NOT EXISTS entry_order_id STRING,
+ADD COLUMN IF NOT EXISTS fee_reconciled_at TIMESTAMP;
+
+-- 5. Reset Staging Table for TRADES
 -- Dropping and recreating LIKE the fact table guarantees identical schemas.
 DROP TABLE IF EXISTS `{{PROJECT_ID}}.crypto_analytics.stg_trades_import`;
 
@@ -48,15 +58,24 @@ LIKE `{{PROJECT_ID}}.crypto_analytics.fact_trades`;
 -- TEST ENVIRONMENT (Schema Mirroring)
 -- ==========================================
 
--- 4. Trades (Test)
+-- 6. Trades (Test) - Mirror CFEE fields
 CREATE TABLE IF NOT EXISTS `{{PROJECT_ID}}.crypto_analytics.fact_trades_test`
 LIKE `{{PROJECT_ID}}.crypto_analytics.fact_trades`;
+
+-- Ensure CFEE fields exist in test table
+ALTER TABLE `{{PROJECT_ID}}.crypto_analytics.fact_trades_test`
+ADD COLUMN IF NOT EXISTS fee_finalized BOOL,
+ADD COLUMN IF NOT EXISTS actual_fee_usd FLOAT64,
+ADD COLUMN IF NOT EXISTS fee_calculation_type STRING,
+ADD COLUMN IF NOT EXISTS fee_tier STRING,
+ADD COLUMN IF NOT EXISTS entry_order_id STRING,
+ADD COLUMN IF NOT EXISTS fee_reconciled_at TIMESTAMP;
 
 DROP TABLE IF EXISTS `{{PROJECT_ID}}.crypto_analytics.stg_trades_import_test`;
 CREATE TABLE `{{PROJECT_ID}}.crypto_analytics.stg_trades_import_test`
 LIKE `{{PROJECT_ID}}.crypto_analytics.fact_trades_test`;
 
--- 5. Account Snapshots (Test)
+-- 7. Account Snapshots (Test)
 CREATE TABLE IF NOT EXISTS `{{PROJECT_ID}}.crypto_analytics.snapshot_accounts_test`
 LIKE `{{PROJECT_ID}}.crypto_analytics.snapshot_accounts`;
 
