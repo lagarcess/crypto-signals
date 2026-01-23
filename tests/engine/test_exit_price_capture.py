@@ -27,7 +27,9 @@ class TestEmergencyCloseRetryBudget:
     def test_immediate_fill_capture(self, mock_trading_client):
         """Test emergency close with immediate fill price."""
         # Arrange
-        engine = ExecutionEngine(trading_client=mock_trading_client)
+        engine = ExecutionEngine(
+            trading_client=mock_trading_client, repository=MagicMock()
+        )
         position = Position(
             position_id="test-pos-1",
             ds=datetime.now(timezone.utc).date(),
@@ -52,10 +54,7 @@ class TestEmergencyCloseRetryBudget:
         mock_trading_client.submit_order.return_value = mock_order
 
         # Act
-        with (
-            patch("crypto_signals.engine.execution.get_settings") as mock_settings,
-            patch("crypto_signals.engine.execution.PositionRepository"),
-        ):
+        with patch("crypto_signals.engine.execution.get_settings") as mock_settings:
             mock_settings.return_value.ENVIRONMENT = "PROD"
             result = engine.close_position_emergency(position)
 
@@ -69,7 +68,9 @@ class TestEmergencyCloseRetryBudget:
     def test_retry_budget_success(self, mock_trading_client):
         """Test emergency close with retry budget (fills on retry 2)."""
         # Arrange
-        engine = ExecutionEngine(trading_client=mock_trading_client)
+        engine = ExecutionEngine(
+            trading_client=mock_trading_client, repository=MagicMock()
+        )
         position = Position(
             position_id="test-pos-2",
             ds=datetime.now(timezone.utc).date(),
@@ -110,10 +111,8 @@ class TestEmergencyCloseRetryBudget:
         )
 
         # Act
-        with (
-            patch("crypto_signals.engine.execution.get_settings") as mock_settings,
-            patch("crypto_signals.engine.execution.PositionRepository"),
-        ):
+        # Act
+        with patch("crypto_signals.engine.execution.get_settings") as mock_settings:
             mock_settings.return_value.ENVIRONMENT = "PROD"
             with patch("time.sleep"):  # Skip actual sleep
                 result = engine.close_position_emergency(position)
@@ -129,7 +128,9 @@ class TestEmergencyCloseRetryBudget:
     def test_retry_budget_exhausted(self, mock_trading_client):
         """Test emergency close with retry budget exhausted (awaiting backfill)."""
         # Arrange
-        engine = ExecutionEngine(trading_client=mock_trading_client)
+        engine = ExecutionEngine(
+            trading_client=mock_trading_client, repository=MagicMock()
+        )
         position = Position(
             position_id="test-pos-3",
             ds=datetime.now(timezone.utc).date(),
@@ -161,10 +162,8 @@ class TestEmergencyCloseRetryBudget:
         engine.get_order_details = MagicMock(return_value=mock_order_retry)
 
         # Act
-        with (
-            patch("crypto_signals.engine.execution.get_settings") as mock_settings,
-            patch("crypto_signals.engine.execution.PositionRepository"),
-        ):
+        # Act
+        with patch("crypto_signals.engine.execution.get_settings") as mock_settings:
             mock_settings.return_value.ENVIRONMENT = "PROD"
             with patch("time.sleep"):  # Skip actual sleep
                 result = engine.close_position_emergency(position)
@@ -183,7 +182,9 @@ class TestRetryFillPriceHelper:
     def test_retry_helper_immediate_success(self, mock_trading_client):
         """Test helper returns fill price on first retry."""
         # Arrange
-        engine = ExecutionEngine(trading_client=mock_trading_client)
+        engine = ExecutionEngine(
+            trading_client=mock_trading_client, repository=MagicMock()
+        )
 
         mock_order = MagicMock(spec=Order)
         mock_order.filled_avg_price = 50000.0
@@ -205,7 +206,9 @@ class TestRetryFillPriceHelper:
     def test_retry_helper_exhausted(self, mock_trading_client):
         """Test helper returns None when retries exhausted."""
         # Arrange
-        engine = ExecutionEngine(trading_client=mock_trading_client)
+        engine = ExecutionEngine(
+            trading_client=mock_trading_client, repository=MagicMock()
+        )
 
         mock_order = MagicMock(spec=Order)
         mock_order.filled_avg_price = None
@@ -229,7 +232,9 @@ class TestScaleOutWeightedAverage:
     def test_single_scale_out(self, mock_trading_client):
         """Test single scale-out (no weighted average needed)."""
         # Arrange
-        engine = ExecutionEngine(trading_client=mock_trading_client)
+        engine = ExecutionEngine(
+            trading_client=mock_trading_client, repository=MagicMock()
+        )
         position = Position(
             position_id="test-pos-5",
             ds=datetime.now(timezone.utc).date(),
@@ -253,10 +258,8 @@ class TestScaleOutWeightedAverage:
         mock_trading_client.submit_order.return_value = mock_order
 
         # Act
-        with (
-            patch("crypto_signals.engine.execution.get_settings") as mock_settings,
-            patch("crypto_signals.engine.execution.PositionRepository"),
-        ):
+        # Act
+        with patch("crypto_signals.engine.execution.get_settings") as mock_settings:
             mock_settings.return_value.ENVIRONMENT = "PROD"
             result = engine.scale_out_position(position, scale_pct=0.5)
 
@@ -273,7 +276,9 @@ class TestScaleOutWeightedAverage:
     def test_multi_stage_weighted_average(self, mock_trading_client):
         """Test multi-stage scale-out with weighted average (TP1 + TP2)."""
         # Arrange
-        engine = ExecutionEngine(trading_client=mock_trading_client)
+        engine = ExecutionEngine(
+            trading_client=mock_trading_client, repository=MagicMock()
+        )
         position = Position(
             position_id="test-pos-6",
             ds=datetime.now(timezone.utc).date(),
@@ -297,10 +302,8 @@ class TestScaleOutWeightedAverage:
         mock_trading_client.submit_order.return_value = mock_order_tp1
 
         # Act: TP1 (50% @ $3200)
-        with (
-            patch("crypto_signals.engine.execution.get_settings") as mock_settings,
-            patch("crypto_signals.engine.execution.PositionRepository"),
-        ):
+        # Act: TP1 (50% @ $3200)
+        with patch("crypto_signals.engine.execution.get_settings") as mock_settings:
             mock_settings.return_value.ENVIRONMENT = "PROD"
             result_tp1 = engine.scale_out_position(position, scale_pct=0.5)
 
@@ -321,10 +324,8 @@ class TestScaleOutWeightedAverage:
         mock_trading_client.submit_order.return_value = mock_order_tp2
 
         # Act: TP2 (50% of remaining = 0.25 total @ $3400)
-        with (
-            patch("crypto_signals.engine.execution.get_settings") as mock_settings,
-            patch("crypto_signals.engine.execution.PositionRepository"),
-        ):
+        # Act: TP2 (50% of remaining = 0.25 total @ $3400)
+        with patch("crypto_signals.engine.execution.get_settings") as mock_settings:
             mock_settings.return_value.ENVIRONMENT = "PROD"
             result_tp2 = engine.scale_out_position(position, scale_pct=0.5)
 
@@ -340,7 +341,9 @@ class TestScaleOutWeightedAverage:
     def test_scale_out_retry_budget(self, mock_trading_client):
         """Test scale-out with retry budget."""
         # Arrange
-        engine = ExecutionEngine(trading_client=mock_trading_client)
+        engine = ExecutionEngine(
+            trading_client=mock_trading_client, repository=MagicMock()
+        )
         position = Position(
             position_id="test-pos-7",
             ds=datetime.now(timezone.utc).date(),
@@ -372,10 +375,8 @@ class TestScaleOutWeightedAverage:
         engine.get_order_details = MagicMock(return_value=mock_order_retry)
 
         # Act
-        with (
-            patch("crypto_signals.engine.execution.get_settings") as mock_settings,
-            patch("crypto_signals.engine.execution.PositionRepository"),
-        ):
+        # Act
+        with patch("crypto_signals.engine.execution.get_settings") as mock_settings:
             mock_settings.return_value.ENVIRONMENT = "PROD"
             with patch("time.sleep"):  # Skip actual sleep
                 result = engine.scale_out_position(position, scale_pct=0.5)
