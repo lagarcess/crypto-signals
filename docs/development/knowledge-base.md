@@ -29,6 +29,9 @@
 
 ### Alpaca
 - [2026-01-21] **Typing**: Account fields (e.g., `buying_power`) can be returned as strings, decimals, or floats depending on the API version and field. Always use defensive parsing (`float(val)` with try-except) when mapping to strict schemas.
+- [2026-01-22] **SDK Limitations**: The `TradingClient` (v2) in `alpaca-py` lacks a `get_account_activities` method. Use the raw REST method `client.get("/account/activities", params=...)` instead.
+- [2026-01-22] **Raw API**: When using `client.get`, `date` objects in parameters must be explicitly converted to string (ISO format). Response objects are raw dicts/lists and should be wrapped (e.g., `_ActivityWrapper`) to maintain object attribute compatibility with typed codebases.
+- [2026-01-22] **CFEE Settlement**: Crypto fees are posted as asynchronous `CFEE` events at T+1 (end of day), not at transaction time. Real-time logging requires an 'Estimated Fee' model, followed by a T+1 'Patch Pipeline' to reconcile actuals.
 
 ### Pydantic & Data Pipelines
 - [2026-01-21] **Constraint Paradox**: Strict Pydantic validators (e.g., `PositiveFloat`) are excellent for data integrity but can catch "conceptually valid" failures (like a negative stop loss due to weird volatility) and crash the pipeline.
