@@ -535,6 +535,13 @@ class Position(BaseModel):
         default=None,
         description="Actual fees from Alpaca CFEE activities (crypto only). Populated during T+1 reconciliation.",
     )
+    awaiting_backfill: bool = Field(
+        default=False,
+        description=(
+            "Flag indicating exit fill price is pending backfill. "
+            "Set to True if retry budget exhausted, cleared by sync_position_status()."
+        ),
+    )
 
     # === Trade Lifecycle Classification (Issue 107) ===
     trade_type: Optional[str] = Field(

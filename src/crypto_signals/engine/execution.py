@@ -731,6 +731,59 @@ class ExecutionEngine:
             logger.error(f"Failed to retrieve order {order_id}: {e}")
             return None
 
+    def _retry_fill_price_capture(
+        self,
+        order_id: str,
+        position_id: str,
+        max_retries: int = 3,
+        retry_delay: float = 1.5,
+    ) -> Optional[tuple[float, Optional[datetime]]]:
+        """
+        Retry fill price capture with configurable budget.
+
+        Handles volatile markets where orders sit in "Accepted" or "Partially Filled" state.
+        Retries with exponential backoff until fill price is available or budget exhausted.
+
+        Args:
+            order_id: Alpaca order ID to check
+            position_id: Position ID for logging context
+            max_retries: Number of retry attempts (default: 3)
+            retry_delay: Delay between retries in seconds (default: 1.5s)
+
+        Returns:
+            Tuple of (fill_price, filled_at) if successful, None otherwise
+        """
+        import time
+
+        for attempt in range(1, max_retries + 1):
+            time.sleep(retry_delay)
+            try:
+                refreshed_order = self.get_order_details(order_id)
+                if refreshed_order and refreshed_order.filled_avg_price:
+                    fill_price = float(refreshed_order.filled_avg_price)
+                    filled_at = refreshed_order.filled_at
+                    logger.info(
+                        f"[RETRY {attempt}] Captured fill price for {position_id}: ${fill_price}",
+                        extra={
+                            "position_id": position_id,
+                            "order_id": order_id,
+                            "attempt": attempt,
+                            "fill_price": fill_price,
+                        },
+                    )
+                    return (fill_price, filled_at)
+                else:
+                    logger.debug(
+                        f"[RETRY {attempt}/{max_retries}] Order {order_id} not filled yet "
+                        f"(status: {refreshed_order.status if refreshed_order else 'UNKNOWN'})"
+                    )
+            except Exception as poll_err:
+                logger.warning(
+                    f"[RETRY {attempt}] Poll failed for {position_id}: {poll_err}"
+                )
+
+        return None
+
     def sync_position_status(self, position: Position) -> Position:
         """
         Synchronize position with Alpaca broker state.
@@ -789,6 +842,8 @@ class ExecutionEngine:
                     pnl_usd, pnl_pct = self._calculate_realized_pnl(position)
                     position.realized_pnl_usd = pnl_usd
                     position.realized_pnl_pct = pnl_pct
+                    # Clear awaiting_backfill flag (Issue #141)
+                    position.awaiting_backfill = False
             except Exception as e:
                 logger.warning(
                     f"Exit price backfill failed for {position.position_id}: {e}"
@@ -861,6 +916,8 @@ class ExecutionEngine:
                     if tp_order.filled_at:
                         position.exit_time = tp_order.filled_at
                     position.exit_reason = ExitReason.TP_HIT
+                    # ISSUE FIX: Capture exit_order_id for invalidation path backfill
+                    position.exit_order_id = str(tp_order.id)
                     logger.info(f"Position {position.position_id} closed via TP")
 
             if position.sl_order_id and position.status != TradeStatus.CLOSED:
@@ -873,6 +930,8 @@ class ExecutionEngine:
                     if sl_order.filled_at:
                         position.exit_time = sl_order.filled_at
                     position.exit_reason = ExitReason.STOP_LOSS
+                    # ISSUE FIX: Capture exit_order_id for invalidation path backfill
+                    position.exit_order_id = str(sl_order.id)
                     logger.info(f"Position {position.position_id} closed via SL")
 
             # -------------------------------------------------------------------------
@@ -1145,28 +1204,79 @@ class ExecutionEngine:
 
             close_order = cast(Order, self.alpaca.submit_order(close_request))
 
-            # Get fill price from order (if immediate fill)
+            # === ISSUE #141: Capture fill price with retry budget ===
+            # Track exit order ID for this scale-out
+            exit_order_id = str(close_order.id)
+
+            # Capture immediate fill price
             fill_price = None
-            if (
-                hasattr(close_order, "filled_avg_price")
-                and cast(Order, close_order).filled_avg_price
-            ):
-                fill_price = float(cast(Order, close_order).filled_avg_price)
+            if close_order.filled_avg_price:
+                fill_price = float(close_order.filled_avg_price)
+                logger.info(
+                    f"[IMMEDIATE] Captured scale-out fill price for {position.position_id}: "
+                    f"${fill_price}"
+                )
+            else:
+                # Use retry budget helper for delayed fills
+                result = self._retry_fill_price_capture(
+                    order_id=exit_order_id, position_id=position.position_id
+                )
+                if result:
+                    fill_price, _ = result  # We don't need filled_at for scale-outs
 
-            # Record scale-out in position
-            position.scaled_out_qty += scale_qty
-            position.scaled_out_price = fill_price  # Most recent (backward compat)
-            position.scaled_out_at = datetime.now(timezone.utc)
+            if not fill_price:
+                # Mark for backfill but proceed to allow inventory update
+                logger.warning(
+                    f"[SCALE-OUT] Fill price not available for {position.position_id} "
+                    f"after retry budget exhausted. Order ID: {exit_order_id}"
+                )
 
-            # Track individual scale-out for multi-stage PnL
+            # === WEIGHTED AVERAGE CALCULATION (Issue #141 - Staff Review Gap #2) ===
+            # For multi-stage exits (TP1 @ $100, TP2 @ $110), calculate weighted average
+            # Formula: ((New_Qty * New_Price) + Previous_Exit_Value) / Total_Qty_Exited
             if fill_price is not None:
+                # Calculate total exit value so far
+                previous_exit_value = position.scaled_out_qty * (
+                    position.scaled_out_price or 0.0
+                )
+                new_exit_value = scale_qty * fill_price
+                total_exit_value = previous_exit_value + new_exit_value
+
+                # Update scaled-out quantity
+                position.scaled_out_qty += scale_qty
+
+                # Calculate weighted average
+                if position.scaled_out_qty > 0:
+                    position.scaled_out_price = total_exit_value / position.scaled_out_qty
+                    logger.info(
+                        f"[WEIGHTED AVG] Updated exit price for {position.position_id}: "
+                        f"${position.scaled_out_price:.2f} "
+                        f"(previous: ${previous_exit_value / (position.scaled_out_qty - scale_qty) if position.scaled_out_qty > scale_qty else 0:.2f}, "
+                        f"new: ${fill_price:.2f})"
+                    )
+
+                # Track individual scale-out for audit trail
                 position.scaled_out_prices.append(
                     {
                         "qty": scale_qty,
                         "price": fill_price,
                         "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "order_id": exit_order_id,  # NEW: Track order ID for reconciliation
                     }
                 )
+
+                # NEW: Update position.exit_fill_price for final archival
+                # This ensures TradeArchivalPipeline gets the correct aggregate value
+                position.exit_fill_price = position.scaled_out_price
+                position.awaiting_backfill = False
+            else:
+                # No fill price captured - mark for backfill
+                position.awaiting_backfill = True
+                logger.warning(
+                    f"[SCALE-OUT] Marking {position.position_id} for backfill (no fill price)"
+                )
+
+            position.scaled_out_at = datetime.now(timezone.utc)
 
             # Update remaining quantity
             position.qty = round(position.qty - scale_qty, 8)
@@ -1365,35 +1475,31 @@ class ExecutionEngine:
             # Capture fill price (market orders typically fill immediately)
             if close_order.filled_avg_price:
                 position.exit_fill_price = float(close_order.filled_avg_price)
+                if close_order.filled_at:
+                    position.exit_time = close_order.filled_at
+                logger.info(
+                    f"[IMMEDIATE] Captured exit fill price for {position.position_id}: "
+                    f"${position.exit_fill_price}"
+                )
+                position.awaiting_backfill = False
             else:
-                # === SHORT-POLL FALLBACK (Staff Review Gap #1) ===
-                # If API returns None, wait briefly and re-fetch order details
-                import time
+                # Use retry budget helper for delayed fills
+                result = self._retry_fill_price_capture(
+                    order_id=position.exit_order_id, position_id=position.position_id
+                )
 
-                time.sleep(0.5)  # 500ms delay for matching engine
-                try:
-                    refreshed_order = self.get_order_details(position.exit_order_id)
-                    if refreshed_order and refreshed_order.filled_avg_price:
-                        position.exit_fill_price = float(refreshed_order.filled_avg_price)
-                        if refreshed_order.filled_at:
-                            position.exit_time = refreshed_order.filled_at
-                        logger.info(
-                            f"[SHORT-POLL] Captured fill price for {position.position_id}: "
-                            f"${position.exit_fill_price}"
-                        )
-                    else:
-                        # Log warning - sync_position_status will backfill later
-                        logger.warning(
-                            f"[DEFERRED SYNC] Exit fill price not available for {position.position_id}. "
-                            f"Will backfill via sync_position_status.",
-                            extra={
-                                "position_id": position.position_id,
-                                "exit_order_id": position.exit_order_id,
-                            },
-                        )
-                except Exception as poll_err:
+                if result:
+                    fill_price, filled_at = result
+                    position.exit_fill_price = fill_price
+                    position.awaiting_backfill = False
+                    if filled_at:
+                        position.exit_time = filled_at
+                else:
+                    # Explicitly handle None (exhausted retries): Mark for deferred backfill
+                    position.awaiting_backfill = True
                     logger.warning(
-                        f"Short-poll failed for {position.position_id}: {poll_err}"
+                        f"[BACKFILL PENDING] Exit price for {position.position_id} "
+                        f"will be backfilled by sync_position_status()"
                     )
 
             # Capture fill timestamp

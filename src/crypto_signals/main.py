@@ -207,6 +207,26 @@ def main(
             logger.error(f"Fee reconciliation failed: {e}")
             # Non-blocking - continue with signal generation
 
+        # === EXIT PRICE RECONCILIATION (Issue #141) ===
+        # Patch $0.00 exit prices with actual fill prices from Alpaca
+        # Runs for historical repair and daily reconciliation
+        logger.info("Running exit price reconciliation...")
+        try:
+            from crypto_signals.pipelines.price_patch import PricePatchPipeline
+
+            price_patch = PricePatchPipeline()
+            patched_count = price_patch.run()
+
+            if patched_count > 0:
+                logger.info(
+                    f"✅ Exit price reconciliation complete: {patched_count} trades repaired"
+                )
+            else:
+                logger.info("✅ Exit price reconciliation complete: No trades to repair")
+        except Exception as e:
+            logger.error(f"Exit price reconciliation failed: {e}")
+            # Non-blocking - continue with signal generation
+
         # Define Portfolio
         firestore_config = load_config_from_firestore()
 

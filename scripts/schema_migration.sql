@@ -47,6 +47,13 @@ ADD COLUMN IF NOT EXISTS fee_tier STRING,
 ADD COLUMN IF NOT EXISTS entry_order_id STRING,
 ADD COLUMN IF NOT EXISTS fee_reconciled_at TIMESTAMP;
 
+-- 5. Add Exit Price Reconciliation Fields (Issue #141)
+-- Tracks exit price settlement status (mirrors fee_finalized pattern)
+ALTER TABLE `{{PROJECT_ID}}.crypto_analytics.fact_trades`
+ADD COLUMN IF NOT EXISTS exit_price_finalized BOOL,
+ADD COLUMN IF NOT EXISTS exit_price_reconciled_at TIMESTAMP,
+ADD COLUMN IF NOT EXISTS exit_price FLOAT64;
+
 -- 5. Reset Staging Table for TRADES
 -- Dropping and recreating LIKE the fact table guarantees identical schemas.
 DROP TABLE IF EXISTS `{{PROJECT_ID}}.crypto_analytics.stg_trades_import`;
@@ -59,19 +66,17 @@ LIKE `{{PROJECT_ID}}.crypto_analytics.fact_trades`;
 -- ==========================================
 
 -- 6. Trades (Test) - Mirror CFEE fields
-CREATE TABLE IF NOT EXISTS `{{PROJECT_ID}}.crypto_analytics.fact_trades_test`
+DROP TABLE IF EXISTS `{{PROJECT_ID}}.crypto_analytics.fact_trades_test`;
+
+CREATE TABLE `{{PROJECT_ID}}.crypto_analytics.fact_trades_test`
 LIKE `{{PROJECT_ID}}.crypto_analytics.fact_trades`;
 
--- Ensure CFEE fields exist in test table
-ALTER TABLE `{{PROJECT_ID}}.crypto_analytics.fact_trades_test`
-ADD COLUMN IF NOT EXISTS fee_finalized BOOL,
-ADD COLUMN IF NOT EXISTS actual_fee_usd FLOAT64,
-ADD COLUMN IF NOT EXISTS fee_calculation_type STRING,
-ADD COLUMN IF NOT EXISTS fee_tier STRING,
-ADD COLUMN IF NOT EXISTS entry_order_id STRING,
-ADD COLUMN IF NOT EXISTS fee_reconciled_at TIMESTAMP;
+-- Note: Since we recreate LIKE the altered fact_trades, we don't need manual ALTERs here.
+-- The test table will inherit all new columns (exit_order_id, exit_price, etc).
 
 DROP TABLE IF EXISTS `{{PROJECT_ID}}.crypto_analytics.stg_trades_import_test`;
+CREATE TABLE `{{PROJECT_ID}}.crypto_analytics.stg_trades_import_test`
+LIKE `{{PROJECT_ID}}.crypto_analytics.fact_trades_test`;
 CREATE TABLE `{{PROJECT_ID}}.crypto_analytics.stg_trades_import_test`
 LIKE `{{PROJECT_ID}}.crypto_analytics.fact_trades_test`;
 
