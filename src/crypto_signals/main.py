@@ -187,6 +187,26 @@ def main(
             )
             # Don't halt execution - reconciliation is advisory
 
+        # === FEE RECONCILIATION (Issue #140) ===
+        # Patch estimated fees with actual CFEE data before generating new signals
+        # Runs T+1 reconciliation for trades older than 24 hours
+        logger.info("Running fee reconciliation...")
+        try:
+            from crypto_signals.pipelines.fee_patch import FeePatchPipeline
+
+            fee_patch = FeePatchPipeline()
+            patched_count = fee_patch.run()
+
+            if patched_count > 0:
+                logger.info(
+                    f"✅ Fee reconciliation complete: {patched_count} trades updated"
+                )
+            else:
+                logger.info("✅ Fee reconciliation complete: No trades to update")
+        except Exception as e:
+            logger.error(f"Fee reconciliation failed: {e}")
+            # Non-blocking - continue with signal generation
+
         # Define Portfolio
         firestore_config = load_config_from_firestore()
 

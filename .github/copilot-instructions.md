@@ -19,11 +19,11 @@ Core values: **Precision, Idempotency, Safety**.
 
 | Module             | Purpose                                                        | Key Files                                                                                                                                              |
 | ------------------ | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **domain/**        | Data contracts (Pydantic models). Zero external IO.            | [schemas.py](src/crypto_signals/domain/schemas.py) defines Signal, Position, TradeStatus                                                               |
-| **analysis/**      | Pattern detection using O(N) ZigZag pivot finding (Numba JIT). | [structural.py](src/crypto_signals/analysis/structural.py) core algorithm; [harmonics.py](src/crypto_signals/analysis/harmonics.py) Fibonacci patterns |
-| **engine/**        | Signal generation & Alpaca order execution.                    | [signal_generator.py](src/crypto_signals/engine/signal_generator.py), [execution.py](src/crypto_signals/engine/execution.py)                           |
-| **repository/**    | Firestore persistence (environment-isolated collections).      | [firestore.py](src/crypto_signals/repository/firestore.py) routes to `live_signals`/`test_signals`                                                     |
-| **market/**        | Alpaca API wrapper for data & trading.                         | [data_provider.py](src/crypto_signals/market/data_provider.py)                                                                                         |
+| **domain/**        | Data contracts (Pydantic models). Zero external IO.            | [schemas.py](../src/crypto_signals/domain/schemas.py) defines Signal, Position, TradeStatus                                                               |
+| **analysis/**      | Pattern detection using O(N) ZigZag pivot finding (Numba JIT). | [structural.py](../src/crypto_signals/analysis/structural.py) core algorithm; [harmonics.py](../src/crypto_signals/analysis/harmonics.py) Fibonacci patterns |
+| **engine/**        | Signal generation & Alpaca order execution.                    | [signal_generator.py](../src/crypto_signals/engine/signal_generator.py), [execution.py](../src/crypto_signals/engine/execution.py)                           |
+| **repository/**    | Firestore persistence (environment-isolated collections).      | [firestore.py](../src/crypto_signals/repository/firestore.py) routes to `live_signals`/`test_signals`                                                     |
+| **market/**        | Alpaca API wrapper for data & trading.                         | [data_provider.py](../src/crypto_signals/market/data_provider.py)                                                                                         |
 | **notifications/** | Discord webhook delivery with thread lifecycle.                | Discord self-healing: orphaned signals create new threads                                                                                              |
 
 ### Environment Isolation
@@ -68,11 +68,11 @@ poetry run python -m crypto_signals.main     # Run main pipeline (local dev)
 
 ### Key Testing Fixtures
 
-See [tests/](tests/) for comprehensive mocking patterns:
+See [tests/](../tests/) for comprehensive mocking patterns:
 
 - **Mock Firestore**: Use `MagicMock(spec=SignalRepository)` to avoid real writes
 - **Mock Alpaca**: All trading calls must be mocked; never execute real orders in tests
-- **Loguru Integration**: [test_main.py](tests/test_main.py) shows caplog fixture for capturing loguru output
+- **Loguru Integration**: [test_main.py](../tests/test_main.py) shows caplog fixture for capturing loguru output
 
 ---
 
@@ -112,7 +112,7 @@ See [tests/](tests/) for comprehensive mocking patterns:
 
 - **live_signals** ↔ PROD environment
 - **test_signals** ↔ DEV/LOCAL environment
-- Auto-routed by [firestore.py](src/crypto_signals/repository/firestore.py) based on `ENVIRONMENT` setting
+- Auto-routed by [firestore.py](../src/crypto_signals/repository/firestore.py) based on `ENVIRONMENT` setting
 
 ### TTL (Auto-Cleanup)
 
@@ -178,7 +178,7 @@ logger.warning("Execution blocked", extra={"reason": "ENVIRONMENT not PROD", "en
 
 ### Numba JIT Functions
 
-- [structural.py](src/crypto_signals/analysis/structural.py) uses `@njit(cache=True)` for pivot detection
+- [structural.py](../src/crypto_signals/analysis/structural.py) uses `@njit(cache=True)` for pivot detection
 - O(N) time complexity on millions of data points
 - Call `warmup_jit()` at startup to pre-compile (avoids 200ms first-call latency)
 
@@ -197,7 +197,7 @@ logger.warning("Execution blocked", extra={"reason": "ENVIRONMENT not PROD", "en
 4. **Async**: Use `@pytest.mark.asyncio` for async functions
 5. **Integration Tests**: Marked `@pytest.mark.integration`, skipped by default (require real credentials)
 
-See [tests.instructions.md](.github/instructions/tests.instructions.md) for detailed standards.
+See [tests.instructions.md](instructions/tests.instructions.md) for detailed standards.
 
 ---
 

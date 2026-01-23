@@ -1356,3 +1356,178 @@ class TestMoveStopToBreakeven:
 
         assert result is False
         mock_trading_client.replace_order_by_id.assert_not_called()
+
+
+class TestCFEEReconciliation:
+    """Tests for CFEE (Crypto Fee) reconciliation methods (Issue #140)."""
+
+    def test_get_crypto_fees_by_orders_success(
+        self, execution_engine, mock_trading_client
+    ):
+        """Verify successful CFEE fetching and currency normalization."""
+        # Setup mock CFEE activity (as dict for raw GET)
+        mock_activity = {
+            "id": "cfee-123",
+            "symbol": "BTCUSD",
+            "qty": "-0.0001",
+            "price": "50000.0",
+            "date": "2025-01-16",
+            "description": "Tier 0: 0.25%",
+        }
+
+        mock_trading_client.get.return_value = [mock_activity]
+
+        # Execute
+        result = execution_engine.get_crypto_fees_by_orders(
+            order_ids=["order-123"],
+            symbol="BTC/USD",  # Our format
+            start_date=date(2025, 1, 15),
+            end_date=date(2025, 1, 17),
+        )
+
+        # Verify
+        assert result["total_fee_usd"] == 5.0  # 0.0001 * 50000
+        assert len(result["fee_details"]) == 1
+        assert result["fee_tier"] == "Tier 0: 0.25%"
+
+        # Verify call
+        mock_trading_client.get.assert_called()
+
+    def test_get_crypto_fees_by_orders_multi_order_aggregation(
+        self, execution_engine, mock_trading_client
+    ):
+        """Verify correct aggregation of CFEE for multiple orders within a trade."""
+        # Setup multiple CFEE activities
+        mock_activity1 = {
+            "id": "cfee-entry",
+            "symbol": "BTCUSD",
+            "qty": "-0.0001",
+            "price": "50000.0",
+            "date": "2025-01-16",
+            "description": "Tier 0: 0.25%",
+        }
+        mock_activity2 = {
+            "id": "cfee-exit",
+            "symbol": "BTCUSD",
+            "qty": "-0.0001",
+            "price": "55000.0",
+            "date": "2025-01-17",
+            "description": "Tier 0: 0.25%",
+        }
+
+        mock_trading_client.get.return_value = [mock_activity1, mock_activity2]
+
+        # Execute
+        result = execution_engine.get_crypto_fees_by_orders(
+            order_ids=["order-entry", "order-exit"],
+            symbol="BTC/USD",
+            start_date=date(2025, 1, 15),
+            end_date=date(2025, 1, 18),
+        )
+
+        # Verify aggregation: 5.0 + 5.5 = 10.5
+        assert result["total_fee_usd"] == 10.5
+        assert len(result["fee_details"]) == 2
+
+    def test_get_crypto_fees_by_orders_api_failure(
+        self, execution_engine, mock_trading_client
+    ):
+        """Ensure graceful handling when the Alpaca CFEE API call fails."""
+        # Setup API failure
+        mock_trading_client.get.side_effect = Exception("API rate limit exceeded")
+
+        # Execute - should not raise
+        result = execution_engine.get_crypto_fees_by_orders(
+            order_ids=["order-123"],
+            symbol="BTC/USD",
+            start_date=date(2025, 1, 15),
+            end_date=date(2025, 1, 17),
+        )
+
+        # Verify fallback to zero fees
+        assert result["total_fee_usd"] == 0.0
+        assert result["fee_details"] == []
+        assert result["fee_tier"] is None
+
+    def test_get_crypto_fees_by_orders_invalid_qty_price(
+        self, execution_engine, mock_trading_client
+    ):
+        """Verify validation skips CFEE records with qty=0 or price=0."""
+        # Setup invalid CFEE activity
+        mock_activity = {
+            "id": "cfee-invalid",
+            "symbol": "BTCUSD",
+            "qty": "0.0",  # Invalid!
+            "price": "50000.0",
+            "date": "2025-01-16",
+        }
+
+        mock_trading_client.get.return_value = [mock_activity]
+
+        # Execute
+        result = execution_engine.get_crypto_fees_by_orders(
+            order_ids=["order-123"],
+            symbol="BTC/USD",
+            start_date=date(2025, 1, 15),
+            end_date=date(2025, 1, 17),
+        )
+
+        # Verify invalid record was skipped
+        assert result["total_fee_usd"] == 0.0
+        assert len(result["fee_details"]) == 0
+
+    def test_get_crypto_fees_by_orders_retry_logic(
+        self, execution_engine, mock_trading_client
+    ):
+        """Verify retry logic with exponential backoff on transient failures."""
+        # Setup: Always fail to verify retry attempts
+        mock_trading_client.get.side_effect = Exception("Persistent API error")
+
+        # Mock sleep to avoid delays and track calls
+        with patch("crypto_signals.engine.execution.sleep") as mock_sleep:
+            # Execute
+            result = execution_engine.get_crypto_fees_by_orders(
+                order_ids=["order-123"],
+                symbol="BTC/USD",
+                start_date=date(2025, 1, 15),
+                end_date=date(2025, 1, 17),
+            )
+
+        # Verify retries happened (3 attempts total)
+        assert mock_trading_client.get.call_count == 3
+        # Verify exponential backoff: sleep called 2 times
+        assert mock_sleep.call_count == 2
+        # Verify fallback to zero fees after all retries exhausted
+        assert result["total_fee_usd"] == 0.0
+        assert result["fee_details"] == []
+        assert result["fee_tier"] is None
+
+    def test_get_current_fee_tier_success(self, execution_engine, mock_trading_client):
+        """Verify successful retrieval of the current fee tier from Alpaca."""
+        # Setup mock account
+        mock_account = MagicMock()
+        mock_account.crypto_tier = 0
+        mock_trading_client.get_account.return_value = mock_account
+
+        # Execute
+        result = execution_engine.get_current_fee_tier()
+
+        # Verify
+        assert result["tier_name"] == "Tier 0"
+        assert result["maker_fee_pct"] == 0.15
+        assert result["taker_fee_pct"] == 0.25
+
+    def test_get_current_fee_tier_api_failure(
+        self, execution_engine, mock_trading_client
+    ):
+        """Ensure graceful handling when the Alpaca fee tier API call fails."""
+        # Setup API failure
+        mock_trading_client.get_account.side_effect = Exception("API error")
+
+        # Execute - should not raise
+        result = execution_engine.get_current_fee_tier()
+
+        # Verify fallback to Tier 0
+        assert result["tier_name"] == "Tier 0"
+        assert result["maker_fee_pct"] == 0.15
+        assert result["taker_fee_pct"] == 0.25
