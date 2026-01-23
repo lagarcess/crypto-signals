@@ -13,6 +13,7 @@ Key Capabilities:
 """
 
 from datetime import date, datetime, timedelta, timezone
+from time import sleep
 from typing import Any, Dict, List, Optional, cast
 
 from alpaca.trading.client import TradingClient
@@ -535,83 +536,137 @@ class ExecutionEngine:
                 - fee_details: List of individual CFEE records
                 - fee_tier: Volume tier used
         """
-        try:
-            from alpaca.trading.enums import ActivityType
-            from alpaca.trading.requests import GetAccountActivitiesRequest
+        MAX_RETRIES = 3
+        RETRY_DELAY_BASE = 1.0  # seconds
 
-            # Query CFEE activities for date range
-            request = GetAccountActivitiesRequest(
-                activity_types=[ActivityType.CFEE],
-                date=start_date,
-                until=end_date,
-            )
+        for attempt in range(1, MAX_RETRIES + 1):
+            try:
+                # Query CFEE activities via raw REST API (TradingClient v2)
+                params = {
+                    "activity_types": "CFEE",
+                    "date": start_date.isoformat(),
+                    "until": end_date.isoformat(),
+                    "direction": "asc",
+                }
 
-            activities = self.alpaca.get_account_activities(filter=request)
+                activities_data = self.alpaca.get("/account/activities", params)
 
-            # Filter by symbol and aggregate
-            total_fee_usd = 0.0
-            fee_details = []
-            fee_tier = None
+                # Wrap dicts for object compatibility
+                class ActivityWrapper:
+                    def __init__(self, data):
+                        self.id = data.get("id")
+                        self.symbol = data.get("symbol")
+                        self.qty = data.get("qty")
+                        self.price = data.get("price")
+                        self.date = data.get("date")
+                        self.description = data.get("description")
 
-            for activity in activities:
-                # Match by symbol (Alpaca uses 'BTCUSD' format, we use 'BTC/USD')
-                activity_symbol = str(activity.symbol).replace("/", "")
-                query_symbol = symbol.replace("/", "")
-
-                if activity_symbol != query_symbol:
-                    continue
-
-                # Parse fee amount
-                # CFEE qty is in crypto, price is USD/crypto
-                # Fee USD = abs(qty) * price
-                qty = float(activity.qty) if hasattr(activity, "qty") else 0.0
-                price = float(activity.price) if hasattr(activity, "price") else 0.0
-
-                fee_usd = abs(qty) * price
-                total_fee_usd += fee_usd
-
-                fee_details.append(
-                    {
-                        "activity_id": activity.id,
-                        "date": str(activity.date),
-                        "qty": qty,
-                        "price": price,
-                        "fee_usd": fee_usd,
-                        "description": activity.description
-                        if hasattr(activity, "description")
-                        else None,
-                    }
+                activities = (
+                    [ActivityWrapper(a) for a in activities_data]
+                    if activities_data
+                    else []
                 )
 
-                # Extract tier from description (e.g., "Tier 0: 0.25%")
-                if hasattr(activity, "description") and not fee_tier:
-                    desc = str(activity.description)
-                    if "Tier" in desc:
-                        fee_tier = desc
+                # Filter by symbol and aggregate
+                total_fee_usd = 0.0
+                fee_details = []
+                fee_tier = None
 
-            logger.info(
-                f"Fetched CFEE for {symbol}: ${total_fee_usd:.4f} ({len(fee_details)} records)",
-                extra={
-                    "symbol": symbol,
+                for activity in activities:
+                    # Match by symbol (Alpaca uses 'BTCUSD' format, we use 'BTC/USD')
+                    activity_symbol = str(activity.symbol).replace("/", "")
+                    query_symbol = symbol.replace("/", "")
+
+                    if activity_symbol != query_symbol:
+                        continue
+
+                    # Parse fee amount
+                    # CFEE qty is in crypto, price is USD/crypto
+                    # Fee USD = abs(qty) * price
+                    qty = float(activity.qty) if hasattr(activity, "qty") else 0.0
+                    price = float(activity.price) if hasattr(activity, "price") else 0.0
+
+                    # Validate before conversion (skip invalid records)
+                    if qty == 0.0 or price == 0.0:
+                        logger.warning(
+                            f"Invalid CFEE record: qty={qty}, price={price}",
+                            extra={
+                                "activity_id": activity.id,
+                                "symbol": symbol,
+                                "qty": qty,
+                                "price": price,
+                            },
+                        )
+                        continue  # Skip invalid records
+
+                    fee_usd = abs(qty) * price
+                    total_fee_usd += fee_usd
+
+                    fee_details.append(
+                        {
+                            "activity_id": activity.id,
+                            "date": str(activity.date),
+                            "qty": qty,
+                            "price": price,
+                            "fee_usd": fee_usd,
+                            "description": activity.description
+                            if hasattr(activity, "description")
+                            else None,
+                        }
+                    )
+
+                    # Extract tier from description (e.g., "Tier 0: 0.25%")
+                    if hasattr(activity, "description") and not fee_tier:
+                        desc = str(activity.description)
+                        if "Tier" in desc:
+                            fee_tier = desc
+
+                logger.info(
+                    f"Fetched CFEE for {symbol}: ${total_fee_usd:.4f} ({len(fee_details)} records)",
+                    extra={
+                        "symbol": symbol,
+                        "total_fee_usd": total_fee_usd,
+                        "num_records": len(fee_details),
+                        "fee_tier": fee_tier,
+                    },
+                )
+
+                return {
                     "total_fee_usd": total_fee_usd,
-                    "num_records": len(fee_details),
+                    "fee_details": fee_details,
                     "fee_tier": fee_tier,
-                },
-            )
+                }
 
-            return {
-                "total_fee_usd": total_fee_usd,
-                "fee_details": fee_details,
-                "fee_tier": fee_tier,
-            }
-
-        except Exception as e:
-            logger.warning(f"Failed to fetch CFEE for {symbol}: {e}")
-            return {
-                "total_fee_usd": 0.0,
-                "fee_details": [],
-                "fee_tier": None,
-            }
+            except Exception as e:
+                if attempt < MAX_RETRIES:
+                    # Exponential backoff: 1s, 2s, 4s
+                    delay = RETRY_DELAY_BASE * (2 ** (attempt - 1))
+                    logger.warning(
+                        f"CFEE API call failed (attempt {attempt}/{MAX_RETRIES}), retrying in {delay}s: {e}",
+                        extra={
+                            "symbol": symbol,
+                            "attempt": attempt,
+                            "max_retries": MAX_RETRIES,
+                            "retry_delay": delay,
+                            "error": str(e),
+                        },
+                    )
+                    sleep(delay)
+                else:
+                    # Final attempt failed
+                    logger.warning(
+                        f"Failed to fetch CFEE for {symbol} after {MAX_RETRIES} attempts: {e}",
+                        extra={
+                            "symbol": symbol,
+                            "max_retries": MAX_RETRIES,
+                            "error": str(e),
+                        },
+                    )
+                    return {
+                        "total_fee_usd": 0.0,
+                        "fee_details": [],
+                        "fee_tier": None,
+                    }
 
     def get_current_fee_tier(self) -> Dict[str, Any]:
         """

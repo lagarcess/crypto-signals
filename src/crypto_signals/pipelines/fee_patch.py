@@ -27,6 +27,10 @@ class FeePatchPipeline:
     Runs daily before signal generation to finalize fees for closed trades.
     """
 
+    # Configuration Constants
+    CFEE_SETTLEMENT_HOURS = 24  # Alpaca T+1 settlement window
+    MAX_TRADES_PER_RUN = 100  # Batch size for performance and rate limiting
+
     def __init__(self):
         """Initialize the pipeline."""
         settings = get_settings()
@@ -91,9 +95,9 @@ class FeePatchPipeline:
         FROM `{self.fact_table_id}`
         WHERE fee_finalized = FALSE
           AND asset_class = 'CRYPTO'
-          AND exit_time < TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
+          AND exit_time < TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {self.CFEE_SETTLEMENT_HOURS} HOUR)
         ORDER BY exit_time ASC
-        LIMIT 100
+        LIMIT {self.MAX_TRADES_PER_RUN}
         """
 
         query_job = self.bq_client.query(query)

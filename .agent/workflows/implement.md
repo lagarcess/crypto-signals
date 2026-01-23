@@ -10,7 +10,7 @@ description: Turn issues into working code with a single command
    // turbo
    - Check if current branch is `main`. if so:
      - **Check Remote**: `git fetch origin`
-     - **Check Linked Branch**: Check if a branch like `Users/garce/issue-123` or `feat/123-desc` already exists remotely.
+     - **Check Linked Branch**: Check if a branch like `feat/123-desc` already exists remotely.
        - IF Exists: `git checkout [existing_branch]`
        - IF Not Exists: Create a new branch:
          - IF Issue Exists: `[type]/[issue_id]-[short-desc]`

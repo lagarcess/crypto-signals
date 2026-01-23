@@ -74,6 +74,12 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
         crypto_client = get_crypto_data_client()
         self.market_provider = MarketDataProvider(stock_client, crypto_client)
 
+        # Initialize ExecutionEngine for fee tier queries (Issue #140)
+        # Reused across all trades to avoid repeated instantiation
+        from crypto_signals.engine.execution import ExecutionEngine
+
+        self.execution_engine = ExecutionEngine()
+
     def extract(self) -> List[Any]:
         """
         Extract CLOSED positions from Firestore.
@@ -202,10 +208,7 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
 
                 if is_crypto:
                     # Get current fee tier for accurate estimate
-                    from crypto_signals.engine.execution import ExecutionEngine
-
-                    execution_engine = ExecutionEngine()
-                    tier_info = execution_engine.get_current_fee_tier()
+                    tier_info = self.execution_engine.get_current_fee_tier()
 
                     # Use taker fee (conservative, most trades are takers)
                     taker_fee_pct = tier_info["taker_fee_pct"]
