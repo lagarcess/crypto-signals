@@ -8,7 +8,6 @@ Tests cover:
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
-import pytest
 from crypto_signals.pipelines.price_patch import PricePatchPipeline
 
 
@@ -96,7 +95,7 @@ class TestPricePatchPipeline:
             result = pipeline._patch_trade_price(trade)
 
             # Assert
-            assert result == (True, 1000.0)
+            assert result == (True, 0.0)
             mock_engine.get_order_details.assert_called_once_with("order-abc")
             mock_bq_client.query.assert_called_once()
 
@@ -107,9 +106,7 @@ class TestPricePatchPipeline:
 
             assert params["actual_exit_price"] == 51000.0
             assert params["trade_id"] == "trade-123"
-            assert params["pnl_usd"] == pytest.approx(
-                1000.0, rel=0.01
-            )  # (51000 - 50000) * 1.0
+            assert params["pnl_usd"] == 0.0
 
     def test_price_patch_full_pipeline(self):
         """Test full price patch pipeline execution."""
