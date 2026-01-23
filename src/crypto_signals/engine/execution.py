@@ -731,6 +731,59 @@ class ExecutionEngine:
             logger.error(f"Failed to retrieve order {order_id}: {e}")
             return None
 
+    def _retry_fill_price_capture(
+        self,
+        order_id: str,
+        position_id: str,
+        max_retries: int = 3,
+        retry_delay: float = 1.5,
+    ) -> Optional[tuple[float, Optional[datetime]]]:
+        """
+        Retry fill price capture with configurable budget.
+
+        Handles volatile markets where orders sit in "Accepted" or "Partially Filled" state.
+        Retries with exponential backoff until fill price is available or budget exhausted.
+
+        Args:
+            order_id: Alpaca order ID to check
+            position_id: Position ID for logging context
+            max_retries: Number of retry attempts (default: 3)
+            retry_delay: Delay between retries in seconds (default: 1.5s)
+
+        Returns:
+            Tuple of (fill_price, filled_at) if successful, None otherwise
+        """
+        import time
+
+        for attempt in range(1, max_retries + 1):
+            time.sleep(retry_delay)
+            try:
+                refreshed_order = self.get_order_details(order_id)
+                if refreshed_order and refreshed_order.filled_avg_price:
+                    fill_price = float(refreshed_order.filled_avg_price)
+                    filled_at = refreshed_order.filled_at
+                    logger.info(
+                        f"[RETRY {attempt}] Captured fill price for {position_id}: ${fill_price}",
+                        extra={
+                            "position_id": position_id,
+                            "order_id": order_id,
+                            "attempt": attempt,
+                            "fill_price": fill_price,
+                        },
+                    )
+                    return (fill_price, filled_at)
+                else:
+                    logger.debug(
+                        f"[RETRY {attempt}/{max_retries}] Order {order_id} not filled yet "
+                        f"(status: {refreshed_order.status if refreshed_order else 'UNKNOWN'})"
+                    )
+            except Exception as poll_err:
+                logger.warning(
+                    f"[RETRY {attempt}] Poll failed for {position_id}: {poll_err}"
+                )
+
+        return None
+
     def sync_position_status(self, position: Position) -> Position:
         """
         Synchronize position with Alpaca broker state.
@@ -1160,39 +1213,19 @@ class ExecutionEngine:
                     f"${fill_price}"
                 )
             else:
-                # === RETRY BUDGET (Issue #141 - Staff Review Gap #3) ===
-                # Retry 3 times over 5 seconds before marking for deferred backfill
-                import time
+                # Use retry budget helper for delayed fills
+                result = self._retry_fill_price_capture(
+                    order_id=exit_order_id, position_id=position.position_id
+                )
+                if result:
+                    fill_price, _ = result  # We don't need filled_at for scale-outs
 
-                max_retries = 3
-                retry_delay = 1.5  # 1.5s between retries (total 5s budget)
-
-                for attempt in range(1, max_retries + 1):
-                    time.sleep(retry_delay)
-                    try:
-                        refreshed_order = self.get_order_details(exit_order_id)
-                        if refreshed_order and refreshed_order.filled_avg_price:
-                            fill_price = float(refreshed_order.filled_avg_price)
-                            logger.info(
-                                f"[RETRY {attempt}] Captured scale-out fill price for {position.position_id}: "
-                                f"${fill_price}"
-                            )
-                            break
-                        else:
-                            logger.debug(
-                                f"[RETRY {attempt}/{max_retries}] Scale-out order {exit_order_id} "
-                                f"not filled yet"
-                            )
-                    except Exception as poll_err:
-                        logger.warning(
-                            f"[RETRY {attempt}] Scale-out poll failed for {position.position_id}: {poll_err}"
-                        )
-
-                if not fill_price:
-                    logger.warning(
-                        f"[SCALE-OUT] Fill price not available for {position.position_id} "
-                        f"after {max_retries} retries. Order ID: {exit_order_id}"
-                    )
+            if not fill_price:
+                # Mark for backfill but proceed to allow inventory update
+                logger.warning(
+                    f"[SCALE-OUT] Fill price not available for {position.position_id} "
+                    f"after retry budget exhausted. Order ID: {exit_order_id}"
+                )
 
             # === WEIGHTED AVERAGE CALCULATION (Issue #141 - Staff Review Gap #2) ===
             # For multi-stage exits (TP1 @ $100, TP2 @ $110), calculate weighted average
@@ -1446,52 +1479,23 @@ class ExecutionEngine:
                 )
                 position.awaiting_backfill = False
             else:
-                # === RETRY BUDGET (Issue #141 - Staff Review Gap #3) ===
-                # Volatile markets: orders can sit in "Accepted" or "Partially Filled" state
-                # Retry 3 times over 5 seconds before marking for deferred backfill
-                import time
+                # Use retry budget helper for delayed fills
+                result = self._retry_fill_price_capture(
+                    order_id=position.exit_order_id, position_id=position.position_id
+                )
 
-                max_retries = 3
-                retry_delay = 1.5  # 1.5s between retries (total 5s budget)
-
-                for attempt in range(1, max_retries + 1):
-                    time.sleep(retry_delay)
-                    try:
-                        refreshed_order = self.get_order_details(position.exit_order_id)
-                        if refreshed_order and refreshed_order.filled_avg_price:
-                            position.exit_fill_price = float(
-                                refreshed_order.filled_avg_price
-                            )
-                            if refreshed_order.filled_at:
-                                position.exit_time = refreshed_order.filled_at
-                            logger.info(
-                                f"[RETRY {attempt}] Captured exit fill price for {position.position_id}: "
-                                f"${position.exit_fill_price}"
-                            )
-                            position.awaiting_backfill = False
-                            break
-                        else:
-                            logger.debug(
-                                f"[RETRY {attempt}/{max_retries}] Order {position.exit_order_id} "
-                                f"not filled yet (status: {refreshed_order.status if refreshed_order else 'UNKNOWN'})"
-                            )
-                    except Exception as poll_err:
-                        logger.warning(
-                            f"[RETRY {attempt}] Poll failed for {position.position_id}: {poll_err}"
-                        )
-
-                # If still not filled after retry budget
-                if not position.exit_fill_price:
-                    # Mark for deferred backfill
+                if result:
+                    fill_price, filled_at = result
+                    position.exit_fill_price = fill_price
+                    position.awaiting_backfill = False
+                    if filled_at:
+                        position.exit_time = filled_at
+                else:
+                    # Explicitly handle None (exhausted retries): Mark for deferred backfill
                     position.awaiting_backfill = True
                     logger.warning(
-                        f"[DEFERRED SYNC] Exit fill price not available for {position.position_id} "
-                        f"after {max_retries} retries. Will backfill via sync_position_status.",
-                        extra={
-                            "position_id": position.position_id,
-                            "exit_order_id": position.exit_order_id,
-                            "retry_budget_seconds": max_retries * retry_delay,
-                        },
+                        f"[BACKFILL PENDING] Exit price for {position.position_id} "
+                        f"will be backfilled by sync_position_status()"
                     )
 
             # Capture fill timestamp

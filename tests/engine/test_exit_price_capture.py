@@ -168,6 +168,52 @@ class TestEmergencyCloseRetryBudget:
         assert engine.get_order_details.call_count == 3  # All 3 retries exhausted
 
 
+class TestRetryFillPriceHelper:
+    """Test the _retry_fill_price_capture helper method."""
+
+    def test_retry_helper_immediate_success(self, mock_trading_client):
+        """Test helper returns fill price on first retry."""
+        # Arrange
+        engine = ExecutionEngine(trading_client=mock_trading_client)
+
+        mock_order = MagicMock(spec=Order)
+        mock_order.filled_avg_price = 50000.0
+        mock_order.filled_at = datetime.now(timezone.utc)
+
+        engine.get_order_details = MagicMock(return_value=mock_order)
+
+        # Act
+        with patch("time.sleep"):
+            result = engine._retry_fill_price_capture("order-123", "test-pos-1")
+
+        # Assert
+        assert result is not None
+        fill_price, filled_at = result
+        assert fill_price == 50000.0
+        assert filled_at == mock_order.filled_at
+        assert engine.get_order_details.call_count == 1
+
+    def test_retry_helper_exhausted(self, mock_trading_client):
+        """Test helper returns None when retries exhausted."""
+        # Arrange
+        engine = ExecutionEngine(trading_client=mock_trading_client)
+
+        mock_order = MagicMock(spec=Order)
+        mock_order.filled_avg_price = None
+
+        engine.get_order_details = MagicMock(return_value=mock_order)
+
+        # Act
+        with patch("time.sleep"):
+            result = engine._retry_fill_price_capture(
+                "order-456", "test-pos-2", max_retries=2
+            )
+
+        # Assert
+        assert result is None
+        assert engine.get_order_details.call_count == 2
+
+
 class TestScaleOutWeightedAverage:
     """Test scale-out with weighted average calculation."""
 
@@ -303,6 +349,7 @@ class TestScaleOutWeightedAverage:
         mock_order_retry = MagicMock(spec=Order)
         mock_order_retry.filled_avg_price = 105.0
         mock_order_retry.status = OrderStatus.FILLED
+        mock_order_retry.filled_at = datetime.now(timezone.utc)
 
         engine.get_order_details = MagicMock(return_value=mock_order_retry)
 
