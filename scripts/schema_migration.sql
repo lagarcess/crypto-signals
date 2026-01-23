@@ -47,6 +47,12 @@ ADD COLUMN IF NOT EXISTS fee_tier STRING,
 ADD COLUMN IF NOT EXISTS entry_order_id STRING,
 ADD COLUMN IF NOT EXISTS fee_reconciled_at TIMESTAMP;
 
+-- 5. Add Exit Price Reconciliation Fields (Issue #141)
+-- Tracks exit price settlement status (mirrors fee_finalized pattern)
+ALTER TABLE `{{PROJECT_ID}}.crypto_analytics.fact_trades`
+ADD COLUMN IF NOT EXISTS exit_price_finalized BOOL,
+ADD COLUMN IF NOT EXISTS exit_price_reconciled_at TIMESTAMP;
+
 -- 5. Reset Staging Table for TRADES
 -- Dropping and recreating LIKE the fact table guarantees identical schemas.
 DROP TABLE IF EXISTS `{{PROJECT_ID}}.crypto_analytics.stg_trades_import`;
@@ -70,6 +76,11 @@ ADD COLUMN IF NOT EXISTS fee_calculation_type STRING,
 ADD COLUMN IF NOT EXISTS fee_tier STRING,
 ADD COLUMN IF NOT EXISTS entry_order_id STRING,
 ADD COLUMN IF NOT EXISTS fee_reconciled_at TIMESTAMP;
+
+-- Ensure Exit Price fields exist in test table (Issue #141)
+ALTER TABLE `{{PROJECT_ID}}.crypto_analytics.fact_trades_test`
+ADD COLUMN IF NOT EXISTS exit_price_finalized BOOL,
+ADD COLUMN IF NOT EXISTS exit_price_reconciled_at TIMESTAMP;
 
 DROP TABLE IF EXISTS `{{PROJECT_ID}}.crypto_analytics.stg_trades_import_test`;
 CREATE TABLE `{{PROJECT_ID}}.crypto_analytics.stg_trades_import_test`
