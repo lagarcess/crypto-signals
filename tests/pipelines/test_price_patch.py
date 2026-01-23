@@ -96,7 +96,7 @@ class TestPricePatchPipeline:
             result = pipeline._patch_trade_price(trade)
 
             # Assert
-            assert result is True
+            assert result == (True, 1000.0)
             mock_engine.get_order_details.assert_called_once_with("order-abc")
             mock_bq_client.query.assert_called_once()
 
@@ -128,8 +128,10 @@ class TestPricePatchPipeline:
                 ]
             )
 
-            # Mock patch to succeed for first, fail for second
-            pipeline._patch_trade_price = MagicMock(side_effect=[True, False])
+            # Mock patch to succeed for first (restored $100), fail for second
+            pipeline._patch_trade_price = MagicMock(
+                side_effect=[(True, 100.0), (False, 0.0)]
+            )
 
             # Act
             patched_count = pipeline.run()

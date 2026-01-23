@@ -4,12 +4,12 @@ Automatic position sizing and stop-loss management when take-profit targets are 
 
 ## Scaling Strategy
 
-| Stage | Scale Out | Remaining | Stop Moves To |
-|-------|-----------|-----------|---------------|
-| **Entry** | - | 100% | Initial SL |
-| **TP1 Hit** | 50% | 50% | Breakeven (entry) |
-| **TP2 Hit** | 50% of remaining | 25% | TP1 level |
-| **TP3 Hit** | Runner exits | 0% | TP2 level (trailed) |
+| Stage       | Scale Out        | Remaining | Stop Moves To       |
+| ----------- | ---------------- | --------- | ------------------- |
+| **Entry**   | -                | 100%      | Initial SL          |
+| **TP1 Hit** | 50%              | 50%       | Breakeven (entry)   |
+| **TP2 Hit** | 50% of remaining | 25%       | TP1 level           |
+| **TP3 Hit** | Runner exits     | 0%        | TP2 level (trailed) |
 
 ## How It Works
 
@@ -24,27 +24,28 @@ When `ENABLE_EXECUTION=True`, the system automatically manages positions:
 ### Active Trailing (Chandelier Exit)
 
 When price moves favorably during Runner phase:
+
 - Chandelier Exit is recalculated each day
 - If new stop > current stop → Alpaca order is modified
 - Discord notified if movement > 1%
 
 ### Exit Triggers
 
-| Trigger | Alpaca Action |
-|---------|---------------|
-| **TP3 Hit** | Close remaining position |
-| **Invalidation** | Emergency close |
-| **Expiration** | Auto-cancel (no action) |
+| Trigger          | Alpaca Action            |
+| ---------------- | ------------------------ |
+| **TP3 Hit**      | Close remaining position |
+| **Invalidation** | Emergency close          |
+| **Expiration**   | Auto-cancel (no action)  |
 
 ## Schema Tracking Fields
 
-| Field | Description |
-|-------|-------------|
-| `original_qty` | Quantity before any scale-outs |
-| `scaled_out_qty` | Cumulative quantity sold |
-| `scaled_out_price` | Fill price of the most recent scale-out |
-| `scaled_out_at` | Timestamp of the most recent scale-out |
-| `breakeven_applied` | Whether stop moved to breakeven |
+| Field               | Description                             |
+| ------------------- | --------------------------------------- |
+| `original_qty`      | Quantity before any scale-outs          |
+| `scaled_out_qty`    | Cumulative quantity sold                |
+| `scaled_out_price`  | Fill price of the most recent scale-out |
+| `scaled_out_at`     | Timestamp of the most recent scale-out  |
+| `breakeven_applied` | Whether stop moved to breakeven         |
 
 ## Discord Notifications
 
@@ -68,7 +69,9 @@ RISK_PER_TRADE=100.0  # Fixed dollar risk per trade
 ## Exit Price Capture (Issue #141)
 
 ### Problem
+
 Volatile markets can leave orders in "Accepted" or "Partially Filled" states when the system checks immediately after order submission. This causes:
+
 - ❌ $0.00 exit prices in BigQuery (missing exit fills)
 - ❌ Broken P&L calculations (negative fees instead of profit)
 - ❌ Orphaned positions (awaiting backfill indefinitely)
@@ -94,6 +97,7 @@ else:
 ### Weighted Average for Multi-Stage Exits
 
 When scaling out in multiple stages (TP1 @ $100, TP2 @ $110):
+
 - **TP1**: `scaled_out_price = 100.0`
 - **TP2**: `scaled_out_price = (50% × $100 + 50% × $110) / 100% = $105.00` (weighted average)
 - **BigQuery**: `exit_price = $105.00` for accurate P&L
@@ -109,6 +113,7 @@ new_average = total_value / (scaled_out_qty + scale_qty)
 ### Backfill Pipeline
 
 **PricePatchPipeline** runs daily to repair $0.00 exit prices:
+
 1. Query BigQuery: `WHERE exit_price = 0.0 AND exit_order_id IS NOT NULL`
 2. Fetch actual fill price from Alpaca Orders API
 3. Update BigQuery with actual price + finalized flag
@@ -117,17 +122,18 @@ Cron: `0 1 * * *` (1 AM UTC daily) — runs before signal generation to ensure c
 
 ### Tracking Fields
 
-| Field | Description |
-|-------|-------------|
-| `exit_fill_price` | Actual fill price (immediate or via retry/backfill) |
-| `exit_order_id` | Alpaca order ID for exit order reconciliation |
-| `scaled_out_prices` | Array of scale-out records: `{qty, price, timestamp, order_id}` |
-| `awaiting_backfill` | Flag: True if retry budget exhausted, pending `sync_position_status()` |
-| `trade_duration_seconds` | Time from entry to exit (calculated on close) |
+| Field                    | Description                                                            |
+| ------------------------ | ---------------------------------------------------------------------- |
+| `exit_fill_price`        | Actual fill price (immediate or via retry/backfill)                    |
+| `exit_order_id`          | Alpaca order ID for exit order reconciliation                          |
+| `scaled_out_prices`      | Array of scale-out records: `{qty, price, timestamp, order_id}`        |
+| `awaiting_backfill`      | Flag: True if retry budget exhausted, pending `sync_position_status()` |
+| `trade_duration_seconds` | Time from entry to exit (calculated on close)                          |
 
 ## Data Life Cycle (Self-Cleaning)
 
 To maintain database hygiene and manage storage costs, positions have a fixed **90-day physical lifecycle**:
+
 - **Mechanism**: The `delete_at` field is automatically set to `now + 90 days` upon position creation.
 - **TTL Enforcement**: Google Cloud Firestore automatically prunes expired positions via the `delete_at` TTL policy.
 - **Manual Cleanup**: The `cleanup_firestore.py` script can be used to manually trigger pruning across all operational collections.

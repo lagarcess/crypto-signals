@@ -916,6 +916,8 @@ class ExecutionEngine:
                     if tp_order.filled_at:
                         position.exit_time = tp_order.filled_at
                     position.exit_reason = ExitReason.TP_HIT
+                    # ISSUE FIX: Capture exit_order_id for invalidation path backfill
+                    position.exit_order_id = str(tp_order.id)
                     logger.info(f"Position {position.position_id} closed via TP")
 
             if position.sl_order_id and position.status != TradeStatus.CLOSED:
@@ -928,6 +930,8 @@ class ExecutionEngine:
                     if sl_order.filled_at:
                         position.exit_time = sl_order.filled_at
                     position.exit_reason = ExitReason.STOP_LOSS
+                    # ISSUE FIX: Capture exit_order_id for invalidation path backfill
+                    position.exit_order_id = str(sl_order.id)
                     logger.info(f"Position {position.position_id} closed via SL")
 
             # -------------------------------------------------------------------------

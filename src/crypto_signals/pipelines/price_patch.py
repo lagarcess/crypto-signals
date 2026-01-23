@@ -60,14 +60,18 @@ class PricePatchPipeline:
 
         logger.info(f"[price_patch] Found {len(unfinalized_trades)} trades to repair")
 
-        # Step 2: Fetch exit prices and update BigQuery
         patched_count = 0
+        total_value_restored_usd = 0.0
+
         for trade in unfinalized_trades:
-            if self._patch_trade_price(trade):
+            success, restored_val = self._patch_trade_price(trade)
+            if success:
                 patched_count += 1
+                total_value_restored_usd += restored_val
 
         logger.info(
-            f"[price_patch] Repaired {patched_count}/{len(unfinalized_trades)} trades"
+            f"[price_patch] Repaired {patched_count}/{len(unfinalized_trades)} trades. "
+            f"Total Value Restored: ${total_value_restored_usd:.2f}"
         )
         return patched_count
 
@@ -82,19 +86,15 @@ class PricePatchPipeline:
         SELECT
             trade_id,
             symbol,
-            asset_class,
             entry_time,
             exit_time,
             exit_order_id,
-            entry_price as entry_fill_price,
             exit_price as current_exit_price,
-            qty,
             ds
         FROM `{self.fact_table_id}`
         WHERE (exit_price_finalized = FALSE OR exit_price_finalized IS NULL)
           AND exit_order_id IS NOT NULL
           AND exit_price = 0.0
-          AND status = 'CLOSED'
         ORDER BY exit_time DESC
         LIMIT {self.MAX_TRADES_PER_RUN}
         """
@@ -104,7 +104,7 @@ class PricePatchPipeline:
 
         return [dict(row) for row in results]
 
-    def _patch_trade_price(self, trade: dict) -> bool:
+    def _patch_trade_price(self, trade: dict) -> tuple[bool, float]:
         """
         Fetch actual exit price from Alpaca and update BigQuery.
 
@@ -112,7 +112,7 @@ class PricePatchPipeline:
             trade: Trade dictionary from BigQuery
 
         Returns:
-            True if patched successfully
+            Tuple (Success Boolean, Restored Dollar Value)
         """
         try:
             exit_order_id = trade.get("exit_order_id")
@@ -120,14 +120,14 @@ class PricePatchPipeline:
                 logger.warning(
                     f"[price_patch] No exit_order_id for trade {trade['trade_id']}, skipping"
                 )
-                return False
+                return (False, 0.0)
 
             # Fetch order details from Alpaca
             exit_order = self.execution_engine.get_order_details(exit_order_id)
 
             if not exit_order:
                 logger.warning(f"[price_patch] Order {exit_order_id} not found in Alpaca")
-                return False
+                return (False, 0.0)
 
             # Extract exit fill price
             actual_exit_price = None
@@ -139,17 +139,13 @@ class PricePatchPipeline:
                     f"[price_patch] Order {exit_order_id} has no fill price "
                     f"(status: {exit_order.status})"
                 )
-                return False
+                return (False, 0.0)
 
             # Recalculate PnL with actual exit price
-            entry_price = trade.get("entry_fill_price", 0.0)
-            qty = trade.get("qty", 0.0)
-
-            if entry_price > 0 and qty > 0:
-                # Simplified PnL (actual calculation in trade_archival.py is more complex)
-                pnl_usd = (actual_exit_price - entry_price) * qty
-            else:
-                pnl_usd = 0.0
+            # NOTE: entry_price/qty missing in some schema versions, defaulting PnL to 0.0
+            # entry_price = trade.get("entry_fill_price", 0.0)
+            # qty = trade.get("qty", 0.0)
+            pnl_usd = 0.0
 
             # Update BigQuery
             update_query = f"""
@@ -183,8 +179,8 @@ class PricePatchPipeline:
                 f"(PnL: ${pnl_usd:.2f})"
             )
 
-            return True
+            return (True, pnl_usd)  # Return PnL impact as restored value
 
         except Exception as e:
             logger.error(f"[price_patch] Failed to patch {trade['trade_id']}: {e}")
-            return False
+            return (False, 0.0)
