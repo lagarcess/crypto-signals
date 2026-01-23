@@ -43,6 +43,18 @@ from loguru import logger
 from rich.panel import Panel
 
 
+class _ActivityWrapper:
+    """Helper to wrap raw API dictionaries into object-like structures."""
+
+    def __init__(self, data: Dict[str, Any]):
+        self.id = data.get("id")
+        self.symbol = data.get("symbol")
+        self.qty = data.get("qty")
+        self.price = data.get("price")
+        self.date = data.get("date")
+        self.description = data.get("description")
+
+
 class ExecutionEngine:
     """
     Manages the complete order lifecycle from Signal to Alpaca trade.
@@ -552,17 +564,8 @@ class ExecutionEngine:
                 activities_data = self.alpaca.get("/account/activities", params)
 
                 # Wrap dicts for object compatibility
-                class ActivityWrapper:
-                    def __init__(self, data):
-                        self.id = data.get("id")
-                        self.symbol = data.get("symbol")
-                        self.qty = data.get("qty")
-                        self.price = data.get("price")
-                        self.date = data.get("date")
-                        self.description = data.get("description")
-
                 activities = (
-                    [ActivityWrapper(a) for a in activities_data]
+                    [_ActivityWrapper(a) for a in activities_data]
                     if activities_data
                     else []
                 )
