@@ -52,7 +52,10 @@ class TestEmergencyCloseRetryBudget:
         mock_trading_client.submit_order.return_value = mock_order
 
         # Act
-        with patch("crypto_signals.engine.execution.get_settings") as mock_settings:
+        with (
+            patch("crypto_signals.engine.execution.get_settings") as mock_settings,
+            patch("crypto_signals.engine.execution.PositionRepository"),
+        ):
             mock_settings.return_value.ENVIRONMENT = "PROD"
             result = engine.close_position_emergency(position)
 
@@ -107,7 +110,10 @@ class TestEmergencyCloseRetryBudget:
         )
 
         # Act
-        with patch("crypto_signals.engine.execution.get_settings") as mock_settings:
+        with (
+            patch("crypto_signals.engine.execution.get_settings") as mock_settings,
+            patch("crypto_signals.engine.execution.PositionRepository"),
+        ):
             mock_settings.return_value.ENVIRONMENT = "PROD"
             with patch("time.sleep"):  # Skip actual sleep
                 result = engine.close_position_emergency(position)
@@ -155,7 +161,10 @@ class TestEmergencyCloseRetryBudget:
         engine.get_order_details = MagicMock(return_value=mock_order_retry)
 
         # Act
-        with patch("crypto_signals.engine.execution.get_settings") as mock_settings:
+        with (
+            patch("crypto_signals.engine.execution.get_settings") as mock_settings,
+            patch("crypto_signals.engine.execution.PositionRepository"),
+        ):
             mock_settings.return_value.ENVIRONMENT = "PROD"
             with patch("time.sleep"):  # Skip actual sleep
                 result = engine.close_position_emergency(position)
@@ -244,7 +253,10 @@ class TestScaleOutWeightedAverage:
         mock_trading_client.submit_order.return_value = mock_order
 
         # Act
-        with patch("crypto_signals.engine.execution.get_settings") as mock_settings:
+        with (
+            patch("crypto_signals.engine.execution.get_settings") as mock_settings,
+            patch("crypto_signals.engine.execution.PositionRepository"),
+        ):
             mock_settings.return_value.ENVIRONMENT = "PROD"
             result = engine.scale_out_position(position, scale_pct=0.5)
 
@@ -285,7 +297,10 @@ class TestScaleOutWeightedAverage:
         mock_trading_client.submit_order.return_value = mock_order_tp1
 
         # Act: TP1 (50% @ $3200)
-        with patch("crypto_signals.engine.execution.get_settings") as mock_settings:
+        with (
+            patch("crypto_signals.engine.execution.get_settings") as mock_settings,
+            patch("crypto_signals.engine.execution.PositionRepository"),
+        ):
             mock_settings.return_value.ENVIRONMENT = "PROD"
             result_tp1 = engine.scale_out_position(position, scale_pct=0.5)
 
@@ -306,7 +321,10 @@ class TestScaleOutWeightedAverage:
         mock_trading_client.submit_order.return_value = mock_order_tp2
 
         # Act: TP2 (50% of remaining = 0.25 total @ $3400)
-        with patch("crypto_signals.engine.execution.get_settings") as mock_settings:
+        with (
+            patch("crypto_signals.engine.execution.get_settings") as mock_settings,
+            patch("crypto_signals.engine.execution.PositionRepository"),
+        ):
             mock_settings.return_value.ENVIRONMENT = "PROD"
             result_tp2 = engine.scale_out_position(position, scale_pct=0.5)
 
@@ -354,7 +372,10 @@ class TestScaleOutWeightedAverage:
         engine.get_order_details = MagicMock(return_value=mock_order_retry)
 
         # Act
-        with patch("crypto_signals.engine.execution.get_settings") as mock_settings:
+        with (
+            patch("crypto_signals.engine.execution.get_settings") as mock_settings,
+            patch("crypto_signals.engine.execution.PositionRepository"),
+        ):
             mock_settings.return_value.ENVIRONMENT = "PROD"
             with patch("time.sleep"):  # Skip actual sleep
                 result = engine.scale_out_position(position, scale_pct=0.5)

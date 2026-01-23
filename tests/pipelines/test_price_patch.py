@@ -17,7 +17,11 @@ class TestPricePatchPipeline:
     def test_price_patch_query(self):
         """Test price patch pipeline query logic."""
         # Arrange
-        with patch("crypto_signals.config.get_settings") as mock_settings:
+        with (
+            patch("crypto_signals.config.get_settings") as mock_settings,
+            patch("crypto_signals.pipelines.price_patch.bigquery.Client"),
+            patch("crypto_signals.pipelines.price_patch.ExecutionEngine"),
+        ):
             mock_settings.return_value.GOOGLE_CLOUD_PROJECT = "test-project"
             mock_settings.return_value.ENVIRONMENT = "PROD"
 
@@ -57,7 +61,11 @@ class TestPricePatchPipeline:
     def test_price_patch_update(self):
         """Test price patch pipeline update logic."""
         # Arrange
-        with patch("crypto_signals.config.get_settings") as mock_settings:
+        with (
+            patch("crypto_signals.config.get_settings") as mock_settings,
+            patch("crypto_signals.pipelines.price_patch.bigquery.Client"),
+            patch("crypto_signals.pipelines.price_patch.ExecutionEngine"),
+        ):
             mock_settings.return_value.GOOGLE_CLOUD_PROJECT = "test-project"
             mock_settings.return_value.ENVIRONMENT = "PROD"
 
@@ -111,7 +119,11 @@ class TestPricePatchPipeline:
     def test_price_patch_full_pipeline(self):
         """Test full price patch pipeline execution."""
         # Arrange
-        with patch("crypto_signals.config.get_settings") as mock_settings:
+        with (
+            patch("crypto_signals.config.get_settings") as mock_settings,
+            patch("crypto_signals.pipelines.price_patch.bigquery.Client"),
+            patch("crypto_signals.pipelines.price_patch.ExecutionEngine"),
+        ):
             mock_settings.return_value.GOOGLE_CLOUD_PROJECT = "test-project"
             mock_settings.return_value.ENVIRONMENT = "PROD"
 
