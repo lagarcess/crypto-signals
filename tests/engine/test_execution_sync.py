@@ -107,7 +107,10 @@ class TestSyncPositionStatusIssue139:
         # 2. Use an engine WITHOUT a reconciler
         from crypto_signals.engine.execution import ExecutionEngine
 
-        standalone_engine = ExecutionEngine(trading_client=mock_trading_client)
+        standalone_engine = ExecutionEngine(
+            trading_client=mock_trading_client,
+            repository=MagicMock(),  # Fix: Inject mock repo to avoid real Firestore init
+        )
 
         # Execute
         updated_pos = standalone_engine.sync_position_status(sample_position)
