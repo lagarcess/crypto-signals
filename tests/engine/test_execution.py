@@ -1690,6 +1690,7 @@ class TestMicroCapEdgeCases:
         signal_gen = SignalGenerator(
             market_provider=MagicMock(),
             indicators=None,
+            signal_repo=MagicMock(),
         )
 
         # Params with negative stop (edge case before fix)
@@ -1735,6 +1736,7 @@ class TestMicroCapEdgeCases:
         signal_gen = SignalGenerator(
             market_provider=MagicMock(),
             indicators=None,
+            signal_repo=MagicMock(),
         )
 
         # Params with safe floor stop
@@ -1778,6 +1780,7 @@ class TestMicroCapEdgeCases:
         signal_gen = SignalGenerator(
             market_provider=MagicMock(),
             indicators=None,
+            signal_repo=MagicMock(),
         )
 
         params = {
