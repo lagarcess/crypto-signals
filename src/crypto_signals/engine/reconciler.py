@@ -316,3 +316,92 @@ class StateReconciler:
         )
 
         return report
+
+    def handle_manual_exit_verification(self, position) -> bool:
+        """
+        Verify if a position that is missing from Alpaca has a corresponding manual exit order.
+        If verified, it updates the position object and returns True.
+
+        This logic is centralized here to unify state reconciliation strategies.
+        """
+        logger.warning(
+            f"Position {position.position_id} ({position.symbol}) not found on Alpaca. "
+            "Verifying manual exit via order history..."
+        )
+
+        try:
+            # 1. Determine the expected exit side
+            # Using specific check for Alpaca OrderSide enum to avoid domain mismatch
+            from alpaca.trading.enums import OrderSide as AlpacaOrderSide
+            from crypto_signals.domain.schemas import OrderSide as DomainOrderSide
+
+            close_side = (
+                AlpacaOrderSide.SELL
+                if position.side == DomainOrderSide.BUY
+                else AlpacaOrderSide.BUY
+            )
+
+            # 2. Search recent filled orders for this symbol
+            recent_orders = self.alpaca.get_orders(
+                filter={
+                    "status": "filled",
+                    "symbols": [position.symbol],
+                    "limit": 10,
+                    "side": close_side,
+                }
+            )
+
+            # 3. Find the most recent fill that is NOT our known TP or SL legs
+            closing_order = None
+            ignored_ids = {position.tp_order_id, position.sl_order_id}
+
+            for o in recent_orders:
+                if str(o.id) not in ignored_ids:
+                    closing_order = o
+                    break
+
+            # 4. If closing order found, heal the position state
+            if closing_order:
+                position.status = TradeStatus.CLOSED
+                position.exit_reason = ExitReason.MANUAL_EXIT
+                if closing_order.filled_avg_price:
+                    position.exit_fill_price = float(closing_order.filled_avg_price)
+                if closing_order.filled_at:
+                    position.exit_time = closing_order.filled_at
+                position.exit_order_id = str(closing_order.id)
+
+                logger.info(
+                    f"✅ MANUAL EXIT VERIFIED: {position.symbol} via Order {closing_order.id}",
+                    extra={
+                        "symbol": position.symbol,
+                        "order_id": closing_order.id,
+                        "price": position.exit_fill_price,
+                    },
+                )
+
+                # Notify Discord of the manual exit detected during sync
+                try:
+                    self.discord.send_message(
+                        f"☝️  **MANUAL EXIT DETECTED**: {position.symbol}\n"
+                        f"Position was found closed on Alpaca but open in DB.\n"
+                        f"Verified via manually placed order: `{closing_order.id}`."
+                    )
+                except Exception as notify_err:
+                    logger.warning(
+                        f"Failed to notify manual exit for {position.symbol}: {notify_err}"
+                    )
+
+                return True
+
+            # 5. If NO closing order found, it's a critical sync issue (don't close yet)
+            logger.error(
+                f"🛑 EXIT VERIFICATION FAILED: {position.symbol} missing from Alpaca "
+                "but NO matching closing order found. Keeping open in DB to prevent gap."
+            )
+            return False
+
+        except Exception as e:
+            logger.error(
+                f"Error during manual exit verification for {position.symbol}: {e}"
+            )
+            return False

@@ -208,7 +208,7 @@ def analyze_exit_gap(console: Console, settings):
     symbols = set(p.get("symbol") for p in all_positions if p.get("symbol"))
     console.print(f"Analyzing {len(symbols)} symbols: {list(symbols)}\n")
 
-    all_alpaca_orders = get_alpaca_orders(alpaca, limit=200)
+    all_alpaca_orders = get_alpaca_orders(alpaca, limit=500)
     console.print(f"Total Alpaca orders retrieved: {len(all_alpaca_orders)}\n")
 
     # Categorize orders by side
@@ -260,6 +260,10 @@ def analyze_exit_gap(console: Console, settings):
 
         # Skip theoretical trades - they don't hit Alpaca
         if trade_type in ("THEORETICAL", "RISK_BLOCKED"):
+            continue
+
+        # Skip resolved legacy gaps
+        if pos.get("exit_order_id") == "LEGACY_GAP_RESOLVED":
             continue
 
         # Check if any sell order exists for this symbol

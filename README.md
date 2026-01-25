@@ -49,9 +49,11 @@ Crypto Sentinel is a production-ready trading bot that:
 - ✅ **Execution Gating**: Strict `ENVIRONMENT=PROD` requirement for Alpaca order placement; results are logged as `[THEORETICAL MODE]` in `DEV`.
 - ✅ **Environment Isolation**: Automatic data routing to environment-specific Firestore collections (`live_` vs `test_`).
 - ✅ **Data Cleanup**: Automatic TTL via Firestore (30/7-day retention for signals, 90-day for positions).
-- ✅ **State Reconciliation**: Automatic detection and healing of sync gaps between Alpaca and Firestore (Issue #113):
+- ✅ **State Reconciliation**: Automatic detection and healing of sync gaps between Alpaca and Firestore (Issue #113/139):
   - Detects **Zombies**: Positions marked OPEN in Firestore but already closed in Alpaca
   - Detects **Orphans**: Positions open in Alpaca but missing from Firestore (manual entries)
+  - Detects **Exit Gaps**: Missing exit orders or false manual exits (Issue #139)
+  - **Manual Exit Verification**: Strictly verifies filled sell orders before closing DB records
   - Heals zombies by marking them `CLOSED_EXTERNALLY` + Firestore update
   - Alerts orphans via Discord for manual investigation
   - Runs automatically at job startup, non-blocking, PROD-gated
