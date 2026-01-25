@@ -43,6 +43,9 @@ from crypto_signals.observability import (
     log_execution_time,
     setup_gcp_logging,
 )
+from crypto_signals.pipelines.fee_patch import FeePatchPipeline
+from crypto_signals.pipelines.price_patch import PricePatchPipeline
+from crypto_signals.pipelines.trade_archival import TradeArchivalPipeline
 from crypto_signals.repository.firestore import (
     JobLockRepository,
     PositionRepository,
@@ -154,10 +157,6 @@ def main(
             rejected_repo = RejectedSignalRepository()  # Shadow signal persistence
 
             # Pipeline Services
-            from crypto_signals.pipelines.fee_patch import FeePatchPipeline
-            from crypto_signals.pipelines.price_patch import PricePatchPipeline
-            from crypto_signals.pipelines.trade_archival import TradeArchivalPipeline
-
             trade_archival = TradeArchivalPipeline()
             fee_patch = FeePatchPipeline()
             price_patch = PricePatchPipeline()

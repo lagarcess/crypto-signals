@@ -13,6 +13,7 @@ Pattern: "Enrich-Extract-Load"
 
 import time
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from typing import Any, List
 
 import pandas as pd
@@ -149,11 +150,18 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                     )
                     if status_code == 404 or "not found" in str(e).lower():
                         logger.warning(
-                            f"[{self.job_name}] Order {client_order_id} "
-                            "not found: Skipping."
+                            f"[{self.job_name}] Order {client_order_id} not found in Alpaca. "
+                            "Assuming Theoretical/Paper trade. Falling back to Firestore data."
                         )
-                        continue
-                    raise e
+                        # Create synthetic order from Firestore data
+                        order = SimpleNamespace(
+                            id=None,
+                            filled_avg_price=pos.get("entry_fill_price", 0.0),
+                            filled_qty=pos.get("qty", 0.0),
+                            side=pos.get("side", "buy").lower(),
+                        )
+                    else:
+                        raise e
 
                 # 2. Calculate Derived Metrics
                 # Note: Alpaca 'filled_avg_price' is the source of truth

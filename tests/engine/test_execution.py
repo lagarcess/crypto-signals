@@ -92,13 +92,7 @@ def sample_equity_signal():
 
 
 @pytest.fixture
-def mock_reconciler():
-    """Fixture for mocking StateReconciler."""
-    return MagicMock()
-
-
-@pytest.fixture
-def execution_engine(mock_settings, mock_trading_client, mock_reconciler):
+def execution_engine(mock_settings, mock_trading_client):
     """Create an ExecutionEngine with mocked dependencies."""
     with (
         patch("crypto_signals.engine.execution.get_settings", return_value=mock_settings),
@@ -112,11 +106,7 @@ def execution_engine(mock_settings, mock_trading_client, mock_reconciler):
 
         # Mock Repository to avoid Firestore Auth
         mock_repo = MagicMock()
-        engine = ExecutionEngine(
-            trading_client=mock_trading_client,
-            repository=mock_repo,
-            reconciler=mock_reconciler,
-        )
+        engine = ExecutionEngine(trading_client=mock_trading_client, repository=mock_repo)
         yield engine
 
 
@@ -250,7 +240,6 @@ class TestExecuteSignal:
         mock_settings = MagicMock()
         mock_settings.is_paper_trading = False
         mock_settings.ENABLE_EXECUTION = True
-        mock_settings.RISK_PER_TRADE = 100.0  # Explicitly set to float
         mock_settings.TTL_DAYS_POSITION = 90
         # Determine environment to test fallback
         mock_settings.ENVIRONMENT = "PROD"
@@ -286,7 +275,6 @@ class TestExecuteSignal:
         mock_settings = MagicMock()
         mock_settings.is_paper_trading = True
         mock_settings.ENABLE_EXECUTION = False
-        mock_settings.RISK_PER_TRADE = 100.0  # Explicitly set to float
         mock_settings.ENVIRONMENT = "PROD"
         mock_settings.TTL_DAYS_POSITION = 90
 
@@ -830,24 +818,42 @@ class TestSyncPositionStatus:
         assert updated.exit_time == datetime(2025, 1, 15, 16, 0, 0, tzinfo=timezone.utc)
 
     def test_sync_detects_manual_exit_when_not_found(
-        self, execution_engine, mock_trading_client, mock_reconciler
+        self, execution_engine, mock_trading_client
     ):
-        """Verify position sync delegats to reconciler when not found on Alpaca."""
-        from crypto_signals.domain.schemas import Position, TradeStatus
+        """Verify position marked CLOSED (Manual Exit) when not found on Alpaca."""
+        from datetime import datetime, timezone
+
+        from crypto_signals.domain.schemas import ExitReason, Position, TradeStatus
+
+        # Setup - parent order is filled (Entry)
+        mock_parent = MagicMock()
+        mock_parent.status = "filled"
+        mock_parent.legs = []  # No active legs found (or irrelevant)
 
         # Setup - get_open_position raises 404 (Not Found)
         mock_trading_client.get_open_position.side_effect = Exception(
             "position not found (404)"
         )
 
-        # Create position
+        # Setup - get_orders finds a closing order
+        mock_close_order = MagicMock()
+        mock_close_order.id = "manual-close-id"
+        mock_close_order.status = "filled"
+        mock_close_order.filled_avg_price = "52000.0"
+        mock_close_order.filled_at = datetime(2025, 1, 15, 17, 0, 0, tzinfo=timezone.utc)
+
+        mock_trading_client.get_orders.return_value = [mock_close_order]
+
+        # Setup get_order_by_id for parent
+        mock_trading_client.get_order_by_id.return_value = mock_parent
+
         position = Position(
-            position_id="test-pos-sync-delegation",
+            position_id="test-pos-manual",
             ds=date(2025, 1, 15),
             account_id="paper",
             symbol="BTC/USD",
-            signal_id="test-signal-1",
-            alpaca_order_id="parent-order-123",
+            signal_id="test-signal-manual",
+            alpaca_order_id="parent-id",
             status=TradeStatus.OPEN,
             entry_fill_price=50000.0,
             current_stop_loss=48000.0,
@@ -856,10 +862,18 @@ class TestSyncPositionStatus:
         )
 
         # Execute
-        execution_engine.sync_position_status(position)
+        updated = execution_engine.sync_position_status(position)
 
-        # Verify delegation
-        mock_reconciler.handle_manual_exit_verification.assert_called_once_with(position)
+        # Verify
+        assert updated.status == TradeStatus.CLOSED
+        assert updated.exit_reason == ExitReason.MANUAL_EXIT
+        assert updated.exit_fill_price == 52000.0
+        assert updated.exit_time == datetime(2025, 1, 15, 17, 0, 0, tzinfo=timezone.utc)
+
+        # Verify get_orders called with correct filter
+        mock_trading_client.get_orders.assert_called_once()
+        call_args = mock_trading_client.get_orders.call_args
+        assert call_args[1]["filter"]["side"] == OrderSide.SELL  # Closing a BUY
 
 
 class TestModifyStopLoss:
@@ -1674,7 +1688,6 @@ class TestMicroCapEdgeCases:
         signal_gen = SignalGenerator(
             market_provider=MagicMock(),
             indicators=None,
-            signal_repo=MagicMock(),
         )
 
         # Params with negative stop (edge case before fix)
@@ -1720,7 +1733,6 @@ class TestMicroCapEdgeCases:
         signal_gen = SignalGenerator(
             market_provider=MagicMock(),
             indicators=None,
-            signal_repo=MagicMock(),
         )
 
         # Params with safe floor stop
@@ -1764,7 +1776,6 @@ class TestMicroCapEdgeCases:
         signal_gen = SignalGenerator(
             market_provider=MagicMock(),
             indicators=None,
-            signal_repo=MagicMock(),
         )
 
         params = {

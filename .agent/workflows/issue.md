@@ -60,7 +60,7 @@ description: Diagnose, validate, and create high-quality GitHub issues
    - **STOP** and wait for approval.
 
 4. **Submit Issue**
-   - Run: `gh issue create --title "TITLE" --body-file temp/issue_draft.md --label "bug" (or "enhancement")`
+   - Run: `gh issue create --title "<ISSUE_TITLE>" --body-file temp/issue_draft.md --label "bug" (or "enhancement")`
    - Record the new Issue Number.
 
 5. **Update Documentation**

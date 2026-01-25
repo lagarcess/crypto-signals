@@ -48,11 +48,10 @@ def mock_dependencies():
         patch("crypto_signals.main.ExecutionEngine") as execution_engine,
         patch("crypto_signals.main.JobLockRepository") as job_lock,
         patch("crypto_signals.main.RejectedSignalRepository") as rejected_repo,
-        patch(
-            "crypto_signals.pipelines.trade_archival.TradeArchivalPipeline"
-        ) as trade_archival,
-        patch("crypto_signals.pipelines.fee_patch.FeePatchPipeline") as fee_patch,
-        patch("crypto_signals.pipelines.price_patch.PricePatchPipeline") as price_patch,
+        patch("crypto_signals.main.TradeArchivalPipeline") as trade_archival,
+        patch("crypto_signals.main.FeePatchPipeline") as fee_patch,
+        patch("crypto_signals.main.PricePatchPipeline") as price_patch,
+        patch("crypto_signals.main.StateReconciler") as reconciler,
     ):
         # Configure mock settings
         mock_settings.return_value.CRYPTO_SYMBOLS = [
@@ -123,6 +122,7 @@ def mock_dependencies():
             "trade_archival": trade_archival,
             "fee_patch": fee_patch,
             "price_patch": price_patch,
+            "reconciler": reconciler,
         }
 
 
@@ -159,6 +159,32 @@ def test_main_execution_flow(mock_dependencies):
     manager.attach_mock(mock_repo_instance.save, "save")
     manager.attach_mock(mock_discord_instance.send_signal, "send_signal")
     manager.attach_mock(mock_repo_instance.update_signal, "update_signal")
+
+    # === PIPELINE TRACKING (Issue #149) ===
+
+    # Detach return value to prevent attribute access logs (critical_issues, etc.)
+    mock_report = MagicMock()
+    mock_report.critical_issues = []
+    mock_report.zombies = []
+    mock_report.orphans = []
+    mock_report.reconciled_count = 0
+    mock_dependencies["reconciler"].return_value.reconcile.return_value = mock_report
+
+    # Configure pipeline return values to prevent logging interaction (str/repr calls)
+    mock_dependencies["trade_archival"].return_value.run.return_value = 5
+    mock_dependencies["fee_patch"].return_value.run.return_value = 2
+
+    # Setup tracking for Reconcile -> Archive -> Fee Patch Sequence
+    pipeline_manager = Mock()
+    pipeline_manager.attach_mock(
+        mock_dependencies["reconciler"].return_value.reconcile, "reconcile"
+    )
+    pipeline_manager.attach_mock(
+        mock_dependencies["trade_archival"].return_value.run, "archive"
+    )
+    pipeline_manager.attach_mock(
+        mock_dependencies["fee_patch"].return_value.run, "fee_patch"
+    )
 
     # Execute
     main(smoke_test=False)
@@ -207,6 +233,14 @@ def test_main_execution_flow(mock_dependencies):
 
     # Legacy update should NOT be called
     mock_repo_instance.update_signal.assert_not_called()
+
+    # Verify precise call order (Names only to avoid fragile call object comparison)
+    actual_calls = [c[0] for c in pipeline_manager.mock_calls]
+    assert actual_calls == [
+        "reconcile",
+        "archive",
+        "fee_patch",
+    ], f"Actual calls mismatch: {actual_calls}"
 
 
 def test_send_signal_captures_thread_id(mock_dependencies):
