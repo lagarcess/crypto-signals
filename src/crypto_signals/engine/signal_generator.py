@@ -548,8 +548,23 @@ class SignalGenerator:
             suggested_stop = invalidation_price * 0.99
 
         elif "ELLIOTT" in pattern_name:
+            # =====================================================================
+            # MICRO-CAP HANDLING (Issue #136: Negative Stop Loss)
+            # =====================================================================
+            # For extremely low-priced assets (PEPE/USD: $0.00001), ATR-based
+            # stop loss calculations can produce negative values:
+            #   suggested_stop = low_price - (0.5 * atr)
+            #   Example: 0.00000080 - (0.5 * 0.000002) = -0.00000020 ❌
+            #
+            # SOLUTION: Use max() to enforce floor at SAFE_STOP_VAL (1e-8)
+            #   suggested_stop = max(SAFE_STOP_VAL, low_price - (0.5 * atr))
+            #
+            # This prevents negative values while preserving ATR logic.
+            # See Issue #136 for detailed analysis.
+            # =====================================================================
             if atr > 0:
-                suggested_stop = low_price - (0.5 * atr)
+                # Prevent negative stops for micro-caps (low price + high volatility)
+                suggested_stop = max(self.SAFE_STOP_VAL, low_price - (0.5 * atr))
             else:
                 suggested_stop = low_price * 0.99
             invalidation_price = low_price

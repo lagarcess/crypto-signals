@@ -486,6 +486,30 @@ class ExecutionEngine:
         # Position size = total risk / risk per share
         qty = risk_per_trade / risk_per_share
 
+        # =====================================================================
+        # MICRO-CAP SAFEGUARD (Issue #136)
+        # When stop-loss is very close to entry (micro-cap scenario with tiny
+        # stops), risk_per_share becomes extremely small, causing qty to explode.
+        # Example: risk=100, risk_per_share=0.00000001 → qty=10,000,000,000
+        #
+        # Cap qty at reasonable limit to prevent Alpaca rejections.
+        # =====================================================================
+        MAX_POSITION_SIZE = 1_000_000  # Alpaca limit for fractional crypto
+
+        if qty > MAX_POSITION_SIZE:
+            logger.warning(
+                f"Position size {qty:.2f} exceeds MAX ({MAX_POSITION_SIZE}) for {signal.symbol}. "
+                f"Possible micro-cap edge case (tight stop-loss). Capping at max.",
+                extra={
+                    "symbol": signal.symbol,
+                    "qty": qty,
+                    "risk_per_share": risk_per_share,
+                    "entry_price": signal.entry_price,
+                    "suggested_stop": signal.suggested_stop,
+                },
+            )
+            qty = MAX_POSITION_SIZE
+
         # Round based on asset class
         if signal.asset_class == AssetClass.CRYPTO:
             # Crypto allows fractional shares (up to 8 decimals for most)
