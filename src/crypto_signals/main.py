@@ -154,9 +154,13 @@ def main(
             rejected_repo = RejectedSignalRepository()  # Shadow signal persistence
 
             # Pipeline Services
+            from crypto_signals.pipelines.fee_patch import FeePatchPipeline
+            from crypto_signals.pipelines.price_patch import PricePatchPipeline
             from crypto_signals.pipelines.trade_archival import TradeArchivalPipeline
 
             trade_archival = TradeArchivalPipeline()
+            fee_patch = FeePatchPipeline()
+            price_patch = PricePatchPipeline()
 
         # Job Locking
         job_id = "signal_generator_cron"
@@ -193,8 +197,6 @@ def main(
             )
             # Don't halt execution - reconciliation is advisory
 
-            # Don't halt execution - reconciliation is advisory
-
         # === TRADE ARCHIVAL (Issue #149) ===
         # Move Closed Positions -> BigQuery (Before Fee Patch!)
         # Must run AFTER reconciliation (so we archive what was just closed)
@@ -215,9 +217,6 @@ def main(
         # Runs T+1 reconciliation for trades older than 24 hours
         logger.info("Running fee reconciliation...")
         try:
-            from crypto_signals.pipelines.fee_patch import FeePatchPipeline
-
-            fee_patch = FeePatchPipeline()
             patched_count = fee_patch.run()
 
             if patched_count > 0:
@@ -235,9 +234,6 @@ def main(
         # Runs for historical repair and daily reconciliation
         logger.info("Running exit price reconciliation...")
         try:
-            from crypto_signals.pipelines.price_patch import PricePatchPipeline
-
-            price_patch = PricePatchPipeline()
             patched_count = price_patch.run()
 
             if patched_count > 0:

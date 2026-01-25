@@ -48,6 +48,11 @@ def mock_dependencies():
         patch("crypto_signals.main.ExecutionEngine") as execution_engine,
         patch("crypto_signals.main.JobLockRepository") as job_lock,
         patch("crypto_signals.main.RejectedSignalRepository") as rejected_repo,
+        patch(
+            "crypto_signals.pipelines.trade_archival.TradeArchivalPipeline"
+        ) as trade_archival,
+        patch("crypto_signals.pipelines.fee_patch.FeePatchPipeline") as fee_patch,
+        patch("crypto_signals.pipelines.price_patch.PricePatchPipeline") as price_patch,
     ):
         # Configure mock settings
         mock_settings.return_value.CRYPTO_SYMBOLS = [
@@ -94,6 +99,11 @@ def mock_dependencies():
         # This fixes regression in existing tests that don't expect recovery
         discord.return_value.find_thread_by_signal_id.return_value = None
 
+        # Configure Pipeline default returns (int) to avoid TypeError in comparisons
+        trade_archival.return_value.run.return_value = 0
+        fee_patch.return_value.run.return_value = 0
+        price_patch.return_value.run.return_value = 0
+
         yield {
             "stock_client": stock_client,
             "crypto_client": crypto_client,
@@ -110,6 +120,9 @@ def mock_dependencies():
             "execution_engine": execution_engine,
             "job_lock": job_lock,
             "rejected_repo": rejected_repo,
+            "trade_archival": trade_archival,
+            "fee_patch": fee_patch,
+            "price_patch": price_patch,
         }
 
 
