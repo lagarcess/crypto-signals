@@ -153,6 +153,11 @@ def main(
             job_lock_repo = JobLockRepository()
             rejected_repo = RejectedSignalRepository()  # Shadow signal persistence
 
+            # Pipeline Services
+            from crypto_signals.pipelines.trade_archival import TradeArchivalPipeline
+
+            trade_archival = TradeArchivalPipeline()
+
         # Job Locking
         job_id = "signal_generator_cron"
         if not job_lock_repo.acquire_lock(job_id):
@@ -187,6 +192,23 @@ def main(
                 extra={"error": str(e)},
             )
             # Don't halt execution - reconciliation is advisory
+
+            # Don't halt execution - reconciliation is advisory
+
+        # === TRADE ARCHIVAL (Issue #149) ===
+        # Move Closed Positions -> BigQuery (Before Fee Patch!)
+        # Must run AFTER reconciliation (so we archive what was just closed)
+        logger.info("Running trade archival...")
+        try:
+            archival_count = trade_archival.run()
+            if archival_count > 0:
+                logger.info(
+                    f"✅ Trade archival complete: {archival_count} trades archived"
+                )
+            else:
+                logger.info("✅ Trade archival complete: No closed trades to archive")
+        except Exception as e:
+            logger.error(f"Trade archival failed: {e}")
 
         # === FEE RECONCILIATION (Issue #140) ===
         # Patch estimated fees with actual CFEE data before generating new signals
