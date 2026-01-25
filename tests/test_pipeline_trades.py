@@ -59,9 +59,13 @@ def test_active_trade_validation_loop(
         patch("crypto_signals.main.PositionRepository", return_value=mock_position_repo),
         patch("crypto_signals.main.PositionRepository", return_value=mock_position_repo),
         patch("crypto_signals.main.RejectedSignalRepository"),
-        patch("crypto_signals.pipelines.trade_archival.TradeArchivalPipeline"),
-        patch("crypto_signals.pipelines.fee_patch.FeePatchPipeline"),
-        patch("crypto_signals.pipelines.price_patch.PricePatchPipeline"),
+        patch(
+            "crypto_signals.main.TradeArchivalPipeline"
+        ) as mock_trade_archival,
+        patch("crypto_signals.main.FeePatchPipeline") as mock_fee_patch,
+        patch(
+            "crypto_signals.main.PricePatchPipeline"
+        ) as mock_price_patch,
         patch("crypto_signals.main.ExecutionEngine"),
         patch("crypto_signals.main.init_secrets", return_value=True),
         patch("crypto_signals.main.load_config_from_firestore", return_value=None),
@@ -73,6 +77,12 @@ def test_active_trade_validation_loop(
     ):
         # Configure JobLock to always succeed
         mock_job_lock.return_value.acquire_lock.return_value = True
+
+        # Configure Pipeline mocks to return integers for run()
+        mock_trade_archival.return_value.run.return_value = 0
+        mock_fee_patch.return_value.run.return_value = 0
+        mock_price_patch.return_value.run.return_value = 0
+
         # Mock settings to have 1 crypto symbol
         mock_settings.return_value.CRYPTO_SYMBOLS = ["BTC/USD"]
         mock_settings.return_value.EQUITY_SYMBOLS = []

@@ -12,6 +12,7 @@ to ensure idempotency and data consistency.
 from abc import ABC, abstractmethod
 from typing import Any, List, Type
 
+from google.api_core.exceptions import NotFound
 from google.cloud import bigquery
 from loguru import logger
 from pydantic import BaseModel
@@ -93,8 +94,22 @@ class BigQueryPipelineBase(ABC):
 
         return transformed
 
+    def _check_table_exists(self, table_id: str) -> bool:
+        """Check if a BigQuery table exists."""
+        try:
+            self.bq_client.get_table(table_id)
+            return True
+        except NotFound:
+            return False
+
     def _truncate_staging(self) -> None:
         """Truncate the staging table to clear old data."""
+        if not self._check_table_exists(self.staging_table_id):
+            logger.warning(
+                f"[{self.job_name}] Staging table {self.staging_table_id} not found. Skipping truncate."
+            )
+            return
+
         query = f"TRUNCATE TABLE `{self.staging_table_id}`"
         logger.info(
             f"[{self.job_name}] Truncating staging table: {self.staging_table_id}"
@@ -112,6 +127,12 @@ class BigQueryPipelineBase(ABC):
         if not data:
             logger.warning(f"[{self.job_name}] No data to load to staging.")
             return
+
+        if not self._check_table_exists(self.staging_table_id):
+            logger.error(
+                f"[{self.job_name}] Staging table {self.staging_table_id} not found. Cannot load data."
+            )
+            raise RuntimeError(f"Staging table {self.staging_table_id} not found")
 
         logger.info(
             f"[{self.job_name}] Loading {len(data)} rows to {self.staging_table_id}..."
@@ -131,6 +152,12 @@ class BigQueryPipelineBase(ABC):
 
         Dynamically constructs the SQL based on the Pydantic model fields.
         """
+        if not self._check_table_exists(self.fact_table_id):
+            logger.error(
+                f"[{self.job_name}] Fact table {self.fact_table_id} not found. Cannot merge."
+            )
+            raise RuntimeError(f"Fact table {self.fact_table_id} not found")
+
         logger.info(f"[{self.job_name}] Executing MERGE operation...")
 
         # 1. Get all column names from the model
@@ -169,12 +196,15 @@ class BigQueryPipelineBase(ABC):
         query_job.result()  # Wait for completion
         logger.info(f"[{self.job_name}] MERGE completed successfully.")
 
-    def run(self) -> None:
+    def run(self) -> int:
         """
         Orchestrate the full pipeline execution.
 
         Flow: Extract -> Transform -> Truncate Staging -> Load Staging
               -> Merge -> Cleanup
+
+        Returns:
+            int: Number of records processed.
 
         Raises:
             Exception: If any step fails, logs and RE-RAISES the exception.
@@ -187,7 +217,7 @@ class BigQueryPipelineBase(ABC):
             raw_data = self.extract()
             if not raw_data:
                 logger.info(f"[{self.job_name}] No data found. Exiting.")
-                return
+                return 0
 
             # 2. Transform
             transformed_data = self.transform(raw_data)
@@ -202,10 +232,14 @@ class BigQueryPipelineBase(ABC):
             self._execute_merge()
 
             # 6. Cleanup - Re-validate for type safety (cheap vs BQ/Network ops)
-            cleanup_models = [self.schema_model.model_validate(d) for d in raw_data]
+            # Use transformed_data to ensure all fields required by schema are present
+            cleanup_models = [
+                self.schema_model.model_validate(d) for d in transformed_data
+            ]
             self.cleanup(cleanup_models)
 
             logger.info(f"[{self.job_name}] Pipeline finished successfully.")
+            return len(transformed_data)
 
         except Exception as e:
             logger.error(f"[{self.job_name}] Pipeline FAILED: {str(e)}", exc_info=True)

@@ -154,10 +154,12 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                             "Assuming Theoretical/Paper trade. Falling back to Firestore data."
                         )
                         # Create synthetic order from Firestore data
+                        # Robustness: Ensure qty is handled if missing
+                        qty_fallback = pos.get("qty", 0.0) or 0.0
                         order = SimpleNamespace(
                             id=None,
                             filled_avg_price=pos.get("entry_fill_price", 0.0),
-                            filled_qty=pos.get("qty", 0.0),
+                            filled_qty=qty_fallback,
                             side=pos.get("side", "buy").lower(),
                         )
                     else:
@@ -185,6 +187,32 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
 
                 # Get exit price from Firestore document, default to 0.0 if missing
                 exit_price_val = float(pos.get("exit_fill_price", 0.0))
+
+                # Weighted Average Exit Price for Partial Fills
+                scaled_out_prices = pos.get("scaled_out_prices", [])
+                if scaled_out_prices:
+                    total_exit_val = 0.0
+                    total_exit_qty = 0.0
+
+                    for scale in scaled_out_prices:
+                        s_qty = float(scale.get("qty", 0.0))
+                        s_price = float(scale.get("price", 0.0))
+                        total_exit_val += s_qty * s_price
+                        total_exit_qty += s_qty
+
+                    # Remaining quantity closed at exit_fill_price
+                    # Use original_qty if available to determine total, else use current qty (which represents total traded)
+                    original_qty = pos.get("original_qty")
+                    total_qty_calc = (
+                        float(original_qty) if original_qty else qty
+                    )  # Fallback to order qty
+
+                    remaining_qty = total_qty_calc - total_exit_qty
+                    if remaining_qty > 0:
+                        total_exit_val += remaining_qty * exit_price_val
+
+                    if total_qty_calc > 0:
+                        exit_price_val = total_exit_val / total_qty_calc
 
                 # Timestamps
                 entry_time_str = pos.get("entry_time")  # Should be in doc
@@ -364,12 +392,12 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
 
         return transformed
 
-    def cleanup(self, data: List[dict]) -> None:
+    def cleanup(self, data: List[TradeExecution]) -> None:
         """
         Delete processed positions from Firestore.
 
         Args:
-            data: List of successfully loaded data dicts (or models).
+            data: List of successfully loaded TradeExecution models.
         """
         if not data:
             return
@@ -383,10 +411,10 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
         count = 0
 
         for item in data:
-            # item is a dict from BIGQUERY format or Pydantic dump.
+            # item is now a TradeExecution Pydantic model
             # We need the Original ID used in Firestore.
             # In transform, we mapped trade_id -> position_id.
-            doc_id = item.get("trade_id")
+            doc_id = item.trade_id
 
             # Assumption: Firestore Doc ID == position_id
             # (which is usually true in this design)
