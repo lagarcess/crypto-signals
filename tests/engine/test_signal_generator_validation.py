@@ -24,14 +24,6 @@ def signal_generator(mock_market_provider, mock_repository):
     )
 
 
-def test_validate_signal_parameters_valid(signal_generator):
-    """Test that valid parameters return an empty rejection list."""
-    # This method doesn't exist yet, but TDD dictates we write the test first
-    # We will need to expose this method or test it via a public interface if it's private.
-    # For now, we assume we can access it or test via generated signals.
-    pass
-
-
 def test_generate_signal_with_negative_stop(signal_generator):
     """
     Test that a signal with a negative stop (due to volatility or bad math)
@@ -77,8 +69,9 @@ def test_generate_signal_with_negative_stop(signal_generator):
 
         # 3. Assertions
         assert signal is not None, "Signal should not be None"
-        assert signal.status == SignalStatus.REJECTED_BY_FILTER
-        assert "VALIDATION_FAILED" in signal.rejection_reason
+        # Since we now proactively fix negative stops for Elliott patterns,
+        # the signal should be valid (WAITING), not REJECTED.
+        assert signal.status == SignalStatus.WAITING
         assert (
             signal.suggested_stop == SignalGenerator.SAFE_STOP_VAL
         )  # Safe hydration check

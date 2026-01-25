@@ -240,6 +240,7 @@ class TestExecuteSignal:
         mock_settings = MagicMock()
         mock_settings.is_paper_trading = False
         mock_settings.ENABLE_EXECUTION = True
+        mock_settings.RISK_PER_TRADE = 100.0  # Explicitly set to float
         mock_settings.TTL_DAYS_POSITION = 90
         # Determine environment to test fallback
         mock_settings.ENVIRONMENT = "PROD"
@@ -275,6 +276,7 @@ class TestExecuteSignal:
         mock_settings = MagicMock()
         mock_settings.is_paper_trading = True
         mock_settings.ENABLE_EXECUTION = False
+        mock_settings.RISK_PER_TRADE = 100.0  # Explicitly set to float
         mock_settings.ENVIRONMENT = "PROD"
         mock_settings.TTL_DAYS_POSITION = 90
 
