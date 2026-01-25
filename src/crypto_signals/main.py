@@ -142,7 +142,14 @@ def main(
             position_repo = PositionRepository()
             discord = DiscordClient()
             asset_validator = AssetValidationService(get_trading_client())
-            execution_engine = ExecutionEngine()
+
+            reconciler = StateReconciler(
+                alpaca_client=get_trading_client(),
+                position_repo=position_repo,
+                discord_client=discord,
+                settings=settings,
+            )
+            execution_engine = ExecutionEngine(reconciler=reconciler)
             job_lock_repo = JobLockRepository()
             rejected_repo = RejectedSignalRepository()  # Shadow signal persistence
 
@@ -159,12 +166,6 @@ def main(
         # Detect and heal zombie/orphan positions before main loop
         logger.info("Running state reconciliation...")
         try:
-            reconciler = StateReconciler(
-                alpaca_client=get_trading_client(),
-                position_repo=position_repo,
-                discord_client=discord,
-                settings=settings,
-            )
             reconciliation_report = reconciler.reconcile()
 
             if reconciliation_report.critical_issues:

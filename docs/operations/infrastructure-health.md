@@ -165,6 +165,10 @@ poetry run python -m crypto_signals.scripts.diagnostics.state_analysis
 
 # Forensic analysis (detect order gaps between Firestore and Alpaca)
 poetry run python -m crypto_signals.scripts.diagnostics.forensic_analysis
+
+# Data Healing (Issue #139)
+poetry run python -m crypto_signals.scripts.resurrect_positions --dry-run
+poetry run python -m crypto_signals.scripts.fix_reverse_orphans --dry-run
 ```
 
 Reports are written to `temp/reports/`. See [Scripts Organization](../development/scripts-organization.md) for details.

@@ -52,6 +52,9 @@ src/crypto_signals/scripts/
     ├── forensic_details.py     # Detailed position inspection
     ├── health_check.py         # Connectivity verification
     └── state_analysis.py       # Firestore state analysis
+├── fix_reverse_orphans.py      # Heal CLOSED_DB (Manual) -> OPEN_ALPACA
+├── resurrect_positions.py      # Batch resurrect false-manual exits
+└── cleanup_legacy_gaps.py      # Tag legacy orphans as resolved
 ```
 
 **Run these with:**
