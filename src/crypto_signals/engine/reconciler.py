@@ -346,17 +346,23 @@ class StateReconciler:
             from alpaca.trading.enums import OrderStatus
 
             request = GetOrdersRequest(
-                status=OrderStatus.FILLED,
+                status="closed",
                 symbols=[position.symbol],
                 limit=10,
                 side=close_side,
             )
-            recent_orders = self.alpaca.get_orders(filter=request)
+            from alpaca.trading.models import Order
+
+            recent_orders_result = self.alpaca.get_orders(filter=request)
+            recent_orders = (
+                recent_orders_result
+                if isinstance(recent_orders_result, list)
+                else []
+            )
 
             # 3. Find the most recent fill that is NOT our known TP or SL legs
             closing_order = None
             ignored_ids = {position.tp_order_id, position.sl_order_id}
-            from alpaca.trading.models import Order
 
             for o in recent_orders:
                 if isinstance(o, Order) and str(o.id) not in ignored_ids:

@@ -4,6 +4,7 @@ from datetime import date, datetime, timezone
 from unittest.mock import MagicMock
 
 import pytest
+from alpaca.trading.models import Order
 from crypto_signals.domain.schemas import (
     ExitReason,
     OrderSide,
@@ -63,7 +64,7 @@ class TestHandleManualExitVerification:
     ):
         """Verify that a filled sell order marks the position as CLOSED/MANUAL_EXIT."""
         # 1. Mock get_orders to return a FILLED SELL order
-        mock_sell_order = MagicMock()
+        mock_sell_order = MagicMock(spec=Order)
         mock_sell_order.id = "manual-sell-order-123"
         mock_sell_order.status = "filled"
         mock_sell_order.side = "sell"
@@ -106,7 +107,7 @@ class TestHandleManualExitVerification:
     ):
         """Verify that known TP/SL legs are ignored in the manual exit search."""
         # 1. Return the TP order as the only "recent filled order"
-        mock_tp_order = MagicMock()
+        mock_tp_order = MagicMock(spec=Order)
         mock_tp_order.id = sample_position.tp_order_id  # Matches known TP
         mock_tp_order.status = "filled"
 

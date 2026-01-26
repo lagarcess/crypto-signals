@@ -8,6 +8,7 @@ Tests cover:
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
+from alpaca.trading.models import Order
 from crypto_signals.pipelines.price_patch import PricePatchPipeline
 
 
@@ -80,7 +81,7 @@ class TestPricePatchPipeline:
             pipeline.execution_engine = mock_engine
 
             # Mock order details from Alpaca
-            mock_order = MagicMock()
+            mock_order = MagicMock(spec=Order)
             mock_order.filled_avg_price = 51000.0
             mock_order.status = "filled"
             mock_engine.get_order_details.return_value = mock_order

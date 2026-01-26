@@ -287,11 +287,11 @@ class TestPerformance:
         lows = (base - np.abs(np.random.randn(n)) * 2).astype(np.float64)
 
         # Warm-up run (first call may include some overhead)
-        _zigzag_core(highs[:1000], lows[:1000], 0.05)
+        _zigzag_core(highs[:1000].astype(np.float64), lows[:1000].astype(np.float64), 0.05)
 
         # Timed run
         start = time.perf_counter()
-        result = _zigzag_core(highs, lows, 0.05)
+        result = _zigzag_core(highs.astype(np.float64), lows.astype(np.float64), 0.05)
         elapsed = time.perf_counter() - start
 
         # Should complete in under 50ms (relaxed from 5ms for CI variance)

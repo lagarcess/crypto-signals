@@ -258,9 +258,9 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                         # Robustness: Ensure qty is handled if missing
                         qty_fallback = pos.get("qty", 0.0) or 0.0
                         order = SimpleNamespace(
-                            id=None,
-                            filled_avg_price=pos.get("entry_fill_price", 0.0),
-                            filled_qty=qty_fallback,
+                            id=str(pos.get("alpaca_order_id")),
+                            filled_avg_price=str(pos.get("entry_fill_price") or "0.0"),
+                            filled_qty=str(qty_fallback),
                             side=pos.get("side", "buy").lower(),
                         )
                     else:

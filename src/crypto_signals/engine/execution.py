@@ -191,10 +191,8 @@ class ExecutionEngine:
                 },
             )
 
-            order = self.alpaca.submit_order(order_request)
+            order = cast(Order, self.alpaca.submit_order(order_request))
 
-            if not isinstance(order, Order):
-                raise Exception(f"Order submission failed: {order}")
             logger.info(
                 f"CRYPTO ORDER SUBMITTED: {signal.symbol}",
                 extra={
@@ -289,9 +287,7 @@ class ExecutionEngine:
                 },
             )
 
-            order = self.alpaca.submit_order(order_request)
-            if not isinstance(order, Order):
-                raise Exception(f"Order submission failed: {order}")
+            order = cast(Order, self.alpaca.submit_order(order_request))
 
             # Log success
             logger.info(
@@ -747,10 +743,7 @@ class ExecutionEngine:
             Order object if found, None if not found or on error.
         """
         try:
-            order = self.alpaca.get_order_by_id(order_id)
-            if not isinstance(order, Order):
-                logger.warning(f"Order {order_id} not found or is not an Order object.")
-                return None
+            order = cast(Order, self.alpaca.get_order_by_id(order_id))
             logger.debug(
                 f"Retrieved order {order_id}: status={order.status}",
                 extra={"order_id": order_id, "status": str(order.status)},
@@ -886,7 +879,7 @@ class ExecutionEngine:
         try:
             # Fetch parent order
             order = self.get_order_details(position.alpaca_order_id)
-            if not isinstance(order, Order):
+            if not order:
                 position.failed_reason = "Parent order not found in Alpaca"
                 return position
 
@@ -1449,9 +1442,7 @@ class ExecutionEngine:
                 time_in_force=TimeInForce.GTC,
             )
 
-            close_order = self.alpaca.submit_order(close_request)
-            if not isinstance(close_order, Order):
-                raise Exception(f"Order submission failed: {close_order}")
+            close_order = cast(Order, self.alpaca.submit_order(close_request))
 
             # === ISSUE 139 FIX: Capture exit order details ===
             # Store exit order ID for reconciliation and backfill

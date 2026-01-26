@@ -1,6 +1,7 @@
 from typing import NamedTuple, Optional
 
 from alpaca.trading.client import TradingClient
+from alpaca.trading.models import TradeAccount
 from crypto_signals.config import get_settings
 from crypto_signals.domain.schemas import AssetClass, Signal
 from crypto_signals.repository.firestore import PositionRepository

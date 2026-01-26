@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
-from crypto_signals.domain.schemas import OrderSide
+from crypto_signals.domain.schemas import OrderSide, RejectedSignal
 from crypto_signals.pipelines.rejected_signal_archival import RejectedSignalArchival
 
 
@@ -142,7 +142,7 @@ def test_transform_validation_failure(pipeline, mock_market_provider):
 
 def test_cleanup(pipeline, mock_firestore):
     """Test cleaning up processed signals from Firestore."""
-    data = [{"signal_id": "sig_1"}]
+    data = [RejectedSignal(signal_id="sig_1", created_at=datetime.now(timezone.utc), ds=datetime.now(timezone.utc).date())]
     mock_batch = mock_firestore.batch.return_value
 
     pipeline.cleanup(data)
