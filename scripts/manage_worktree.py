@@ -129,7 +129,7 @@ def create(
     try:
         run_command(["poetry", "install"], cwd=target_path)
         console.print("✅ Dependencies installed")
-    except Exception as e:
+    except subprocess.CalledProcessError as e:
         console.print(f"[red]Failed to install dependencies: {e}[/red]")
         console.print("You may need to run 'poetry install' manually in the new folder.")
 
@@ -236,7 +236,7 @@ def sync(
                 "[yellow]No CI/CD history found for 'main'. Proceeding with caution.[/yellow]"
             )
 
-    except Exception as e:
+    except subprocess.CalledProcessError as e:
         console.print(
             f"[yellow]Warning: Could not check CI/CD status ({e}). Proceeding...[/yellow]"
         )

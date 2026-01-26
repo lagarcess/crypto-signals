@@ -69,8 +69,11 @@ def main(
     try:
         with open(review_file, "r", encoding="utf-8") as f:
             data = json.load(f)
-    except Exception as e:
-        console.print(f"[bold red]Failed to load review JSON: {e}[/bold red]")
+    except json.JSONDecodeError as e:
+        console.print(f"[bold red]Failed to parse review JSON: {e}[/bold red]")
+        sys.exit(1)
+    except FileNotFoundError:
+        console.print(f"[bold red]Review file not found: {review_file}[/bold red]")
         sys.exit(1)
 
     # Validate Data
