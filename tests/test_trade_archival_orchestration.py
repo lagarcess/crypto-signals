@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock, patch
-import pytest
+
 from crypto_signals.pipelines.trade_archival import TradeArchivalPipeline
+
 
 def test_trade_archival_orchestration_flow():
     """
@@ -13,7 +14,9 @@ def test_trade_archival_orchestration_flow():
     """
     with (
         patch("crypto_signals.pipelines.trade_archival.get_settings") as mock_settings,
-        patch("crypto_signals.pipelines.trade_archival.get_trading_client") as mock_alpaca,
+        patch(
+            "crypto_signals.pipelines.trade_archival.get_trading_client"
+        ) as mock_alpaca,
         patch("crypto_signals.pipelines.trade_archival.get_stock_data_client"),
         patch("crypto_signals.pipelines.trade_archival.get_crypto_data_client"),
         patch("crypto_signals.pipelines.trade_archival.MarketDataProvider"),
@@ -23,7 +26,7 @@ def test_trade_archival_orchestration_flow():
     ):
         # 1. Setup Environment
         mock_settings.return_value.GOOGLE_CLOUD_PROJECT = "test-project"
-        mock_settings.return_value.ENVIRONMENT = "PROD" # Simulate PROD
+        mock_settings.return_value.ENVIRONMENT = "PROD"  # Simulate PROD
 
         # 2. Setup Firestore Data (Mock Closed Position with Scale Outs)
         mock_firestore = mock_firestore_cls.return_value
@@ -36,7 +39,7 @@ def test_trade_archival_orchestration_flow():
             "entry_time": "2025-01-01T10:00:00",
             "exit_time": "2025-01-01T12:00:00",
             "entry_fill_price": 50000.0,
-            "exit_fill_price": 52000.0, # Final exit price
+            "exit_fill_price": 52000.0,  # Final exit price
             "side": "buy",
             "qty": 1.0,
             "original_qty": 1.0,
@@ -45,12 +48,14 @@ def test_trade_archival_orchestration_flow():
             "target_entry_price": 50000.0,
             "scaled_out_prices": [
                 {"qty": 0.5, "price": 51000.0, "timestamp": "2025-01-01T11:00:00"}
-            ]
+            ],
         }
         # Simulate doc ID (though cleanup uses trade_id from model)
         mock_doc.id = "pos_123"
 
-        mock_firestore.collection.return_value.where.return_value.stream.return_value = [mock_doc]
+        mock_firestore.collection.return_value.where.return_value.stream.return_value = [
+            mock_doc
+        ]
 
         # 3. Setup Alpaca Mock (Order Found)
         mock_order = MagicMock()
@@ -61,7 +66,6 @@ def test_trade_archival_orchestration_flow():
         mock_alpaca.return_value.get_order_by_client_order_id.return_value = mock_order
 
         # Mock Account Activities for Actual Fees
-        from alpaca.trading.enums import ActivityType
 
         # Activity 1: CFEE for Buy Order (Fee in Asset)
         # 0.0001 BTC fee * 50000 USD/BTC = 5 USD
@@ -125,6 +129,7 @@ def test_trade_archival_orchestration_flow():
         mock_firestore.collection.return_value.document.assert_called_with("pos_123")
         pipeline.firestore_client.batch.return_value.delete.assert_called()
         pipeline.firestore_client.batch.return_value.commit.assert_called()
+
 
 if __name__ == "__main__":
     test_trade_archival_orchestration_flow()

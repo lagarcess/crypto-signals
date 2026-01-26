@@ -1,6 +1,8 @@
 import os
+from unittest.mock import patch
+
 import pytest
-from unittest.mock import MagicMock, patch
+
 
 @pytest.fixture(autouse=True)
 def mock_env_vars():
@@ -11,10 +13,12 @@ def mock_env_vars():
     os.environ["TEST_DISCORD_WEBHOOK"] = "https://discord.com/api/webhooks/test"
     os.environ["ALPACA_PAPER_TRADING"] = "true"
 
+
 @pytest.fixture
 def mock_firestore_client():
     with patch("google.cloud.firestore.Client") as mock:
         yield mock
+
 
 @pytest.fixture
 def mock_bq_client():
