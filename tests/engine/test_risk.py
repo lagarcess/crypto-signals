@@ -6,7 +6,6 @@ import pytest
 from alpaca.trading.models import TradeAccount
 from crypto_signals.config import Settings
 from crypto_signals.domain.schemas import AssetClass
-from crypto_signals.engine.cache import PositionCountCache
 from crypto_signals.engine.risk import RiskEngine
 from crypto_signals.repository.firestore import PositionRepository
 
@@ -44,21 +43,13 @@ class TestRiskEngine:
         return client
 
     @pytest.fixture
-    def mock_cache(self):
-        return MagicMock(spec=PositionCountCache)
-
-    @pytest.fixture
-    def risk_engine(self, mock_client, mock_repo, mock_settings, mock_cache):
+    def risk_engine(self, mock_client, mock_repo, mock_settings):
         # Patch the engine's settings property or injected dependency
         # Patch get_settings() dependency for RiskEngine
         with pytest.MonkeyPatch.context() as m:
             # Patch at module level where it's imported
             m.setattr("crypto_signals.engine.risk.get_settings", lambda: mock_settings)
-            engine = RiskEngine(
-                trading_client=mock_client,
-                repository=mock_repo,
-                position_count_cache=mock_cache,
-            )
+            engine = RiskEngine(trading_client=mock_client, repository=mock_repo)
             yield engine
 
     def test_check_buying_power_crypto_pass(self, risk_engine):
@@ -79,9 +70,9 @@ class TestRiskEngine:
         result = risk_engine.check_buying_power(EQUITY, 10000.0)
         assert result.passed is True
 
-    def test_check_sector_cap_crypto_fail(self, risk_engine, mock_cache):
-        # Mock cache to return MAX
-        mock_cache.get_or_fetch.return_value = 5  # Match Max
+    def test_check_sector_cap_crypto_fail(self, risk_engine, mock_repo):
+        # Mock repo to return MAX
+        mock_repo.count_open_positions_by_class.return_value = 5  # Match Max
 
         result = risk_engine.check_sector_limit(CRYPTO)
         assert result.passed is False
