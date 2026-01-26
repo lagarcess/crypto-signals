@@ -27,6 +27,13 @@ Jules should use these commands to ensure synchronization with the developer wor
 - `/fix`: Recursive self-correction loop for test failures.
 - `/review-jules`: **Manager Mode**. Delegate feedback to Jules via `post_review.py`.
 
+## Parallel Development (Worktrees)
+
+When working on multiple issues, use the `scripts/manage_worktree.py` tool.
+- Create: `python scripts/manage_worktree.py create feat/x`
+- Sync: `python scripts/manage_worktree.py sync` (Maintains linearity)
+- Remove: `python scripts/manage_worktree.py remove feat/x`
+
 ## Never-Violate Standards
 
 1. **Environment Isolation**: Never override `ENVIRONMENT=PROD` in automated scripts. Use `DEV` or `STAGING` for fixes.

@@ -78,6 +78,25 @@ Follow this sequence for every standard task or issue.
     - Pulls latest changes.
     - Deletes the local feature branch.
 
+## 🌳 Parallel Development (Git Worktrees)
+
+To work on multiple branches simultaneously (without switching contexts), use the **Worktree Manager**.
+
+### Commands
+
+| Command | Usage | Description |
+| :--- | :--- | :--- |
+| **Create** | `python scripts/manage_worktree.py create <branch>` | Creates `../crypto-signals-<branch>`, copies `.env`, installs deps. Handles local/remote branches. |
+| **Sync** | `python scripts/manage_worktree.py sync` | **Rebases** worktree on `origin/main`. **Checks CI/CD** (blocks if main is broken). |
+| **Remove** | `python scripts/manage_worktree.py remove <branch>` | Deletes worktree directory and prunes git metadata. |
+| **List** | `python scripts/manage_worktree.py list` | Shows active worktrees. |
+
+### Workflow Example
+1.  **Start Task**: `python scripts/manage_worktree.py create feat/issue-123`
+2.  **Work**: `cd ../crypto-signals-feat-issue-123` (Fully isolated environment).
+3.  **Update**: `python scripts/manage_worktree.py sync` (Keep current with main).
+4.  **Finish**: Submit PR, then `python scripts/manage_worktree.py remove feat/issue-123`.
+
 ---
 
 ## ⚡ Shortcuts & Tips
