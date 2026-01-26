@@ -59,13 +59,9 @@ def test_active_trade_validation_loop(
         patch("crypto_signals.main.PositionRepository", return_value=mock_position_repo),
         patch("crypto_signals.main.PositionRepository", return_value=mock_position_repo),
         patch("crypto_signals.main.RejectedSignalRepository"),
-        patch(
-            "crypto_signals.main.TradeArchivalPipeline"
-        ) as mock_trade_archival,
+        patch("crypto_signals.main.TradeArchivalPipeline") as mock_trade_archival,
         patch("crypto_signals.main.FeePatchPipeline") as mock_fee_patch,
-        patch(
-            "crypto_signals.main.PricePatchPipeline"
-        ) as mock_price_patch,
+        patch("crypto_signals.main.PricePatchPipeline") as mock_price_patch,
         patch("crypto_signals.main.ExecutionEngine"),
         patch("crypto_signals.main.StateReconciler") as mock_reconciler_cls,
         patch("crypto_signals.main.init_secrets", return_value=True),
@@ -87,10 +83,7 @@ def test_active_trade_validation_loop(
         # Configure StateReconciler mock to return a safe report
         mock_reconciler_instance = mock_reconciler_cls.return_value
         mock_reconciler_instance.reconcile.return_value = MagicMock(
-            critical_issues=[],
-            zombies=[],
-            orphans=[],
-            reconciled_count=0
+            critical_issues=[], zombies=[], orphans=[], reconciled_count=0
         )
 
         # Mock settings to have 1 crypto symbol
