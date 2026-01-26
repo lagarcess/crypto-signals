@@ -1,0 +1,36 @@
+# Project Agents & Tools: Crypto Sentinel
+
+This file provides a map of the core modules, responsibilities, and constraints for autonomous agents (Jules) and AI tools.
+
+## Key Modules & Responsibilities
+
+| Component | Path | Responsibility | Constraints |
+| :--- | :--- | :--- | :--- |
+| **Domain** | `src/crypto_signals/domain/` | Pydantic schemas and core logic. | **Zero External IO**. Pure logic/data only. |
+| **Engine** | `src/crypto_signals/engine/` | Orchestration (Signal, Execution, Reconciler). | Must bridge Domain and Repository layers. |
+| **Repository** | `src/crypto_signals/repository/` | Persistence layer (Firestore). | Must handle composite index requirements. |
+| **Analysis** | `src/crypto_signals/analysis/` | Technical indicators & pattern detection. | **Numba JIT Requirement**. Must include warmup tests. |
+| **Market** | `src/crypto_signals/market/` | API wrappers (Alpaca). | Defensive parsing. Strict 404 handling. |
+| **Pipelines** | `src/crypto_signals/pipelines/` | BigQuery ETL & Archival logic. | Schema parity checks required. |
+
+## Core Commands (Slash Commands)
+
+Jules should use these commands to ensure synchronization with the developer workflow:
+
+- `/plan [task]`: Generates `temp/plan/implementation-plan.md`. Always starts here.
+- `/implement`: Enters TDD loop. Writes tests first.
+- `/verify`: Runs full test suite + Smoke Test. Auto-triggers `/fix` on failure.
+- `/learn`: **Critical**. Updates `docs/development/knowledge-base.md` with new findings. Run after every major change.
+- `/fix`: Recursive self-correction loop for test failures.
+
+## Never-Violate Standards
+
+1. **Environment Isolation**: Never override `ENVIRONMENT=PROD` in automated scripts. Use `DEV` or `STAGING` for fixes.
+2. **Two-Phase Commit**: Always persist a signal or state to Firestore *before* sending a Discord notification.
+3. **JIT Warmup**: Any changes to `analysis/structural.py` require a `warmup_jit()` call to prevent latency spikes in production.
+4. **Structured Logging**: Use `loguru` with context (`signal_id`, `symbol`). No standard `print` statements.
+5. **TDD First**: Generate a failing test for bugs before writing the fix.
+
+## Synchronous Handover
+- After a task is finished, run `/learn` to update the global knowledge base.
+- Gemini Code Assist will review PRs against the standards defined here and in `.github/gemini-reviewer-context.md`.

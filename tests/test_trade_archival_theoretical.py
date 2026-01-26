@@ -45,6 +45,7 @@ def test_archival_fallback_for_theoretical_trades():
             "entry_fill_price": 50000.0,
             "exit_fill_price": 51000.0,
             "side": "buy",
+            "qty": 0.1,
             "account_id": "theoretical",
             "strategy_id": "test_strat_1",
             "target_entry_price": 50000.0,

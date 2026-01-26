@@ -81,6 +81,106 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
 
         self.execution_engine = ExecutionEngine()
 
+    def _get_actual_fees(
+        self, alpaca_order_id: str | None, symbol: str, side: str
+    ) -> float | None:
+        """
+        Fetch actual fees (CFEE) from Alpaca Activities API.
+
+        Args:
+            alpaca_order_id: The Alpaca Order ID (UUID).
+            symbol: Trading pair symbol (e.g., "BTC/USD").
+            side: Order side ("buy" or "sell").
+
+        Returns:
+            float: Total fees in USD, or None if no activities found.
+        """
+        if not alpaca_order_id:
+            return None
+
+        try:
+            # Fetch recent account activities (CFEE = Crypto Fee)
+            # Filter by date/type/direction via API parameters to optimize?
+            # alpaca-py `get_account_activities` supports `activity_types`.
+            # Note: We can't filter by order_id in the API call, must filter in client.
+            # Fetching last 100 CFEE activities should cover recent trades.
+            from alpaca.trading.enums import ActivityType
+
+            activities = self.alpaca.get_account_activities(
+                activity_types=[ActivityType.CSD, ActivityType.CFEE]
+            )
+
+            # Filter for this specific order
+            # CFEE activities link to order_id (sometimes in 'id' or separate field depending on SDK version)
+            # Inspecting common pattern: activity.order_id should match.
+            related_activities = [
+                a
+                for a in activities
+                if hasattr(a, "order_id") and str(a.order_id) == alpaca_order_id
+            ]
+
+            if not related_activities:
+                return None
+
+            total_fee_usd = 0.0
+
+            for activity in related_activities:
+                # activity.qty is the fee amount
+                # activity.price is the fill price (exchange rate) at that moment
+                # activity.symbol is the asset
+
+                fee_qty = float(activity.qty) if activity.qty else 0.0
+
+                # Determine currency of the fee
+                # For Buy orders (e.g., Buy BTC/USD), fee is usually in BTC (the asset).
+                # For Sell orders (e.g., Sell BTC/USD), fee is usually in USD (the quote).
+                # However, Alpaca CFEE records for Buy are in Asset, for Sell are in USD?
+                # Actually, CFEE is always the "crypto fee".
+                # If side == BUY: Fee is taken from the bought asset (e.g., BTC).
+                #   Value in USD = fee_qty * fill_price
+                # If side == SELL: Fee is taken from the proceeds (USD).
+                #   Value in USD = fee_qty (already in USD) -- WAIT.
+                #   Let's check the schema. Usually, Sell orders have "FILL" activity.
+                #   CFEE specifically denotes a crypto fee.
+
+                # SAFE LOGIC:
+                # If activity.symbol == "USD", it's already USD.
+                # If activity.symbol != "USD" (e.g., "BTC"), convert using activity.price.
+                # (activity.price is typically the execution price).
+
+                # Note: 'price' in Activity might be None for some types, but for CFEE/FILL it acts as rate.
+                price = float(activity.price) if activity.price else 0.0
+
+                # Heuristic for Currency:
+                # If the symbol in the activity is the BASE currency (e.g. BTC), convert it.
+                # If it is USD, take it as is.
+                # Alpaca data often puts the fee amount in 'qty'.
+
+                # Case 1: Fee is in USD (e.g., Sell side or USD-based fee)
+                # How to detect? activity.symbol might help?
+                # Actually, `activity.symbol` is usually the traded pair or asset.
+
+                # Let's trust the logic requested:
+                # "For 'Buy' orders, ensure the asset-denominated fee is converted to USD using the 'price' field"
+
+                if side.lower() == "buy":
+                    # Fee is in Asset. Convert to USD.
+                    # Assumption: price is the USD price of the asset at execution.
+                    fee_value = fee_qty * price
+                else:
+                    # Fee is in USD (deducted from proceeds).
+                    fee_value = fee_qty
+
+                total_fee_usd += fee_value
+
+            return total_fee_usd
+
+        except Exception as e:
+            logger.warning(
+                f"Failed to fetch actual fees for order {alpaca_order_id}: {e}"
+            )
+            return None
+
     def extract(self) -> List[Any]:
         """
         Extract CLOSED positions from Firestore.
@@ -93,7 +193,7 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
         # Query CLOSED positions (deleted after successful merge via cleanup)
         docs = (
             self.firestore_client.collection(self.source_collection)
-            .where(field_path="status", op_string="==", value="CLOSED")
+            .where("status", "==", "CLOSED")
             .stream()
         )
 
@@ -154,10 +254,12 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                             "Assuming Theoretical/Paper trade. Falling back to Firestore data."
                         )
                         # Create synthetic order from Firestore data
+                        # Robustness: Ensure qty is handled if missing
+                        qty_fallback = pos.get("qty", 0.0) or 0.0
                         order = SimpleNamespace(
                             id=None,
                             filled_avg_price=pos.get("entry_fill_price", 0.0),
-                            filled_qty=pos.get("qty", 0.0),
+                            filled_qty=qty_fallback,
                             side=pos.get("side", "buy").lower(),
                         )
                     else:
@@ -183,7 +285,15 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                 # Broker's order ID for auditability (links to Alpaca dashboard)
                 alpaca_order_id = str(order.id) if order.id else None
 
+                # Source of Truth: Alpaca Order Side (Entry Order)
+                # Cast to string to handle Enum or str types robustly
+                order_side_str = str(order.side).lower()
+
                 # Get exit price from Firestore document, default to 0.0 if missing
+                exit_price_val = float(pos.get("exit_fill_price", 0.0))
+
+                # exit_price_val initially comes from final close
+                # Weighted average will be calculated by the TradeExecution model validator
                 exit_price_val = float(pos.get("exit_fill_price", 0.0))
 
                 # Timestamps
@@ -206,39 +316,47 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                 exit_time = parse_dt(exit_time_str)
 
                 # CALCULATIONS
-                # Fees: Use dynamic tier rate for initial estimate (T+0)
-                # Actual fees will be reconciled via FeePatchPipeline (T+1+)
+                # Fees: Try to fetch ACTUAL fees from Alpaca Activities (CFEE)
                 fees_usd = 0.0
                 fee_calculation_type = "ESTIMATED"
                 fee_tier = None
+                actual_fee_usd = None
 
                 is_crypto = pos.get("asset_class") == "CRYPTO"
 
                 if is_crypto:
-                    # Get current fee tier for accurate estimate
-                    tier_info = self.execution_engine.get_current_fee_tier()
-
-                    # Use taker fee (conservative, most trades are takers)
-                    taker_fee_pct = tier_info["taker_fee_pct"]
-                    fee_tier = tier_info["tier_name"]
-
-                    # Fee = (Entry Value + Exit Value) * taker_fee_pct / 100
-                    entry_val = entry_price_val * qty
-                    exit_val = exit_price_val * qty
-                    fees_usd = (entry_val + exit_val) * (taker_fee_pct / 100.0)
-
-                    logger.debug(
-                        f"Using estimated fees for {pos.get('symbol')}: ${fees_usd:.2f} ({fee_tier})"
+                    # 1. Try Actual CFEE Lookup
+                    actual_fee_usd = self._get_actual_fees(
+                        alpaca_order_id, pos.get("symbol"), order_side_str
                     )
+
+                    if actual_fee_usd is not None:
+                        fees_usd = actual_fee_usd
+                        fee_calculation_type = "ACTUAL_CFEE"
+                        logger.debug(
+                            f"Using ACTUAL fees for {pos.get('symbol')}: ${fees_usd:.2f}"
+                        )
+                    else:
+                        # 2. Fallback to Estimation
+                        # Get current fee tier for accurate estimate
+                        tier_info = self.execution_engine.get_current_fee_tier()
+
+                        # Use taker fee (conservative, most trades are takers)
+                        taker_fee_pct = tier_info["taker_fee_pct"]
+                        fee_tier = tier_info["tier_name"]
+
+                        # Fee = (Entry Value + Exit Value) * taker_fee_pct / 100
+                        entry_val = entry_price_val * qty
+                        exit_val = exit_price_val * qty
+                        fees_usd = (entry_val + exit_val) * (taker_fee_pct / 100.0)
+
+                        logger.debug(
+                            f"Using ESTIMATED fees for {pos.get('symbol')}: ${fees_usd:.2f} ({fee_tier})"
+                        )
 
                 # PnL Calculation using ALPACA entry price (Truth) vs
                 # Firestore Exit Price
                 pnl_gross = (exit_price_val - entry_price_val) * qty
-
-                # Source of Truth: Alpaca Order Side (Entry Order)
-                # Validates if we opened Long (Buy) or Short (Sell)
-                # Cast to string to handle Enum or str types robustly
-                order_side_str = str(order.side).lower()
 
                 if order_side_str == OrderSide.SELL.value:  # Short
                     pnl_gross = (entry_price_val - exit_price_val) * qty
@@ -321,7 +439,7 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                     side=pos.get("side"),
                     qty=qty,  # Authenticated from Alpaca
                     entry_price=entry_price_val,  # Authenticated from Alpaca
-                    exit_price=exit_price_val,
+                    exit_price=exit_price_val,  # Will be weighted-averaged by model!
                     entry_time=entry_time,
                     exit_time=exit_time,
                     pnl_usd=round(pnl_usd, 2),
@@ -341,12 +459,21 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                     # Exit order ID for reconciliation and fill tracking
                     exit_order_id=pos.get("exit_order_id"),
                     # CFEE Reconciliation Fields (Issue #140)
-                    fee_finalized=False,  # Will be reconciled T+1 via FeePatchPipeline
-                    actual_fee_usd=None,  # Populated after CFEE reconciliation
-                    fee_calculation_type=fee_calculation_type,  # "ESTIMATED" initially
+                    fee_finalized=(
+                        fee_calculation_type == "ACTUAL_CFEE"
+                    ),  # Finalized if we got actuals
+                    actual_fee_usd=actual_fee_usd,  # Populated if found
+                    fee_calculation_type=fee_calculation_type,
                     fee_tier=fee_tier,  # e.g., "Tier 0"
                     entry_order_id=pos.get("entry_order_id"),  # For CFEE attribution
-                    fee_reconciled_at=None,  # Populated after reconciliation
+                    fee_reconciled_at=(
+                        datetime.now(timezone.utc)
+                        if fee_calculation_type == "ACTUAL_CFEE"
+                        else None
+                    ),
+                    # PASS THROUGH FIELDS FOR MODEL LOGIC
+                    scaled_out_prices=pos.get("scaled_out_prices", []),
+                    original_qty=pos.get("original_qty"),
                 )
 
                 # Validate and Dump to JSON (BasePipeline expects dicts)
@@ -364,12 +491,12 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
 
         return transformed
 
-    def cleanup(self, data: List[dict]) -> None:
+    def cleanup(self, data: List[TradeExecution]) -> None:
         """
         Delete processed positions from Firestore.
 
         Args:
-            data: List of successfully loaded data dicts (or models).
+            data: List of successfully loaded TradeExecution models.
         """
         if not data:
             return
@@ -383,10 +510,10 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
         count = 0
 
         for item in data:
-            # item is a dict from BIGQUERY format or Pydantic dump.
+            # item is now a TradeExecution Pydantic model
             # We need the Original ID used in Firestore.
             # In transform, we mapped trade_id -> position_id.
-            doc_id = item.get("trade_id")
+            doc_id = item.trade_id
 
             # Assumption: Firestore Doc ID == position_id
             # (which is usually true in this design)

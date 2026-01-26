@@ -173,6 +173,7 @@ def main(
         # === STATE RECONCILIATION (Issue #113) ===
         # Detect and heal zombie/orphan positions before main loop
         logger.info("Running state reconciliation...")
+        reconciliation_failed = False
         try:
             reconciliation_report = reconciler.reconcile()
 
@@ -194,56 +195,70 @@ def main(
                 f"Reconciliation failed: {e}",
                 extra={"error": str(e)},
             )
-            # Don't halt execution - reconciliation is advisory
+            # Mark as failed to prevent archival of potentially inconsistent state
+            reconciliation_failed = True
 
         # === TRADE ARCHIVAL (Issue #149) ===
         # Move Closed Positions -> BigQuery (Before Fee Patch!)
         # Must run AFTER reconciliation (so we archive what was just closed)
-        logger.info("Running trade archival...")
-        try:
-            archival_count = trade_archival.run()
-            if archival_count > 0:
-                logger.info(
-                    f"✅ Trade archival complete: {archival_count} trades archived"
-                )
-            else:
-                logger.info("✅ Trade archival complete: No closed trades to archive")
-        except Exception as e:
-            logger.error(f"Trade archival failed: {e}")
+        if not reconciliation_failed:
+            logger.info("Running trade archival...")
+            try:
+                archival_count = trade_archival.run()
+                if archival_count > 0:
+                    logger.info(
+                        f"✅ Trade archival complete: {archival_count} trades archived"
+                    )
+                else:
+                    logger.info("✅ Trade archival complete: No closed trades to archive")
+            except Exception as e:
+                logger.error(f"Trade archival failed: {e}")
+        else:
+            logger.warning("⚠️ Skipping trade archival due to reconciliation failure.")
 
         # === FEE RECONCILIATION (Issue #140) ===
         # Patch estimated fees with actual CFEE data before generating new signals
         # Runs T+1 reconciliation for trades older than 24 hours
-        logger.info("Running fee reconciliation...")
-        try:
-            patched_count = fee_patch.run()
+        if not reconciliation_failed:
+            logger.info("Running fee reconciliation...")
+            try:
+                patched_count = fee_patch.run()
 
-            if patched_count > 0:
-                logger.info(
-                    f"✅ Fee reconciliation complete: {patched_count} trades updated"
-                )
-            else:
-                logger.info("✅ Fee reconciliation complete: No trades to update")
-        except Exception as e:
-            logger.error(f"Fee reconciliation failed: {e}")
-            # Non-blocking - continue with signal generation
+                if patched_count > 0:
+                    logger.info(
+                        f"✅ Fee reconciliation complete: {patched_count} trades updated"
+                    )
+                else:
+                    logger.info("✅ Fee reconciliation complete: No trades to update")
+            except Exception as e:
+                logger.error(f"Fee reconciliation failed: {e}")
+                # Non-blocking - continue with signal generation
+        else:
+            logger.warning("⚠️ Skipping fee reconciliation due to reconciliation failure.")
 
         # === EXIT PRICE RECONCILIATION (Issue #141) ===
         # Patch $0.00 exit prices with actual fill prices from Alpaca
         # Runs for historical repair and daily reconciliation
-        logger.info("Running exit price reconciliation...")
-        try:
-            patched_count = price_patch.run()
+        if not reconciliation_failed:
+            logger.info("Running exit price reconciliation...")
+            try:
+                patched_count = price_patch.run()
 
-            if patched_count > 0:
-                logger.info(
-                    f"✅ Exit price reconciliation complete: {patched_count} trades repaired"
-                )
-            else:
-                logger.info("✅ Exit price reconciliation complete: No trades to repair")
-        except Exception as e:
-            logger.error(f"Exit price reconciliation failed: {e}")
-            # Non-blocking - continue with signal generation
+                if patched_count > 0:
+                    logger.info(
+                        f"✅ Exit price reconciliation complete: {patched_count} trades repaired"
+                    )
+                else:
+                    logger.info(
+                        "✅ Exit price reconciliation complete: No trades to repair"
+                    )
+            except Exception as e:
+                logger.error(f"Exit price reconciliation failed: {e}")
+                # Non-blocking - continue with signal generation
+        else:
+            logger.warning(
+                "⚠️ Skipping exit price reconciliation due to reconciliation failure."
+            )
 
         # Define Portfolio
         firestore_config = load_config_from_firestore()
