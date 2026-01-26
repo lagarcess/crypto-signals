@@ -3,6 +3,7 @@ from typing import NamedTuple, Optional
 from alpaca.trading.client import TradingClient
 from crypto_signals.config import get_settings
 from crypto_signals.domain.schemas import AssetClass, Signal
+from crypto_signals.engine.cache import PositionCountCache
 from crypto_signals.repository.firestore import PositionRepository
 from loguru import logger
 
@@ -22,10 +23,16 @@ class RiskEngine:
     3. Daily Account Drawdown Limits
     """
 
-    def __init__(self, trading_client: TradingClient, repository: PositionRepository):
+    def __init__(
+        self,
+        trading_client: TradingClient,
+        repository: PositionRepository,
+        position_count_cache: PositionCountCache,
+    ):
         self.alpaca = trading_client
         self.repo = repository
         self.settings = get_settings()
+        self.position_count_cache = position_count_cache
 
     def validate_signal(self, signal: Signal) -> RiskCheckResult:
         """
@@ -98,7 +105,10 @@ class RiskEngine:
                 else self.settings.MAX_EQUITY_POSITIONS
             )
 
-            current_count = self.repo.count_open_positions_by_class(asset_class)
+            current_count = self.position_count_cache.get_or_fetch(
+                asset_class,
+                lambda: self.repo.count_open_positions_by_class(asset_class),
+            )
 
             if current_count >= limit:
                 reason = (

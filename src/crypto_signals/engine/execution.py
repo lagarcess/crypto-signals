@@ -36,6 +36,7 @@ from crypto_signals.domain.schemas import (
 from crypto_signals.domain.schemas import (
     OrderSide as DomainOrderSide,
 )
+from crypto_signals.engine.cache import PositionCountCache
 from crypto_signals.engine.risk import RiskEngine
 from crypto_signals.observability import console
 from crypto_signals.repository.firestore import PositionRepository
@@ -78,6 +79,7 @@ class ExecutionEngine:
         trading_client: Optional[TradingClient] = None,
         repository: Optional[PositionRepository] = None,
         reconciler: Optional[Any] = None,
+        position_count_cache: Optional[PositionCountCache] = None,
     ):
         """
         Initialize the ExecutionEngine.
@@ -92,7 +94,10 @@ class ExecutionEngine:
         # Initialize Repo for Risk Engine
         self.repo = repository if repository else PositionRepository()
         self.reconciler = reconciler
-        self.risk_engine = RiskEngine(self.alpaca, self.repo)
+        self.position_count_cache = (
+            position_count_cache if position_count_cache else PositionCountCache()
+        )
+        self.risk_engine = RiskEngine(self.alpaca, self.repo, self.position_count_cache)
 
         # Environment Logging
         logger.info(
@@ -208,6 +213,9 @@ class ExecutionEngine:
                 days=settings.TTL_DAYS_POSITION
             )
 
+            # Invalidate cache on successful execution
+            self.position_count_cache.invalidate(signal.asset_class)
+
             position = Position(
                 position_id=signal.signal_id,
                 ds=signal.ds,
@@ -304,6 +312,9 @@ class ExecutionEngine:
             delete_at = datetime.now(timezone.utc) + timedelta(
                 days=settings.TTL_DAYS_POSITION
             )
+
+            # Invalidate cache on successful execution
+            self.position_count_cache.invalidate(signal.asset_class)
 
             position = Position(
                 position_id=signal.signal_id,
