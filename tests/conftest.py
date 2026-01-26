@@ -1,6 +1,6 @@
 import os
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 @pytest.fixture(autouse=True)
 def mock_env_vars():
@@ -13,10 +13,10 @@ def mock_env_vars():
 
 @pytest.fixture
 def mock_firestore_client():
-    with pytest.mock.patch("google.cloud.firestore.Client") as mock:
+    with patch("google.cloud.firestore.Client") as mock:
         yield mock
 
 @pytest.fixture
 def mock_bq_client():
-    with pytest.mock.patch("google.cloud.bigquery.Client") as mock:
+    with patch("google.cloud.bigquery.Client") as mock:
         yield mock
