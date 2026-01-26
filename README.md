@@ -84,6 +84,7 @@ Crypto Sentinel is a production-ready trading bot that:
 
 - **Structural Foundation**: O(N) ZigZag pivot detection with Numba JIT compilation
 - **Pattern Classification**: STANDARD_PATTERN (5-90d) vs MACRO_PATTERN (>90d)
+- **Parameter Factory**: Centralized stop-loss/take-profit logic via `SignalParameterFactory` (Issue #133)
 - **Shadow Signaling**: Rejected signals persisted to `rejected_signals` collection for audit
 
 **External Services:**
