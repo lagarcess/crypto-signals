@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 from crypto_signals.domain.schemas import AssetClass, SignalStatus
+from crypto_signals.engine.parameters import SignalParameterFactory
 from crypto_signals.engine.signal_generator import SignalGenerator
 
 
@@ -73,5 +74,5 @@ def test_generate_signal_with_negative_stop(signal_generator):
         # the signal should be valid (WAITING), not REJECTED.
         assert signal.status == SignalStatus.WAITING
         assert (
-            signal.suggested_stop == SignalGenerator.SAFE_STOP_VAL
+            signal.suggested_stop == SignalParameterFactory.SAFE_STOP_VAL
         )  # Safe hydration check
