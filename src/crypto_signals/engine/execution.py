@@ -191,15 +191,17 @@ class ExecutionEngine:
                 },
             )
 
-            order = cast(Order, self.alpaca.submit_order(order_request))
+            order = self.alpaca.submit_order(order_request)
 
+            if not isinstance(order, Order):
+                raise Exception(f"Order submission failed: {order}")
             logger.info(
                 f"CRYPTO ORDER SUBMITTED: {signal.symbol}",
                 extra={
-                    "order_id": str(cast(Order, order).id),
-                    "client_order_id": cast(Order, order).client_order_id,
+                    "order_id": str(order.id),
+                    "client_order_id": order.client_order_id,
                     "qty": qty,
-                    "status": str(cast(Order, order).status),
+                    "status": str(order.status),
                 },
             )
 
@@ -287,16 +289,18 @@ class ExecutionEngine:
                 },
             )
 
-            order = cast(Order, self.alpaca.submit_order(order_request))
+            order = self.alpaca.submit_order(order_request)
+            if not isinstance(order, Order):
+                raise Exception(f"Order submission failed: {order}")
 
             # Log success
             logger.info(
                 f"ORDER SUBMITTED: {signal.symbol}",
                 extra={
-                    "order_id": str(cast(Order, order).id),
-                    "client_order_id": cast(Order, order).client_order_id,
+                    "order_id": str(order.id),
+                    "client_order_id": order.client_order_id,
                     "qty": qty,
-                    "status": str(cast(Order, order).status),
+                    "status": str(order.status),
                 },
             )
 
@@ -743,7 +747,10 @@ class ExecutionEngine:
             Order object if found, None if not found or on error.
         """
         try:
-            order = cast(Order, self.alpaca.get_order_by_id(order_id))
+            order = self.alpaca.get_order_by_id(order_id)
+            if not isinstance(order, Order):
+                logger.warning(f"Order {order_id} not found or is not an Order object.")
+                return None
             logger.debug(
                 f"Retrieved order {order_id}: status={order.status}",
                 extra={"order_id": order_id, "status": str(order.status)},
@@ -879,7 +886,7 @@ class ExecutionEngine:
         try:
             # Fetch parent order
             order = self.get_order_details(position.alpaca_order_id)
-            if not order:
+            if not isinstance(order, Order):
                 position.failed_reason = "Parent order not found in Alpaca"
                 return position
 
@@ -1442,7 +1449,9 @@ class ExecutionEngine:
                 time_in_force=TimeInForce.GTC,
             )
 
-            close_order = cast(Order, self.alpaca.submit_order(close_request))
+            close_order = self.alpaca.submit_order(close_request)
+            if not isinstance(close_order, Order):
+                raise Exception(f"Order submission failed: {close_order}")
 
             # === ISSUE 139 FIX: Capture exit order details ===
             # Store exit order ID for reconciliation and backfill

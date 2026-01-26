@@ -10,7 +10,7 @@ Pattern: Extract-Transform-Load
 3. Load: Push to BigQuery via BasePipeline
 """
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any, List, Optional
 
 import pandas as pd
@@ -34,8 +34,8 @@ CRYPTO_TAKER_FEE_PCT = 0.0025
 class RejectedSignal(BaseModel):
     """Schema for rejected signals archival."""
 
-    _doc_id: Optional[str] = Field(None, description="Firestore document ID")
-    ds: Any
+    doc_id: Optional[str] = Field(None, description="Firestore document ID")
+    ds: date
     signal_id: str
     symbol: str
     asset_class: str
@@ -48,11 +48,11 @@ class RejectedSignal(BaseModel):
     take_profit_1: float
     theoretical_exit_price: Optional[float]
     theoretical_exit_reason: Optional[str]
-    theoretical_exit_time: Optional[Any]
+    theoretical_exit_time: Optional[datetime]
     theoretical_pnl_usd: float
     theoretical_pnl_pct: float
     theoretical_fees_usd: float
-    created_at: Any
+    created_at: datetime
 
 
 class RejectedSignalArchival(BigQueryPipelineBase):
@@ -314,7 +314,7 @@ class RejectedSignalArchival(BigQueryPipelineBase):
         count = 0
 
         for item in data:
-            doc_id = item.get("signal_id")
+            doc_id = item.signal_id
             ref = self.firestore_client.collection(self.source_collection).document(
                 doc_id
             )

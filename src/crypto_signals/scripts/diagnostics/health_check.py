@@ -17,6 +17,7 @@ from datetime import datetime, timedelta, timezone
 
 from alpaca.data.historical.crypto import CryptoHistoricalDataClient
 from alpaca.data.models import BarSet
+from alpaca.data.models import BarSet
 from alpaca.data.requests import CryptoBarsRequest
 from alpaca.data.timeframe import TimeFrame
 from alpaca.trading.client import TradingClient

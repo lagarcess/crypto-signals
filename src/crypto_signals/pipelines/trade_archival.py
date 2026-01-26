@@ -106,8 +106,9 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
             # Fetching last 100 CFEE activities should cover recent trades.
             from alpaca.trading.enums import ActivityType
 
-            activities = self.alpaca.get_activities(
-                activity_types=[ActivityType.CSD, ActivityType.CFEE]
+            activities = self.alpaca._get(
+                "/account/activities",
+                params={"activity_types": "CSD,CFEE"},
             )
 
             # Filter for this specific order
@@ -491,7 +492,7 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
 
         return transformed
 
-    def cleanup(self, data: list[Any]) -> None:
+    def cleanup(self, data: List[TradeExecution]) -> None:
         """
         Delete processed positions from Firestore.
 
