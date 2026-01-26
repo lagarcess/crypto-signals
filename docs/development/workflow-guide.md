@@ -11,9 +11,10 @@ Follow this sequence for every standard task or issue.
 | **0. Health** | `/diagnose` | Optional | **Infrastructure Check**. Verifies GCP, Firestore, and Alpaca health. Run if you suspect environment issues. |
 | **1. Plan** | `/plan [issue]` | **Required** | **The Architect**. Checks logs, validates bugs, reads `KNOWLEDGE_BASE`, and generates `temp/plan/implementation-plan.md`. Stops for user approval. |
 | **2. Build** | `/implement` | **Required** | **The Builder**. Creates feature branch, writes **Tests First**, enters TDD Loop (`/tdd`), and performs hygiene (`/cleanup`). |
-| **3. Verify** | `/verify` | **Required** | **The Auditor**. Runs full test suite + Smoke Test. **Auto-triggers `/fix` on failure** (Self-Healing). Auto-commits on success. |
-| **4. Ship** | `/pr` | **Required** | **The Publisher**. Captures lessons (`/learn`), updates `README`/Docs, writes PR description, and pushes branch. |
-| **5. Reset** | `/cleanup_branch` | Post-Merge | **The Janitor**. Switches to `main`, pulls latest, and deletes the local feature branch. |
+| **3. Verify** | `/verify` | **Required** | **The Auditor**. Full tests + Smoke Test + **Local Docker Pre-flight**. Auto-triggers `/fix`. |
+| **4. Pre-Flight** | `/preflight` | Optional | **CI/CD Safety**. Docker build + GCP auth check to prevent remote failures. |
+| **5. Ship** | `/pr` | **Required** | **The Publisher**. Captures lessons (`/learn`), updates docs, and triggers **Gemini Review**. |
+| **6. Reset** | `/cleanup_branch` | Post-Merge | **The Janitor**. Switches to `main`, pulls latest, deletes branch. |
 
 ---
 
@@ -47,9 +48,18 @@ Follow this sequence for every standard task or issue.
 *   **Trigger**: Ready to merge.
 *   **Actions**:
     - **Institutional Memory**: Runs `/learn` to update Knowledge Base.
+    - **Trigger Review**: Activates **Gemini Code Assist** for high-standard PR review.
     - **Doc Sync**: Updates `README.md` with new features.
     - **Push**: Pushes branch to origin.
-*   **Outcome**: A GitHub PR link.
+*   **Outcome**: A GitHub PR link followed by an automated review.
+
+### `/preflight`
+*   **Trigger**: Before `/pr` to ensure CI/CD stability.
+*   **Actions**:
+    - Build production container locally.
+    - Run containerized smoke test.
+    - Validate GCP project and connectivity.
+*   **Outcome**: High confidence that `deploy.yml` will pass.
 
 ---
 
@@ -84,3 +94,10 @@ This file is the **Long-Term Memory** of the project.
 *   It is updated automatically by `/pr` (via `/learn`).
 *   It is read automatically by `/plan`.
 *   **Goal**: Stop making the same mistake twice.
+
+## 🔄 AI Flywheel Synergy
+This project uses a triple-agent model to ensure quality:
+- **Antigravity (IDE)**: Your primary workbench.
+- **Jules (VM)**: Your autonomous execution agent (configured via `AGENTS.md`).
+- **Gemini (Reviewer)**: Your Staff Engineer gatekeeper (configured via `gemini-reviewer-context.md`).
+- **Sync**: All tools are synced via the **Repository-as-Source-of-Truth** model. See **[AI Flywheel Guide](flywheel.md)**.

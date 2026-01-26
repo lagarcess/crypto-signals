@@ -22,6 +22,7 @@ Welcome to the Crypto Sentinel Wiki. This repository contains detailed guides on
 
 ## 🛠️ Development
 - **[Workflow Guide](development/workflow-guide.md)**: Developer slash commands and AI-agent workflows.
+- **[AI Flywheel Guide](development/flywheel.md)**: Synergy between Antigravity, Gemini, and Jules.
 - **[Scripts Organization](development/scripts-organization.md)**: How to run scripts and diagnostic tools.
 
 ---

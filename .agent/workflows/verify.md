@@ -12,8 +12,18 @@ description: strict code review, system verification, and auto-commit
    - run linting: `poetry run ruff check src` (or equivalent).
    - run smoke test (Main Flow check):
      `python -m src.crypto_signals.main --smoke-test` (or `poetry run python -m src.crypto_signals.main --smoke-test`)
+   - **Doc Parity**: Verify root-vs-wiki synchronization: `poetry run python scripts/verify_doc_parity.py`
    - **On Failure**: Automatically trigger the `/fix` workflow to attempt self-correction.
      - *Note*: If coverage is below 63%, Use `/fix` to identify untested paths and add tests.
+
+   - **Local CD Pre-Flight (Docker)**
+     - **Trigger**: Only if logic changes affecting production occur.
+     - Build production image: `docker build -t crypto-signals:verify .`
+     - Run containerized smoke test:
+       ```bash
+       docker run --rm -e DISABLE_SECRET_MANAGER=true -e ENVIRONMENT=DEV crypto-signals:verify python -m crypto_signals.main --smoke-test
+       ```
+     - **CRITICAL**: If container build or smoke test fails, the PR is **blocked**. Run `/fix`.
 
 
 2. **Deep Agent Review**
