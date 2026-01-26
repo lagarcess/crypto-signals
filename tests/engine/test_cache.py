@@ -87,7 +87,7 @@ def test_cache_invalidation(mock_fetch_func):
     assert mock_fetch_func.call_count == 2
 
 
-def test_cache_multiple_asset_classes(mock_fetch_func):
+def test_cache_multiple_asset_classes():
     """
     Verify that the cache correctly handles multiple asset classes independently.
     """
@@ -102,8 +102,6 @@ def test_cache_multiple_asset_classes(mock_fetch_func):
         elif asset_class == equity_class:
             return 15
         return 0
-
-    fetch_func = Mock(side_effect=lambda ac=crypto_class: fetch_side_effect(ac))
 
     # Fetch for Crypto
     crypto_count = cache.get_or_fetch(crypto_class, lambda: fetch_side_effect(crypto_class))
