@@ -15,7 +15,8 @@ This file provides a map of the core modules, responsibilities, and constraints 
 
 ## Core Commands (Slash Commands)
 
-Jules should use these commands to ensure synchronization with the developer workflow:
+Jules should use these commands to ensure synchronization with the developer workflow.
+**Definition Source**: The detailed steps for each command are defined in the `.agent/workflows/` directory.
 
 - `/plan [task]`: Generates `temp/plan/implementation-plan.md`. Always starts here.
 - `/implement`: Enters TDD loop. Writes tests first.
@@ -24,6 +25,7 @@ Jules should use these commands to ensure synchronization with the developer wor
 - `/learn`: **Critical**. Updates `docs/development/knowledge-base.md` with new findings. Run after every major change.
 - `/diagnose`: Includes **CI/CD Forensics** via `gh` CLI.
 - `/fix`: Recursive self-correction loop for test failures.
+- `/review-jules`: **Manager Mode**. Delegate feedback to Jules via `post_review.py`.
 
 ## Never-Violate Standards
 

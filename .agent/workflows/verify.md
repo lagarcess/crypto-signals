@@ -18,12 +18,8 @@ description: strict code review, system verification, and auto-commit
 
    - **Local CD Pre-Flight (Docker)**
      - **Trigger**: Only if logic changes affecting production occur.
-     - Build production image: `docker build -t crypto-signals:verify .`
-     - Run containerized smoke test:
-       ```bash
-       docker run --rm -e DISABLE_SECRET_MANAGER=true -e ENVIRONMENT=DEV crypto-signals:verify python -m crypto_signals.main --smoke-test
-       ```
-     - **CRITICAL**: If container build or smoke test fails, the PR is **blocked**. Run `/fix`.
+     - **Execute**: Run the `/preflight` workflow.
+     - **CRITICAL**: If preflight fails, the PR is **blocked**. Run `/fix`.
 
 
 2. **Deep Agent Review**
