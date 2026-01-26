@@ -742,6 +742,75 @@ class TradeExecution(BaseModel):
         default=None,
         description="Timestamp when fees were reconciled from CFEE. NULL if still using estimates.",
     )
+    # === Intermediate Fields (Excluded from BigQuery) ===
+    scaled_out_prices: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        exclude=True,
+        description="History of scale-outs used for weighted average calculation. Not persisted to BQ.",
+    )
+    original_qty: Optional[float] = Field(
+        default=None,
+        exclude=True,
+        description="Original quantity before any scale-outs. Used for weighted average calculation. Not persisted to BQ.",
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def calculate_weighted_exit_price(cls, data: Any) -> Any:
+        """
+        Calculate weighted average exit price if scale-outs are present.
+
+        Also ensures pnl_usd and pnl_pct are consistent with the weighted price.
+        """
+        if isinstance(data, dict):
+            scaled_outs = data.get("scaled_out_prices", [])
+            if not scaled_outs:
+                return data
+
+            total_exit_val = 0.0
+            total_exit_qty = 0.0
+
+            for scale in scaled_outs:
+                s_qty = float(scale.get("qty", 0.0))
+                s_price = float(scale.get("price", 0.0))
+                total_exit_val += s_qty * s_price
+                total_exit_qty += s_qty
+
+            total_qty = float(data.get("original_qty") or data.get("qty") or 0.0)
+
+            if total_qty <= 0:
+                return data
+
+            final_exit_price = float(data.get("exit_price") or 0.0)
+            remaining_qty = total_qty - total_exit_qty
+
+            if remaining_qty > 0:
+                total_exit_val += remaining_qty * final_exit_price
+
+            # 1. Update Exit Price
+            weighted_exit_price = total_exit_val / total_qty
+            data["exit_price"] = weighted_exit_price
+
+            # 2. Re-calculate PnL to ensure consistency (Issue #149)
+            # We must use the same logic as the transformation layer but here
+            # to guarantee the BigQuery record is accurate.
+            entry_price = float(data.get("entry_price", 0.0))
+            fees_usd = float(data.get("fees_usd", 0.0))
+            side = str(data.get("side", "buy")).lower()
+
+            pnl_gross = (weighted_exit_price - entry_price) * total_qty
+            if side == "sell":  # Short
+                pnl_gross = (entry_price - weighted_exit_price) * total_qty
+
+            pnl_usd = pnl_gross - fees_usd
+            data["pnl_usd"] = round(pnl_usd, 2)
+
+            cost_basis = entry_price * total_qty
+            data["pnl_pct"] = (
+                round((pnl_usd / cost_basis * 100.0), 4) if cost_basis else 0.0
+            )
+
+        return data
 
 
 class StagingTrade(BaseModel):

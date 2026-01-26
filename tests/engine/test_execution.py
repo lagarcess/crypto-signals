@@ -243,6 +243,7 @@ class TestExecuteSignal:
         mock_settings.TTL_DAYS_POSITION = 90
         # Determine environment to test fallback
         mock_settings.ENVIRONMENT = "PROD"
+        mock_settings.RISK_PER_TRADE = 100.0
 
         with (
             patch(
@@ -276,6 +277,7 @@ class TestExecuteSignal:
         mock_settings.is_paper_trading = True
         mock_settings.ENABLE_EXECUTION = False
         mock_settings.ENVIRONMENT = "PROD"
+        mock_settings.RISK_PER_TRADE = 100.0
         mock_settings.TTL_DAYS_POSITION = 90
 
         with (
@@ -861,6 +863,19 @@ class TestSyncPositionStatus:
             side=OrderSide.BUY,
         )
 
+        # Setup Reconciler Mock
+        mock_reconciler = MagicMock()
+
+        def mock_handle(p):
+            p.status = TradeStatus.CLOSED
+            p.exit_reason = ExitReason.MANUAL_EXIT
+            p.exit_fill_price = 52000.0
+            p.exit_time = datetime(2025, 1, 15, 17, 0, 0, tzinfo=timezone.utc)
+            return True
+
+        mock_reconciler.handle_manual_exit_verification.side_effect = mock_handle
+        execution_engine.reconciler = mock_reconciler
+
         # Execute
         updated = execution_engine.sync_position_status(position)
 
@@ -870,10 +885,8 @@ class TestSyncPositionStatus:
         assert updated.exit_fill_price == 52000.0
         assert updated.exit_time == datetime(2025, 1, 15, 17, 0, 0, tzinfo=timezone.utc)
 
-        # Verify get_orders called with correct filter
-        mock_trading_client.get_orders.assert_called_once()
-        call_args = mock_trading_client.get_orders.call_args
-        assert call_args[1]["filter"]["side"] == OrderSide.SELL  # Closing a BUY
+        # Verify reconciler called instead of direct get_orders
+        mock_reconciler.handle_manual_exit_verification.assert_called_once_with(position)
 
 
 class TestModifyStopLoss:

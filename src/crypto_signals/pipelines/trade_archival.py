@@ -193,7 +193,7 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
         # Query CLOSED positions (deleted after successful merge via cleanup)
         docs = (
             self.firestore_client.collection(self.source_collection)
-            .where(field_path="status", op_string="==", value="CLOSED")
+            .where("status", "==", "CLOSED")
             .stream()
         )
 
@@ -285,34 +285,16 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                 # Broker's order ID for auditability (links to Alpaca dashboard)
                 alpaca_order_id = str(order.id) if order.id else None
 
+                # Source of Truth: Alpaca Order Side (Entry Order)
+                # Cast to string to handle Enum or str types robustly
+                order_side_str = str(order.side).lower()
+
                 # Get exit price from Firestore document, default to 0.0 if missing
                 exit_price_val = float(pos.get("exit_fill_price", 0.0))
 
-                # Weighted Average Exit Price for Partial Fills
-                scaled_out_prices = pos.get("scaled_out_prices", [])
-                if scaled_out_prices:
-                    total_exit_val = 0.0
-                    total_exit_qty = 0.0
-
-                    for scale in scaled_out_prices:
-                        s_qty = float(scale.get("qty", 0.0))
-                        s_price = float(scale.get("price", 0.0))
-                        total_exit_val += s_qty * s_price
-                        total_exit_qty += s_qty
-
-                    # Remaining quantity closed at exit_fill_price
-                    # Use original_qty if available to determine total, else use current qty (which represents total traded)
-                    original_qty = pos.get("original_qty")
-                    total_qty_calc = (
-                        float(original_qty) if original_qty else qty
-                    )  # Fallback to order qty
-
-                    remaining_qty = total_qty_calc - total_exit_qty
-                    if remaining_qty > 0:
-                        total_exit_val += remaining_qty * exit_price_val
-
-                    if total_qty_calc > 0:
-                        exit_price_val = total_exit_val / total_qty_calc
+                # exit_price_val initially comes from final close
+                # Weighted average will be calculated by the TradeExecution model validator
+                exit_price_val = float(pos.get("exit_fill_price", 0.0))
 
                 # Timestamps
                 entry_time_str = pos.get("entry_time")  # Should be in doc
@@ -375,11 +357,6 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                 # PnL Calculation using ALPACA entry price (Truth) vs
                 # Firestore Exit Price
                 pnl_gross = (exit_price_val - entry_price_val) * qty
-
-                # Source of Truth: Alpaca Order Side (Entry Order)
-                # Validates if we opened Long (Buy) or Short (Sell)
-                # Cast to string to handle Enum or str types robustly
-                order_side_str = str(order.side).lower()
 
                 if order_side_str == OrderSide.SELL.value:  # Short
                     pnl_gross = (entry_price_val - exit_price_val) * qty
@@ -462,7 +439,7 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                     side=pos.get("side"),
                     qty=qty,  # Authenticated from Alpaca
                     entry_price=entry_price_val,  # Authenticated from Alpaca
-                    exit_price=exit_price_val,
+                    exit_price=exit_price_val,  # Will be weighted-averaged by model!
                     entry_time=entry_time,
                     exit_time=exit_time,
                     pnl_usd=round(pnl_usd, 2),
@@ -494,6 +471,9 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                         if fee_calculation_type == "ACTUAL_CFEE"
                         else None
                     ),
+                    # PASS THROUGH FIELDS FOR MODEL LOGIC
+                    scaled_out_prices=pos.get("scaled_out_prices", []),
+                    original_qty=pos.get("original_qty"),
                 )
 
                 # Validate and Dump to JSON (BasePipeline expects dicts)
