@@ -33,7 +33,17 @@ description: Infrastructure health check (GCP, Firestore, Alpaca)
    - Run health check: `poetry run python -m crypto_signals.scripts.diagnostics.health_check`
    - Verify connectivity to Alpaca, Firestore, BigQuery, Discord.
 
-6. **Report Summary**
+6. **CI/CD Forensics (Auto-Remediation Prep)**
+   // turbo
+   - Fetch last failed GitHub Action run: `gh run list --status failed --limit 1 --json databaseId,displayTitle,status,conclusion`
+   - Capture failure logs: `gh run view --log-failed`
+   - **Categorize Failure**: Identify if it is:
+     - **Flaky Test**: (e.g., transient network/timeout). Action: Rerun.
+     - **Dependency Drift**: (e.g., poetry.lock out of sync). Action: `/fix`.
+     - **Config Gap**: (e.g., missing secret). Action: Update `deployment-guide.md` and Knowledge Base.
+
+7. **Report Summary**
    - Review all reports in `temp/reports/`
    - If critical issues found -> Suggest running `/fix` or creating GitHub issues.
    - If orphaned positions detected -> List symbols to manually close in Alpaca.
+   - If CI/CD failure found -> Extract lesson and run `/learn`.

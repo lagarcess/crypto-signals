@@ -19,8 +19,10 @@ Jules should use these commands to ensure synchronization with the developer wor
 
 - `/plan [task]`: Generates `temp/plan/implementation-plan.md`. Always starts here.
 - `/implement`: Enters TDD loop. Writes tests first.
-- `/verify`: Runs full test suite + Smoke Test. Auto-triggers `/fix` on failure.
+- `/verify`: Runs full test suite + Smoke Test + Local Docker Pre-flight.
+- `/preflight`: **NEW**. Local check (Docker + GCP) to catch CI failures before push.
 - `/learn`: **Critical**. Updates `docs/development/knowledge-base.md` with new findings. Run after every major change.
+- `/diagnose`: Includes **CI/CD Forensics** via `gh` CLI.
 - `/fix`: Recursive self-correction loop for test failures.
 
 ## Never-Violate Standards
@@ -30,6 +32,7 @@ Jules should use these commands to ensure synchronization with the developer wor
 3. **JIT Warmup**: Any changes to `analysis/structural.py` require a `warmup_jit()` call to prevent latency spikes in production.
 4. **Structured Logging**: Use `loguru` with context (`signal_id`, `symbol`). No standard `print` statements.
 5. **TDD First**: Generate a failing test for bugs before writing the fix.
+6. **Doc Parity**: Root files (e.g., `README.md`, `AGENTS.md`) must be in sync with the detailed wiki in `./docs`. Updates to systems must be propagated to both.
 
 ## Synchronous Handover
 - After a task is finished, run `/learn` to update the global knowledge base.

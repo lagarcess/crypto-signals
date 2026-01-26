@@ -29,6 +29,8 @@ As a **Staff Engineer** reviewer for the `crypto-signals` project, your goal is 
 ### 4. Testing & Reliability
 - **TDD Requirement**: For bug fixes, require a failing test case that reproduces the issue before the fix.
 - **Environment Isolation**: Ensure test code never overrides `ENVIRONMENT=PROD`.
+- **CI/CD Check**: If `src/config.py` or new dependencies are added, verify updates to `deploy.yml` secrets and environment configurations. Ensure `/preflight` was run.
+- **Doc Parity Check**: Ensure that updates to the root `README.md` or `AGENTS.md` are reflected in the corresponding files in `./docs` (and vice versa) to prevent documentation drift.
 
 ## Feedback Format
 Your review should be concise and actionable, saved to `temp/review/review-report.md`:

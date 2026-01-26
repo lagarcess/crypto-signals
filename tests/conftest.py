@@ -14,13 +14,13 @@ def mock_env_vars():
     os.environ["ALPACA_PAPER_TRADING"] = "true"
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def mock_firestore_client():
     with patch("google.cloud.firestore.Client") as mock:
         yield mock
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def mock_bq_client():
     with patch("google.cloud.bigquery.Client") as mock:
         yield mock
