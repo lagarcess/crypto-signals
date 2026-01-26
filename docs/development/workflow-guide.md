@@ -40,6 +40,7 @@ Follow this sequence for every standard task or issue.
 *   **Actions**:
     - Run `pytest`, `ruff`, `mypy`.
     - Run `python -m src.crypto_signals.main --smoke-test`.
+    - **Local CD Pre-Flight**: Runs `/preflight` to check Docker/GCP.
     - **Self-Correction**: If any step fails, triggers `/fix` recursively (Max 3 attempts).
     - **Deep Agent Review**: Checks for Security/Scalability gaps.
 *   **Outcome**: A verified, signed-off commit.
@@ -59,7 +60,42 @@ Follow this sequence for every standard task or issue.
     - Build production container locally.
     - Run containerized smoke test.
     - Validate GCP project and connectivity.
+    - Validate GCP project and connectivity.
 *   **Outcome**: High confidence that `deploy.yml` will pass.
+
+### `/review-jules`
+*   **Trigger**: When reviewing a PR from Jules (Intern).
+*   **Actions**:
+    - Fetches PR context.
+    - Checks for ignored comments.
+    - Posts "Manager-Style" feedback using `scripts/post_review.py`.
+*   **Outcome**: Jules enters Reactive Mode to fix the PR.
+
+### `/cleanup_branch`
+*   **Trigger**: After merging a PR.
+*   **Actions**:
+    - Switches to `main`.
+    - Pulls latest changes.
+    - Deletes the local feature branch.
+
+## 🌳 Parallel Development (Git Worktrees)
+
+To work on multiple branches simultaneously (without switching contexts), use the **Worktree Manager**.
+
+### Commands
+
+| Command | Usage | Description |
+| :--- | :--- | :--- |
+| **Create** | `python scripts/manage_worktree.py create <branch>` | Creates `../crypto-signals-<branch>`, copies `.env`, installs deps. Handles local/remote branches. |
+| **Sync** | `python scripts/manage_worktree.py sync` | **Rebases** worktree on `origin/main`. **Checks CI/CD** (blocks if main is broken). |
+| **Remove** | `python scripts/manage_worktree.py remove <branch>` | Deletes worktree directory and prunes git metadata. |
+| **List** | `python scripts/manage_worktree.py list` | Shows active worktrees. |
+
+### Workflow Example
+1.  **Start Task**: `python scripts/manage_worktree.py create feat/issue-123`
+2.  **Work**: `cd ../crypto-signals-feat-issue-123` (Fully isolated environment).
+3.  **Update**: `python scripts/manage_worktree.py sync` (Keep current with main).
+4.  **Finish**: Submit PR, then `python scripts/manage_worktree.py remove feat/issue-123`.
 
 ---
 
@@ -82,6 +118,7 @@ Follow this sequence for every standard task or issue.
 | **Bug Fix (Known)** | `/implement [fix]` → `/verify` → `/pr` | Skip planning if the fix is obvious. |
 | **Code Polish** | `/cleanup` → `/review` → `/verify` | No logic change, just hygiene and refactoring. |
 | **Dependabot/Upgrades** | `/implement [upgrade]` → `/verify` | Updating dependencies and ensuring tests pass. |
+| **Intern Delegation** | `/review-jules` | Review Jules' work and force a fix. |
 | **Infrastructure Fix** | `/diagnose` → `/fix` | Check cloud health and attempt auto-patching. |
 | **Post-Merge Reset** | `/cleanup_branch` | Switch to main, pull, delete old branch. |
 

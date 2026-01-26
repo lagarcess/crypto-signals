@@ -15,7 +15,8 @@ This file provides a map of the core modules, responsibilities, and constraints 
 
 ## Core Commands (Slash Commands)
 
-Jules should use these commands to ensure synchronization with the developer workflow:
+Jules should use these commands to ensure synchronization with the developer workflow.
+**Definition Source**: The detailed steps for each command are defined in the `.agent/workflows/` directory.
 
 - `/plan [task]`: Generates `temp/plan/implementation-plan.md`. Always starts here.
 - `/implement`: Enters TDD loop. Writes tests first.
@@ -24,6 +25,14 @@ Jules should use these commands to ensure synchronization with the developer wor
 - `/learn`: **Critical**. Updates `docs/development/knowledge-base.md` with new findings. Run after every major change.
 - `/diagnose`: Includes **CI/CD Forensics** via `gh` CLI.
 - `/fix`: Recursive self-correction loop for test failures.
+- `/review-jules`: **Manager Mode**. Delegate feedback to Jules via `post_review.py`.
+
+## Parallel Development (Worktrees)
+
+When working on multiple issues, use the `scripts/manage_worktree.py` tool.
+- Create: `python scripts/manage_worktree.py create feat/x`
+- Sync: `python scripts/manage_worktree.py sync` (Maintains linearity)
+- Remove: `python scripts/manage_worktree.py remove feat/x`
 
 ## Never-Violate Standards
 
@@ -33,6 +42,7 @@ Jules should use these commands to ensure synchronization with the developer wor
 4. **Structured Logging**: Use `loguru` with context (`signal_id`, `symbol`). No standard `print` statements.
 5. **TDD First**: Generate a failing test for bugs before writing the fix.
 6. **Doc Parity**: Root files (e.g., `README.md`, `AGENTS.md`) must be in sync with the detailed wiki in `./docs`. Updates to systems must be propagated to both.
+7. **Refactoring Rule**: If you extract logic into a new class/module, you **MUST** create a dedicated test file for it immediately. Do not rely on existing integration tests to cover new units.
 
 ## Synchronous Handover
 - After a task is finished, run `/learn` to update the global knowledge base.

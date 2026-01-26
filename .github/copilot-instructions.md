@@ -5,6 +5,18 @@ Core values: **Precision, Idempotency, Safety**.
 
 ---
 
+## 🤖 AI Flywheel Synergy
+
+You are part of a triple-agent system. Your role is **Reviewer & Suggester**, not just a code generator.
+
+- **Antigravity (IDE)**: The Primary Workspace. Runs workflows.
+- **Jules (Agent)**: The Headless Executor. Runs background tasks.
+- **Rules of Engagement**:
+    - **Suggest Workflows**: DO NOT suggest raw commands like `pytest`. Suggest the equivalent **Slash Command** (e.g., `/verify`).
+    - **Respect the Source**: `.agent/workflows/` is the Single Source of Truth for automation.
+
+---
+
 ## 🏗 Architecture & Data Flow
 
 ### High-Level Pipeline
@@ -36,15 +48,20 @@ Core values: **Precision, Idempotency, Safety**.
 
 ## 🛠 Build, Test & Development Workflows
 
-### Setup & Commands
+### ⚡ Developer Workflow (Slash Commands)
 
-```bash
-poetry install                                # Install all deps
-poetry run ruff check src tests              # Lint
-poetry run mypy src                          # Type check
-poetry run pytest                            # Run unit tests (integration tests skipped by default)
-poetry run python -m crypto_signals.main     # Run main pipeline (local dev)
-```
+The project uses **Slash Commands** to run standardized automation. **Always suggest these** instead of raw shell commands.
+
+| Action | Slash Command | What it does |
+| :--- | :--- | :--- |
+| **New Task** | `/plan [task]` | Checks knowledge base, logs, and drafts a plan. |
+| **Code/Refactor** | `/implement` | Creates branch, runs TDD loop, cleans up code. |
+| **Verify Work** | `/verify` | Runs **Full Tests** + **Smoke Test** + **Local Docker Pre-flight**. |
+| **Deployment Check** | `/preflight` | Validates Docker build and GCP connectivity. |
+| **Submit PR** | `/pr` | Updates docs, runs `/learn`, and pushes code. |
+| **Delegation** | `/review-jules` | Review work done by Jules (Intern Agent). |
+
+*Note: These commands are executed by the Antigravity agent or the developer's terminal.*
 
 ### Critical Pre-Execution Steps
 
