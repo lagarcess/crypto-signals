@@ -13,6 +13,7 @@ import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any, Dict, List
 
 # Ensure PROD environment for diagnostics
 os.environ.setdefault("ENVIRONMENT", "PROD")  # noqa: E402
@@ -33,7 +34,7 @@ def analyze_firestore_state() -> dict:
         "live_positions" if settings.ENVIRONMENT == "PROD" else "test_positions"
     )
 
-    summary = {
+    summary: Dict[str, Any] = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "environment": settings.ENVIRONMENT,
         "signals_collection": signals_coll,

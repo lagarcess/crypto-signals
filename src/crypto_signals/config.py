@@ -32,23 +32,11 @@ class Settings(BaseSettings):
     )
 
     # Alpaca API Credentials (Required)
-    ALPACA_API_KEY: str = Field(
-        ...,
-        description="Alpaca API Key for trading and market data",
-        min_length=1,
-    )
-    ALPACA_SECRET_KEY: str = Field(
-        ...,
-        description="Alpaca Secret Key for authentication",
-        min_length=1,
-    )
+    ALPACA_API_KEY: str | None = None
+    ALPACA_SECRET_KEY: str | None = None
 
     # Google Cloud Configuration (Required)
-    GOOGLE_CLOUD_PROJECT: str = Field(
-        ...,
-        description="Google Cloud Project ID",
-        min_length=1,
-    )
+    GOOGLE_CLOUD_PROJECT: str | None = None
 
     # Google Cloud Credentials Path (Optional - for service account auth)
     GOOGLE_APPLICATION_CREDENTIALS: str | None = Field(
@@ -57,10 +45,7 @@ class Settings(BaseSettings):
     )
 
     # Discord Webhooks (Multi-destination routing)
-    TEST_DISCORD_WEBHOOK: SecretStr = Field(
-        ...,
-        description="Discord Webhook URL for test/development messages (always required)",
-    )
+    TEST_DISCORD_WEBHOOK: SecretStr | None = None
     LIVE_CRYPTO_DISCORD_WEBHOOK_URL: SecretStr | None = Field(
         default=None,
         description="Discord Webhook URL for live CRYPTO signals (required when TEST_MODE=False)",
@@ -180,11 +165,6 @@ class Settings(BaseSettings):
     MIN_ASSET_BP_USD: float = Field(
         default=100.0,
         description="Minimum buying power required to perform a trade.",
-    )
-
-    ENABLE_EXECUTION: bool = Field(
-        default=False,
-        description="Enable order execution (requires ALPACA_PAPER_TRADING=True)",
     )
 
     ENABLE_EQUITIES: bool = Field(

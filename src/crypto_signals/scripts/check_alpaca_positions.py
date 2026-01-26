@@ -54,8 +54,11 @@ def check_alpaca_vs_db():
     table.add_column("Match?", style="bold")
 
     orphans = []
+    from alpaca.trading.models import Position
 
     for pos in alpaca_positions:
+        if not isinstance(pos, Position):
+            continue
         symbol = pos.symbol
         qty = pos.qty
 
