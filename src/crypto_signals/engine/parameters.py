@@ -3,8 +3,9 @@ Signal Parameter Factory.
 
 Extracts signal parameter calculation logic from SignalGenerator.
 """
+
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 import numpy as np
 import pandas as pd
@@ -23,6 +24,22 @@ class SignalParameterFactory:
     SAFE_TP2_VAL = 0.00000002
     SAFE_TP3_VAL = 0.00000003
 
+    STRUCTURAL_PATTERNS = {
+        "DOUBLE_BOTTOM": "double_bottom",
+        "INVERSE_HEAD_SHOULDERS": "inv_hs",
+        "BULL_FLAG": "bull_flag",
+        "CUP_AND_HANDLE": "cup_handle",
+        "FALLING_WEDGE": "falling_wedge",
+        "ASCENDING_TRIANGLE": "asc_triangle",
+    }
+
+    CONFLUENCE_WHITELIST = [
+        "rsi_bullish_divergence",
+        "volatility_contraction",
+        "volume_expansion",
+        "trend_bullish",
+    ]
+
     def get_parameters(
         self,
         symbol: str,
@@ -33,7 +50,7 @@ class SignalParameterFactory:
         analyzer: PatternAnalyzer,
         harmonic_pattern=None,
         geometric_pattern_name: Optional[str] = None,
-        confluence_snapshot: Optional[dict] = None,
+        # confluence_snapshot removed as per review comment
     ) -> Dict[str, Any]:
         """
         Calculate signal parameters based on pattern and market data.
@@ -45,9 +62,7 @@ class SignalParameterFactory:
         entry_ref = close_price  # Entry is always close of signal candle
 
         # ATR for Dynamic Exits
-        atr = float(latest["ATRr_14"]) if "ATRr_14" in latest else 0.0
-        if atr == 0.0 and "ATR_14" in latest:
-            atr = float(latest["ATR_14"])
+        atr = float(latest.get("ATRr_14") or latest.get("ATR_14", 0.0))
 
         # Stop Loss: 1% below Low by default
         suggested_stop = low_price * 0.99
@@ -59,16 +74,12 @@ class SignalParameterFactory:
         take_profit_3 = None
 
         # Specific Structural Invalidation
-        if pattern_name == "BULLISH_HAMMER":
+        if pattern_name in ("BULLISH_HAMMER", "MORNING_STAR"):
             invalidation_price = low_price
             suggested_stop = invalidation_price * 0.99
 
         elif pattern_name == "BULLISH_ENGULFING":
             invalidation_price = open_price
-            suggested_stop = invalidation_price * 0.99
-
-        elif pattern_name == "MORNING_STAR":
-            invalidation_price = low_price
             suggested_stop = invalidation_price * 0.99
 
         elif pattern_name == "BULLISH_MARUBOZU":
@@ -117,15 +128,9 @@ class SignalParameterFactory:
         ds = latest.name.date() if hasattr(latest.name, "date") else latest.name
 
         # Confluence Factors
-        CONFLUENCE_WHITELIST = [
-            "rsi_bullish_divergence",
-            "volatility_contraction",
-            "volume_expansion",
-            "trend_bullish",
-        ]
         confluence_factors = [
             col
-            for col in CONFLUENCE_WHITELIST
+            for col in self.CONFLUENCE_WHITELIST
             if col in latest.index
             and isinstance(latest[col], (bool, np.bool_))
             and latest[col]
@@ -138,17 +143,8 @@ class SignalParameterFactory:
         pattern_classification = None
         structural_anchors = None
 
-        structural_patterns = {
-            "DOUBLE_BOTTOM": "double_bottom",
-            "INVERSE_HEAD_SHOULDERS": "inv_hs",
-            "BULL_FLAG": "bull_flag",
-            "CUP_AND_HANDLE": "cup_handle",
-            "FALLING_WEDGE": "falling_wedge",
-            "ASCENDING_TRIANGLE": "asc_triangle",
-        }
-
-        if pattern_name in structural_patterns:
-            col_prefix = structural_patterns[pattern_name]
+        if pattern_name in self.STRUCTURAL_PATTERNS:
+            col_prefix = self.STRUCTURAL_PATTERNS[pattern_name]
             duration_col = f"{col_prefix}_duration"
             class_col = f"{col_prefix}_classification"
 
@@ -198,8 +194,12 @@ class SignalParameterFactory:
         candle_timestamp = latest.name
         if hasattr(candle_timestamp, "to_pydatetime"):
             candle_timestamp = candle_timestamp.to_pydatetime()
+
+        # Issue #153: Fix timezone handling. If aware but not UTC, convert. If naive, assume UTC.
         if candle_timestamp.tzinfo is None:
             candle_timestamp = candle_timestamp.replace(tzinfo=timezone.utc)
+        else:
+            candle_timestamp = candle_timestamp.astimezone(timezone.utc)
 
         valid_time = (
             120 if pattern_classification and "MACRO" in pattern_classification else 48
@@ -230,7 +230,7 @@ class SignalParameterFactory:
             "structural_anchors": structural_anchors,
             "harmonic_metadata": harmonic_metadata,
             "created_at": created_at,
-            "confluence_snapshot": confluence_snapshot,
+            # confluence_snapshot removed from params packing as per review
             "side": OrderSide.BUY,
         }
 

@@ -8,7 +8,6 @@ indicators, and detection of price patterns to generate trading signals.
 from datetime import datetime, timedelta, timezone
 from typing import Any, List, Optional, Type
 
-import numpy as np
 import pandas as pd
 from crypto_signals.analysis.harmonics import HarmonicAnalyzer
 from crypto_signals.analysis.indicators import TechnicalIndicators
@@ -486,8 +485,10 @@ class SignalGenerator:
             analyzer=analyzer,
             harmonic_pattern=harmonic_pattern,
             geometric_pattern_name=geometric_pattern_name,
-            confluence_snapshot=confluence_snapshot,
         )
+
+        # Manually attach confluence snapshot (removed from factory for cleaner signature)
+        params["confluence_snapshot"] = confluence_snapshot
 
         # Status Logic
         final_status = SignalStatus.WAITING

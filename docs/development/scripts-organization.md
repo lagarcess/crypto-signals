@@ -26,6 +26,7 @@ scripts/
 ├── purge_test_signals.py       # Test data cleanup
 ├── validate_assets.py          # Asset validation
 ├── generate_pattern_images.py  # Pattern image generation
+├── parse_pr_comments.py        # PR comment visualization (rich output)
 └── visual_discord_test.py      # Discord notification testing
 ```
 

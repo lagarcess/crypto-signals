@@ -6,7 +6,14 @@ description: AI Code Review (Staff Engineer Persona) to replace Github Copilot
     - Capture the changes: `git diff main...HEAD` (or `git diff HEAD~1` if fast-forward).
     - Read `temp/plan/implementation-plan.md` (if exists) to check alignment with the plan.
 
-2.  **Semantic Critique**
+2.  **Existing PR Comments Analysis**
+    - Fetch inline comments (if PR exists):
+      `gh api repos/:owner/:repo/pulls/:pr_number/comments > temp/output/pr_comments.json`
+      *Note: You may need to infer owner/repo or use `gh pr list` to get the PR number.*
+    - Parse comments: `python scripts/parse_pr_comments.py temp/output/pr_comments.json`
+    - **Review Goal**: Check `temp/output/pr_comments_readable.txt`. Identify any unresolved requests for changes or "High Priority" inline comments that haven't been addressed in the code.
+
+3.  **Semantic Critique**
     - Analyze the code against "Staff Engineer" standards:
         - **Readability**: Are variable names descriptive? Are magic numbers used?
         - **Complexity**: Identify nested loops > 3 levels or functions > 50 lines.
