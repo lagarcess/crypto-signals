@@ -84,7 +84,7 @@ else:
 # Step 1b: Trail Update
 print("\n2️⃣  Sending TRAIL UPDATE (Stop moved up)...")
 long_signal.take_profit_3 = 98000.0  # Moved trailing stop up
-result = discord.send_trail_update(
+result: bool | str = discord.send_trail_update(
     signal=long_signal,
     old_stop=95000.0,
     asset_class=AssetClass.CRYPTO,

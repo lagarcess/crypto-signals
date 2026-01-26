@@ -11,11 +11,12 @@ Pattern: Extract-Transform-Load
 """
 
 from datetime import datetime, timezone
-from typing import Any, List
+from typing import Any, List, Optional
 
 import pandas as pd
 from google.cloud import firestore
 from loguru import logger
+from pydantic import BaseModel, Field
 
 from crypto_signals.config import (
     get_crypto_data_client,
@@ -28,6 +29,30 @@ from crypto_signals.pipelines.base import BigQueryPipelineBase
 
 # Crypto fee constant (0.25% taker fee for base tier)
 CRYPTO_TAKER_FEE_PCT = 0.0025
+
+
+class RejectedSignal(BaseModel):
+    """Schema for rejected signals archival."""
+
+    _doc_id: Optional[str] = Field(None, description="Firestore document ID")
+    ds: Any
+    signal_id: str
+    symbol: str
+    asset_class: str
+    pattern_name: str
+    rejection_reason: str
+    trade_type: str
+    side: str
+    entry_price: float
+    suggested_stop: float
+    take_profit_1: float
+    theoretical_exit_price: Optional[float]
+    theoretical_exit_reason: Optional[str]
+    theoretical_exit_time: Optional[Any]
+    theoretical_pnl_usd: float
+    theoretical_pnl_pct: float
+    theoretical_fees_usd: float
+    created_at: Any
 
 
 class RejectedSignalArchival(BigQueryPipelineBase):
@@ -43,8 +68,6 @@ class RejectedSignalArchival(BigQueryPipelineBase):
         settings = get_settings()
         env_suffix = "" if settings.ENVIRONMENT == "PROD" else "_test"
 
-        # Define a simple schema dict for rejected signal analytics
-        # We'll use dict-based schema rather than Pydantic model
         super().__init__(
             job_name="rejected_signal_archival",
             staging_table_id=(
@@ -55,7 +78,7 @@ class RejectedSignalArchival(BigQueryPipelineBase):
             ),
             id_column="signal_id",
             partition_column="ds",
-            schema_model=None,  # Using dict-based schema
+            schema_model=RejectedSignal,
         )
 
         # Initialize Source Clients
@@ -273,7 +296,7 @@ class RejectedSignalArchival(BigQueryPipelineBase):
         )
         return transformed
 
-    def cleanup(self, data: List[dict]) -> None:
+    def cleanup(self, data: list[BaseModel]) -> None:
         """
         Delete processed rejected signals from Firestore.
 

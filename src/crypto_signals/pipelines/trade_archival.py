@@ -106,7 +106,7 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
             # Fetching last 100 CFEE activities should cover recent trades.
             from alpaca.trading.enums import ActivityType
 
-            activities = self.alpaca.get_account_activities(
+            activities = self.alpaca.get_activities(
                 activity_types=[ActivityType.CSD, ActivityType.CFEE]
             )
 
@@ -240,7 +240,7 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
 
                 try:
                     # Fetch order by client_order_id to ensure we get the specific trade
-                    order = self.alpaca.get_order_by_client_order_id(client_order_id)
+                    order = self.alpaca.get_order_by_client_id(client_order_id)
                 except APIError as e:
                     # Specific handling for 404/Not Found
                     # In Alpaca, the HTTP status code may live on the nested
@@ -491,7 +491,7 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
 
         return transformed
 
-    def cleanup(self, data: List[TradeExecution]) -> None:
+    def cleanup(self, data: list[Any]) -> None:
         """
         Delete processed positions from Firestore.
 

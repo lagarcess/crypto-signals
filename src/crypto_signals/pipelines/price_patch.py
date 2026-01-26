@@ -12,6 +12,7 @@ Pattern: "Query-Fetch-Update" (same as FeePatchPipeline from Issue #140)
 
 from typing import List
 
+from alpaca.trading.models import Order
 from google.cloud import bigquery
 from loguru import logger
 
@@ -125,7 +126,7 @@ class PricePatchPipeline:
             # Fetch order details from Alpaca
             exit_order = self.execution_engine.get_order_details(exit_order_id)
 
-            if not exit_order:
+            if not isinstance(exit_order, Order):
                 logger.warning(f"[price_patch] Order {exit_order_id} not found in Alpaca")
                 return (False, 0.0)
 
