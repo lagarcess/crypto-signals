@@ -13,12 +13,15 @@ import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any, Dict, cast
+
+from alpaca.trading.models import Position, TradeAccount
 
 # Ensure PROD environment for diagnostics
 os.environ.setdefault("ENVIRONMENT", "PROD")  # noqa: E402
 
 
-def get_account_summary() -> dict:
+def get_account_summary() -> Dict[str, Any]:
     """Get Alpaca account summary and return as dict."""
     from alpaca.trading.client import TradingClient
 
@@ -31,24 +34,26 @@ def get_account_summary() -> dict:
         paper=settings.is_paper_trading,
     )
 
-    account = alpaca.get_account()
+    account = cast(TradeAccount, alpaca.get_account())
     positions = alpaca.get_all_positions()
 
-    summary = {
+    summary: dict[str, Any] = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "account_status": str(account.status),
         "is_paper": settings.is_paper_trading,
-        "cash": float(account.cash),
-        "portfolio_value": float(account.portfolio_value),
-        "equity": float(account.equity),
-        "buying_power": float(account.buying_power),
-        "last_equity": float(account.last_equity),
+        "cash": float(account.cash or 0.0),
+        "portfolio_value": float(account.portfolio_value or 0.0),
+        "equity": float(account.equity or 0.0),
+        "buying_power": float(account.buying_power or 0.0),
+        "last_equity": float(account.last_equity or 0.0),
         "open_positions_count": len(positions),
         "positions": [],
     }
 
     total_unrealized_pl = 0
     for pos in positions:
+        if not isinstance(pos, Position):
+            continue
         unrealized_pl = float(pos.unrealized_pl or 0)
         total_unrealized_pl += unrealized_pl
         summary["positions"].append(
@@ -68,7 +73,7 @@ def get_account_summary() -> dict:
     return summary
 
 
-def write_report(summary: dict, output_path: Path) -> None:
+def write_report(summary: Dict[str, Any], output_path: Path) -> None:
     """Write human-readable report to file."""
     with open(output_path, "w") as f:
         f.write("=" * 70 + "\n")

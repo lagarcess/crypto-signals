@@ -10,7 +10,7 @@ to ensure idempotency and data consistency.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, List, Type
+from typing import Any, Dict, List, Type
 
 from google.api_core.exceptions import NotFound
 from google.cloud import bigquery
@@ -76,7 +76,7 @@ class BigQueryPipelineBase(ABC):
             data: The list of validated Pydantic models that were successfully merged.
         """
 
-    def transform(self, raw_data: List[Any]) -> List[dict]:
+    def transform(self, raw_data: List[Any]) -> List[Dict[str, Any]]:
         """
         Validate and transform raw data using the Pydantic schema.
 
@@ -117,7 +117,7 @@ class BigQueryPipelineBase(ABC):
         query_job = self.bq_client.query(query)
         query_job.result()  # Wait for job to complete
 
-    def _load_to_staging(self, data: List[dict]) -> None:
+    def _load_to_staging(self, data: List[Dict[str, Any]]) -> None:
         """
         Load transformed data into the staging table.
 

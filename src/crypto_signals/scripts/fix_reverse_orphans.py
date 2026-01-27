@@ -74,19 +74,28 @@ def heal_reverse_orphans():
 
             try:
                 # Check Alpaca
+                from alpaca.trading.models import Position
+
                 pos = alpaca.get_open_position(symbol)
 
                 # If we get here, it's OPEN in Alpaca
-                orphans.append(
-                    {
-                        "doc_id": doc.id,
-                        "symbol": symbol,
-                        "db_qty": data.get("qty"),
-                        "alpaca_qty": float(pos.qty),
-                        "alpaca_val": float(pos.market_value),
-                        "exit_reason": data.get("exit_reason"),
-                    }
-                )
+                if isinstance(pos, Position):
+                    qty = float(pos.qty) if pos.qty is not None else 0.0
+                    market_value = (
+                        float(pos.market_value)
+                        if pos.market_value is not None
+                        else 0.0
+                    )
+                    orphans.append(
+                        {
+                            "doc_id": doc.id,
+                            "symbol": symbol,
+                            "db_qty": data.get("qty"),
+                            "alpaca_qty": qty,
+                            "alpaca_val": market_value,
+                            "exit_reason": data.get("exit_reason"),
+                        }
+                    )
             except Exception:
                 # 404 - Position is actually closed in Alpaca (Good)
                 pass
@@ -133,24 +142,27 @@ def heal_reverse_orphans():
             # Todo: Check position side if we support shorts.
             # Assuming Long Exits for safety (selling).
 
+            from alpaca.trading.models import Order
+
             req = MarketOrderRequest(
                 symbol=symbol, qty=qty, side=OrderSide.SELL, time_in_force=TimeInForce.GTC
             )
 
             order = alpaca.submit_order(req)
-            console.print(f" -> Order Submitted: {order.id}")
+            if isinstance(order, Order):
+                console.print(f" -> Order Submitted: {order.id}")
 
-            # Update DB with new exit info
-            # We won't wait for fill here (async), just record the order ID
-            # The Sync Loop will pick up the fill details later (or manual check)
+                # Update DB with new exit info
+                # We won't wait for fill here (async), just record the order ID
+                # The Sync Loop will pick up the fill details later (or manual check)
 
-            db.collection(collection_name).document(doc_id).update(
-                {
-                    "exit_order_id": str(order.id),
-                    "exit_reason": "MANUAL_FIX_139",  # Tag it
-                    "awaiting_backfill": True,
-                }
-            )
+                db.collection(collection_name).document(doc_id).update(
+                    {
+                        "exit_order_id": str(order.id),
+                        "exit_reason": "MANUAL_FIX_139",  # Tag it
+                        "awaiting_backfill": True,
+                    }
+                )
             console.print(" -> DB Updated")
 
         except Exception as e:

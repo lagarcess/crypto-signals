@@ -196,10 +196,10 @@ class ExecutionEngine:
             logger.info(
                 f"CRYPTO ORDER SUBMITTED: {signal.symbol}",
                 extra={
-                    "order_id": str(cast(Order, order).id),
-                    "client_order_id": cast(Order, order).client_order_id,
+                    "order_id": str(order.id),
+                    "client_order_id": order.client_order_id,
                     "qty": qty,
-                    "status": str(cast(Order, order).status),
+                    "status": str(order.status),
                 },
             )
 
@@ -293,10 +293,10 @@ class ExecutionEngine:
             logger.info(
                 f"ORDER SUBMITTED: {signal.symbol}",
                 extra={
-                    "order_id": str(cast(Order, order).id),
-                    "client_order_id": cast(Order, order).client_order_id,
+                    "order_id": str(order.id),
+                    "client_order_id": order.client_order_id,
                     "qty": qty,
-                    "status": str(cast(Order, order).status),
+                    "status": str(order.status),
                 },
             )
 
@@ -730,7 +730,7 @@ class ExecutionEngine:
     # ORDER MANAGEMENT METHODS (Managed Trade Model)
     # =========================================================================
 
-    def get_order_details(self, order_id: str) -> Optional[object]:
+    def get_order_details(self, order_id: str) -> Optional[Order]:
         """
         Retrieve order details from Alpaca by order ID.
 

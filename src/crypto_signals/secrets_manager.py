@@ -7,7 +7,7 @@ local development.
 """
 
 import os
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 from loguru import logger
 
@@ -23,7 +23,7 @@ class SecretManager:
             project_id: GCP ID. If None, uses GOOGLE_CLOUD_PROJECT env var.
         """
         self.project_id = project_id or os.environ.get("GOOGLE_CLOUD_PROJECT")
-        self._client = None
+        self._client: Any = None
         self._use_secret_manager = self._should_use_secret_manager()
 
     def _should_use_secret_manager(self) -> bool:
@@ -117,7 +117,7 @@ class SecretManager:
                 f"projects/{self.project_id}/secrets/{secret_name}/versions/{version}"
             )
             response = client.access_secret_version(request={"name": secret_path})
-            secret_value = response.payload.data.decode("UTF-8")
+            secret_value = str(response.payload.data.decode("UTF-8"))
             logger.info(f"Loaded {secret_name} from Secret Manager")
             return secret_value
 

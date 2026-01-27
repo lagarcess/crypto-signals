@@ -167,8 +167,13 @@ class SignalParameterFactory:
                 for p in recent_pivots
             ]
             if len(structural_anchors) >= 2:
-                pivot_indices = [p["index"] for p in structural_anchors]
-                pattern_span_days = max(pivot_indices) - min(pivot_indices)
+                pivot_indices = [
+                    int(float(p.get("index") or 0))
+                    for p in structural_anchors
+                    if p.get("index") is not None
+                ]
+                if pivot_indices:
+                    pattern_span_days = max(pivot_indices) - min(pivot_indices)
 
         if pattern_span_days is not None:
             if pattern_span_days > 90:

@@ -20,6 +20,7 @@ import pandas as pd
 from alpaca.common.exceptions import APIError
 from google.cloud import firestore
 from loguru import logger
+from pydantic import BaseModel
 
 from crypto_signals.config import (
     get_crypto_data_client,
@@ -104,10 +105,10 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
             # alpaca-py `get_account_activities` supports `activity_types`.
             # Note: We can't filter by order_id in the API call, must filter in client.
             # Fetching last 100 CFEE activities should cover recent trades.
-            from alpaca.trading.enums import ActivityType
 
-            activities = self.alpaca.get_account_activities(
-                activity_types=[ActivityType.CSD, ActivityType.CFEE]
+            activities = self.alpaca._get(
+                "/account/activities",
+                params={"activity_types": "CSD,CFEE"},
             )
 
             # Filter for this specific order
@@ -240,7 +241,7 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
 
                 try:
                     # Fetch order by client_order_id to ensure we get the specific trade
-                    order = self.alpaca.get_order_by_client_order_id(client_order_id)
+                    order = self.alpaca.get_order_by_client_id(client_order_id)
                 except APIError as e:
                     # Specific handling for 404/Not Found
                     # In Alpaca, the HTTP status code may live on the nested
@@ -265,13 +266,22 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                     else:
                         raise e
 
+                # Cast order to Any to avoid MyPy 'dict' inference errors (Issue #114)
+                from typing import Any, cast
+
+                order = cast(Any, order)
+
                 # 2. Calculate Derived Metrics
                 # Note: Alpaca 'filled_avg_price' is the source of truth
                 # for execution price
-                entry_price_val = (
-                    float(order.filled_avg_price) if order.filled_avg_price else 0.0
-                )
-                qty = float(order.filled_qty) if order.filled_qty else 0.0
+                if isinstance(order, SimpleNamespace):
+                    entry_price_val = float(order.filled_avg_price)
+                    qty = float(order.filled_qty)
+                else:
+                    entry_price_val = (
+                        float(order.filled_avg_price) if order.filled_avg_price else 0.0
+                    )
+                    qty = float(order.filled_qty) if order.filled_qty else 0.0
 
                 # Target price from original Signal (stored in Firestore position)
                 # This is the price we *intended* to enter at
@@ -282,12 +292,18 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                     else pos.get("entry_fill_price", 0.0)
                 )
 
-                # Broker's order ID for auditability (links to Alpaca dashboard)
-                alpaca_order_id = str(order.id) if order.id else None
-
                 # Source of Truth: Alpaca Order Side (Entry Order)
                 # Cast to string to handle Enum or str types robustly
-                order_side_str = str(order.side).lower()
+                # Cast order to Any to avoid MyPy 'dict' inference error
+                from typing import cast
+
+                order_any = cast(Any, order)
+
+                alpaca_order_id = (
+                    str(order_any.id) if tuple([order_any.id]) and order_any.id else None
+                )
+
+                order_side_str = str(order_any.side).lower()
 
                 # Get exit price from Firestore document, default to 0.0 if missing
                 exit_price_val = float(pos.get("exit_fill_price", 0.0))
@@ -491,7 +507,7 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
 
         return transformed
 
-    def cleanup(self, data: List[TradeExecution]) -> None:
+    def cleanup(self, data: List[BaseModel]) -> None:
         """
         Delete processed positions from Firestore.
 
@@ -510,12 +526,13 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
         count = 0
 
         for item in data:
-            # item is now a TradeExecution Pydantic model
-            # We need the Original ID used in Firestore.
-            # In transform, we mapped trade_id -> position_id.
-            doc_id = item.trade_id
+            if isinstance(item, TradeExecution):
+                # item is now a TradeExecution Pydantic model
+                # We need the Original ID used in Firestore.
+                # In transform, we mapped trade_id -> position_id.
+                doc_id = item.trade_id
 
-            # Assumption: Firestore Doc ID == position_id
+                # Assumption: Firestore Doc ID == position_id
             # (which is usually true in this design)
             # If Doc ID was random, we'd need to have passed it through.
             # Let's assume Doc ID KEY strategy is used or we query ID.

@@ -10,6 +10,7 @@ Dev Note: Enable GCP native TTL policy with:
 """
 
 from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, cast
 
 from crypto_signals.config import get_settings
 from crypto_signals.domain.schemas import (
@@ -70,7 +71,7 @@ class JobLockRepository:
             return True
 
         try:
-            return _acquire_in_transaction(self.db.transaction())
+            return cast(bool, _acquire_in_transaction(self.db.transaction()))
         except Exception as e:
             logger.error(f"Failed to acquire lock for {job_id}: {e}")
             return False
@@ -176,7 +177,7 @@ class SignalRepository:
                 return None
         return None
 
-    def update_signal_atomic(self, signal_id: str, updates: dict) -> bool:
+    def update_signal_atomic(self, signal_id: str, updates: Dict[str, Any]) -> bool:
         """
         Atomically update signal fields using Firestore transaction.
 
@@ -201,7 +202,7 @@ class SignalRepository:
             return True
 
         try:
-            return update_in_transaction(self.db.transaction())
+            return cast(bool, update_in_transaction(self.db.transaction()))
         except Exception as e:
             logger.error(f"Atomic update failed for {signal_id}: {e}")
             return False

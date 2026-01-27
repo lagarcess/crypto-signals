@@ -251,13 +251,13 @@ def _perpendicular_distance(
 
     if line_len_sq == 0:
         # Start and end points are the same
-        return np.sqrt((px - x1) ** 2 + (py - y1) ** 2)
+        return float(np.sqrt((px - x1) ** 2 + (py - y1) ** 2))
 
     # Perpendicular distance formula
     numerator = abs(dy * px - dx * py + x2 * y1 - y2 * x1)
     denominator = np.sqrt(line_len_sq)
 
-    return numerator / denominator
+    return float(numerator / denominator)
 
 
 @njit(cache=True)

@@ -1,11 +1,13 @@
 """Tests for the AssetValidationService module."""
 
+import uuid
 from unittest.mock import Mock, patch
 
 import pytest
 from alpaca.trading.client import TradingClient
 from alpaca.trading.enums import AssetClass as AlpacaAssetClass
 from alpaca.trading.enums import AssetStatus
+from alpaca.trading.models import Asset
 from crypto_signals.domain.schemas import AssetClass
 from crypto_signals.market.asset_service import AssetValidationService
 
@@ -24,11 +26,20 @@ def service(mock_trading_client):
 
 def _create_mock_asset(symbol: str, status: AssetStatus, tradable: bool):
     """Helper to create mock asset objects."""
-    asset = Mock()
-    asset.symbol = symbol
-    asset.status = status
-    asset.tradable = tradable
-    return asset
+    data = {
+        "id": uuid.uuid4(),
+        "class": AlpacaAssetClass.CRYPTO,
+        "exchange": "CRYPTO",
+        "symbol": symbol,
+        "name": symbol,
+        "status": status,
+        "tradable": tradable,
+        "marginable": True,
+        "shortable": True,
+        "easy_to_borrow": True,
+        "fractionable": True,
+    }
+    return Asset.model_validate(data)
 
 
 class TestSymbolNormalization:

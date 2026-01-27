@@ -1,6 +1,7 @@
 from typing import NamedTuple, Optional
 
 from alpaca.trading.client import TradingClient
+from alpaca.trading.models import TradeAccount
 from crypto_signals.config import get_settings
 from crypto_signals.domain.schemas import AssetClass, Signal
 from crypto_signals.repository.firestore import PositionRepository
@@ -61,6 +62,9 @@ class RiskEngine:
         """
         try:
             account = self.alpaca.get_account()
+            if not isinstance(account, TradeAccount):
+                logger.warning("Could not verify drawdown - account object is not a TradeAccount.")
+                return RiskCheckResult(passed=True)  # Fail open if account fetch fails
             equity = float(account.equity)
             last_equity = float(account.last_equity)
 
@@ -124,6 +128,9 @@ class RiskEngine:
         try:
             account = self.alpaca.get_account()
 
+            if not isinstance(account, TradeAccount):
+                logger.warning("Could not verify buying power - account object is not a TradeAccount.")
+                return RiskCheckResult(passed=True)
             if asset_class == AssetClass.CRYPTO:
                 available = float(account.non_marginable_buying_power)
                 bp_type = "Cash (Crypto)"

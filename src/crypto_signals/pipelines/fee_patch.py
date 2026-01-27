@@ -11,7 +11,7 @@ Pattern: "Query-Fetch-Update"
 """
 
 from datetime import timedelta
-from typing import List
+from typing import Any, Dict, List
 
 from google.cloud import bigquery
 from loguru import logger
@@ -73,7 +73,7 @@ class FeePatchPipeline:
         )
         return patched_count
 
-    def _query_unfinalized_trades(self) -> List[dict]:
+    def _query_unfinalized_trades(self) -> List[Dict[str, Any]]:
         """
         Query BigQuery for trades with unfinalized fees older than 24 hours.
 
@@ -105,7 +105,7 @@ class FeePatchPipeline:
 
         return [dict(row) for row in results]
 
-    def _patch_trade_fees(self, trade: dict) -> bool:
+    def _patch_trade_fees(self, trade: Dict[str, Any]) -> bool:
         """
         Fetch actual CFEE and update BigQuery for a single trade.
 

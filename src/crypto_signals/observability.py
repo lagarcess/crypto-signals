@@ -604,7 +604,7 @@ def log_execution_time(logger_instance: Any, operation: str, **context):
         )
 
 
-def timed(operation_name: Optional[str] = None) -> Callable:
+def timed(operation_name: Optional[str] = None) -> Callable[..., Any]:
     """
     Decorator to automatically log execution time of a function.
     """

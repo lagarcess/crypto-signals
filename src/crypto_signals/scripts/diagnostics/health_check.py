@@ -16,6 +16,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 
 from alpaca.data.historical.crypto import CryptoHistoricalDataClient
+from alpaca.data.models import BarSet
 from alpaca.data.requests import CryptoBarsRequest
 from alpaca.data.timeframe import TimeFrame
 from alpaca.trading.client import TradingClient
@@ -88,7 +89,7 @@ def verify_alpaca_market_data(settings) -> bool:
 
     bars = client.get_crypto_bars(request)
 
-    if bars and "BTC/USD" in bars.data:
+    if isinstance(bars, BarSet) and bars.data and "BTC/USD" in bars.data:
         latest_bar = bars.data["BTC/USD"][-1]
         print(f"✅ [Alpaca Market] Connected (Latest BTC/USD: ${latest_bar.close:,.2f})")
     else:

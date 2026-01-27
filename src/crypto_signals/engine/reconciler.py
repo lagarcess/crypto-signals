@@ -23,6 +23,7 @@ import time
 from typing import Optional
 
 from alpaca.trading.client import TradingClient
+from alpaca.trading.requests import GetOrdersRequest
 from crypto_signals.config import Settings, get_settings
 from crypto_signals.domain.schemas import (
     ExitReason,
@@ -342,13 +343,18 @@ class StateReconciler:
             )
 
             # 2. Search recent filled orders for this symbol
-            recent_orders = self.alpaca.get_orders(
-                filter={
-                    "status": "filled",
-                    "symbols": [position.symbol],
-                    "limit": 10,
-                    "side": close_side,
-                }
+
+            request = GetOrdersRequest(
+                status="closed",
+                symbols=[position.symbol],
+                limit=10,
+                side=close_side,
+            )
+            from alpaca.trading.models import Order
+
+            recent_orders_result = self.alpaca.get_orders(filter=request)
+            recent_orders = (
+                recent_orders_result if isinstance(recent_orders_result, list) else []
             )
 
             # 3. Find the most recent fill that is NOT our known TP or SL legs
@@ -356,7 +362,7 @@ class StateReconciler:
             ignored_ids = {position.tp_order_id, position.sl_order_id}
 
             for o in recent_orders:
-                if str(o.id) not in ignored_ids:
+                if isinstance(o, Order) and str(o.id) not in ignored_ids:
                     closing_order = o
                     break
 

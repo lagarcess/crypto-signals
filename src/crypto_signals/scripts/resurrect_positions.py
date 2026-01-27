@@ -50,8 +50,12 @@ def resurrect_positions():
 
     # Get all Alpaca Positions first (Source of Truth for 'OPEN')
     try:
+        from alpaca.trading.models import Position
+
         alpaca_positions = alpaca.get_all_positions()
-        alpaca_map = {p.symbol: p for p in alpaca_positions}
+        alpaca_map: dict[str, Position] = {
+            p.symbol: p for p in alpaca_positions if isinstance(p, Position)
+        }
     except Exception as e:
         console.print(f"[bold red]Failed to fetch Alpaca positions: {e}[/bold red]")
         return

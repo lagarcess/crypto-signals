@@ -44,6 +44,8 @@
   4. Flag the object status clearly (e.g., `REJECTED_BY_FILTER`).
 - [2026-01-21] **Zombie Prevention**: When routing these hydrate objects to analytics pipelines, explicitly bypass simulation logic (like market data fetching) that assumes valid data, or implementation will fail downstream. Force `PnL = 0` to preserve statistical integrity.
 - [2026-01-21] **Pipeline Robustness**: Always guard date-based dataframe filtering (`df[df.index >= dt]`) with an `.empty` check. Pandas comparisons against empty indexes can raise `TypeError` or `ValueError` in certain contexts, crashing the pipeline for illiquid assets.
+- [2026-01-26] **Reserved Keywords**: Pydantic models with fields named `class` (a Python keyword) cannot be instantiated via constructor kwargs (e.g., `Asset(class="crypto")` raises SyntaxError). specific `model_validate` or `Field(alias="class")` is required, but `model_validate({"class": "..."})` is the safest runtime approach for external data.
+
 
 ## Implementation & Scripting
 - [2026-01-22] **Scripting**: Distinguish between standalone **setup/verification scripts** (`scripts/` root) and **operational module scripts** (`src/crypto_signals/scripts/`). Module scripts enable `python -m` execution and cleaner project imports.
@@ -58,3 +60,6 @@
 - [2026-01-24] **Micro-Cap Safeguards**: Mathematical formulas (like `low - 0.5 * ATR`) break for assets with prices < 0.00001. Always implement a mathematical floor (Layer 1) AND an execution quantity cap (Layer 2) to prevent negative values and position sizing explosions.
 - [2026-01-25] **CI Credential Safety**: `SignalGenerator` (and other engines) default to real Cloud Clients (e.g., `SignalRepository`) if no dependency is injected. This causes `DefaultCredentialsError` in CI. **Always** inject `MagicMock` for repositories in unit tests to prevent accidental cloud connection attempts.
 - [2026-01-26] **Refactoring & Coverage**: When extracting logic from a "God Class" (e.g., `SignalGenerator`) to a helper class (e.g., `SignalParameterFactory`), you **MUST** create a dedicated test suite for the new helper. relying on the original class's tests will likely result in a massive coverage drop (e.g., from 80% to 20%) because the new file is technically "untested" even if it's used.
+- [2026-01-26] **Mocking Risks**: `MagicMock` objects cast to `float()` default to `1.0`. If a mock method name is typoed (e.g. `mock.get_val` instead of `mock.get_value`), the mock object itself is returned, coercing to `1.0` and causing silent numeric failures in tests.
+- [2026-01-26] **MyPy Legacy Strategy**: For large codebases with deep legacy type errors, do not use `type: ignore` everywhere. Use `pyproject.toml` `[[tool.mypy.overrides]]` with `ignore_errors = true` for specific modules. This unblocks CI immediately while strictly enforcing types on new code.
+- [2026-01-26] **Pytest Debugging**: If `pytest` collects 0 tests or fails silently, check for `NameError` at the module level (e.g., missing `import pytest` when using `@pytest.mark.skip`). These import errors in test files can abort collection without a clear traceback unless `--collect-only` is used.

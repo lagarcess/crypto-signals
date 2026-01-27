@@ -10,12 +10,13 @@ Pattern: Extract-Transform-Load
 3. Load: Push to BigQuery via BasePipeline
 """
 
-from datetime import datetime, timezone
-from typing import Any, List
+from datetime import date, datetime, timezone
+from typing import Any, Dict, List, Optional
 
 import pandas as pd
 from google.cloud import firestore
 from loguru import logger
+from pydantic import BaseModel, Field
 
 from crypto_signals.config import (
     get_crypto_data_client,
@@ -28,6 +29,30 @@ from crypto_signals.pipelines.base import BigQueryPipelineBase
 
 # Crypto fee constant (0.25% taker fee for base tier)
 CRYPTO_TAKER_FEE_PCT = 0.0025
+
+
+class RejectedSignal(BaseModel):
+    """Schema for rejected signals archival."""
+
+    doc_id: Optional[str] = Field(None, description="Firestore document ID")
+    ds: date
+    signal_id: str
+    symbol: str
+    asset_class: str
+    pattern_name: str
+    rejection_reason: str
+    trade_type: str
+    side: str
+    entry_price: float
+    suggested_stop: float
+    take_profit_1: float
+    theoretical_exit_price: Optional[float]
+    theoretical_exit_reason: Optional[str]
+    theoretical_exit_time: Optional[datetime]
+    theoretical_pnl_usd: float
+    theoretical_pnl_pct: float
+    theoretical_fees_usd: float
+    created_at: datetime
 
 
 class RejectedSignalArchival(BigQueryPipelineBase):
@@ -43,8 +68,6 @@ class RejectedSignalArchival(BigQueryPipelineBase):
         settings = get_settings()
         env_suffix = "" if settings.ENVIRONMENT == "PROD" else "_test"
 
-        # Define a simple schema dict for rejected signal analytics
-        # We'll use dict-based schema rather than Pydantic model
         super().__init__(
             job_name="rejected_signal_archival",
             staging_table_id=(
@@ -55,7 +78,7 @@ class RejectedSignalArchival(BigQueryPipelineBase):
             ),
             id_column="signal_id",
             partition_column="ds",
-            schema_model=None,  # Using dict-based schema
+            schema_model=RejectedSignal,
         )
 
         # Initialize Source Clients
@@ -102,7 +125,7 @@ class RejectedSignalArchival(BigQueryPipelineBase):
         logger.info(f"[{self.job_name}] extracted {len(raw_data)} rejected signals.")
         return raw_data
 
-    def transform(self, raw_data: List[Any]) -> List[dict]:
+    def transform(self, raw_data: List[Any]) -> List[Dict[str, Any]]:
         """
         Calculate theoretical P&L for rejected signals.
 
@@ -250,13 +273,13 @@ class RejectedSignalArchival(BigQueryPipelineBase):
                     "theoretical_exit_price": exit_price,
                     "theoretical_exit_reason": exit_reason,
                     "theoretical_exit_time": exit_time.isoformat()
-                    if hasattr(exit_time, "isoformat")
-                    else str(exit_time),
+                    if exit_time is not None
+                    else None,
                     "theoretical_pnl_usd": round(pnl_net, 4),
                     "theoretical_pnl_pct": round(pnl_pct, 4),
                     "theoretical_fees_usd": round(total_fees, 6),
                     "created_at": created_at.isoformat()
-                    if hasattr(created_at, "isoformat")
+                    if created_at is not None
                     else str(created_at),
                 }
 
@@ -273,7 +296,7 @@ class RejectedSignalArchival(BigQueryPipelineBase):
         )
         return transformed
 
-    def cleanup(self, data: List[dict]) -> None:
+    def cleanup(self, data: list[BaseModel]) -> None:
         """
         Delete processed rejected signals from Firestore.
 
@@ -291,9 +314,11 @@ class RejectedSignalArchival(BigQueryPipelineBase):
         count = 0
 
         for item in data:
-            doc_id = item.get("signal_id")
+            doc_id = getattr(item, "signal_id", None)
+            if not doc_id:
+                continue
             ref = self.firestore_client.collection(self.source_collection).document(
-                doc_id
+                str(doc_id)
             )
             batch.delete(ref)
             count += 1

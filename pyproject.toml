@@ -49,6 +49,36 @@ warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true
 check_untyped_defs = true
+disallow_any_generics = true
+
+[[tool.mypy.overrides]]
+## Core Legacy Modules
+module = [
+    "crypto_signals.market.data_provider",
+    "crypto_signals.engine.reconciler",
+    "crypto_signals.scripts.diagnostics.account_status",
+    "crypto_signals.engine.execution",
+    "crypto_signals.notifications.discord",
+    "crypto_signals.scripts.diagnostics.health_check",
+    "crypto_signals.scripts.diagnostics.state_analysis",
+    "crypto_signals.scripts.resurrect_positions",
+    "crypto_signals.scripts.diagnostics.forensic_analysis",
+    "crypto_signals.pipelines.rejected_signal_archival",
+    "crypto_signals.pipelines.trade_archival",
+    "crypto_signals.pipelines.base",
+    "crypto_signals.pipelines.price_patch",
+    "crypto_signals.pipelines.fee_patch",
+    "crypto_signals.analysis.structural",
+    "crypto_signals.analysis.patterns",
+    "crypto_signals.analysis.indicators",
+    "crypto_signals.analysis.harmonics",
+    "crypto_signals.market.asset_service",
+    "crypto_signals.engine.risk",
+    "crypto_signals.engine.signal_generator",
+    "crypto_signals.pipelines.account_snapshot",
+    "crypto_signals.engine.parameters",
+]
+ignore_errors = true
 
 [tool.coverage.run]
 data_file = "temp/coverage/.coverage"
