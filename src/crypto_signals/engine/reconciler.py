@@ -120,7 +120,7 @@ class StateReconciler:
             logger.info("Fetching positions from Alpaca...")
             try:
                 # alpaca-py uses get_all_positions() to fetch all open positions
-                alpaca_result = self.alpaca.get_all_positions()
+                raw_alpaca_positions = self.alpaca.get_all_positions()
                 alpaca_positions_list: list[AlpacaPosition] = (
                     alpaca_result if isinstance(alpaca_result, list) else []
                 )
