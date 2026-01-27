@@ -54,8 +54,6 @@ disallow_any_generics = true
 [[tool.mypy.overrides]]
 ## Core Legacy Modules
 module = [
-    "crypto_signals.market.data_provider",
-    "crypto_signals.engine.reconciler",
     "crypto_signals.scripts.diagnostics.account_status",
     "crypto_signals.engine.execution",
     "crypto_signals.notifications.discord",

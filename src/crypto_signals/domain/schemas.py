@@ -364,7 +364,7 @@ class Signal(BaseModel):
     )
 
     @model_validator(mode="after")
-    def set_fallback_created_at(self):
+    def set_fallback_created_at(self) -> "Signal":
         """
         Fallback for legacy signals missing created_at.
 
