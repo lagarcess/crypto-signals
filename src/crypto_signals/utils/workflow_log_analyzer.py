@@ -41,7 +41,6 @@ def analyze(
     # Import moved inside to allow for better error handling and mocking
     try:
         from google.cloud import logging
-        from google.cloud.logging_v2.entries import LogEntry as GCPLogEntry
     except ImportError as e:
         logger.error(
             "Google Cloud Logging client not found. " "Please run: poetry install"
@@ -53,25 +52,24 @@ def analyze(
     end_time = datetime.now(timezone.utc)
     start_time = end_time - timedelta(hours=hours)
 
-    start_time_str = start_time.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
-    end_time_str = end_time.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+    start_time_str = start_time.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    end_time_str = end_time.isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
     # Construct the filter to get logs for the specified service and time window
+    safe_service = service.replace('"', '\\"')
     filter_str = (
         f'resource.type="cloud_run_revision" '
-        f'resource.labels.service_name="{service}" '
+        f'resource.labels.service_name="{safe_service}" '
         f'timestamp >= "{start_time_str}" AND timestamp <= "{end_time_str}"'
     )
 
     logger.info(f"Fetching logs with filter: {filter_str}")
 
     try:
-        # Note: list_entries returns an iterator. We convert it to a list.
-        entries: list[GCPLogEntry] = list(client.list_entries(filter_=filter_str))
-        logger.info(f"Successfully fetched {len(entries)} log entries.")
-        if not entries:
-            logger.warning("No log entries found for the specified filter.")
-            raise typer.Exit()
+        # Note: list_entries returns an iterator. We process it directly to save memory.
+        entries_iterator = client.list_entries(filter_=filter_str)
+        # Note: If you need the count for logging, consider fetching it separately or
+        # logging after processing.
     except Exception as e:
         logger.error(f"An error occurred while fetching logs: {e}")
         raise typer.Exit(code=1) from e
@@ -82,8 +80,13 @@ def analyze(
     from pydantic import ValidationError
 
     # --- Parsing and Analysis Logic ---
-    parsed_logs: list[LogEntry] = []
-    for entry in entries:
+    log_count = 0
+    severity_counts: Counter[str] = Counter()
+    zombie_events: list[ZombieEvent] = []
+    orphan_events: list[OrphanEvent] = []
+
+    for entry in entries_iterator:
+        log_count += 1
         try:
             # Adapt the raw entry to our Pydantic model
             log_data = {
@@ -92,23 +95,24 @@ def analyze(
                 "jsonPayload": entry.payload if isinstance(entry.payload, dict) else None,
                 "textPayload": entry.payload if isinstance(entry.payload, str) else None,
             }
-            parsed_logs.append(LogEntry.model_validate(log_data))
+            log = LogEntry.model_validate(log_data)
+            severity_counts[log.severity] += 1
+            message = log.effective_message.lower()
+            if "zombie" in message:
+                if log.json_payload and log.json_payload.context:
+                    zombie_events.append(ZombieEvent(details=log.json_payload.context))
+            elif "orphan" in message:
+                if log.json_payload and log.json_payload.context:
+                    orphan_events.append(OrphanEvent(details=log.json_payload.context))
         except (ValidationError, AttributeError) as e:
             logger.warning(f"Skipping malformed log entry. Error: {e}")
             continue
 
-    severity_counts = Counter(log.severity for log in parsed_logs)
-    zombie_events: list[ZombieEvent] = []
-    orphan_events: list[OrphanEvent] = []
+    if log_count == 0:
+        logger.warning("No log entries found for the specified filter.")
+        raise typer.Exit(code=1)
 
-    for log in parsed_logs:
-        message = log.effective_message.lower()
-        if "zombie" in message:
-            if log.json_payload and log.json_payload.context:
-                zombie_events.append(ZombieEvent(details=log.json_payload.context))
-        elif "orphan" in message:
-            if log.json_payload and log.json_payload.context:
-                orphan_events.append(OrphanEvent(details=log.json_payload.context))
+    logger.info(f"Successfully processed {log_count} log entries.")
 
     # --- Output Rendering ---
     logger.info("--- Log Analysis Summary ---")

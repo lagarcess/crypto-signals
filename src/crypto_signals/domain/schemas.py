@@ -15,7 +15,7 @@ Architecture Overview (Environment Isolated):
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, ClassVar, Dict, List, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -138,7 +138,6 @@ class TradeType(str, Enum):
 class BaseLogEntry(BaseModel):
     """Base model for a structured log entry."""
 
-    message: str
     severity: str
     timestamp: datetime
 
@@ -150,11 +149,9 @@ class JsonPayload(BaseModel):
     context: Optional[Dict[str, Any]] = None
 
 
-class LogEntry(BaseModel):
+class LogEntry(BaseLogEntry):
     """Represents a Google Cloud Logging entry."""
 
-    severity: str
-    timestamp: datetime
     json_payload: Optional[JsonPayload] = Field(None, alias="jsonPayload")
     text_payload: Optional[str] = Field(None, alias="textPayload")
 
@@ -169,14 +166,16 @@ class LogEntry(BaseModel):
 class ZombieEvent(BaseModel):
     """Schema for identifying a 'Zombie' event in logs."""
 
-    event_type: str = "Zombie"
+    EVENT_TYPE: ClassVar[str] = "Zombie"
+    event_type: str = EVENT_TYPE
     details: Dict[str, Any]
 
 
 class OrphanEvent(BaseModel):
     """Schema for identifying an 'Orphan' event in logs."""
 
-    event_type: str = "Orphan"
+    EVENT_TYPE: ClassVar[str] = "Orphan"
+    event_type: str = EVENT_TYPE
     details: Dict[str, Any]
 
 
