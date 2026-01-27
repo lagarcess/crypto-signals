@@ -3,14 +3,11 @@ Unit tests for the ExpiredSignalArchivalPipeline.
 """
 
 import unittest
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
-from google.cloud.firestore import Client as FirestoreClient
-from pydantic import BaseModel
-
-from crypto_signals.domain.schemas import AssetClass, ExpiredSignal, OrderSide
+from crypto_signals.domain.schemas import AssetClass, OrderSide
 from crypto_signals.pipelines.expired_signal_archival import ExpiredSignalArchivalPipeline
 
 
@@ -65,7 +62,7 @@ class TestExpiredSignalArchivalPipeline(unittest.TestCase):
 
         bars_df = pd.DataFrame(
             {"high": [51000.0], "low": [49000.0]},
-            index=[pd.to_datetime("2023-01-01 12:00:00+00:00")]
+            index=[pd.to_datetime("2023-01-01 12:00:00+00:00")],
         )
         mock_market_provider.get_daily_bars.return_value = bars_df
         self.pipeline.market_provider = mock_market_provider

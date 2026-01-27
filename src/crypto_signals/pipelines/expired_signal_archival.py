@@ -16,14 +16,18 @@ Pattern: "Extract-Transform-Load"
 
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Any, List
+from typing import Any, Dict, List
 
 import pandas as pd
 from google.cloud import firestore
 from loguru import logger
 from pydantic import BaseModel
 
-from crypto_signals.config import get_settings, get_crypto_data_client, get_stock_data_client
+from crypto_signals.config import (
+    get_crypto_data_client,
+    get_settings,
+    get_stock_data_client,
+)
 from crypto_signals.domain.schemas import ExpiredSignal, OrderSide
 from crypto_signals.market.data_provider import MarketDataProvider
 from crypto_signals.pipelines.base import BigQueryPipelineBase
@@ -84,7 +88,7 @@ class ExpiredSignalArchivalPipeline(BigQueryPipelineBase):
         logger.info(f"[{self.job_name}] extracted {len(raw_data)} expired signals.")
         return raw_data
 
-    def transform(self, raw_data: List[Any]) -> List[dict]:
+    def transform(self, raw_data: List[Any]) -> List[Dict[str, Any]]:
         """
         Enrich expired signals with market data analysis.
         """
@@ -93,7 +97,7 @@ class ExpiredSignalArchivalPipeline(BigQueryPipelineBase):
         )
 
         transformed = []
-        symbol_bars_cache: dict = {}
+        symbol_bars_cache: Dict[str, pd.DataFrame] = {}
 
         for idx, sig in enumerate(raw_data):
             if idx > 0:
@@ -124,12 +128,14 @@ class ExpiredSignalArchivalPipeline(BigQueryPipelineBase):
                 valid_until = sig.get("valid_until")
 
                 if not created_at or not valid_until:
-                    logger.warning(f"Invalid or missing timestamps for signal {sig.get('signal_id')}. Skipping.")
+                    logger.warning(
+                        f"Invalid or missing timestamps for signal {sig.get('signal_id')}. Skipping."
+                    )
                     continue
 
                 validity_window_df = bars_df[
-                    (bars_df.index >= pd.to_datetime(created_at, utc=True)) &
-                    (bars_df.index <= pd.to_datetime(valid_until, utc=True))
+                    (bars_df.index >= pd.to_datetime(created_at, utc=True))
+                    & (bars_df.index <= pd.to_datetime(valid_until, utc=True))
                 ]
 
                 if validity_window_df.empty:
@@ -149,13 +155,17 @@ class ExpiredSignalArchivalPipeline(BigQueryPipelineBase):
                     if pd.notna(highest_high):
                         max_mfe = highest_high - entry_price
                         if entry_price > 0:
-                            distance_to_trigger = (entry_price - highest_high) / entry_price * 100
+                            distance_to_trigger = (
+                                (entry_price - highest_high) / entry_price * 100
+                            )
                 else:  # SELL
                     lowest_low = validity_window_df["low"].min()
                     if pd.notna(lowest_low):
                         max_mfe = entry_price - lowest_low
                         if entry_price > 0:
-                            distance_to_trigger = (lowest_low - entry_price) / entry_price * 100
+                            distance_to_trigger = (
+                                (lowest_low - entry_price) / entry_price * 100
+                            )
 
                 expired_signal = ExpiredSignal(
                     ds=sig.get("ds"),
@@ -198,8 +208,10 @@ class ExpiredSignalArchivalPipeline(BigQueryPipelineBase):
         for item in data:
             # The base class's `run` method ensures all items are instances
             # of the pipeline's `schema_model` (ExpiredSignal).
-            doc_id = item.signal_id
-            ref = self.firestore_client.collection(self.source_collection).document(doc_id)
+            doc_id = item.signal_id  # type: ignore[attr-defined]
+            ref = self.firestore_client.collection(self.source_collection).document(
+                doc_id
+            )
             batch.delete(ref)
             count += 1
 
