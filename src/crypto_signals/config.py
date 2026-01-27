@@ -180,6 +180,12 @@ class Settings(BaseSettings):
         description="Auto-delete documents from Firestore if they fail Pydantic validation",
     )
 
+    # === Schema Guardian Configuration ===
+    SCHEMA_GUARDIAN_STRICT_MODE: bool = Field(
+        default=True,
+        description="If True, raise error on schema mismatch. If False, log warning only.",
+    )
+
     # === Cooldown Configuration (Issue #117 Strategic Feedback) ===
     COOLDOWN_SCOPE: str = Field(
         default="SYMBOL",
