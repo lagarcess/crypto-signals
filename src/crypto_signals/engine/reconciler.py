@@ -122,7 +122,7 @@ class StateReconciler:
                 # alpaca-py uses get_all_positions() to fetch all open positions
                 raw_alpaca_positions = self.alpaca.get_all_positions()
                 alpaca_positions_list: list[AlpacaPosition] = (
-                    alpaca_result if isinstance(alpaca_result, list) else []
+                    raw_alpaca_positions if isinstance(raw_alpaca_positions, list) else []
                 )
                 alpaca_symbols = {p.symbol for p in alpaca_positions_list}
                 logger.info(
