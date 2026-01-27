@@ -317,8 +317,8 @@ class TestPatternDetection:
         assert "B_ratio" in pattern.ratios
         assert "D_ratio" in pattern.ratios
         # Verify ratios are close to expected Fibonacci values
-        assert abs(pattern.ratios["B_ratio"] - FIB_618) < 0.01
-        assert abs(pattern.ratios["D_ratio"] - FIB_786) < 0.01
+        assert pattern.ratios["B_ratio"] == pytest.approx(FIB_618, abs=0.01)
+        assert pattern.ratios["D_ratio"] == pytest.approx(FIB_786, abs=0.01)
 
     def test_detect_bat(self, bat_pattern_pivots):
         """Should detect valid Bat pattern."""
@@ -333,7 +333,7 @@ class TestPatternDetection:
         # B should be in [0.382, 0.50] range
         assert 0.382 <= pattern.ratios["B_ratio"] <= 0.50
         # D should be ~0.886
-        assert abs(pattern.ratios["D_ratio"] - FIB_886) < 0.01
+        assert pattern.ratios["D_ratio"] == pytest.approx(FIB_886, abs=0.01)
 
     def test_detect_abcd(self, abcd_pattern_pivots):
         """Should detect valid ABCD pattern."""
@@ -346,8 +346,8 @@ class TestPatternDetection:
         assert "AB_CD_price_ratio" in pattern.ratios
         assert "AB_CD_time_ratio" in pattern.ratios
         # Both ratios should be close to 1.0 (symmetry)
-        assert abs(pattern.ratios["AB_CD_price_ratio"] - 1.0) < 0.01
-        assert abs(pattern.ratios["AB_CD_time_ratio"] - 1.0) < 0.01
+        assert pattern.ratios["AB_CD_price_ratio"] == pytest.approx(1.0, abs=0.01)
+        assert pattern.ratios["AB_CD_time_ratio"] == pytest.approx(1.0, abs=0.01)
 
     def test_detect_butterfly(self):
         """Should detect valid Butterfly pattern."""
@@ -392,8 +392,8 @@ class TestPatternDetection:
 
         assert pattern is not None
         assert pattern.pattern_type == "BUTTERFLY"
-        assert abs(pattern.ratios["B_ratio"] - FIB_786) < 0.01
-        assert abs(pattern.ratios["D_ratio"] - FIB_1270) < 0.01
+        assert pattern.ratios["B_ratio"] == pytest.approx(FIB_786, abs=0.01)
+        assert pattern.ratios["D_ratio"] == pytest.approx(FIB_1270, abs=0.01)
 
     def test_detect_crab(self):
         """Should detect valid Crab pattern."""
@@ -439,7 +439,7 @@ class TestPatternDetection:
         assert pattern is not None
         assert pattern.pattern_type == "CRAB"
         assert 0.382 <= pattern.ratios["B_ratio"] <= 0.618
-        assert abs(pattern.ratios["D_ratio"] - FIB_1618) < 0.01
+        assert pattern.ratios["D_ratio"] == pytest.approx(FIB_1618, abs=0.01)
 
     def test_detect_elliott_wave(self):
         """Should detect valid Elliott Wave 1-3-5 pattern."""

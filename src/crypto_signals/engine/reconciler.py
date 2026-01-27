@@ -120,9 +120,9 @@ class StateReconciler:
             logger.info("Fetching positions from Alpaca...")
             try:
                 # alpaca-py uses get_all_positions() to fetch all open positions
-                alpaca_result = self.alpaca.get_all_positions()
+                raw_alpaca_positions = self.alpaca.get_all_positions()
                 alpaca_positions_list: list[AlpacaPosition] = (
-                    alpaca_result if isinstance(alpaca_result, list) else []
+                    raw_alpaca_positions if isinstance(raw_alpaca_positions, list) else []
                 )
                 alpaca_symbols = {p.symbol for p in alpaca_positions_list}
                 logger.info(
@@ -345,8 +345,10 @@ class StateReconciler:
 
             # 2. Search recent filled orders for this symbol
 
+            from alpaca.trading.enums import QueryOrderStatus
+
             request = GetOrdersRequest(
-                status="closed",
+                status=QueryOrderStatus.CLOSED,
                 symbols=[position.symbol],
                 limit=10,
                 side=close_side,

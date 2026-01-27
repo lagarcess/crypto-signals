@@ -6,6 +6,8 @@ from crypto_signals.engine.signal_generator import SignalGenerator
 from crypto_signals.main import main
 from crypto_signals.repository.firestore import SignalRepository
 
+from tests.factories import SignalFactory
+
 
 @pytest.fixture
 def mock_repo():
@@ -59,13 +61,9 @@ def test_active_trade_validation_loop(
         patch("crypto_signals.main.PositionRepository", return_value=mock_position_repo),
         patch("crypto_signals.main.PositionRepository", return_value=mock_position_repo),
         patch("crypto_signals.main.RejectedSignalRepository"),
-        patch(
-            "crypto_signals.main.TradeArchivalPipeline"
-        ) as mock_trade_archival,
+        patch("crypto_signals.main.TradeArchivalPipeline") as mock_trade_archival,
         patch("crypto_signals.main.FeePatchPipeline") as mock_fee_patch,
-        patch(
-            "crypto_signals.main.PricePatchPipeline"
-        ) as mock_price_patch,
+        patch("crypto_signals.main.PricePatchPipeline") as mock_price_patch,
         patch("crypto_signals.main.ExecutionEngine"),
         patch("crypto_signals.main.StateReconciler") as mock_reconciler_cls,
         patch("crypto_signals.main.init_secrets", return_value=True),
@@ -87,10 +85,7 @@ def test_active_trade_validation_loop(
         # Configure StateReconciler mock to return a safe report
         mock_reconciler_instance = mock_reconciler_cls.return_value
         mock_reconciler_instance.reconcile.return_value = MagicMock(
-            critical_issues=[],
-            zombies=[],
-            orphans=[],
-            reconciled_count=0
+            critical_issues=[], zombies=[], orphans=[], reconciled_count=0
         )
 
         # Mock settings to have 1 crypto symbol
@@ -102,12 +97,11 @@ def test_active_trade_validation_loop(
         mock_settings.return_value.ENABLE_GCP_LOGGING = False
 
         # Mock Repo to return one active signal
-        active_sig = MagicMock()
-        active_sig.signal_id = "sig_123"
-        active_sig.status = SignalStatus.INVALIDATED
-        # We must ensure exit_reason is set to avoid AttributeError if code checks it
-        active_sig.exit_reason = None
-        # Ensure trail logic is skipped
+        active_sig = SignalFactory.build(
+            status=SignalStatus.INVALIDATED,
+            exit_reason=None,
+        )
+        # Ensure trail logic is skipped (mimicking previous MagicMock behavior)
         active_sig._trail_updated = False
         mock_repo.get_active_signals.return_value = [active_sig]
 

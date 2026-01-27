@@ -817,6 +817,7 @@ class RejectedSignal(BaseModel):
     """
     Archived rejected signal for BigQuery analytics.
     """
+
     ds: date
     signal_id: str
     created_at: datetime
