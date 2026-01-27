@@ -101,6 +101,8 @@ def test_active_trade_validation_loop(
             status=SignalStatus.INVALIDATED,
             exit_reason=None,
         )
+        # Ensure trail logic is skipped (mimicking previous MagicMock behavior)
+        active_sig._trail_updated = False
         mock_repo.get_active_signals.return_value = [active_sig]
 
         # Mock Generator to return this signal as invalidated
