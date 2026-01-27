@@ -5,6 +5,7 @@ Cloud Run Log Analyzer CLI.
 Fetches and analyzes Google Cloud Run execution logs to identify critical
 errors and specific events like 'Zombie' or 'Orphan' positions.
 """
+
 import typer
 from loguru import logger
 
@@ -30,6 +31,7 @@ def analyze(
     Fetches and analyzes Cloud Run logs for a specified service.
     """
     from crypto_signals.observability import configure_logging
+
     configure_logging()
 
     logger.info(f"Starting analysis for service: {service} over the last {hours} hours.")
@@ -40,13 +42,11 @@ def analyze(
     try:
         from google.cloud import logging
         from google.cloud.logging_v2.entries import LogEntry as GCPLogEntry
-    except ImportError:
+    except ImportError as e:
         logger.error(
-            "Google Cloud Logging client not found. "
-            'Please run: poetry install'
+            "Google Cloud Logging client not found. " "Please run: poetry install"
         )
-        raise typer.Exit(code=1)
-
+        raise typer.Exit(code=1) from e
 
     client = logging.Client()
 
@@ -74,11 +74,12 @@ def analyze(
             raise typer.Exit()
     except Exception as e:
         logger.error(f"An error occurred while fetching logs: {e}")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
 
     from collections import Counter
+
+    from crypto_signals.domain.schemas import LogEntry, OrphanEvent, ZombieEvent
     from pydantic import ValidationError
-    from crypto_signals.domain.schemas import LogEntry, ZombieEvent, OrphanEvent
 
     # --- Parsing and Analysis Logic ---
     parsed_logs: list[LogEntry] = []
@@ -122,6 +123,7 @@ def analyze(
             "orphan_events": [event.model_dump() for event in orphan_events],
         }
         import json
+
         logger.info(json.dumps(report, indent=2))
         logger.info("------------------------------------")
 

@@ -1,13 +1,12 @@
 """
 Tests for the Cloud Run Log Analyzer utility.
 """
-import unittest.mock
+
 from unittest.mock import MagicMock, patch
 
 import pytest
-from typer.testing import CliRunner
-
 from crypto_signals.utils.workflow_log_analyzer import app
+from typer.testing import CliRunner
 
 runner = CliRunner()
 
@@ -23,7 +22,10 @@ def mock_gcp_client():
             MagicMock(
                 severity="ERROR",
                 timestamp="2023-10-27T10:00:00Z",
-                payload={"message": "Critical error foo", "context": {"signal_id": "123"}},
+                payload={
+                    "message": "Critical error foo",
+                    "context": {"signal_id": "123"},
+                },
             ),
             MagicMock(
                 severity="CRITICAL",
@@ -53,9 +55,7 @@ class TestLogAnalyzer:
         Tests that the analyze command correctly processes logs and generates
         the expected summary and JSON report for Zombie and Orphan events.
         """
-        result = runner.invoke(
-            app, ["--service", "test-service", "--hours", "12"]
-        )
+        result = runner.invoke(app, ["--service", "test-service", "--hours", "12"])
 
         assert result.exit_code == 0
 
