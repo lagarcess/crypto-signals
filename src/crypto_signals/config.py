@@ -101,6 +101,13 @@ class Settings(BaseSettings):
         pattern="^(PROD|DEV)$",
     )
 
+    # Application Mode
+    APP_MODE: str = Field(
+        default="NORMAL",
+        description="Application mode (NORMAL or SMOKE_TEST). Controls credential validation.",
+        pattern="^(NORMAL|SMOKE_TEST)$",
+    )
+
     # TTL Configuration (Days)
     TTL_DAYS_PROD: int = Field(
         default=30, description="TTL for Production signals (days)."
@@ -215,6 +222,13 @@ class Settings(BaseSettings):
     @classmethod
     def validate_not_empty(cls, v: str, info) -> str:
         """Ensure required fields are not empty strings."""
+        # In SMOKE_TEST mode, we can skip validating the Alpaca keys
+        # as the test doesn't actually connect to the API.
+        if os.environ.get("APP_MODE") == "SMOKE_TEST" and info.field_name in [
+            "ALPACA_API_KEY",
+            "ALPACA_SECRET_KEY",
+        ]:
+            return v
         if v is None or (isinstance(v, str) and v.strip() == ""):
             raise ValueError(f"{info.field_name} cannot be empty")
         return v.strip() if isinstance(v, str) else v

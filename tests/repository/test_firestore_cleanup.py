@@ -1,4 +1,3 @@
-
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
@@ -6,8 +5,8 @@ import pytest
 from crypto_signals.domain.schemas import Signal
 from crypto_signals.repository.firestore import SignalRepository
 from google.cloud.firestore_v1.base_query import BaseQuery
-from polyfactory.factories.pydantic_factory import ModelFactory
 from google.cloud.firestore_v1.client import Client
+from polyfactory.factories.pydantic_factory import ModelFactory
 
 
 @pytest.fixture
@@ -19,18 +18,22 @@ def mock_firestore_client():
 @pytest.fixture
 def signal_repository(mock_firestore_client):
     """Fixture for a SignalRepository with a mocked Firestore client."""
-    with patch("crypto_signals.repository.firestore.firestore.Client", return_value=mock_firestore_client):
+    with patch(
+        "crypto_signals.repository.firestore.firestore.Client",
+        return_value=mock_firestore_client,
+    ):
         return SignalRepository()
 
 
-def test_cleanup_expired_signals(signal_repository: SignalRepository, mock_firestore_client: MagicMock):
+def test_cleanup_expired_signals(
+    signal_repository: SignalRepository, mock_firestore_client: MagicMock
+):
     """
     Test that cleanup_expired correctly deletes signals older than the retention period.
     """
     # Arrange
     now = datetime.now(timezone.utc)
     old_signal_timestamp = now - timedelta(days=10)
-    new_signal_timestamp = now - timedelta(days=1)
 
     class SignalFactory(ModelFactory[Signal]):
         __model__ = Signal
