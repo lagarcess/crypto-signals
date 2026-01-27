@@ -345,8 +345,10 @@ class StateReconciler:
 
             # 2. Search recent filled orders for this symbol
 
+            from alpaca.trading.enums import QueryOrderStatus
+
             request = GetOrdersRequest(
-                status="closed",
+                status=QueryOrderStatus.CLOSED,
                 symbols=[position.symbol],
                 limit=10,
                 side=close_side,
