@@ -82,9 +82,7 @@ def heal_reverse_orphans():
                 if isinstance(pos, Position):
                     qty = float(pos.qty) if pos.qty is not None else 0.0
                     market_value = (
-                        float(pos.market_value)
-                        if pos.market_value is not None
-                        else 0.0
+                        float(pos.market_value) if pos.market_value is not None else 0.0
                     )
                     orphans.append(
                         {
