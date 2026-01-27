@@ -56,7 +56,7 @@ console = Console(theme=SENTINEL_THEME)
 rich_traceback.install(console=console, show_locals=True, width=120)
 
 
-def configure_logging(level: str = "INFO") -> None:
+def configure_logging(level: str = "INFO", testing: bool = False) -> None:
     """
     Configure loguru to use Rich for beautiful terminal output.
 
@@ -65,17 +65,23 @@ def configure_logging(level: str = "INFO") -> None:
 
     Args:
         level: Minimum log level to display (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+        testing: If True, do not remove existing handlers to allow pytest capture.
     """
-    # Remove all existing handlers
-    logger.remove()
+    import logging
 
-    # Add Rich-formatted handler
-    logger.add(
-        _rich_sink,
-        format="{message}",
-        level=level,
-        colorize=False,  # Rich handles colors
-    )
+    # In testing, we want pytest's log capture to work.
+    if not testing:
+        logger.remove()
+        # Add Rich-formatted handler for non-testing environments
+        logger.add(
+            _rich_sink,
+            format="{message}",
+            level=level,
+            colorize=False,  # Rich handles colors
+        )
+    else:
+        # For testing, add a handler that pytest can capture.
+        logger.add(logging.StreamHandler(), format="{message}", level=level)
 
 
 def _rich_sink(message) -> None:
