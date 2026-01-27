@@ -11,7 +11,7 @@ Pattern: Extract-Transform-Load
 """
 
 from datetime import date, datetime, timezone
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 import pandas as pd
 from google.cloud import firestore
@@ -125,7 +125,7 @@ class RejectedSignalArchival(BigQueryPipelineBase):
         logger.info(f"[{self.job_name}] extracted {len(raw_data)} rejected signals.")
         return raw_data
 
-    def transform(self, raw_data: List[Any]) -> List[dict]:
+    def transform(self, raw_data: List[Any]) -> List[Dict[str, Any]]:
         """
         Calculate theoretical P&L for rejected signals.
 
@@ -273,13 +273,13 @@ class RejectedSignalArchival(BigQueryPipelineBase):
                     "theoretical_exit_price": exit_price,
                     "theoretical_exit_reason": exit_reason,
                     "theoretical_exit_time": exit_time.isoformat()
-                    if hasattr(exit_time, "isoformat")
-                    else str(exit_time),
+                    if exit_time is not None
+                    else None,
                     "theoretical_pnl_usd": round(pnl_net, 4),
                     "theoretical_pnl_pct": round(pnl_pct, 4),
                     "theoretical_fees_usd": round(total_fees, 6),
                     "created_at": created_at.isoformat()
-                    if hasattr(created_at, "isoformat")
+                    if created_at is not None
                     else str(created_at),
                 }
 
@@ -314,9 +314,11 @@ class RejectedSignalArchival(BigQueryPipelineBase):
         count = 0
 
         for item in data:
-            doc_id = item.signal_id
+            doc_id = getattr(item, "signal_id", None)
+            if not doc_id:
+                continue
             ref = self.firestore_client.collection(self.source_collection).document(
-                doc_id
+                str(doc_id)
             )
             batch.delete(ref)
             count += 1

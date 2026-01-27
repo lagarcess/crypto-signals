@@ -6,7 +6,7 @@ indicators, and detection of price patterns to generate trading signals.
 """
 
 from datetime import datetime, timedelta, timezone
-from typing import Any, List, Optional, Type
+from typing import Any, Dict, List, Optional, Type
 
 import pandas as pd
 from crypto_signals.analysis.harmonics import HarmonicAnalyzer
@@ -386,7 +386,7 @@ class SignalGenerator:
         )
 
     def _validate_signal_parameters(
-        self, params: dict, confluence_snapshot: Optional[dict] = None
+        self, params: Dict[str, Any], confluence_snapshot: Optional[Dict[str, Any]] = None
     ) -> List[str]:
         """Pure logic validation of signal parameters."""
         rejection_reasons = []
@@ -425,10 +425,10 @@ class SignalGenerator:
 
     def _construct_signal(
         self,
-        params: dict,
+        params: Dict[str, Any],
         status: SignalStatus,
         rejection_reason: Optional[str] = None,
-        rejection_metadata: Optional[dict] = None,
+        rejection_metadata: Optional[Dict[str, Any]] = None,
     ) -> Signal:
         """Pure Factory: Builds the Signal object."""
         return Signal(
@@ -470,7 +470,7 @@ class SignalGenerator:
         analyzer: PatternAnalyzer,
         harmonic_pattern=None,
         geometric_pattern_name: Optional[str] = None,
-        confluence_snapshot: Optional[dict] = None,
+        confluence_snapshot: Optional[Dict[str, Any]] = None,
         force_rejection_reason: Optional[str] = None,
     ) -> Signal:
         """Orchestrates signal creation: Calculate -> Validate -> Construct."""
@@ -536,7 +536,7 @@ class SignalGenerator:
         latest: pd.Series,
         analyzer: PatternAnalyzer,
         rejection_reason: str,
-        confluence_snapshot: dict | None = None,
+        confluence_snapshot: Optional[Dict[str, Any]] = None,
         harmonic_pattern=None,
     ) -> Signal:
         """Create a shadow signal for rejected patterns (failed quality gates).

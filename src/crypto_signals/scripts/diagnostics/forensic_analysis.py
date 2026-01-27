@@ -21,6 +21,7 @@ os.environ.setdefault("ENVIRONMENT", "PROD")  # noqa: E402
 
 from alpaca.trading.client import TradingClient  # noqa: E402
 from alpaca.trading.enums import OrderSide, QueryOrderStatus  # noqa: E402
+from alpaca.trading.models import Order  # noqa: E402
 from alpaca.trading.requests import GetOrdersRequest  # noqa: E402
 from google.cloud import firestore  # noqa: E402
 from rich.console import Console  # noqa: E402
@@ -92,6 +93,9 @@ def get_alpaca_orders(
             limit=limit,
         )
         orders = alpaca.get_orders(filter=request)
+
+        # Filter to ensure Order objects (narrowing Union)
+        orders = [o for o in orders if isinstance(o, Order)]
 
         # Filter to symbol if provided
         if symbol:

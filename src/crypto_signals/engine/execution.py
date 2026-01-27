@@ -730,7 +730,7 @@ class ExecutionEngine:
     # ORDER MANAGEMENT METHODS (Managed Trade Model)
     # =========================================================================
 
-    def get_order_details(self, order_id: str) -> Optional[object]:
+    def get_order_details(self, order_id: str) -> Optional[Order]:
         """
         Retrieve order details from Alpaca by order ID.
 

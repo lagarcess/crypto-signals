@@ -10,6 +10,7 @@ from typing import List
 from alpaca.trading.client import TradingClient
 from alpaca.trading.enums import AssetClass as AlpacaAssetClass
 from alpaca.trading.enums import AssetStatus
+from alpaca.trading.models import Asset
 from alpaca.trading.requests import GetAssetsRequest
 from crypto_signals.domain.schemas import AssetClass
 from crypto_signals.observability import log_critical_situation
@@ -100,6 +101,8 @@ class AssetValidationService:
             # Key: Normalized (uppercase, no slashes), Value: Alpaca's original symbol
             valid_asset_map = {}
             for asset in all_assets:
+                if not isinstance(asset, Asset):
+                    continue
                 if asset.status == AssetStatus.ACTIVE and asset.tradable:
                     normalized = self._normalize_symbol(asset.symbol)
                     if normalized in valid_asset_map:
@@ -112,7 +115,12 @@ class AssetValidationService:
                         valid_asset_map[normalized] = asset.symbol
 
             # Also build a map for lookup of all assets (for error reporting)
-            all_asset_lookup = {self._normalize_symbol(a.symbol): a for a in all_assets}
+            # Filter first to ensure type safety (Asset | str issue)
+            all_asset_lookup = {
+                self._normalize_symbol(a.symbol): a
+                for a in all_assets
+                if isinstance(a, Asset)
+            }
 
             logger.debug(
                 f"Fetched {len(all_assets)} {asset_class.value} assets, "

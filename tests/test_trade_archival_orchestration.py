@@ -63,7 +63,7 @@ def test_trade_archival_orchestration_flow():
         mock_order.filled_avg_price = 50000.0
         mock_order.filled_qty = 1.0
         mock_order.side = "buy"
-        mock_alpaca.return_value.get_order_by_client_order_id.return_value = mock_order
+        mock_alpaca.return_value.get_order_by_client_id.return_value = mock_order
 
         # Mock Account Activities for Actual Fees
 

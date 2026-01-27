@@ -60,7 +60,7 @@ def test_archival_fallback_for_theoretical_trades():
         mock_http.status_code = 404
         error.http_error = mock_http
 
-        mock_alpaca.return_value.get_order_by_client_order_id.side_effect = error
+        mock_alpaca.return_value.get_order_by_client_id.side_effect = error
 
         # Run Pipeline
         pipeline = TradeArchivalPipeline()
@@ -73,8 +73,6 @@ def test_archival_fallback_for_theoretical_trades():
         raw_data = pipeline.extract()
         transformed_data = pipeline.transform(raw_data)
 
-        print(f"Transformed Data Length: {len(transformed_data)}")
-
         # Expectation: SUCCESS (Length 1)
         assert (
             len(transformed_data) == 1
@@ -82,7 +80,6 @@ def test_archival_fallback_for_theoretical_trades():
 
         # Verification of Fallback Data
         trade = transformed_data[0]
-        print(f"DEBUG TRADE: {trade}")
         assert trade["entry_price"] == 50000.0
         assert trade["qty"] == 0.1
         assert trade["alpaca_order_id"] is None

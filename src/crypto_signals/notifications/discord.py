@@ -5,9 +5,9 @@ This module handles sending formatted trade signals to Discord Webhooks.
 It supports multi-webhook routing based on TEST_MODE and asset class.
 """
 
-from typing import Optional
+from typing import Any, Dict, Optional
 
-import requests
+import requests  # type: ignore
 from crypto_signals.analysis.patterns import MACRO_PATTERN
 from crypto_signals.config import Settings, get_settings
 from crypto_signals.domain.schemas import AssetClass, Position, Signal, TradeType
@@ -83,7 +83,11 @@ class DiscordClient:
         """
         # TEST_MODE: All traffic goes to test webhook
         if self.settings.TEST_MODE:
-            return self.settings.TEST_DISCORD_WEBHOOK.get_secret_value()
+            return (
+                self.settings.TEST_DISCORD_WEBHOOK.get_secret_value()
+                if self.settings.TEST_DISCORD_WEBHOOK
+                else None
+            )
 
         # LIVE MODE: Route by asset class
         if asset_class == AssetClass.CRYPTO:
@@ -94,7 +98,11 @@ class DiscordClient:
             return webhook.get_secret_value() if webhook else None
 
         # Fallback for system messages (no asset class) - use test webhook
-        return self.settings.TEST_DISCORD_WEBHOOK.get_secret_value()
+        return (
+            self.settings.TEST_DISCORD_WEBHOOK.get_secret_value()
+            if self.settings.TEST_DISCORD_WEBHOOK
+            else None
+        )
 
     def _get_channel_id(self, asset_class: AssetClass | None = None) -> str | None:
         """
@@ -196,7 +204,7 @@ class DiscordClient:
                     logger.info(
                         f"Recovered Discord thread {thread['id']} for {signal_id}"
                     )
-                    return thread["id"]
+                    return str(thread["id"])
 
             logger.debug(f"No active thread found for {signal_id}")
             return None
@@ -291,7 +299,7 @@ class DiscordClient:
             logger.info(
                 f"Sent signal for {signal.symbol} to Discord (thread_id: {thread_id})."
             )
-            return thread_id
+            return str(thread_id) if thread_id else None
         except requests.RequestException as e:
             if getattr(e, "response", None) is not None:
                 logger.error(f"Discord Response: {e.response.text}")
@@ -421,11 +429,12 @@ class DiscordClient:
             asset_class if asset_class is not None else signal.asset_class
         )
 
-        return self.send_message(
+        result = self.send_message(
             content,
             thread_id=signal.discord_thread_id,
             asset_class=effective_asset_class,
         )
+        return result is True
 
     def send_signal_update(
         self,
@@ -561,16 +570,17 @@ class DiscordClient:
                 asset_class if asset_class is not None else signal.asset_class
             )
 
-            return self.send_message(
+            result = self.send_message(
                 content,
                 thread_id=signal.discord_thread_id,
                 asset_class=effective_asset_class,
             )
+            return result is True
         except Exception as e:
             logger.error(f"Failed to send trade close notification: {e}")
             return False
 
-    def _format_message(self, signal: Signal) -> dict:
+    def _format_message(self, signal: Signal) -> Dict[str, Any]:
         """
         Format the signal into a Discord payload.
 
@@ -583,7 +593,7 @@ class DiscordClient:
             signal: The signal object.
 
         Returns:
-            dict: JSON payload for Discord.
+            Dict[str, Any]: JSON payload for Discord.
         """
         # All chart patterns in this system are bullish setups
         # Use rocket emoji by default, MACRO gets building emoji
@@ -701,7 +711,7 @@ class DiscordClient:
 
         return payload
 
-    def _format_harmonic_ratios(self, harmonic_metadata: dict) -> str:
+    def _format_harmonic_ratios(self, harmonic_metadata: Dict[str, Any]) -> str:
         """Format harmonic pattern ratios into a Discord message block.
 
         Displays Fibonacci ratios in a compact, readable format.

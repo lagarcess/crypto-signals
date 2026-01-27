@@ -53,7 +53,7 @@ def resurrect_positions():
         from alpaca.trading.models import Position
 
         alpaca_positions = alpaca.get_all_positions()
-        alpaca_map = {
+        alpaca_map: dict[str, Position] = {
             p.symbol: p for p in alpaca_positions if isinstance(p, Position)
         }
     except Exception as e:

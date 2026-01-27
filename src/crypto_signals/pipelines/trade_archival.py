@@ -105,7 +105,6 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
             # alpaca-py `get_account_activities` supports `activity_types`.
             # Note: We can't filter by order_id in the API call, must filter in client.
             # Fetching last 100 CFEE activities should cover recent trades.
-            from alpaca.trading.enums import ActivityType
 
             activities = self.alpaca._get(
                 "/account/activities",
@@ -267,6 +266,11 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                     else:
                         raise e
 
+                # Cast order to Any to avoid MyPy 'dict' inference errors (Issue #114)
+                from typing import Any, cast
+
+                order = cast(Any, order)
+
                 # 2. Calculate Derived Metrics
                 # Note: Alpaca 'filled_avg_price' is the source of truth
                 # for execution price
@@ -275,9 +279,7 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                     qty = float(order.filled_qty)
                 else:
                     entry_price_val = (
-                        float(order.filled_avg_price)
-                        if order.filled_avg_price
-                        else 0.0
+                        float(order.filled_avg_price) if order.filled_avg_price else 0.0
                     )
                     qty = float(order.filled_qty) if order.filled_qty else 0.0
 
@@ -290,12 +292,18 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                     else pos.get("entry_fill_price", 0.0)
                 )
 
-                # Broker's order ID for auditability (links to Alpaca dashboard)
-                alpaca_order_id = str(order.id) if order.id else None
-
                 # Source of Truth: Alpaca Order Side (Entry Order)
                 # Cast to string to handle Enum or str types robustly
-                order_side_str = str(order.side).lower()
+                # Cast order to Any to avoid MyPy 'dict' inference error
+                from typing import cast
+
+                order_any = cast(Any, order)
+
+                alpaca_order_id = (
+                    str(order_any.id) if tuple([order_any.id]) and order_any.id else None
+                )
+
+                order_side_str = str(order_any.side).lower()
 
                 # Get exit price from Firestore document, default to 0.0 if missing
                 exit_price_val = float(pos.get("exit_fill_price", 0.0))
@@ -499,7 +507,7 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
 
         return transformed
 
-    def cleanup(self, data: list[BaseModel]) -> None:
+    def cleanup(self, data: List[BaseModel]) -> None:
         """
         Delete processed positions from Firestore.
 

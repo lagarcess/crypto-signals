@@ -10,7 +10,7 @@ Pattern: "Query-Fetch-Update" (same as FeePatchPipeline from Issue #140)
 3. Update: Patch BigQuery with actual exit price and set exit_price_finalized = TRUE
 """
 
-from typing import List
+from typing import Any, Dict, List
 
 from alpaca.trading.models import Order
 from google.cloud import bigquery
@@ -76,7 +76,7 @@ class PricePatchPipeline:
         )
         return patched_count
 
-    def _query_unfinalized_trades(self) -> List[dict]:
+    def _query_unfinalized_trades(self) -> List[Dict[str, Any]]:
         """
         Query BigQuery for trades with $0.00 exit prices but valid exit_order_id.
 
@@ -105,7 +105,7 @@ class PricePatchPipeline:
 
         return [dict(row) for row in results]
 
-    def _patch_trade_price(self, trade: dict) -> tuple[bool, float]:
+    def _patch_trade_price(self, trade: Dict[str, Any]) -> tuple[bool, float]:
         """
         Fetch actual exit price from Alpaca and update BigQuery.
 

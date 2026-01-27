@@ -343,7 +343,6 @@ class StateReconciler:
             )
 
             # 2. Search recent filled orders for this symbol
-            from alpaca.trading.enums import OrderStatus
 
             request = GetOrdersRequest(
                 status="closed",
@@ -355,9 +354,7 @@ class StateReconciler:
 
             recent_orders_result = self.alpaca.get_orders(filter=request)
             recent_orders = (
-                recent_orders_result
-                if isinstance(recent_orders_result, list)
-                else []
+                recent_orders_result if isinstance(recent_orders_result, list) else []
             )
 
             # 3. Find the most recent fill that is NOT our known TP or SL legs

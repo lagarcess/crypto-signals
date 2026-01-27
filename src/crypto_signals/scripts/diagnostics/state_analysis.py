@@ -13,13 +13,13 @@ import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 # Ensure PROD environment for diagnostics
 os.environ.setdefault("ENVIRONMENT", "PROD")  # noqa: E402
 
 
-def analyze_firestore_state() -> dict:
+def analyze_firestore_state() -> Dict[str, Any]:
     """Analyze current Firestore state and return summary."""
     from google.cloud import firestore
 
@@ -92,7 +92,7 @@ def analyze_firestore_state() -> dict:
     return summary
 
 
-def write_report(summary: dict, output_path: Path) -> None:
+def write_report(summary: Dict[str, Any], output_path: Path) -> None:
     """Write human-readable report to file."""
     with open(output_path, "w", encoding="utf-8") as f:
         f.write("=" * 70 + "\n")
