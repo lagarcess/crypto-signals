@@ -259,7 +259,8 @@ class RejectedSignalArchival(BigQueryPipelineBase):
                     else str(created_at),
                 }
 
-                transformed.append(record)
+                model = self.schema_model.model_validate(record)
+                transformed.append(model.model_dump(mode="json"))
 
             except Exception as e:
                 logger.error(
