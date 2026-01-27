@@ -46,3 +46,4 @@ walkthrough.md
 # OS files
 .DS_Store
 Thumbs.db
+agent_temp/

@@ -786,10 +786,6 @@ def test_check_exits_short_trail_initialization(
     assert result[0]._previous_tp3 == 0.0  # Previous was None/0
 
 
-@pytest.mark.xfail(
-    reason="Fails due to mocking complexity in detecting geometric pattern merger. Tracking in Issue #108",
-    strict=False,
-)
 def test_generate_signal_harmonic_and_geometric_merging(
     signal_generator, mock_market_provider, mock_analyzer_cls
 ):
