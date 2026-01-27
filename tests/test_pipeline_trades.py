@@ -5,6 +5,7 @@ from crypto_signals.domain.schemas import SignalStatus
 from crypto_signals.engine.signal_generator import SignalGenerator
 from crypto_signals.main import main
 from crypto_signals.repository.firestore import SignalRepository
+from tests.factories import SignalFactory
 
 
 @pytest.fixture
@@ -102,13 +103,10 @@ def test_active_trade_validation_loop(
         mock_settings.return_value.ENABLE_GCP_LOGGING = False
 
         # Mock Repo to return one active signal
-        active_sig = MagicMock()
-        active_sig.signal_id = "sig_123"
-        active_sig.status = SignalStatus.INVALIDATED
-        # We must ensure exit_reason is set to avoid AttributeError if code checks it
-        active_sig.exit_reason = None
-        # Ensure trail logic is skipped
-        active_sig._trail_updated = False
+        active_sig = SignalFactory.build(
+            status=SignalStatus.INVALIDATED,
+            exit_reason=None,
+        )
         mock_repo.get_active_signals.return_value = [active_sig]
 
         # Mock Generator to return this signal as invalidated
