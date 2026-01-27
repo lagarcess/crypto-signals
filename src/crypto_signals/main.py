@@ -170,6 +170,18 @@ def main(
         # Ensure lock is released on exit
         atexit.register(job_lock_repo.release_lock, job_id)
 
+        # === DAILY CLEANUP ===
+        now = datetime.now(timezone.utc)
+        if now.hour == 0:
+            logger.info("Running daily cleanup...")
+            deleted_signals = repo.cleanup_expired()
+            deleted_rejected = rejected_repo.cleanup_expired()
+            deleted_positions = position_repo.cleanup_expired()
+            logger.info(
+                f"Cleanup complete: {deleted_signals} signals, "
+                f"{deleted_rejected} rejected signals, {deleted_positions} positions."
+            )
+
         # === STATE RECONCILIATION (Issue #113) ===
         # Detect and heal zombie/orphan positions before main loop
         logger.info("Running state reconciliation...")
