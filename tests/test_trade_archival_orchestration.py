@@ -75,7 +75,7 @@ def test_trade_archival_orchestration_flow():
         mock_activity.price = "50000.0"
         mock_activity.symbol = "BTC/USD"
 
-        mock_alpaca.return_value.get_account_activities.return_value = [mock_activity]
+        mock_alpaca.return_value._get.return_value = [mock_activity]
 
         # 4. Setup Execution Engine (Fees)
         mock_exec_engine.return_value.get_current_fee_tier.return_value = {

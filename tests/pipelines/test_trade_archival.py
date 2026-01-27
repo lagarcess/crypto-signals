@@ -82,7 +82,7 @@ def test_transform_mfe_long(pipeline, mock_market_provider, mock_alpaca):
     mock_order.filled_qty = "1.0"
     mock_order.side = "buy"
     mock_order.id = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"  # Mock UUID
-    mock_alpaca.get_order_by_client_order_id.return_value = mock_order
+    mock_alpaca.get_order_by_client_id.return_value = mock_order
 
     # Mock Market Data (3 days)
     # Day 1: High 51000
@@ -148,7 +148,7 @@ def test_transform_mfe_short(pipeline, mock_market_provider, mock_alpaca):
     mock_order.filled_qty = "1.0"
     mock_order.side = "sell"
     mock_order.id = "b2c3d4e5-f6a7-8901-bcde-f23456789012"  # Mock UUID
-    mock_alpaca.get_order_by_client_order_id.return_value = mock_order
+    mock_alpaca.get_order_by_client_id.return_value = mock_order
 
     # Mock Market Data
     # Day 1: Low 49000
@@ -216,7 +216,7 @@ def test_transform_short_slippage(pipeline, mock_market_provider, mock_alpaca):
     mock_order.filled_qty = "1.0"
     mock_order.side = "sell"
     mock_order.id = "short-slip-uuid-123"
-    mock_alpaca.get_order_by_client_order_id.return_value = mock_order
+    mock_alpaca.get_order_by_client_id.return_value = mock_order
 
     # Mock Market Data
     dates = pd.date_range("2023-01-01", periods=3, freq="D", tz="UTC")
@@ -287,7 +287,7 @@ def test_transform_short_unfavorable_slippage(
     mock_order.filled_qty = "1.0"
     mock_order.side = "sell"
     mock_order.id = "short-unfav-slip-uuid-456"
-    mock_alpaca.get_order_by_client_order_id.return_value = mock_order
+    mock_alpaca.get_order_by_client_id.return_value = mock_order
 
     # Mock Market Data
     dates = pd.date_range("2023-01-01", periods=3, freq="D", tz="UTC")
@@ -373,7 +373,7 @@ def test_transform_caches_market_data_per_symbol(
     mock_order.filled_qty = "1.0"
     mock_order.side = "buy"
     mock_order.id = "cache-test-order-uuid"
-    mock_alpaca.get_order_by_client_order_id.return_value = mock_order
+    mock_alpaca.get_order_by_client_id.return_value = mock_order
 
     # Mock Market Data
     dates = pd.date_range("2023-01-01", periods=3, freq="D", tz="UTC")
@@ -433,7 +433,7 @@ def test_transform_propagates_exit_order_id(pipeline, mock_market_provider, mock
     mock_order.filled_qty = "1.0"
     mock_order.side = "buy"
     mock_order.id = "entry-order-uuid-xyz789"
-    mock_alpaca.get_order_by_client_order_id.return_value = mock_order
+    mock_alpaca.get_order_by_client_id.return_value = mock_order
 
     # Mock Market Data
     dates = pd.date_range("2023-01-01", periods=3, freq="D", tz="UTC")
@@ -493,7 +493,7 @@ def test_transform_exit_order_id_defaults_to_none(
     mock_order.filled_qty = "1.0"
     mock_order.side = "buy"
     mock_order.id = "entry-order-uuid-legacy"
-    mock_alpaca.get_order_by_client_order_id.return_value = mock_order
+    mock_alpaca.get_order_by_client_id.return_value = mock_order
 
     # Mock Market Data
     dates = pd.date_range("2023-01-01", periods=3, freq="D", tz="UTC")
