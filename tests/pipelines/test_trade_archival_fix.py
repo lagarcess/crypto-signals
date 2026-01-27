@@ -64,4 +64,4 @@ def test_get_actual_fees_uses_public_api(
     args, kwargs = mock_alpaca._request.call_args
     assert args[0] == "GET"
     assert args[1] == "/account/activities"
-    assert "params" in kwargs or len(args) > 3
+    assert kwargs.get("params") == {"activity_types": "CSD,CFEE"}
