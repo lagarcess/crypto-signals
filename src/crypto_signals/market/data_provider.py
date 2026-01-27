@@ -8,8 +8,10 @@ This module abstracts the Alpaca API to provide clean, validated market data
 import time
 from datetime import datetime, timedelta, timezone
 from functools import wraps
+from typing import Optional
 
 import pandas as pd
+from alpaca.data.enums import Adjustment
 from alpaca.data.historical import CryptoHistoricalDataClient, StockHistoricalDataClient
 from alpaca.data.requests import (
     CryptoBarsRequest,
@@ -126,28 +128,29 @@ class MarketDataProvider:
 
             if asset_class == AssetClass.CRYPTO:
                 # Crypto Request
-                request = CryptoBarsRequest(
+                crypto_req = CryptoBarsRequest(
                     symbol_or_symbols=symbol,
                     timeframe=TimeFrame.Day,
                     start=start_dt,
                     end=end_dt,
                 )
-                bars = self.crypto_client.get_crypto_bars(request)
+                bars = self.crypto_client.get_crypto_bars(crypto_req)
             elif asset_class == AssetClass.EQUITY:
                 # Stock Request
-                request = StockBarsRequest(
+                stock_req = StockBarsRequest(
                     symbol_or_symbols=symbol,
                     timeframe=TimeFrame.Day,
                     start=start_dt,
                     end=end_dt,
-                    adjustment="split",  # Adjust for splits
+                    adjustment=Adjustment.SPLIT,  # Adjust for splits
                 )
-                bars = self.stock_client.get_stock_bars(request)
+                bars = self.stock_client.get_stock_bars(stock_req)
             else:
                 raise MarketDataError(f"Unsupported asset class: {asset_class}")
 
             # Convert to DataFrame
-            df = bars.df
+            # Mypy sees bars as (BarSet | dict), but we know it returns BarSet here for the request
+            df = bars.df  # type: ignore
 
             if df.empty:
                 raise MarketDataError(f"No daily bars found for {symbol}")
@@ -157,6 +160,7 @@ class MarketDataProvider:
             if isinstance(df.index, pd.MultiIndex):
                 df = df.reset_index(level=0, drop=True)
 
+            df.index = pd.to_datetime(df.index)
             return df
 
         except MarketDataError:
@@ -179,27 +183,26 @@ class MarketDataProvider:
         Raises:
             MarketDataError: If data fetching fails or the asset class is unsupported.
         """
+        price: Optional[float] = None
         try:
             if asset_class == AssetClass.CRYPTO:
-                req = CryptoLatestTradeRequest(symbol_or_symbols=symbol)
-                trade = self.crypto_client.get_crypto_latest_trade(req)
-                if not trade or symbol not in trade:
-                    raise MarketDataError(
-                        f"Latest crypto trade data for {symbol} not found in API response"
-                    )
-                return float(trade[symbol].price)
+                crypto_req = CryptoLatestTradeRequest(symbol_or_symbols=symbol)
+                trade = self.crypto_client.get_crypto_latest_trade(crypto_req)
+                if trade and symbol in trade:
+                    price = trade[symbol].price
 
             elif asset_class == AssetClass.EQUITY:
-                req = StockLatestTradeRequest(symbol_or_symbols=symbol)
-                trade = self.stock_client.get_stock_latest_trade(req)
-                if not trade or symbol not in trade:
-                    raise MarketDataError(
-                        f"Latest equity trade data for {symbol} not found in API response"
-                    )
-                return float(trade[symbol].price)
-
+                stock_req = StockLatestTradeRequest(symbol_or_symbols=symbol)
+                trade = self.stock_client.get_stock_latest_trade(stock_req)
+                if trade and symbol in trade:
+                    price = trade[symbol].price
             else:
                 raise MarketDataError(f"Unsupported asset class: {asset_class}")
+
+            if price is None:
+                raise MarketDataError(f"Latest trade price for {symbol} is null.")
+
+            return float(price)
 
         except MarketDataError:
             raise
