@@ -330,7 +330,8 @@ class SignalRepository:
 
         docs = query.stream()
         for doc in docs:
-            return Signal.model_validate(doc.to_dict())
+            # Cast to Signal to satisfy MyPy's strict type checking
+            return cast(Signal, Signal.model_validate(doc.to_dict()))
 
         return None
 
