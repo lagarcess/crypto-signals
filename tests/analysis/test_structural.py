@@ -287,7 +287,9 @@ class TestPerformance:
         lows = (base - np.abs(np.random.randn(n)) * 2).astype(np.float64)
 
         # Warm-up run (first call may include some overhead)
-        _zigzag_core(highs[:1000].astype(np.float64), lows[:1000].astype(np.float64), 0.05)
+        _zigzag_core(
+            highs[:1000].astype(np.float64), lows[:1000].astype(np.float64), 0.05
+        )
 
         # Timed run
         start = time.perf_counter()

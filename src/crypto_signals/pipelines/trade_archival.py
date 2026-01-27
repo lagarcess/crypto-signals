@@ -106,7 +106,8 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
             # Note: We can't filter by order_id in the API call, must filter in client.
             # Fetching last 100 CFEE activities should cover recent trades.
 
-            activities = self.alpaca._get(
+            activities = self.alpaca._request(
+                "GET",
                 "/account/activities",
                 params={"activity_types": "CSD,CFEE"},
             )
@@ -117,7 +118,7 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
             related_activities = [
                 a
                 for a in activities
-                if hasattr(a, "order_id") and str(a.order_id) == alpaca_order_id
+                if isinstance(a, dict) and str(a.get("order_id")) == alpaca_order_id
             ]
 
             if not related_activities:
@@ -126,11 +127,12 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
             total_fee_usd = 0.0
 
             for activity in related_activities:
-                # activity.qty is the fee amount
-                # activity.price is the fill price (exchange rate) at that moment
-                # activity.symbol is the asset
+                # activity['qty'] is the fee amount
+                # activity['price'] is the fill price (exchange rate) at that moment
+                # activity['symbol'] is the asset
 
-                fee_qty = float(activity.qty) if activity.qty else 0.0
+                qty_val = activity.get("qty")
+                fee_qty = float(qty_val) if qty_val else 0.0
 
                 # Determine currency of the fee
                 # For Buy orders (e.g., Buy BTC/USD), fee is usually in BTC (the asset).
@@ -150,7 +152,8 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                 # (activity.price is typically the execution price).
 
                 # Note: 'price' in Activity might be None for some types, but for CFEE/FILL it acts as rate.
-                price = float(activity.price) if activity.price else 0.0
+                price_val = activity.get("price")
+                price = float(price_val) if price_val else 0.0
 
                 # Heuristic for Currency:
                 # If the symbol in the activity is the BASE currency (e.g. BTC), convert it.
