@@ -114,7 +114,6 @@ class RejectedSignalArchival(BigQueryPipelineBase):
         transformed = []
 
         for signal in raw_data:
-            print(f"DEBUG: processing signal {signal.get('signal_id')}")
             try:
                 symbol = signal.get("symbol")
                 asset_class = signal.get("asset_class", "CRYPTO")
@@ -231,6 +230,7 @@ class RejectedSignalArchival(BigQueryPipelineBase):
 
                 # Build record
                 record = {
+                    "doc_id": signal.get("_doc_id"),  # Fix #174: Map preserved doc ID
                     "ds": created_at.date()
                     if hasattr(created_at, "date")
                     else created_at,
@@ -290,7 +290,9 @@ class RejectedSignalArchival(BigQueryPipelineBase):
         count = 0
 
         for item in data:
-            doc_id = getattr(item, "signal_id", None)
+            # Fix #174: Use explicit doc_id if available (FactRejectedSignal), else fallback to signal_id
+            doc_id = getattr(item, "doc_id", None) or getattr(item, "signal_id", None)
+
             if not doc_id:
                 continue
             ref = self.firestore_client.collection(self.source_collection).document(

@@ -1,6 +1,7 @@
 import datetime
 from typing import Any, List, Type
 
+from google.api_core.exceptions import NotFound
 from google.cloud import bigquery
 from loguru import logger
 from pydantic import BaseModel
@@ -44,7 +45,8 @@ class SchemaGuardian:
         """
         try:
             table = self.client.get_table(table_id)
-        except Exception as e:
+        except (NotFound, Exception) as e:
+            # Catch NotFound specifically; generic Exception retained for legacy V1 compatibility.
             logger.error(f"Failed to fetch table schema for {table_id}: {e}")
             # If table doesn't exist, we can't validate.
             # In a real pipeline, the loader might create it.
@@ -160,6 +162,11 @@ class SchemaGuardian:
 
         # Note: This logic assumes simple Optional[T] or List[T].
         # Complex Unions (e.g. Union[int, float]) are not fully supported and default to STRING.
+        if typing.get_origin(py_type) is typing.Union:
+            logger.warning(
+                f"Complex Union type detected: {py_type}. Defaulting to STRING validation."
+            )
+
         return py_type
 
     def _get_bq_type(self, py_type: Any) -> tuple[str, bool]:
