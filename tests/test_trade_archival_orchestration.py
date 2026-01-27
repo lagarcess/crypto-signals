@@ -69,13 +69,14 @@ def test_trade_archival_orchestration_flow():
 
         # Activity 1: CFEE for Buy Order (Fee in Asset)
         # 0.0001 BTC fee * 50000 USD/BTC = 5 USD
-        mock_activity = MagicMock()
-        mock_activity.order_id = "alpaca_order_123"
-        mock_activity.qty = "0.0001"
-        mock_activity.price = "50000.0"
-        mock_activity.symbol = "BTC/USD"
+        mock_activity = {
+            "order_id": "alpaca_order_123",
+            "qty": "0.0001",
+            "price": "50000.0",
+            "symbol": "BTC/USD",
+        }
 
-        mock_alpaca.return_value._get.return_value = [mock_activity]
+        mock_alpaca.return_value._request.return_value = [mock_activity]
 
         # 4. Setup Execution Engine (Fees)
         mock_exec_engine.return_value.get_current_fee_tier.return_value = {
