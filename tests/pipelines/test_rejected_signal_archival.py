@@ -142,7 +142,13 @@ def test_transform_validation_failure(pipeline, mock_market_provider):
 
 def test_cleanup(pipeline, mock_firestore):
     """Test cleaning up processed signals from Firestore."""
-    data = [RejectedSignal(signal_id="sig_1", created_at=datetime.now(timezone.utc), ds=datetime.now(timezone.utc).date())]
+    data = [
+        RejectedSignal(
+            signal_id="sig_1",
+            created_at=datetime.now(timezone.utc),
+            ds=datetime.now(timezone.utc).date(),
+        )
+    ]
     mock_batch = mock_firestore.batch.return_value
 
     pipeline.cleanup(data)
