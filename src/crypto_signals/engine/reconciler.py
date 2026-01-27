@@ -23,6 +23,7 @@ import time
 from typing import Optional
 
 from alpaca.trading.client import TradingClient
+from alpaca.trading.models import Position as AlpacaPosition
 from alpaca.trading.requests import GetOrdersRequest
 from crypto_signals.config import Settings, get_settings
 from crypto_signals.domain.schemas import (
@@ -120,10 +121,10 @@ class StateReconciler:
             try:
                 # alpaca-py uses get_all_positions() to fetch all open positions
                 alpaca_result = self.alpaca.get_all_positions()
-                alpaca_positions = (
+                alpaca_positions_list: list[AlpacaPosition] = (
                     alpaca_result if isinstance(alpaca_result, list) else []
                 )
-                alpaca_symbols = {p.symbol for p in alpaca_positions}
+                alpaca_symbols = {p.symbol for p in alpaca_positions_list}
                 logger.info(
                     f"Alpaca state: {len(alpaca_symbols)} open positions",
                     extra={"symbols": sorted(list(alpaca_symbols))},
