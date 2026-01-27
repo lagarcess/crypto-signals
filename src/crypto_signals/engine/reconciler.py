@@ -23,6 +23,7 @@ import time
 from typing import Optional
 
 from alpaca.trading.client import TradingClient
+from alpaca.trading.models import Position as AlpacaPosition
 from alpaca.trading.requests import GetOrdersRequest
 from crypto_signals.config import Settings, get_settings
 from crypto_signals.domain.schemas import (
@@ -119,11 +120,11 @@ class StateReconciler:
             logger.info("Fetching positions from Alpaca...")
             try:
                 # alpaca-py uses get_all_positions() to fetch all open positions
-                alpaca_result = self.alpaca.get_all_positions()
-                alpaca_positions = (
-                    alpaca_result if isinstance(alpaca_result, list) else []
+                raw_alpaca_positions = self.alpaca.get_all_positions()
+                alpaca_positions_list: list[AlpacaPosition] = (
+                    raw_alpaca_positions if isinstance(raw_alpaca_positions, list) else []
                 )
-                alpaca_symbols = {p.symbol for p in alpaca_positions}
+                alpaca_symbols = {p.symbol for p in alpaca_positions_list}
                 logger.info(
                     f"Alpaca state: {len(alpaca_symbols)} open positions",
                     extra={"symbols": sorted(list(alpaca_symbols))},
@@ -344,8 +345,10 @@ class StateReconciler:
 
             # 2. Search recent filled orders for this symbol
 
+            from alpaca.trading.enums import QueryOrderStatus
+
             request = GetOrdersRequest(
-                status="closed",
+                status=QueryOrderStatus.CLOSED,
                 symbols=[position.symbol],
                 limit=10,
                 side=close_side,
