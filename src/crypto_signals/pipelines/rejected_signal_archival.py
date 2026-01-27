@@ -10,49 +10,25 @@ Pattern: Extract-Transform-Load
 3. Load: Push to BigQuery via BasePipeline
 """
 
-from datetime import date, datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import datetime, timezone
+from typing import Any, Dict, List
 
 import pandas as pd
 from google.cloud import firestore
 from loguru import logger
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from crypto_signals.config import (
     get_crypto_data_client,
     get_settings,
     get_stock_data_client,
 )
-from crypto_signals.domain.schemas import OrderSide
+from crypto_signals.domain.schemas import FactRejectedSignal, OrderSide
 from crypto_signals.market.data_provider import MarketDataProvider
 from crypto_signals.pipelines.base import BigQueryPipelineBase
 
 # Crypto fee constant (0.25% taker fee for base tier)
 CRYPTO_TAKER_FEE_PCT = 0.0025
-
-
-class RejectedSignal(BaseModel):
-    """Schema for rejected signals archival."""
-
-    doc_id: Optional[str] = Field(None, description="Firestore document ID")
-    ds: date
-    signal_id: str
-    symbol: str
-    asset_class: str
-    pattern_name: str
-    rejection_reason: str
-    trade_type: str
-    side: str
-    entry_price: float
-    suggested_stop: float
-    take_profit_1: float
-    theoretical_exit_price: Optional[float]
-    theoretical_exit_reason: Optional[str]
-    theoretical_exit_time: Optional[datetime]
-    theoretical_pnl_usd: float
-    theoretical_pnl_pct: float
-    theoretical_fees_usd: float
-    created_at: datetime
 
 
 class RejectedSignalArchival(BigQueryPipelineBase):
@@ -78,7 +54,7 @@ class RejectedSignalArchival(BigQueryPipelineBase):
             ),
             id_column="signal_id",
             partition_column="ds",
-            schema_model=RejectedSignal,
+            schema_model=FactRejectedSignal,
         )
 
         # Initialize Source Clients
@@ -138,7 +114,6 @@ class RejectedSignalArchival(BigQueryPipelineBase):
         transformed = []
 
         for signal in raw_data:
-            print(f"DEBUG: processing signal {signal.get('signal_id')}")
             try:
                 symbol = signal.get("symbol")
                 asset_class = signal.get("asset_class", "CRYPTO")
@@ -255,6 +230,7 @@ class RejectedSignalArchival(BigQueryPipelineBase):
 
                 # Build record
                 record = {
+                    "doc_id": signal.get("_doc_id"),  # Fix #174: Map preserved doc ID
                     "ds": created_at.date()
                     if hasattr(created_at, "date")
                     else created_at,
@@ -314,7 +290,9 @@ class RejectedSignalArchival(BigQueryPipelineBase):
         count = 0
 
         for item in data:
-            doc_id = getattr(item, "signal_id", None)
+            # Fix #174: Use explicit doc_id if available (FactRejectedSignal), else fallback to signal_id
+            doc_id = getattr(item, "doc_id", None) or getattr(item, "signal_id", None)
+
             if not doc_id:
                 continue
             ref = self.firestore_client.collection(self.source_collection).document(

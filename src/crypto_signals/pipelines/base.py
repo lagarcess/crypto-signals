@@ -18,6 +18,7 @@ from loguru import logger
 from pydantic import BaseModel
 
 from crypto_signals.config import get_settings
+from crypto_signals.engine.schema_guardian import SchemaGuardian
 
 
 class BigQueryPipelineBase(ABC):
@@ -57,6 +58,14 @@ class BigQueryPipelineBase(ABC):
         # Initialize BigQuery Client
         # We use the project from settings to ensure we target the right GCP env
         self.bq_client = bigquery.Client(project=get_settings().GOOGLE_CLOUD_PROJECT)
+
+        # Initialize Schema Guardian (Strict Mode by default for now)
+        # Initialize Schema Guardian
+        # Note: V1 enforces Strict Mode everywhere.
+        settings = get_settings()
+        self.guardian = SchemaGuardian(
+            self.bq_client, strict_mode=settings.SCHEMA_GUARDIAN_STRICT_MODE
+        )
 
     @abstractmethod
     def extract(self) -> List[Any]:
@@ -200,7 +209,7 @@ class BigQueryPipelineBase(ABC):
         """
         Orchestrate the full pipeline execution.
 
-        Flow: Extract -> Transform -> Truncate Staging -> Load Staging
+        Flow: Validate Schema -> Extract -> Transform -> Truncate Staging -> Load Staging
               -> Merge -> Cleanup
 
         Returns:
@@ -213,6 +222,12 @@ class BigQueryPipelineBase(ABC):
         logger.info(f"[{self.job_name}] Starting pipeline execution...")
 
         try:
+            # 0. Pre-flight Check: Validate Schema
+            logger.info(f"[{self.job_name}] Validating BigQuery Schema...")
+            self.guardian.validate_schema(
+                table_id=self.fact_table_id, model=self.schema_model
+            )
+
             # 1. Extract
             raw_data = self.extract()
             if not raw_data:

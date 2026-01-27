@@ -23,6 +23,7 @@ def test_trade_archival_orchestration_flow():
         patch("google.cloud.firestore.Client") as mock_firestore_cls,
         patch("crypto_signals.pipelines.base.bigquery.Client") as mock_bq_cls,
         patch("crypto_signals.engine.execution.ExecutionEngine") as mock_exec_engine,
+        patch("crypto_signals.pipelines.base.SchemaGuardian"),
     ):
         # 1. Setup Environment
         mock_settings.return_value.GOOGLE_CLOUD_PROJECT = "test-project"

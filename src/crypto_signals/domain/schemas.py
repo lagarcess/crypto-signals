@@ -847,19 +847,48 @@ class TradeExecution(BaseModel):
             fees_usd = float(data.get("fees_usd", 0.0))
             side = str(data.get("side", "buy")).lower()
 
-            pnl_gross = (weighted_exit_price - entry_price) * total_qty
-            if side == "sell":  # Short
+            # Simple PnL recalculation based on side
+            if side == "buy":
+                pnl_gross = (weighted_exit_price - entry_price) * total_qty
+            else:
                 pnl_gross = (entry_price - weighted_exit_price) * total_qty
 
-            pnl_usd = pnl_gross - fees_usd
-            data["pnl_usd"] = round(pnl_usd, 2)
+            pnl_net = pnl_gross - fees_usd
 
-            cost_basis = entry_price * total_qty
-            data["pnl_pct"] = (
-                round((pnl_usd / cost_basis * 100.0), 4) if cost_basis else 0.0
-            )
+            # Update data dict
+            data["pnl_usd"] = round(pnl_net, 4)
+            if entry_price and total_qty:
+                data["pnl_pct"] = round((pnl_net / (entry_price * total_qty)) * 100, 4)
 
         return data
+
+
+class FactRejectedSignal(BaseModel):
+    """
+    Schema for rejected signals archival (Fact Table).
+
+    This matches the `fact_rejected_signals` BigQuery table.
+    """
+
+    doc_id: Optional[str] = Field(None, description="Firestore document ID")
+    ds: date
+    signal_id: str
+    symbol: str
+    asset_class: str
+    pattern_name: str
+    rejection_reason: str
+    trade_type: str
+    side: str
+    entry_price: float
+    suggested_stop: float
+    take_profit_1: float
+    theoretical_exit_price: Optional[float]
+    theoretical_exit_reason: Optional[str]
+    theoretical_exit_time: Optional[datetime]
+    theoretical_pnl_usd: float
+    theoretical_pnl_pct: float
+    theoretical_fees_usd: float
+    created_at: datetime
 
 
 class RejectedSignal(BaseModel):

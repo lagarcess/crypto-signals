@@ -44,14 +44,16 @@ def pipeline(mock_bq_client):
     with patch("crypto_signals.pipelines.base.get_settings") as mock_settings:
         mock_settings.return_value.GOOGLE_CLOUD_PROJECT = "test-project"
 
-        return ConcretePipeline(
-            job_name="test_pipeline",
-            staging_table_id="test-project.dataset.stg_test",
-            fact_table_id="test-project.dataset.fact_test",
-            id_column="id",
-            partition_column="ds",
-            schema_model=MockSchema,
-        )
+        # Mock SchemaGuardian to prevent real BQ calls during pipeline tests
+        with patch("crypto_signals.pipelines.base.SchemaGuardian"):
+            return ConcretePipeline(
+                job_name="test_pipeline",
+                staging_table_id="test-project.dataset.stg_test",
+                fact_table_id="test-project.dataset.fact_test",
+                id_column="id",
+                partition_column="ds",
+                schema_model=MockSchema,
+            )
 
 
 # --- Tests ---
