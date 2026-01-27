@@ -131,6 +131,56 @@ class TradeType(str, Enum):
 
 
 # =============================================================================
+# LOGGING AND MONITORING SCHEMAS
+# =============================================================================
+
+
+class BaseLogEntry(BaseModel):
+    """Base model for a structured log entry."""
+
+    message: str
+    severity: str
+    timestamp: datetime
+
+
+class JsonPayload(BaseModel):
+    """Schema for a JSON payload within a log entry."""
+
+    message: str
+    context: Optional[Dict[str, Any]] = None
+
+
+class LogEntry(BaseModel):
+    """Represents a Google Cloud Logging entry."""
+
+    severity: str
+    timestamp: datetime
+    json_payload: Optional[JsonPayload] = Field(None, alias="jsonPayload")
+    text_payload: Optional[str] = Field(None, alias="textPayload")
+
+    @property
+    def effective_message(self) -> str:
+        """Returns the most relevant message from the log entry."""
+        if self.json_payload and self.json_payload.message:
+            return self.json_payload.message
+        return self.text_payload or ""
+
+
+class ZombieEvent(BaseModel):
+    """Schema for identifying a 'Zombie' event in logs."""
+
+    event_type: str = "Zombie"
+    details: Dict[str, Any]
+
+
+class OrphanEvent(BaseModel):
+    """Schema for identifying an 'Orphan' event in logs."""
+
+    event_type: str = "Orphan"
+    details: Dict[str, Any]
+
+
+# =============================================================================
 # STATE RECONCILIATION DOMAIN (Issue #113)
 # =============================================================================
 
