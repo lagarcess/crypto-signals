@@ -48,6 +48,7 @@ from crypto_signals.pipelines.price_patch import PricePatchPipeline
 from crypto_signals.pipelines.trade_archival import TradeArchivalPipeline
 from crypto_signals.repository.firestore import (
     JobLockRepository,
+    JobMetadataRepository,
     PositionRepository,
     RejectedSignalRepository,
     SignalRepository,
@@ -155,6 +156,7 @@ def main(
             execution_engine = ExecutionEngine(reconciler=reconciler)
             job_lock_repo = JobLockRepository()
             rejected_repo = RejectedSignalRepository()  # Shadow signal persistence
+            job_metadata_repo = JobMetadataRepository()
 
             # Pipeline Services
             trade_archival = TradeArchivalPipeline()
@@ -171,8 +173,9 @@ def main(
         atexit.register(job_lock_repo.release_lock, job_id)
 
         # === DAILY CLEANUP ===
-        now = datetime.now(timezone.utc)
-        if now.hour == 0:
+        today = datetime.now(timezone.utc).date()
+        last_cleanup_date = job_metadata_repo.get_last_run_date("daily_cleanup")
+        if last_cleanup_date != today:
             logger.info("Running daily cleanup...")
             deleted_signals = repo.cleanup_expired()
             deleted_rejected = rejected_repo.cleanup_expired()
@@ -181,6 +184,9 @@ def main(
                 f"Cleanup complete: {deleted_signals} signals, "
                 f"{deleted_rejected} rejected signals, {deleted_positions} positions."
             )
+            job_metadata_repo.update_last_run_date("daily_cleanup", today)
+        else:
+            logger.info("Daily cleanup has already run today. Skipping.")
 
         # === STATE RECONCILIATION (Issue #113) ===
         # Detect and heal zombie/orphan positions before main loop

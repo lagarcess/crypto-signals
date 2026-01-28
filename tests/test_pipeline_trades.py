@@ -73,7 +73,9 @@ def test_active_trade_validation_loop(
         patch("crypto_signals.main.get_crypto_data_client"),
         patch("crypto_signals.main.get_trading_client"),
         patch("crypto_signals.main.JobLockRepository") as mock_job_lock,
+        patch("crypto_signals.main.JobMetadataRepository") as mock_job_metadata_repo,
     ):
+        mock_job_metadata_repo.return_value.get_last_run_date.return_value = None
         # Configure JobLock to always succeed
         mock_job_lock.return_value.acquire_lock.return_value = True
 

@@ -52,7 +52,9 @@ def mock_dependencies():
         patch("crypto_signals.main.FeePatchPipeline") as fee_patch,
         patch("crypto_signals.main.PricePatchPipeline") as price_patch,
         patch("crypto_signals.main.StateReconciler") as reconciler,
+        patch("crypto_signals.main.JobMetadataRepository") as job_metadata_repo,
     ):
+        job_metadata_repo.return_value.get_last_run_date.return_value = None
         # Configure mock settings
         mock_settings.return_value.CRYPTO_SYMBOLS = [
             "BTC/USD",
