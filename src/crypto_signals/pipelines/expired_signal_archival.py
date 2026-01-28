@@ -83,6 +83,7 @@ class ExpiredSignalArchivalPipeline(BigQueryPipelineBase):
         for doc in docs:
             data = doc.to_dict()
             if data:
+                data["doc_id"] = doc.id  # Capture the actual document ID
                 raw_data.append(data)
 
         logger.info(f"[{self.job_name}] extracted {len(raw_data)} expired signals.")
@@ -99,10 +100,7 @@ class ExpiredSignalArchivalPipeline(BigQueryPipelineBase):
         transformed = []
         symbol_bars_cache: Dict[str, pd.DataFrame] = {}
 
-        for idx, sig in enumerate(raw_data):
-            if idx > 0:
-                time.sleep(0.1)  # Rate limit safety
-
+        for sig in raw_data:
             try:
                 symbol = sig.get("symbol")
                 asset_class = sig.get("asset_class", "CRYPTO")
@@ -111,10 +109,11 @@ class ExpiredSignalArchivalPipeline(BigQueryPipelineBase):
                 if cache_key in symbol_bars_cache:
                     bars_df = symbol_bars_cache[cache_key]
                 else:
+                    time.sleep(0.1)  # Rate limit safety
                     bars_df = self.market_provider.get_daily_bars(
                         symbol=symbol,
                         asset_class=asset_class,
-                        lookback_days=None,  # Fetch all available data
+                        lookback_days=3650,  # Fetch up to 10 years of data
                     )
                     symbol_bars_cache[cache_key] = bars_df
 
@@ -168,6 +167,7 @@ class ExpiredSignalArchivalPipeline(BigQueryPipelineBase):
                             )
 
                 expired_signal = ExpiredSignal(
+                    doc_id=sig.get("doc_id"),
                     ds=sig.get("ds"),
                     signal_id=sig.get("signal_id"),
                     strategy_id=sig.get("strategy_id"),
@@ -208,7 +208,7 @@ class ExpiredSignalArchivalPipeline(BigQueryPipelineBase):
         for item in data:
             # The base class's `run` method ensures all items are instances
             # of the pipeline's `schema_model` (ExpiredSignal).
-            doc_id = item.signal_id  # type: ignore[attr-defined]
+            doc_id = item.doc_id  # type: ignore[attr-defined]
             ref = self.firestore_client.collection(self.source_collection).document(
                 doc_id
             )

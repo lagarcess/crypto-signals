@@ -871,6 +871,7 @@ class ExpiredSignal(BaseModel):
     sensitivity and "near misses".
     """
 
+    doc_id: Optional[str] = Field(None, description="Firestore document ID")
     ds: date = Field(..., description="Partition key - date signal was generated")
     signal_id: str = Field(..., description="Unique identifier for the signal")
     strategy_id: str = Field(..., description="Strategy that generated the signal")
