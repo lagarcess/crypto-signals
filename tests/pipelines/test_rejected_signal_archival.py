@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
-from crypto_signals.domain.schemas import OrderSide, RejectedSignal
+from crypto_signals.domain.schemas import FactRejectedSignal, OrderSide
 from crypto_signals.pipelines.rejected_signal_archival import RejectedSignalArchival
 
 
@@ -15,6 +15,33 @@ def mock_firestore():
 @pytest.fixture
 def mock_market_provider():
     return MagicMock()
+
+
+@pytest.fixture
+def sample_fact_rejected_signal():
+    """Provides a sample FactRejectedSignal instance for testing."""
+    now = datetime.now(timezone.utc)
+    return FactRejectedSignal(
+        doc_id="sig_1",
+        signal_id="sig_1",
+        created_at=now,
+        ds=now.date(),
+        symbol="BTC/USD",
+        asset_class="CRYPTO",
+        pattern_name="BULL_FLAG",
+        rejection_reason="TEST",
+        trade_type="FILTERED",
+        side=OrderSide.BUY.value,
+        entry_price=1.0,
+        suggested_stop=0.9,
+        take_profit_1=1.1,
+        theoretical_exit_price=None,
+        theoretical_exit_reason=None,
+        theoretical_exit_time=None,
+        theoretical_pnl_usd=0.0,
+        theoretical_pnl_pct=0.0,
+        theoretical_fees_usd=0.0,
+    )
 
 
 @pytest.fixture
@@ -41,9 +68,11 @@ def pipeline(mock_firestore, mock_market_provider):
         ),
         # Patch BigQuery client in the base class to prevent credentials error
         patch("crypto_signals.pipelines.base.bigquery.Client") as mock_bq,
+        patch("crypto_signals.pipelines.base.SchemaGuardian") as mock_guardian,
     ):
         mock_get_settings.return_value.GOOGLE_CLOUD_PROJECT = "test-project"
         mock_get_settings.return_value.ENVIRONMENT = "PROD"
+        mock_get_settings.return_value.SCHEMA_GUARDIAN_STRICT_MODE = True
 
         # Instantiate pipeline
         pipe = RejectedSignalArchival()
@@ -51,6 +80,7 @@ def pipeline(mock_firestore, mock_market_provider):
         pipe.firestore_client = mock_firestore
         pipe.market_provider = mock_market_provider
         pipe.bq_client = mock_bq.return_value
+        pipe.guardian = mock_guardian.return_value
 
         return pipe
 
@@ -91,6 +121,7 @@ def test_transform_long_tp_hit(pipeline, mock_market_provider):
             "side": OrderSide.BUY.value,
             "created_at": created_at,
             "pattern_name": "BULL_FLAG",
+            "rejection_reason": "TEST_REASON",
         }
     ]
 
@@ -129,6 +160,7 @@ def test_transform_validation_failure(pipeline, mock_market_provider):
             "side": OrderSide.BUY.value,
             "created_at": created_at,
             "rejection_reason": "VALIDATION_FAILED: Invalid Stop",
+            "pattern_name": "TEST_PATTERN",
         }
     ]
 
@@ -140,19 +172,29 @@ def test_transform_validation_failure(pipeline, mock_market_provider):
     assert record["theoretical_pnl_usd"] == 0.0
 
 
-def test_cleanup(pipeline, mock_firestore):
+def test_cleanup(pipeline, mock_firestore, sample_fact_rejected_signal):
     """Test cleaning up processed signals from Firestore."""
-    data = [
-        RejectedSignal(
-            signal_id="sig_1",
-            created_at=datetime.now(timezone.utc),
-            ds=datetime.now(timezone.utc).date(),
-        )
-    ]
     mock_batch = mock_firestore.batch.return_value
-
-    pipeline.cleanup(data)
+    pipeline.cleanup([sample_fact_rejected_signal])
 
     assert mock_firestore.collection.called
     assert mock_batch.delete.called
     assert mock_batch.commit.called
+
+
+def test_run_calls_schema_guardian(pipeline, mock_firestore, sample_fact_rejected_signal):
+    """Test that the pipeline's run method calls SchemaGuardian."""
+    # Mock the extract method to return some data
+    pipeline.extract = MagicMock(return_value=[{"signal_id": "sig_1"}])
+    transformed_data = [sample_fact_rejected_signal.model_dump(mode="json")]
+    pipeline.transform = MagicMock(return_value=transformed_data)
+    pipeline.cleanup = MagicMock()
+
+    # Configure the mock to return no errors
+    pipeline.bq_client.insert_rows_json.return_value = []
+
+    # Run the pipeline
+    pipeline.run()
+
+    # Assert that SchemaGuardian.validate_schema was called
+    pipeline.guardian.validate_schema.assert_called_once()
