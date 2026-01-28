@@ -184,6 +184,10 @@ crypto-signals/
    ```bash
    git clone https://github.com/lagarcess/crypto-signals.git
    cd crypto-signals
+
+   # Bootstrap environment (installs Poetry + Deps)
+   ./setup.sh
+   # (On Windows Git Bash: bash setup.sh)
    ```
 
 2. **Install dependencies**:
