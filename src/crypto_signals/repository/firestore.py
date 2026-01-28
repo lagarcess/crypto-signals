@@ -105,7 +105,8 @@ class SignalRepository:
         Note: delete_at is populated by SignalGenerator (driven by config.py).
         """
         data = signal.model_dump(mode="python")
-        data["ds"] = data["ds"].isoformat()
+        if "ds" in data and isinstance(data["ds"], date):
+            data["ds"] = data["ds"].isoformat()
         doc_ref = self.db.collection(self.collection_name).document(signal.signal_id)
         doc_ref.set(data)
 
@@ -376,7 +377,8 @@ class RejectedSignalRepository:
             return
 
         data = signal.model_dump(mode="python")
-        data["ds"] = data["ds"].isoformat()
+        if "ds" in data and isinstance(data["ds"], date):
+            data["ds"] = data["ds"].isoformat()
         # rejected_at is set here (repository-level metadata)
         # delete_at is already set by SignalGenerator (7-day TTL for rejected signals)
         data["rejected_at"] = datetime.now(timezone.utc)
@@ -520,7 +522,8 @@ class PositionRepository:
         # Check if document exists to preserve created_at
         doc = doc_ref.get()
         position_data = position.model_dump(mode="python")
-        position_data["ds"] = position_data["ds"].isoformat()
+        if "ds" in position_data and isinstance(position_data["ds"], date):
+            position_data["ds"] = position_data["ds"].isoformat()
 
         if doc.exists:
             # Update existing document, preserve created_at
