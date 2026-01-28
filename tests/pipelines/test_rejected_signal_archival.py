@@ -18,6 +18,33 @@ def mock_market_provider():
 
 
 @pytest.fixture
+def sample_fact_rejected_signal():
+    """Provides a sample FactRejectedSignal instance for testing."""
+    now = datetime.now(timezone.utc)
+    return FactRejectedSignal(
+        doc_id="sig_1",
+        signal_id="sig_1",
+        created_at=now,
+        ds=now.date(),
+        symbol="BTC/USD",
+        asset_class="CRYPTO",
+        pattern_name="BULL_FLAG",
+        rejection_reason="TEST",
+        trade_type="FILTERED",
+        side=OrderSide.BUY.value,
+        entry_price=1.0,
+        suggested_stop=0.9,
+        take_profit_1=1.1,
+        theoretical_exit_price=None,
+        theoretical_exit_reason=None,
+        theoretical_exit_time=None,
+        theoretical_pnl_usd=0.0,
+        theoretical_pnl_pct=0.0,
+        theoretical_fees_usd=0.0,
+    )
+
+
+@pytest.fixture
 def pipeline(mock_firestore, mock_market_provider):
     with (
         patch(
@@ -145,66 +172,21 @@ def test_transform_validation_failure(pipeline, mock_market_provider):
     assert record["theoretical_pnl_usd"] == 0.0
 
 
-def test_cleanup(pipeline, mock_firestore):
+def test_cleanup(pipeline, mock_firestore, sample_fact_rejected_signal):
     """Test cleaning up processed signals from Firestore."""
-    now = datetime.now(timezone.utc)
-    record = FactRejectedSignal(
-        doc_id="sig_1",
-        signal_id="sig_1",
-        created_at=now,
-        ds=now.date(),
-        symbol="BTC/USD",
-        asset_class="CRYPTO",
-        pattern_name="BULL_FLAG",
-        rejection_reason="TEST",
-        trade_type="FILTERED",
-        side=OrderSide.BUY.value,
-        entry_price=1.0,
-        suggested_stop=0.9,
-        take_profit_1=1.1,
-        theoretical_exit_price=None,
-        theoretical_exit_reason=None,
-        theoretical_exit_time=None,
-        theoretical_pnl_usd=0.0,
-        theoretical_pnl_pct=0.0,
-        theoretical_fees_usd=0.0,
-    )
-
     mock_batch = mock_firestore.batch.return_value
-    pipeline.cleanup([record])
+    pipeline.cleanup([sample_fact_rejected_signal])
 
     assert mock_firestore.collection.called
     assert mock_batch.delete.called
     assert mock_batch.commit.called
 
 
-def test_run_calls_schema_guardian(pipeline, mock_firestore):
+def test_run_calls_schema_guardian(pipeline, mock_firestore, sample_fact_rejected_signal):
     """Test that the pipeline's run method calls SchemaGuardian."""
     # Mock the extract method to return some data
     pipeline.extract = MagicMock(return_value=[{"signal_id": "sig_1"}])
-    now = datetime.now(timezone.utc)
-    record = FactRejectedSignal(
-        doc_id="sig_1",
-        signal_id="sig_1",
-        created_at=now,
-        ds=now.date(),
-        symbol="BTC/USD",
-        asset_class="CRYPTO",
-        pattern_name="BULL_FLAG",
-        rejection_reason="TEST",
-        trade_type="FILTERED",
-        side=OrderSide.BUY.value,
-        entry_price=1.0,
-        suggested_stop=0.9,
-        take_profit_1=1.1,
-        theoretical_exit_price=None,
-        theoretical_exit_reason=None,
-        theoretical_exit_time=None,
-        theoretical_pnl_usd=0.0,
-        theoretical_pnl_pct=0.0,
-        theoretical_fees_usd=0.0,
-    )
-    transformed_data = [record.model_dump(mode="json")]
+    transformed_data = [sample_fact_rejected_signal.model_dump(mode="json")]
     pipeline.transform = MagicMock(return_value=transformed_data)
     pipeline.cleanup = MagicMock()
 
