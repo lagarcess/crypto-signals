@@ -17,6 +17,7 @@ This file provides a map of the core modules, responsibilities, and constraints 
 
 Jules should use these commands to ensure synchronization with the developer workflow.
 **Definition Source**: The detailed steps for each command are defined in the `.agent/workflows/` directory.
+**Jules Protocol**: See [.agent/jules/protocol.md](.agent/jules/protocol.md) for the mandatory code hygiene sequence.
 
 - `/plan [task]`: Generates `temp/plan/implementation-plan.md`. Always starts here.
 - `/implement`: Enters TDD loop. Writes tests first.
@@ -25,7 +26,10 @@ Jules should use these commands to ensure synchronization with the developer wor
 - `/learn`: **Critical**. Updates `docs/development/knowledge-base.md` with new findings. Run after every major change.
 - `/diagnose`: Includes **CI/CD Forensics** via `gh` CLI.
 - `/fix`: Recursive self-correction loop for test failures.
-- `/review-jules`: **Manager Mode**. Delegate feedback to Jules via `post_review.py`.
+- `/review-jules`: **Manager Mode**. Delegate feedback to Jules.
+  - Fetch comments: `bash scripts/get_pr_comments.sh <PR_NUM>`
+  - Post review: `poetry run python scripts/post_review.py ...`
+
 
 ## Parallel Development (Worktrees)
 
