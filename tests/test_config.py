@@ -42,13 +42,22 @@ def test_settings_cooldown_scope_can_be_set_to_pattern(base_env):
         assert settings.COOLDOWN_SCOPE == "PATTERN"
 
 
-def test_validate_not_empty(base_env):
-    """Test that required fields cannot be empty."""
+def test_validate_credentials_if_execution_enabled(base_env):
+    """Test that credentials are required only when execution is enabled."""
     env = base_env.copy()
-    env["ALPACA_API_KEY"] = " "
+    env["ENABLE_EXECUTION"] = "True"
+    env["ALPACA_API_KEY"] = ""
     with patch.dict(os.environ, env):
         with pytest.raises(ValidationError):
             Settings()
+
+def test_validate_credentials_if_execution_disabled(base_env):
+    """Test that credentials are not required when execution is disabled."""
+    env = base_env.copy()
+    env["ENABLE_EXECUTION"] = "False"
+    env["ALPACA_API_KEY"] = ""
+    with patch.dict(os.environ, env):
+        Settings()
 
 
 def test_parse_list_from_str(base_env):

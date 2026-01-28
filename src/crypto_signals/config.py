@@ -214,37 +214,29 @@ class Settings(BaseSettings):
         return v
 
     @field_validator(
-        "ALPACA_API_KEY",
-        "ALPACA_SECRET_KEY",
         "GOOGLE_CLOUD_PROJECT",
         mode="before",
     )
     @classmethod
-    def validate_not_empty(cls, v: str, info) -> str:
-        """Ensure required fields are not empty strings."""
-        # In SMOKE_TEST mode, we can skip validating the Alpaca keys
-        # as the test doesn't actually connect to the API.
-        if os.environ.get("APP_MODE") == "SMOKE_TEST" and info.field_name in [
-            "ALPACA_API_KEY",
-            "ALPACA_SECRET_KEY",
-        ]:
-            return v
+    def validate_gcp_project_not_empty(cls, v: str, info) -> str:
+        """Ensure GOOGLE_CLOUD_PROJECT is not an empty string."""
         if v is None or (isinstance(v, str) and v.strip() == ""):
             raise ValueError(f"{info.field_name} cannot be empty")
         return v.strip() if isinstance(v, str) else v
 
     @model_validator(mode="after")
-    def validate_live_webhooks(self) -> "Settings":
-        """Ensure live webhooks are provided when TEST_MODE is False."""
+    def validate_conditional_requirements(self) -> "Settings":
+        """Validate fields that are required only under certain conditions."""
         if not self.TEST_MODE:
             if not self.LIVE_CRYPTO_DISCORD_WEBHOOK_URL:
-                raise ValueError(
-                    "LIVE_CRYPTO_DISCORD_WEBHOOK_URL is required when TEST_MODE=False"
-                )
+                raise ValueError("LIVE_CRYPTO_DISCORD_WEBHOOK_URL is required when TEST_MODE=False")
             if not self.LIVE_STOCK_DISCORD_WEBHOOK_URL:
-                raise ValueError(
-                    "LIVE_STOCK_DISCORD_WEBHOOK_URL is required when TEST_MODE=False"
-                )
+                raise ValueError("LIVE_STOCK_DISCORD_WEBHOOK_URL is required when TEST_MODE=False")
+        if self.ENABLE_EXECUTION:
+            if not self.ALPACA_API_KEY:
+                raise ValueError("ALPACA_API_KEY is required when ENABLE_EXECUTION=True")
+            if not self.ALPACA_SECRET_KEY:
+                raise ValueError("ALPACA_SECRET_KEY is required when ENABLE_EXECUTION=True")
         return self
 
     @property

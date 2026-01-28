@@ -863,6 +863,34 @@ class TradeExecution(BaseModel):
         return data
 
 
+class ExpiredSignal(BaseModel):
+    """
+    Archived expired signal for BigQuery analytics.
+
+    Stored in the fact_signals_expired table. Used for analyzing signal
+    sensitivity and "near misses".
+    """
+
+    doc_id: Optional[str] = Field(None, description="Firestore document ID")
+    ds: date = Field(..., description="Partition key - date signal was generated")
+    signal_id: str = Field(..., description="Unique identifier for the signal")
+    strategy_id: str = Field(..., description="Strategy that generated the signal")
+    symbol: str = Field(..., description="Asset symbol")
+    asset_class: AssetClass = Field(..., description="Asset class (CRYPTO or EQUITY)")
+    side: OrderSide = Field(..., description="Signal side (buy or sell)")
+    entry_price: float = Field(..., description="Target entry price of the signal")
+    suggested_stop: float = Field(..., description="Suggested stop-loss for the signal")
+    valid_until: datetime = Field(..., description="When the signal expired")
+    max_mfe_during_validity: Optional[float] = Field(
+        default=None,
+        description="Max favorable excursion during validity (Highest High - Entry for BUYs)",
+    )
+    distance_to_trigger_pct: Optional[float] = Field(
+        default=None,
+        description="Percentage distance from entry to trigger ((Entry - Highest High) / Entry for BUYs)",
+    )
+
+
 class FactRejectedSignal(BaseModel):
     """
     Schema for rejected signals archival (Fact Table).
