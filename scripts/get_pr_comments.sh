@@ -11,9 +11,9 @@
 #   2. Run this script from the project root.
 # ==============================================================================
 
-# 1. Validate Input
-if [ -z "$1" ]; then
-    echo "❌ Error: Missing PR Number."
+# 1. Validate Input (Strict Integer Check)
+if [[ ! "$1" =~ ^[0-9]+$ ]]; then
+    echo "❌ Error: PR Number must be a positive integer."
     echo "Usage: ./scripts/get_pr_comments.sh <PR_NUMBER>"
     exit 1
 fi

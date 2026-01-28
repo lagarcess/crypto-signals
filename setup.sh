@@ -8,8 +8,9 @@ python --version
 
 # 2. Install Poetry (if not present)
 if ! command -v poetry &> /dev/null; then
-    echo "🔵 [Setup] Installing Poetry..."
-    pip install poetry
+    echo "🔵 [Setup] Installing Poetry (Official Installer)..."
+    # Use official installer to isolate dependencies
+    curl -sSL https://install.python-poetry.org | python3 -
 else
     echo "🟢 [Setup] Poetry is already installed."
 fi
