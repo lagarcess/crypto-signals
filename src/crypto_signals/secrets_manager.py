@@ -185,11 +185,7 @@ def init_secrets() -> bool:
 
         # Define required and optional secrets
         secrets = {
-            # Required secrets (None means required)
-            "ALPACA_API_KEY": None,
-            "ALPACA_SECRET_KEY": None,
             "GOOGLE_CLOUD_PROJECT": None,
-            "TEST_DISCORD_WEBHOOK": None,
             # Optional secrets with defaults
             "ALPACA_PAPER_TRADING": "true",
             "TEST_MODE": "true",
@@ -198,6 +194,12 @@ def init_secrets() -> bool:
             "LIVE_CRYPTO_DISCORD_WEBHOOK_URL": "",
             "LIVE_STOCK_DISCORD_WEBHOOK_URL": "",
         }
+
+        # In SMOKE_TEST mode, we don't need real credentials
+        if os.environ.get("APP_MODE") != "SMOKE_TEST":
+            secrets["ALPACA_API_KEY"] = None
+            secrets["ALPACA_SECRET_KEY"] = None
+            secrets["TEST_DISCORD_WEBHOOK"] = None
 
         success = secret_manager.load_secrets_to_env(secrets)
 

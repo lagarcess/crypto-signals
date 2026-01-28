@@ -9,8 +9,8 @@ Dev Note: Enable GCP native TTL policy with:
   gcloud firestore fields ttls update delete_at --collection-group=test_positions --enable-ttl
 """
 
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, cast
+from datetime import date, datetime, timedelta, timezone
+from typing import Any, Dict, Optional, cast
 
 from crypto_signals.config import get_settings
 from crypto_signals.domain.schemas import (
@@ -207,21 +207,23 @@ class SignalRepository:
             logger.error(f"Atomic update failed for {signal_id}: {e}")
             return False
 
-    def cleanup_expired(self) -> int:
-        """Delete signals past their TTL. Returns count deleted.
+    def cleanup_expired(self, retention_days: int = 7) -> int:
+        """Delete signals older than a specified number of days based on creation time.
 
-        Uses delete_at field for native GCP TTL support. Queries for signals where
-        delete_at < now (signals past their physical TTL are cleaned up).
+        Args:
+            retention_days: The number of days to keep signals for.
 
-        Note: The delete_at field is set by SignalGenerator based on environment
-        TTLs defined in config.py (settings.TTL_DAYS_PROD/DEV).
+        Returns:
+            The number of deleted signals.
         """
-        cutoff_date = datetime.now(timezone.utc)
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=retention_days)
 
-        logger.info(f"Cleaning up signals with delete_at before {cutoff_date}")
+        logger.info(
+            f"Cleaning up signals in '{self.collection_name}' created before {cutoff_date}"
+        )
 
         query = self.db.collection(self.collection_name).where(
-            filter=FieldFilter("delete_at", "<", cutoff_date)
+            filter=FieldFilter("timestamp", "<", cutoff_date)
         )
 
         # Batch delete for efficiency
@@ -434,15 +436,11 @@ class RejectedSignalRepository:
 
         return stats
 
-    def cleanup_expired(self) -> int:
-        """Delete expired rejected signals. Returns count deleted.
-
-        Uses delete_at field for native GCP TTL support.
-        """
-        cutoff_date = datetime.now(timezone.utc)
-
+    def cleanup_expired(self, retention_days: int = 7) -> int:
+        """Delete expired rejected signals. Returns count deleted."""
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=retention_days)
         query = self.db.collection(self.collection_name).where(
-            filter=FieldFilter("delete_at", "<", cutoff_date)
+            filter=FieldFilter("rejected_at", "<", cutoff_date)
         )
 
         batch = self.db.batch()
@@ -630,16 +628,13 @@ class PositionRepository:
 
         return results
 
-    def cleanup_expired(self) -> int:
-        """Delete positions past their TTL. Returns count deleted.
-
-        Uses delete_at field for native GCP TTL support.
-        """
-        cutoff_date = datetime.now(timezone.utc)
-        logger.info(f"Cleaning up positions with delete_at before {cutoff_date}")
+    def cleanup_expired(self, retention_days: int = 30) -> int:
+        """Delete positions past their TTL. Returns count deleted."""
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=retention_days)
+        logger.info(f"Cleaning up positions with created_at before {cutoff_date}")
 
         query = self.db.collection(self.collection_name).where(
-            filter=FieldFilter("delete_at", "<", cutoff_date)
+            filter=FieldFilter("created_at", "<", cutoff_date)
         )
 
         batch = self.db.batch()
@@ -687,3 +682,43 @@ class PositionRepository:
 
         logger.warning(f"FLUSH ALL complete: Deleted {count} total positions")
         return count
+
+
+class JobMetadataRepository:
+    """Repository for storing job metadata, like last run timestamps."""
+
+    def __init__(self):
+        """Initialize Firestore client."""
+        settings = get_settings()
+        self.db = firestore.Client(project=settings.GOOGLE_CLOUD_PROJECT)
+        self.collection_name = "job_metadata"
+
+    def get_last_run_date(self, job_id: str) -> Optional[date]:
+        """
+        Get the last run date for a specific job.
+
+        Args:
+            job_id: The unique identifier for the job.
+
+        Returns:
+            The last run date, or None if the job has never run.
+        """
+        doc_ref = self.db.collection(self.collection_name).document(job_id)
+        snapshot = doc_ref.get()
+        if snapshot.exists:
+            data = snapshot.to_dict()
+            last_run_str = data.get("last_run_date")
+            if last_run_str:
+                return date.fromisoformat(last_run_str)
+        return None
+
+    def update_last_run_date(self, job_id: str, run_date: date) -> None:
+        """
+        Update the last run date for a specific job.
+
+        Args:
+            job_id: The unique identifier for the job.
+            run_date: The date the job was run.
+        """
+        doc_ref = self.db.collection(self.collection_name).document(job_id)
+        doc_ref.set({"last_run_date": run_date.isoformat()})

@@ -101,6 +101,13 @@ class Settings(BaseSettings):
         pattern="^(PROD|DEV)$",
     )
 
+    # Application Mode
+    APP_MODE: str = Field(
+        default="NORMAL",
+        description="Application mode (NORMAL or SMOKE_TEST). Controls credential validation.",
+        pattern="^(NORMAL|SMOKE_TEST)$",
+    )
+
     # TTL Configuration (Days)
     TTL_DAYS_PROD: int = Field(
         default=30, description="TTL for Production signals (days)."
