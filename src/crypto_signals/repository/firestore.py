@@ -104,9 +104,10 @@ class SignalRepository:
 
         Note: delete_at is populated by SignalGenerator (driven by config.py).
         """
-        signal_data = signal.model_dump(mode="json")
+        data = signal.model_dump(mode="python")
+        data["ds"] = data["ds"].isoformat()
         doc_ref = self.db.collection(self.collection_name).document(signal.signal_id)
-        doc_ref.set(signal_data)
+        doc_ref.set(data)
 
     def get_active_signals(self, symbol: str) -> list[Signal]:
         """
@@ -149,8 +150,10 @@ class SignalRepository:
     def update_signal(self, signal: Signal) -> None:
         """Update an existing signal in Firestore (merged update)."""
         doc_ref = self.db.collection(self.collection_name).document(signal.signal_id)
-        signal_data = signal.model_dump(mode="json")
-        doc_ref.set(signal_data, merge=True)
+        data = signal.model_dump(mode="python")
+        if "ds" in data and isinstance(data["ds"], date):
+            data["ds"] = data["ds"].isoformat()
+        doc_ref.set(data, merge=True)
 
     def get_by_id(self, signal_id: str) -> Signal | None:
         """
@@ -372,13 +375,14 @@ class RejectedSignalRepository:
             )
             return
 
-        signal_data = signal.model_dump(mode="json")
+        data = signal.model_dump(mode="python")
+        data["ds"] = data["ds"].isoformat()
         # rejected_at is set here (repository-level metadata)
         # delete_at is already set by SignalGenerator (7-day TTL for rejected signals)
-        signal_data["rejected_at"] = datetime.now(timezone.utc)
+        data["rejected_at"] = datetime.now(timezone.utc)
 
         doc_ref = self.db.collection(self.collection_name).document(signal.signal_id)
-        doc_ref.set(signal_data)
+        doc_ref.set(data)
 
         logger.debug(
             f"[SHADOW] Saved rejected signal: {signal.symbol} {signal.pattern_name} - "
@@ -515,7 +519,8 @@ class PositionRepository:
 
         # Check if document exists to preserve created_at
         doc = doc_ref.get()
-        position_data = position.model_dump(mode="json")
+        position_data = position.model_dump(mode="python")
+        position_data["ds"] = position_data["ds"].isoformat()
 
         if doc.exists:
             # Update existing document, preserve created_at
@@ -595,9 +600,11 @@ class PositionRepository:
     def update_position(self, position: Position) -> None:
         """Update an existing position in Firestore."""
         doc_ref = self.db.collection(self.collection_name).document(position.position_id)
-        position_data = position.model_dump(mode="json")
-        position_data["updated_at"] = datetime.now(timezone.utc)
-        doc_ref.set(position_data, merge=True)
+        data = position.model_dump(mode="python")
+        if "ds" in data and isinstance(data["ds"], date):
+            data["ds"] = data["ds"].isoformat()
+        data["updated_at"] = datetime.now(timezone.utc)
+        doc_ref.set(data, merge=True)
 
     def get_closed_positions(self, limit: int = 50) -> list[Position]:
         """Get recently closed positions for orphan detection (Issue #139).

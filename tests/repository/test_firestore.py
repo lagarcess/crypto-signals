@@ -87,8 +87,13 @@ def test_save_signal(mock_settings, mock_firestore_client):
     assert "valid_until" in actual_data
     assert "expireAt" not in actual_data  # Ensure consistent naming convention
 
-    expected_data = signal.model_dump(mode="json")
-    assert actual_data == expected_data
+    # Verify that datetime objects are preserved
+    assert isinstance(actual_data["delete_at"], datetime)
+    assert isinstance(actual_data["valid_until"], datetime)
+
+    # Verify that date object is serialized to string
+    assert isinstance(actual_data["ds"], str)
+    assert actual_data["ds"] == "2025-01-01"
 
 
 def test_save_signal_firestore_error(mock_settings, mock_firestore_client):
