@@ -243,47 +243,51 @@ class DiscordClient:
 
         message = self._format_message(signal)
 
-        # Auto-generate thread_name if not provided (required for Forum channels)
-        if not thread_name:
-            # Determine emoji (matches _format_message logic)
-            BULLISH_PATTERNS = {
-                "bullish_engulfing",
-                "bullish_hammer",
-                "bullish_harami",
-                "bullish_marubozu",
-                "bullish_belt_hold",
-                "bullish_kicker",
-                "morning_star",
-                "three_white_soldiers",
-                "three_inside_up",
-                "piercing_line",
-                "inverted_hammer",
-                "dragonfly_doji",
-                "double_bottom",
-                "inverse_head_shoulders",
-                "bull_flag",
-                "cup_and_handle",
-                "ascending_triangle",
-                "falling_wedge",
-                "rising_three_methods",
-                "tweezer_bottoms",
-            }
-            pattern_lower = signal.pattern_name.lower()
-            is_bullish = pattern_lower in BULLISH_PATTERNS or "bullish" in pattern_lower
+        # FORUM CHANNEL LOGIC: Add thread_name if enabled
+        if self.settings.DISCORD_USE_FORUMS:
+            # Auto-generate thread_name if not provided (required for Forum channels)
+            if not thread_name:
+                # Determine emoji (matches _format_message logic)
+                BULLISH_PATTERNS = {
+                    "bullish_engulfing",
+                    "bullish_hammer",
+                    "bullish_harami",
+                    "bullish_marubozu",
+                    "bullish_belt_hold",
+                    "bullish_kicker",
+                    "morning_star",
+                    "three_white_soldiers",
+                    "three_inside_up",
+                    "piercing_line",
+                    "inverted_hammer",
+                    "dragonfly_doji",
+                    "double_bottom",
+                    "inverse_head_shoulders",
+                    "bull_flag",
+                    "cup_and_handle",
+                    "ascending_triangle",
+                    "falling_wedge",
+                    "rising_three_methods",
+                    "tweezer_bottoms",
+                }
+                pattern_lower = signal.pattern_name.lower()
+                is_bullish = (
+                    pattern_lower in BULLISH_PATTERNS or "bullish" in pattern_lower
+                )
 
-            # MACRO patterns get building emoji
-            if signal.pattern_classification == MACRO_PATTERN:
-                emoji = "🏛️"
-            else:
-                emoji = EMOJI_ROCKET if is_bullish else "📊"
+                # MACRO patterns get building emoji
+                if signal.pattern_classification == MACRO_PATTERN:
+                    emoji = "🏛️"
+                else:
+                    emoji = EMOJI_ROCKET if is_bullish else "📊"
 
-            # Format pattern name
-            pattern_display = signal.pattern_name.replace("_", " ").title()
+                # Format pattern name
+                pattern_display = signal.pattern_name.replace("_", " ").title()
 
-            # Generate thread name
-            thread_name = f"{emoji} {signal.symbol} {pattern_display}"
+                # Generate thread name
+                thread_name = f"{emoji} {signal.symbol} {pattern_display}"
 
-        message["thread_name"] = thread_name
+            message["thread_name"] = thread_name
 
         # Append ?wait=true to get the full Message object with ID
         url = f"{webhook_url}?wait=true"
@@ -334,6 +338,15 @@ class DiscordClient:
             logger.critical(
                 f"CRITICAL: Routing failed for {asset_class}. "
                 "No webhook configured for this path."
+            )
+            return False
+
+        # FORUM CHANNEL GUARD: Prevent creating a new thread without a thread_name
+        if self.settings.DISCORD_USE_FORUMS and not thread_id and not thread_name:
+            logger.critical(
+                "CRITICAL: Attempted to post to a Forum Channel without a thread_name. "
+                "This is a mandatory field for creating new threads in Forum Channels. "
+                "Aborting to prevent Discord API error."
             )
             return False
 
@@ -854,6 +867,12 @@ class DiscordClient:
             return False
 
         message = self._format_shadow_message(signal)
+
+        # FORUM CHANNEL LOGIC: Add thread_name if enabled
+        if self.settings.DISCORD_USE_FORUMS:
+            rejection_reason = (signal.rejection_reason or "Unknown").replace("_", " ").title()
+            thread_name = f"👻 {signal.symbol} Rejected: {rejection_reason}"
+            message["thread_name"] = thread_name
 
         try:
             response = requests.post(webhook_url, json=message, timeout=5.0)
