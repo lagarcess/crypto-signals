@@ -166,12 +166,7 @@ class ExecutionEngine:
                 return None
 
             # === COST BASIS CHECK (Issue #192) ===
-            notional_value = qty * signal.entry_price
-            if notional_value < settings.MIN_ORDER_NOTIONAL_USD:
-                logger.warning(
-                    f"Order for {signal.symbol} rejected: "
-                    f"Notional value ${notional_value:.2f} is below minimum of ${settings.MIN_ORDER_NOTIONAL_USD:.2f}"
-                )
+            if not self._is_notional_value_sufficient(qty, signal):
                 return None
 
             # Determine order side
@@ -266,12 +261,7 @@ class ExecutionEngine:
                 return None
 
             # === COST BASIS CHECK (Issue #192) ===
-            notional_value = qty * signal.entry_price
-            if notional_value < settings.MIN_ORDER_NOTIONAL_USD:
-                logger.warning(
-                    f"Order for {signal.symbol} rejected: "
-                    f"Notional value ${notional_value:.2f} is below minimum of ${settings.MIN_ORDER_NOTIONAL_USD:.2f}"
-                )
+            if not self._is_notional_value_sufficient(qty, signal):
                 return None
 
             # Determine order side (with None fallback)
@@ -478,6 +468,27 @@ class ExecutionEngine:
             )
             return False
 
+        return True
+
+    def _is_notional_value_sufficient(self, qty: float, signal: Signal) -> bool:
+        """Check if order notional value meets minimum broker requirements.
+
+        Args:
+            qty: Calculated position quantity.
+            signal: The Signal object with entry price.
+
+        Returns:
+            True if notional value >= MIN_ORDER_NOTIONAL_USD, False otherwise.
+        """
+        settings = get_settings()
+        notional_value = qty * signal.entry_price
+
+        if notional_value < settings.MIN_ORDER_NOTIONAL_USD:
+            logger.warning(
+                f"Order for {signal.symbol} rejected: "
+                f"Notional value ${notional_value:.2f} is below minimum of ${settings.MIN_ORDER_NOTIONAL_USD:.2f}"
+            )
+            return False
         return True
 
     def _calculate_qty(self, signal: Signal) -> float:

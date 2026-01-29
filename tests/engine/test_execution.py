@@ -1854,3 +1854,76 @@ class TestCostBasisValidation:
         # Verify that the position was not created and no order was submitted.
         assert position is None
         mock_trading_client.submit_order.assert_not_called()
+
+    def test_order_rejected_for_equity_below_minimum(
+        self, execution_engine, mock_trading_client, mock_settings
+    ):
+        """Verify equity bracket orders are rejected when notional value is too low."""
+        from crypto_signals.domain.schemas import AssetClass
+
+        mock_settings.RISK_PER_TRADE = 1.0
+
+        # Create equity signal
+        equity_signal = Signal(
+            signal_id="equity-notional-test",
+            ds=date(2025, 1, 15),
+            strategy_id="TEST",
+            symbol="AAPL",
+            asset_class=AssetClass.EQUITY,  # Equity path
+            entry_price=150.0,
+            pattern_name="TEST",
+            suggested_stop=100.0,  # risk = 50
+            status=SignalStatus.WAITING,
+            take_profit_1=200.0,
+            side=OrderSide.BUY,
+        )
+
+        # qty = 1.0 / 50.0 = 0.02, notional = 0.02 * 150 = $3 < $15
+        position = execution_engine.execute_signal(equity_signal)
+
+        assert position is None
+        mock_trading_client.submit_order.assert_not_called()
+
+    def test_is_notional_value_sufficient_returns_true_above_minimum(
+        self, execution_engine, mock_settings
+    ):
+        """Verify helper method returns True for sufficient notional value."""
+        signal = Signal(
+            signal_id="notional-helper-test",
+            ds=date(2025, 1, 15),
+            strategy_id="TEST",
+            symbol="BTC/USD",
+            asset_class=AssetClass.CRYPTO,
+            entry_price=100.0,
+            pattern_name="TEST",
+            suggested_stop=90.0,
+            status=SignalStatus.WAITING,
+            take_profit_1=120.0,
+            side=OrderSide.BUY,
+        )
+
+        # notional = 1.0 * 100 = $100 > $15
+        result = execution_engine._is_notional_value_sufficient(1.0, signal)
+        assert result is True
+
+    def test_is_notional_value_sufficient_returns_false_below_minimum(
+        self, execution_engine, mock_settings
+    ):
+        """Verify helper method returns False for insufficient notional value."""
+        signal = Signal(
+            signal_id="notional-helper-test-2",
+            ds=date(2025, 1, 15),
+            strategy_id="TEST",
+            symbol="BTC/USD",
+            asset_class=AssetClass.CRYPTO,
+            entry_price=100.0,
+            pattern_name="TEST",
+            suggested_stop=90.0,
+            status=SignalStatus.WAITING,
+            take_profit_1=120.0,
+            side=OrderSide.BUY,
+        )
+
+        # notional = 0.1 * 100 = $10 < $15
+        result = execution_engine._is_notional_value_sufficient(0.1, signal)
+        assert result is False
