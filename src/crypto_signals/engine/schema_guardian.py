@@ -1,7 +1,6 @@
 import datetime
 from typing import Any, List, Type
 
-from google.api_core.exceptions import NotFound
 from google.cloud import bigquery
 from loguru import logger
 from pydantic import BaseModel
@@ -32,7 +31,9 @@ class SchemaGuardian:
         self.client = bq_client
         self.strict_mode = strict_mode
 
-    def validate_schema(self, table_id: str, model: Type[BaseModel]) -> None:
+    def validate_schema(
+        self, table_id: str, model: Type[BaseModel]
+    ) -> tuple[List[tuple[str, str]], List[str]]:
         """
         Validates that the BigQuery table schema matches the Pydantic model.
 
@@ -40,44 +41,48 @@ class SchemaGuardian:
             table_id: Full table ID (project.dataset.table)
             model: Pydantic model class
 
-        Raises:
-            SchemaMismatchError: If schema validation fails and strict_mode is True.
+        Returns:
+            A tuple containing:
+              - missing_columns: List of (column_name, bq_type) tuples
+              - type_mismatches: List of error message strings
         """
         try:
             table = self.client.get_table(table_id)
-        except (NotFound, Exception) as e:
-            # Catch NotFound specifically; generic Exception retained for legacy V1 compatibility.
+        except Exception as e:
             logger.error(f"Failed to fetch table schema for {table_id}: {e}")
-            # If table doesn't exist, we can't validate.
-            # In a real pipeline, the loader might create it.
-            # For now, we assume table exists or let the loader handle the 404.
-            # Raising error here to be safe in strict mode.
-            raise e
+            raise
 
         missing_columns, type_mismatches = self._validate_fields(
             model.model_fields.items(), table.schema
         )
 
-        error_messages = []
-        if missing_columns:
-            error_messages.append(f"Missing columns: {', '.join(missing_columns)}")
-        if type_mismatches:
-            error_messages.append(f"Type mismatch: {', '.join(type_mismatches)}")
+        if missing_columns or type_mismatches:
+            # Format the error messages for logging, but return the structured data
+            error_messages = []
+            if missing_columns:
+                formatted_missing = [
+                    f"{name} ({btype})" for name, btype in missing_columns
+                ]
+                error_messages.append(f"Missing columns: {', '.join(formatted_missing)}")
+            if type_mismatches:
+                error_messages.append(f"Type mismatch: {', '.join(type_mismatches)}")
 
-        if error_messages:
             full_error = f"Schema Validation Failed for {table_id}: " + "; ".join(
                 error_messages
             )
             logger.critical(full_error)
+
             if self.strict_mode:
                 raise SchemaMismatchError(full_error)
+
+        return missing_columns, type_mismatches
 
     def _validate_fields(
         self,
         model_fields: Any,
         bq_schema: List[bigquery.SchemaField],
         parent_path: str = "",
-    ) -> tuple[List[str], List[str]]:
+    ) -> tuple[List[tuple[str, str]], List[str]]:
         """
         Recursively validate Pydantic fields against BigQuery schema fields.
 
@@ -104,7 +109,7 @@ class SchemaGuardian:
 
             # 2. Check Existence
             if name not in bq_columns:
-                missing.append(f"{full_name} ({expected_type})")
+                missing.append((full_name, expected_type))
                 continue
 
             bq_field = bq_columns[name]

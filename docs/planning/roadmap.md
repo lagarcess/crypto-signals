@@ -25,7 +25,7 @@ Evolve the system from a simple signal generator to a robust, strategy-agnostic 
 - [ ] **#188**: Risk: Implement Correlation Risk Check.
 - [ ] **#189**: Config: Enable GCP Logging by Default for Prod.
 - [ ] **#190**: Perf: Implement Market Data Disk Cache.
-- [ ] **#191**: Critical: Schema Mismatch in fact_trades (Missing Columns).
+- [x] **#191**: Critical: Schema Mismatch in fact_trades (Missing Columns) - *Resolved via `migrate-schema` CLI*.
 - [ ] **#192**: Critical: Order Execution Failed (Cost Basis < ).
 - [ ] **#193**: Critical: Discord Notification Failed (Forum Thread Requirement).
 - [ ] **#194**: Bug: False Negative in Execution Summary (Zero Errors Reported).
