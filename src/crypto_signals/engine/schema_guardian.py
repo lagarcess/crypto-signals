@@ -34,7 +34,7 @@ class SchemaGuardian:
 
     def validate_schema(
         self, table_id: str, model: Type[BaseModel]
-    ) -> tuple[List[Any], List[Any]]:
+    ) -> tuple[List[tuple[str, str]], List[str]]:
         """
         Validates that the BigQuery table schema matches the Pydantic model.
 

@@ -1,13 +1,16 @@
 
+import importlib
+
+import typer
 from google.cloud import bigquery
 from loguru import logger
+from pydantic import BaseModel
 
 from crypto_signals.config import get_settings
-from crypto_signals.domain.schemas import TradeExecution
 from crypto_signals.engine.schema_guardian import SchemaGuardian
 
 
-def migrate_schema(table_id: str, model) -> None:
+def migrate_schema(table_id: str, model: type[BaseModel]) -> None:
     """
     Alters a BigQuery table to add missing columns based on a Pydantic model.
 
@@ -31,27 +34,43 @@ def migrate_schema(table_id: str, model) -> None:
 
     logger.info(f"Found {len(missing_columns)} missing columns. Applying alterations...")
 
-    for column_name, column_type in missing_columns:
-        query = f"ALTER TABLE `{table_id}` ADD COLUMN {column_name} {column_type}"
-        logger.info(f"Executing: {query}")
-        try:
-            query_job = client.query(query)
-            query_job.result()  # Wait for the job to complete
-            logger.info(f"Successfully added column: {column_name}")
-        except Exception as e:
-            logger.error(f"Failed to add column {column_name}: {e}")
+    add_column_clauses = [
+        f"ADD COLUMN `{column_name}` {column_type}"
+        for column_name, column_type in missing_columns
+    ]
+    query = f"ALTER TABLE `{table_id}` {', '.join(add_column_clauses)}"
+
+    logger.info(f"Executing: {query}")
+    try:
+        query_job = client.query(query)
+        query_job.result()  # Wait for the job to complete
+        logger.info(f"Successfully added {len(missing_columns)} columns to {table_id}.")
+    except Exception as e:
+        logger.error(f"Failed to alter table {table_id}: {e}")
 
 
-def main():
-    """Command-line entry point for schema migration."""
-    settings = get_settings()
-    table_id = (
-        "crypto-signal-bot-481500.crypto_analytics.fact_trades"
-        if settings.ENVIRONMENT == "PROD"
-        else "crypto-signal-bot-481500.crypto_analytics.fact_trades_test"
-    )
-    migrate_schema(table_id, TradeExecution)
+def main(
+    table_id: str = typer.Argument(
+        ..., help="Full BigQuery table ID (e.g., 'project.dataset.table')"
+    ),
+    model_name: str = typer.Argument(
+        ...,
+        help="Fully qualified Pydantic model name (e.g., 'crypto_signals.domain.schemas.TradeExecution')",
+    ),
+):
+    """
+    A general-purpose schema migration tool for BigQuery using Pydantic models.
+    """
+    try:
+        module_path, class_name = model_name.rsplit(".", 1)
+        module = importlib.import_module(module_path)
+        model = getattr(module, class_name)
+    except (ImportError, AttributeError):
+        logger.error(f"Could not find or import model: {model_name}")
+        raise typer.Exit(code=1)
+
+    migrate_schema(table_id, model)
 
 
 if __name__ == "__main__":
-    main()
+    typer.run(main)
