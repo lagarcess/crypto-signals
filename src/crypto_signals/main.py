@@ -1102,7 +1102,6 @@ def main(
             symbols_processed=symbols_processed,
             total_symbols=len(portfolio_items),
             signals_found=signals_found,
-            errors_encountered=errors_encountered,
             avg_slippage_pct=avg_slippage,
         )
         console.print(summary_table)
