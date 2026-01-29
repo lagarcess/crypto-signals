@@ -214,6 +214,7 @@ def main(
         # Detect and heal zombie/orphan positions before main loop
         logger.info("Running state reconciliation...")
         reconciliation_failed = False
+        reconciliation_start_time = time.time()
         try:
             reconciliation_report = reconciler.reconcile()
 
@@ -235,6 +236,9 @@ def main(
                 f"Reconciliation failed: {e}",
                 extra={"error": str(e)},
             )
+            metrics.record_failure(
+                "reconciliation", time.time() - reconciliation_start_time
+            )
             # Mark as failed to prevent archival of potentially inconsistent state
             reconciliation_failed = True
 
@@ -243,6 +247,7 @@ def main(
         # Must run AFTER reconciliation (so we archive what was just closed)
         if not reconciliation_failed:
             logger.info("Running trade archival...")
+            trade_archival_start_time = time.time()
             try:
                 archival_count = trade_archival.run()
                 if archival_count > 0:
@@ -253,6 +258,9 @@ def main(
                     logger.info("✅ Trade archival complete: No closed trades to archive")
             except Exception as e:
                 logger.error(f"Trade archival failed: {e}")
+                metrics.record_failure(
+                    "trade_archival", time.time() - trade_archival_start_time
+                )
         else:
             logger.warning("⚠️ Skipping trade archival due to reconciliation failure.")
 
@@ -261,6 +269,7 @@ def main(
         # Runs T+1 reconciliation for trades older than 24 hours
         if not reconciliation_failed:
             logger.info("Running fee reconciliation...")
+            fee_patch_start_time = time.time()
             try:
                 patched_count = fee_patch.run()
 
@@ -272,6 +281,7 @@ def main(
                     logger.info("✅ Fee reconciliation complete: No trades to update")
             except Exception as e:
                 logger.error(f"Fee reconciliation failed: {e}")
+                metrics.record_failure("fee_patch", time.time() - fee_patch_start_time)
                 # Non-blocking - continue with signal generation
         else:
             logger.warning("⚠️ Skipping fee reconciliation due to reconciliation failure.")
@@ -281,6 +291,7 @@ def main(
         # Runs for historical repair and daily reconciliation
         if not reconciliation_failed:
             logger.info("Running exit price reconciliation...")
+            price_patch_start_time = time.time()
             try:
                 patched_count = price_patch.run()
 
@@ -294,6 +305,9 @@ def main(
                     )
             except Exception as e:
                 logger.error(f"Exit price reconciliation failed: {e}")
+                metrics.record_failure(
+                    "price_patch", time.time() - price_patch_start_time
+                )
                 # Non-blocking - continue with signal generation
         else:
             logger.warning(
@@ -338,7 +352,6 @@ def main(
         # Execution Loop with Rich Progress Bar
         signals_found = 0
         symbols_processed = 0
-        errors_encountered = 0
 
         with create_portfolio_progress(len(portfolio_items)) as (progress, task):
             for idx, (symbol, asset_class) in enumerate(portfolio_items):
@@ -927,7 +940,6 @@ def main(
                                 )
 
                 except Exception as e:
-                    errors_encountered += 1
                     symbol_duration = time.time() - symbol_start_time
                     metrics.record_failure("signal_generation", symbol_duration)
                     logger.error(
@@ -1073,6 +1085,7 @@ def main(
                             f"Failed to sync position {pos.position_id}: {e}",
                             extra={"position_id": pos.position_id},
                         )
+                        metrics.record_failure("position_sync_single", 0)
 
                 sync_duration = time.time() - sync_start
                 logger.info(
@@ -1086,6 +1099,7 @@ def main(
                 )
             except Exception as e:
                 logger.error(f"Position sync failed: {e}", exc_info=True)
+                metrics.record_failure("position_sync", time.time() - sync_start)
 
         # Display Rich execution summary table
         total_duration = time.time() - app_start_time
