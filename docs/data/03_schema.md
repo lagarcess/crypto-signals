@@ -54,8 +54,20 @@ We utilize a **Star Schema** variant optimized for BigQuery (Columnar Storage).
 ---
 
 ## 3. Schema Evolution Strategy
-*   **Current State**: **Schema Guardian** (Strict Validation).
-    *   We do *not* currently support automatic schema evolution (e.g., adding columns on the fly) to prevent data swamp issues.
-    *   **Rule**: Code (Pydantic) is the source of truth. If DB diverges, the pipeline halts (Safety First).
-*   **Future State (Phase 3)**:
-    *   Controlled evolution for "Add Column" events compatible with BigQuery.
+
+### Current Implementation
+*   **Schema Guardian** (Strict Validation by default):
+    *   Code (Pydantic) is the source of truth. If BigQuery schema diverges, validation halts the pipeline (Safety First).
+    *   `SchemaGuardian.validate_schema()` returns structured `(missing_columns, type_mismatches)` for programmatic handling.
+
+*   **Controlled Migration** (`migrate-schema` CLI):
+    *   For "Add Column" events, use the `migrate-schema` CLI tool:
+      ```bash
+      poetry run migrate-schema "project.dataset.table" "crypto_signals.domain.schemas.Trade"
+      ```
+    *   The tool uses `SchemaGuardian` with `strict_mode=False` to detect missing columns, then generates and executes a single `ALTER TABLE ... ADD COLUMN` statement.
+    *   **Safety**: Failures propagate correctly (non-zero exit code) to prevent silent CI/CD issues.
+
+### Future Considerations
+*   Type changes (e.g., STRING → INTEGER) require manual migration with data backfill.
+*   Nested RECORD/STRUCT field additions may require more complex migration logic.
