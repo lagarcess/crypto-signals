@@ -49,7 +49,7 @@ We utilize a **Star Schema** variant optimized for BigQuery (Columnar Storage).
     *   Table: `fact_trades` (Partitioned by `exit_date`).
     *   Table: `fact_rejected_signals` (Partitioned by `ds`).
     *   Table: `snapshot_accounts` (Partitioned by `ds`).
-    *   Table: `summary_strategy_performance` (Partitioned by `ds`, Aggregate).
+    *   Table: `agg_strategy_daily` (Partitioned by `ds`, Aggregate).
 
 ---
 
