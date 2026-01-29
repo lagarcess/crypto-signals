@@ -65,9 +65,9 @@ def main(
         module_path, class_name = model_name.rsplit(".", 1)
         module = importlib.import_module(module_path)
         model = getattr(module, class_name)
-    except (ImportError, AttributeError):
+    except (ImportError, AttributeError) as e:
         logger.error(f"Could not find or import model: {model_name}")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
 
     migrate_schema(table_id, model)
 
