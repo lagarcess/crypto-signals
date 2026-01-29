@@ -71,3 +71,13 @@ We utilize a **Star Schema** variant optimized for BigQuery (Columnar Storage).
 ### Future Considerations
 *   Type changes (e.g., STRING → INTEGER) require manual migration with data backfill.
 *   Nested RECORD/STRUCT field additions may require more complex migration logic.
+
+---
+
+## 4. Execution Safety Checks
+
+### Notional Value Validation (Issue #192)
+*   **Problem**: Alpaca rejects orders below $1 (crypto) or $10 (equity) notional value.
+*   **Solution**: `MIN_ORDER_NOTIONAL_USD` config ($15 default) validates orders before API submission.
+*   **Implementation**: `ExecutionEngine._is_notional_value_sufficient(qty, signal)` helper.
+*   **Behavior**: Orders below minimum are gracefully rejected with warning log, no API error.
