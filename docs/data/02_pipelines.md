@@ -79,7 +79,7 @@ The **Golden Thread** is the happy path of data flow that proves the system is h
 
 ---
 
-## 3. Orchestration & Monitoring
+## 4. Orchestration & Monitoring
 *   **Scheduler**: Cloud Scheduler (cron).
 *   **Executor**: Cloud Run Jobs.
 *   **Logging**: Cloud Logging (Structured JSON).
