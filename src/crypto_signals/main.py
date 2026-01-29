@@ -958,6 +958,7 @@ def main(
         # Synchronize open positions with Alpaca broker state.
         # This updates TP/SL leg IDs and detects externally closed positions.
         # =========================================================================
+        slippage_values = []  # Track slippage for summary
         if settings.ENABLE_EXECUTION:
             logger.info("Syncing open positions with Alpaca...")
             sync_start = time.time()
@@ -965,7 +966,6 @@ def main(
                 open_positions = position_repo.get_open_positions()
                 synced_count = 0
                 closed_count = 0
-                slippage_values = []  # Track slippage for summary
 
                 for pos in open_positions:
                     if shutdown_requested:
@@ -1107,9 +1107,8 @@ def main(
 
         # Calculate average slippage from position sync (if available)
         avg_slippage = None
-        if settings.ENABLE_EXECUTION and "slippage_values" in dir():
-            if slippage_values:
-                avg_slippage = sum(slippage_values) / len(slippage_values)
+        if slippage_values:
+            avg_slippage = sum(slippage_values) / len(slippage_values)
 
         summary_table = create_execution_summary_table(
             total_duration=total_duration,
