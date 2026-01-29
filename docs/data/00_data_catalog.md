@@ -81,7 +81,7 @@ Defines the tradable universe and asset-specific constraints.
     *   `scaled_out_price`: Avg price of scale-out.
     *   `breakeven_applied`: Boolean.
 *   **Real-time Metrics**:
-    *   `realized_pnl_usd/pct`: Floating P&L.
+    *   `unrealized_pnl_usd/pct`: Floating P&L.
     *   `entry_slippage_pct`: vs Target Entry.
     *   `exit_slippage_pct`: vs Target Exit.
 
