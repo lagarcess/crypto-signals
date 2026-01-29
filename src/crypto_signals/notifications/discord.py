@@ -25,6 +25,32 @@ EMOJI_GHOST = "👻"  # Expired signal
 EMOJI_TARGET = "🎯"  # Take profit hit
 EMOJI_RUNNER = "🏃"  # Trail update
 
+# Bullish pattern names for emoji selection (module-level to avoid duplication)
+BULLISH_PATTERNS = frozenset(
+    {
+        "bullish_engulfing",
+        "bullish_hammer",
+        "bullish_harami",
+        "bullish_marubozu",
+        "bullish_belt_hold",
+        "bullish_kicker",
+        "morning_star",
+        "three_white_soldiers",
+        "three_inside_up",
+        "piercing_line",
+        "inverted_hammer",
+        "dragonfly_doji",
+        "double_bottom",
+        "inverse_head_shoulders",
+        "bull_flag",
+        "cup_and_handle",
+        "ascending_triangle",
+        "falling_wedge",
+        "rising_three_methods",
+        "tweezer_bottoms",
+    }
+)
+
 
 class DiscordClient:
     """
@@ -119,6 +145,37 @@ class DiscordClient:
         elif asset_class == AssetClass.EQUITY:
             return self.settings.DISCORD_CHANNEL_ID_STOCK
         return None
+
+    def _get_signal_emoji(self, signal: Signal) -> str:
+        """Determine the appropriate emoji for a signal based on pattern type.
+
+        Args:
+            signal: The signal to get emoji for.
+
+        Returns:
+            str: Emoji character for the signal type.
+        """
+        # MACRO patterns get building emoji
+        if signal.pattern_classification == MACRO_PATTERN:
+            return "🏛️"
+
+        # Check pattern type
+        pattern_lower = signal.pattern_name.lower()
+        is_bullish = pattern_lower in BULLISH_PATTERNS or "bullish" in pattern_lower
+        return EMOJI_ROCKET if is_bullish else "📊"
+
+    def _generate_thread_name(self, signal: Signal) -> str:
+        """Generate a thread name for Forum Channel posts.
+
+        Args:
+            signal: The signal to generate thread name for.
+
+        Returns:
+            str: Formatted thread name (e.g., '🚀 BTC/USD Bullish Engulfing').
+        """
+        emoji = self._get_signal_emoji(signal)
+        pattern_display = signal.pattern_name.replace("_", " ").title()
+        return f"{emoji} {signal.symbol} {pattern_display}"
 
     def find_thread_by_signal_id(
         self, signal_id: str, symbol: str, asset_class: AssetClass
@@ -247,45 +304,7 @@ class DiscordClient:
         if self.settings.DISCORD_USE_FORUMS:
             # Auto-generate thread_name if not provided (required for Forum channels)
             if not thread_name:
-                # Determine emoji (matches _format_message logic)
-                BULLISH_PATTERNS = {
-                    "bullish_engulfing",
-                    "bullish_hammer",
-                    "bullish_harami",
-                    "bullish_marubozu",
-                    "bullish_belt_hold",
-                    "bullish_kicker",
-                    "morning_star",
-                    "three_white_soldiers",
-                    "three_inside_up",
-                    "piercing_line",
-                    "inverted_hammer",
-                    "dragonfly_doji",
-                    "double_bottom",
-                    "inverse_head_shoulders",
-                    "bull_flag",
-                    "cup_and_handle",
-                    "ascending_triangle",
-                    "falling_wedge",
-                    "rising_three_methods",
-                    "tweezer_bottoms",
-                }
-                pattern_lower = signal.pattern_name.lower()
-                is_bullish = (
-                    pattern_lower in BULLISH_PATTERNS or "bullish" in pattern_lower
-                )
-
-                # MACRO patterns get building emoji
-                if signal.pattern_classification == MACRO_PATTERN:
-                    emoji = "🏛️"
-                else:
-                    emoji = EMOJI_ROCKET if is_bullish else "📊"
-
-                # Format pattern name
-                pattern_display = signal.pattern_name.replace("_", " ").title()
-
-                # Generate thread name
-                thread_name = f"{emoji} {signal.symbol} {pattern_display}"
+                thread_name = self._generate_thread_name(signal)
 
             message["thread_name"] = thread_name
 
@@ -608,34 +627,8 @@ class DiscordClient:
         Returns:
             Dict[str, Any]: JSON payload for Discord.
         """
-        # All chart patterns in this system are bullish setups
-        # Use rocket emoji by default, MACRO gets building emoji
-        BULLISH_PATTERNS = {
-            "bullish_engulfing",
-            "bullish_hammer",
-            "bullish_harami",
-            "bullish_marubozu",
-            "bullish_belt_hold",
-            "bullish_kicker",
-            "morning_star",
-            "three_white_soldiers",
-            "three_inside_up",
-            "piercing_line",
-            "inverted_hammer",
-            "dragonfly_doji",
-            "double_bottom",
-            "inverse_head_shoulders",
-            "bull_flag",
-            "cup_and_handle",
-            "ascending_triangle",
-            "falling_wedge",
-            "rising_three_methods",
-            "tweezer_bottoms",
-        }
-
-        pattern_lower = signal.pattern_name.lower()
-        is_bullish = pattern_lower in BULLISH_PATTERNS or "bullish" in pattern_lower
-        emoji = EMOJI_ROCKET if is_bullish else "📊"  # Chart emoji for neutral
+        # Get base emoji from helper (handles MACRO and bullish pattern logic)
+        emoji = self._get_signal_emoji(signal)
 
         # Test mode label for differentiating test messages
         test_label = "[TEST] " if self.settings.TEST_MODE else ""
@@ -643,7 +636,6 @@ class DiscordClient:
         # MACRO pattern header (structural patterns >90 days)
         macro_label = ""
         if signal.pattern_classification == MACRO_PATTERN:
-            emoji = "🏛️"  # Building emoji for institutional-scale patterns
             macro_label = "[MACRO SETUP] "
 
         # RISK BLOCK OVERRIDE
@@ -870,7 +862,9 @@ class DiscordClient:
 
         # FORUM CHANNEL LOGIC: Add thread_name if enabled
         if self.settings.DISCORD_USE_FORUMS:
-            rejection_reason = (signal.rejection_reason or "Unknown").replace("_", " ").title()
+            rejection_reason = (
+                (signal.rejection_reason or "Unknown").replace("_", " ").title()
+            )
             thread_name = f"👻 {signal.symbol} Rejected: {rejection_reason}"
             message["thread_name"] = thread_name
 
