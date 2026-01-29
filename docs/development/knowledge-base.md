@@ -89,3 +89,8 @@
 
 ### Code Review Best Practices
 - [2026-01-29] **Jules Delegation Review**: When reviewing work delegated to AI assistants (like Jules), focus on: (1) type safety / annotation consistency, (2) exception handling completeness, (3) test coverage for error paths. AI-generated code often handles happy paths well but may miss edge case handling and CI/CD implications.
+
+### Broker API Constraints
+- [2026-01-29] **Alpaca Notional Minimum**: Alpaca rejects orders with notional value below $1 (crypto) or $10 (equity). Use a safety buffer (e.g., $15) and validate BEFORE submitting to avoid API errors. Log the calculated notional value for debugging.
+- [2026-01-29] **DRY Validation Pattern**: When the same validation logic applies across multiple execution paths (e.g., crypto vs equity), extract to a helper method immediately. Duplicated validation logic drifts over time and leads to inconsistent behavior.
+- [2026-01-29] **Helper Method Naming**: For boolean validation helpers, use `_is_*_sufficient()` or `_has_*()` naming convention. This makes the condition readable in if-statements: `if not self._is_notional_value_sufficient(qty, signal)`.
