@@ -15,7 +15,7 @@ The "Brain" of the system.
 *   **`assets`**: List of tradable symbols.
 *   **`risk_params`**: JSON. Rules for position sizing (`stop_loss_pct`, `risk_per_trade`).
 *   **`confluence_config`**: JSON. (Issue #198) Filters required for entry (e.g., `{"min_adx": 25, "min_volume_ratio": 1.5}`).
-*   **`pattern_overrides`**: JSON. (Issue #198) Specific tweaks per pattern type (e.g., `{"Bulllish Engulfing": {"strict_trend": true}}`).
+*   **`pattern_overrides`**: JSON. (Issue #198) Specific tweaks per pattern type (e.g., `{"Bullish Engulfing": {"strict_trend": true}}`).
 *   **`doc_id`**: Auto-generated document ID.
 
 ### `dim_assets` (Asset Universe)
