@@ -46,6 +46,7 @@ from crypto_signals.observability import (
 from crypto_signals.pipelines.account_snapshot import AccountSnapshotPipeline
 from crypto_signals.pipelines.fee_patch import FeePatchPipeline
 from crypto_signals.pipelines.price_patch import PricePatchPipeline
+from crypto_signals.pipelines.strategy_sync import StrategySyncPipeline
 from crypto_signals.pipelines.trade_archival import TradeArchivalPipeline
 from crypto_signals.repository.firestore import (
     JobLockRepository,
@@ -164,6 +165,7 @@ def main(
             fee_patch = FeePatchPipeline()
             price_patch = PricePatchPipeline()
             account_snapshot = AccountSnapshotPipeline()
+            strategy_sync = StrategySyncPipeline()
 
         # Job Locking
         job_id = "signal_generator_cron"
@@ -173,6 +175,21 @@ def main(
 
         # Ensure lock is released on exit
         atexit.register(job_lock_repo.release_lock, job_id)
+
+        # === STRATEGY SYNC (SCD Type 2) ===
+        logger.info("Running Strategy Synchronization Pipeline...")
+        strategy_sync_start = time.time()
+        try:
+            synced_strategies = strategy_sync.run()
+            if synced_strategies > 0:
+                logger.info(
+                    f"✅ Strategy Sync complete: {synced_strategies} versions updated."
+                )
+            else:
+                logger.info("✅ Strategy Sync complete: No changes detected.")
+        except Exception as e:
+            logger.error(f"Strategy Sync failed: {e}")
+            metrics.record_failure("strategy_sync", time.time() - strategy_sync_start)
 
         # === ACCOUNT SNAPSHOT (New Independent Job) ===
         today = datetime.now(timezone.utc).date()
