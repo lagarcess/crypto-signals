@@ -20,6 +20,7 @@ class TestExecutionGating(unittest.TestCase):
         self.mock_settings.ENABLE_EXECUTION = True
         self.mock_settings.RISK_PER_TRADE = 100.0
         self.mock_settings.TTL_DAYS_POSITION = 90
+        self.mock_settings.MIN_ORDER_NOTIONAL_USD = 15.0
 
         # Mock Trading Client
         self.mock_client = MagicMock()

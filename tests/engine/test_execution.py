@@ -22,6 +22,7 @@ def mock_settings():
     mock.RISK_PER_TRADE = 100.0
     mock.ENVIRONMENT = "PROD"
     mock.TTL_DAYS_POSITION = 90
+    mock.MIN_ORDER_NOTIONAL_USD = 15.0
     return mock
 
 
@@ -1825,3 +1826,31 @@ class TestMicroCapEdgeCases:
         # risk = 0.00001200 - 0.00000001 = 0.00001199
         # R:R = 0.00000600 / 0.00001199 ≈ 0.5 (< 1.5, so should be rejected)
         assert any("R:R" in reason for reason in rejection_reasons)
+
+
+class TestCostBasisValidation:
+    """Tests for notional value (cost basis) validation (Issue #192)."""
+
+    def test_order_rejected_if_notional_value_too_low(
+        self, execution_engine, sample_signal, mock_trading_client, mock_settings
+    ):
+        """Verify that a signal is rejected if qty * entry_price is below the minimum."""
+        # To create a scenario that fails the notional value check, we can
+        # simulate a very low RISK_PER_TRADE. This results in a small
+        # quantity, which in turn leads to a low notional value.
+        mock_settings.RISK_PER_TRADE = 1.0
+        sample_signal.entry_price = 100.0
+        sample_signal.suggested_stop = 50.0
+
+        # With the above settings:
+        # risk_per_share = 100.0 - 50.0 = 50.0
+        # qty = RISK_PER_TRADE / risk_per_share = 1.0 / 50.0 = 0.02
+        # notional_value = qty * entry_price = 0.02 * 100.0 = $2.00
+        # This notional value of $2.00 is less than the required minimum of $15.0.
+
+        # Execute
+        position = execution_engine.execute_signal(sample_signal)
+
+        # Verify that the position was not created and no order was submitted.
+        assert position is None
+        mock_trading_client.submit_order.assert_not_called()

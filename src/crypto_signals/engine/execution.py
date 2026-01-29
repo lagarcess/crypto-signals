@@ -165,6 +165,15 @@ class ExecutionEngine:
                 logger.error(f"Invalid quantity calculated for {signal.symbol}: {qty}")
                 return None
 
+            # === COST BASIS CHECK (Issue #192) ===
+            notional_value = qty * signal.entry_price
+            if notional_value < settings.MIN_ORDER_NOTIONAL_USD:
+                logger.warning(
+                    f"Order for {signal.symbol} rejected: "
+                    f"Notional value ${notional_value:.2f} is below minimum of ${settings.MIN_ORDER_NOTIONAL_USD:.2f}"
+                )
+                return None
+
             # Determine order side
             effective_side = signal.side or DomainOrderSide.BUY
             alpaca_side = (
@@ -254,6 +263,15 @@ class ExecutionEngine:
             qty = self._calculate_qty(signal)
             if qty <= 0:
                 logger.error(f"Invalid quantity calculated for {signal.symbol}: {qty}")
+                return None
+
+            # === COST BASIS CHECK (Issue #192) ===
+            notional_value = qty * signal.entry_price
+            if notional_value < settings.MIN_ORDER_NOTIONAL_USD:
+                logger.warning(
+                    f"Order for {signal.symbol} rejected: "
+                    f"Notional value ${notional_value:.2f} is below minimum of ${settings.MIN_ORDER_NOTIONAL_USD:.2f}"
+                )
                 return None
 
             # Determine order side (with None fallback)
