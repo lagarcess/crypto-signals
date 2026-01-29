@@ -15,6 +15,7 @@ def create_mock_settings(
     test_webhook: str = "https://discord.com/api/webhooks/test",
     crypto_webhook: str | None = None,
     stock_webhook: str | None = None,
+    use_forums: bool = False,
 ):
     """Create a mock Settings object for testing."""
     mock_settings = MagicMock()
@@ -26,6 +27,7 @@ def create_mock_settings(
     mock_settings.LIVE_STOCK_DISCORD_WEBHOOK_URL = (
         SecretStr(stock_webhook) if stock_webhook else None
     )
+    mock_settings.DISCORD_USE_FORUMS = use_forums
     return mock_settings
 
 
@@ -73,6 +75,7 @@ class TestDiscordClient(unittest.TestCase):
             test_mode=False,
             crypto_webhook=self.crypto_webhook,
             stock_webhook=self.stock_webhook,
+            use_forums=False,
         )
         client = DiscordClient(settings=settings)
 
@@ -141,7 +144,7 @@ class TestDiscordClient(unittest.TestCase):
     @patch("crypto_signals.notifications.discord.requests.post")
     def test_send_signal_with_thread_name(self, mock_post):
         """Test sending a signal with a thread name."""
-        settings = create_mock_settings(test_mode=True)
+        settings = create_mock_settings(test_mode=True, use_forums=True)
         client = DiscordClient(settings=settings)
 
         mock_response = MagicMock()
@@ -187,7 +190,7 @@ class TestDiscordClient(unittest.TestCase):
     @patch("crypto_signals.notifications.discord.requests.post")
     def test_send_message_success(self, mock_post):
         """Test sending a message successfully."""
-        settings = create_mock_settings(test_mode=True)
+        settings = create_mock_settings(test_mode=True, use_forums=False)
         client = DiscordClient(settings=settings)
 
         mock_response = MagicMock()
@@ -362,8 +365,11 @@ class TestDiscordClient(unittest.TestCase):
 
         from crypto_signals.domain.schemas import OrderSide, Position, TradeStatus
 
-        settings = create_mock_settings(test_mode=True)
+        settings = create_mock_settings(test_mode=True, use_forums=True)
         client = DiscordClient(settings=settings)
+
+        # Add discord_thread_id to the signal to simulate an existing thread
+        self.signal.discord_thread_id = "thread_win_123"
 
         position = Position(
             position_id="test-pos-1",
@@ -410,8 +416,11 @@ class TestDiscordClient(unittest.TestCase):
 
         from crypto_signals.domain.schemas import OrderSide, Position, TradeStatus
 
-        settings = create_mock_settings(test_mode=True)
+        settings = create_mock_settings(test_mode=True, use_forums=True)
         client = DiscordClient(settings=settings)
+
+        # Add discord_thread_id to the signal to simulate an existing thread
+        self.signal.discord_thread_id = "thread_loss_456"
 
         position = Position(
             position_id="test-pos-2",

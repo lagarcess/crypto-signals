@@ -27,7 +27,7 @@ Evolve the system from a simple signal generator to a robust, strategy-agnostic 
 - [ ] **#190**: Perf: Implement Market Data Disk Cache.
 - [x] **#191**: Critical: Schema Mismatch in fact_trades (Missing Columns) - *Resolved via `migrate-schema` CLI*.
 - [x] **#192**: Critical: Order Execution Failed (Cost Basis < $10) - *Resolved via `_is_notional_value_sufficient()` check*.
-- [ ] **#193**: Critical: Discord Notification Failed (Forum Thread Requirement).
+- [x] **#193**: Critical: Discord Notification Failed (Forum Thread Requirement) - *Resolved via `_generate_thread_name()` helper*.
 - [ ] **#194**: Bug: False Negative in Execution Summary (Zero Errors Reported).
 - [ ] **#195**: Feature: Strategy Sync Pipeline (SCD Type 2).
 - [ ] **#196**: Critical: Account Snapshot Orchestration (Loop D).
