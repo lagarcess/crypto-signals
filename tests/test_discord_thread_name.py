@@ -94,7 +94,9 @@ def test_send_signal_without_forum_mode_omits_thread_name():
         settings_instance = MagicMock()
         settings_instance.DISCORD_USE_FORUMS = False  # Forum mode OFF
         settings_instance.TEST_DISCORD_WEBHOOK = MagicMock()
-        settings_instance.TEST_DISCORD_WEBHOOK.get_secret_value.return_value = "https://discord.com/api/webhooks/test/webhook"
+        settings_instance.TEST_DISCORD_WEBHOOK.get_secret_value.return_value = (
+            "https://discord.com/api/webhooks/test/webhook"
+        )
         mock_settings.return_value = settings_instance
 
         client = DiscordClient(settings=settings_instance)
@@ -119,7 +121,9 @@ def test_send_signal_without_forum_mode_omits_thread_name():
             client.send_signal(signal)
 
             payload = mock_post.call_args.kwargs.get("json")
-            assert "thread_name" not in payload, "thread_name should be omitted when DISCORD_USE_FORUMS is False"
+            assert (
+                "thread_name" not in payload
+            ), "thread_name should be omitted when DISCORD_USE_FORUMS is False"
 
 
 def test_send_message_fails_in_forum_mode_without_thread_name():
@@ -133,7 +137,9 @@ def test_send_message_fails_in_forum_mode_without_thread_name():
         settings_instance = MagicMock()
         settings_instance.DISCORD_USE_FORUMS = True  # Forum mode ON
         settings_instance.TEST_DISCORD_WEBHOOK = MagicMock()
-        settings_instance.TEST_DISCORD_WEBHOOK.get_secret_value.return_value = "https://discord.com/api/webhooks/test/webhook"
+        settings_instance.TEST_DISCORD_WEBHOOK.get_secret_value.return_value = (
+            "https://discord.com/api/webhooks/test/webhook"
+        )
         mock_settings.return_value = settings_instance
 
         client = DiscordClient(settings=settings_instance)
@@ -143,7 +149,9 @@ def test_send_message_fails_in_forum_mode_without_thread_name():
             result = client.send_message(content="This should fail")
 
             # CRITICAL ASSERTION: Must return False and not attempt to post
-            assert result is False, "send_message should return False in forum mode without a thread_name"
+            assert (
+                result is False
+            ), "send_message should return False in forum mode without a thread_name"
             assert not mock_post.called, "requests.post should not be called when thread_name is missing in forum mode"
 
 
@@ -158,7 +166,9 @@ def test_send_message_succeeds_in_forum_mode_with_thread_name():
         settings_instance = MagicMock()
         settings_instance.DISCORD_USE_FORUMS = True  # Forum mode ON
         settings_instance.TEST_DISCORD_WEBHOOK = MagicMock()
-        settings_instance.TEST_DISCORD_WEBHOOK.get_secret_value.return_value = "https://discord.com/api/webhooks/test/webhook"
+        settings_instance.TEST_DISCORD_WEBHOOK.get_secret_value.return_value = (
+            "https://discord.com/api/webhooks/test/webhook"
+        )
         mock_settings.return_value = settings_instance
 
         client = DiscordClient(settings=settings_instance)
@@ -168,7 +178,9 @@ def test_send_message_succeeds_in_forum_mode_with_thread_name():
             mock_response.status_code = 200
             mock_post.return_value = mock_response
 
-            result = client.send_message(content="This is a new thread", thread_name="My New Thread")
+            result = client.send_message(
+                content="This is a new thread", thread_name="My New Thread"
+            )
 
             assert result is True
             assert mock_post.called
@@ -190,7 +202,9 @@ def test_send_message_succeeds_in_text_channel_mode_without_thread_name():
         settings_instance = MagicMock()
         settings_instance.DISCORD_USE_FORUMS = False  # Forum mode OFF
         settings_instance.TEST_DISCORD_WEBHOOK = MagicMock()
-        settings_instance.TEST_DISCORD_WEBHOOK.get_secret_value.return_value = "https://discord.com/api/webhooks/test/webhook"
+        settings_instance.TEST_DISCORD_WEBHOOK.get_secret_value.return_value = (
+            "https://discord.com/api/webhooks/test/webhook"
+        )
         mock_settings.return_value = settings_instance
 
         client = DiscordClient(settings=settings_instance)
@@ -222,7 +236,9 @@ def test_send_shadow_signal_includes_thread_name_in_forum_mode():
         settings_instance = MagicMock()
         settings_instance.DISCORD_USE_FORUMS = True  # Forum mode ON
         settings_instance.DISCORD_SHADOW_WEBHOOK_URL = MagicMock()
-        settings_instance.DISCORD_SHADOW_WEBHOOK_URL.get_secret_value.return_value = "https://discord.com/api/webhooks/shadow/webhook"
+        settings_instance.DISCORD_SHADOW_WEBHOOK_URL.get_secret_value.return_value = (
+            "https://discord.com/api/webhooks/shadow/webhook"
+        )
         mock_settings.return_value = settings_instance
 
         client = DiscordClient(settings=settings_instance)
@@ -265,7 +281,9 @@ def test_send_shadow_signal_omits_thread_name_in_standard_mode():
         settings_instance = MagicMock()
         settings_instance.DISCORD_USE_FORUMS = False  # Forum mode OFF
         settings_instance.DISCORD_SHADOW_WEBHOOK_URL = MagicMock()
-        settings_instance.DISCORD_SHADOW_WEBHOOK_URL.get_secret_value.return_value = "https://discord.com/api/webhooks/shadow/webhook"
+        settings_instance.DISCORD_SHADOW_WEBHOOK_URL.get_secret_value.return_value = (
+            "https://discord.com/api/webhooks/shadow/webhook"
+        )
         mock_settings.return_value = settings_instance
 
         client = DiscordClient(settings=settings_instance)

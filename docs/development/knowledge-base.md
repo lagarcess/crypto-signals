@@ -94,3 +94,8 @@
 - [2026-01-29] **Alpaca Notional Minimum**: Alpaca rejects orders with notional value below $1 (crypto) or $10 (equity). Use a safety buffer (e.g., $15) and validate BEFORE submitting to avoid API errors. Log the calculated notional value for debugging.
 - [2026-01-29] **DRY Validation Pattern**: When the same validation logic applies across multiple execution paths (e.g., crypto vs equity), extract to a helper method immediately. Duplicated validation logic drifts over time and leads to inconsistent behavior.
 - [2026-01-29] **Helper Method Naming**: For boolean validation helpers, use `_is_*_sufficient()` or `_has_*()` naming convention. This makes the condition readable in if-statements: `if not self._is_notional_value_sufficient(qty, signal)`.
+
+### Discord API
+- [2026-01-29] **Forum Channel Thread Requirement**: Discord Forum Channels (type 15) require `thread_name` in webhook payloads. Omitting it causes `400 Bad Request`. Add a config flag (e.g., `DISCORD_USE_FORUMS`) to conditionally include `thread_name`.
+- [2026-01-29] **Module-Level Constants**: For sets used in multiple methods (e.g., `BULLISH_PATTERNS`), define as module-level `frozenset` to avoid duplication and enable O(1) lookups. This also makes the constant visible for import/testing.
+- [2026-01-29] **Text Channel Fallback**: When posting to Discord with `thread_name` but the webhook targets a Text Channel (not Forum), Discord returns `400`. Implement retry logic that strips `thread_name` and retries for graceful degradation.
