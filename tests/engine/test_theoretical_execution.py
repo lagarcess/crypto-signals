@@ -21,6 +21,7 @@ def mock_settings():
         settings.THEORETICAL_SLIPPAGE_PCT = 0.01  # 1%
         settings.TTL_DAYS_POSITION = 90
         settings.RISK_PER_TRADE = 100.0
+        settings.MIN_ORDER_NOTIONAL_USD = 15.0
         mock_get.return_value = settings
         yield settings
 

@@ -224,6 +224,7 @@ class BigQueryPipelineBase(ABC):
         try:
             # 0. Pre-flight Check: Validate Schema
             logger.info(f"[{self.job_name}] Validating BigQuery Schema...")
+            # The guardian will raise an exception if strict_mode is True and there's a mismatch
             self.guardian.validate_schema(
                 table_id=self.fact_table_id, model=self.schema_model
             )

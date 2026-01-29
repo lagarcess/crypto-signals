@@ -77,6 +77,11 @@ class Settings(BaseSettings):
         description="Discord Webhook URL for CI/CD deployment notifications (used in GitHub Actions)",
     )
 
+    DISCORD_USE_FORUMS: bool = Field(
+        default=False,
+        description="If True, enables Forum Channel specific logic (e.g. thread_name)",
+    )
+
     # Environment Mode (defaults to True for safety - all traffic goes to test webhook)
     TEST_MODE: bool = Field(
         default=True,
@@ -154,6 +159,11 @@ class Settings(BaseSettings):
         ),
         ge=10.0,
         le=10000.0,
+    )
+    MIN_ORDER_NOTIONAL_USD: float = Field(
+        default=15.0,
+        description="Minimum order value in USD to meet broker requirements.",
+        ge=1.0,
     )
 
     # === Risk Management (Issue #114) ===

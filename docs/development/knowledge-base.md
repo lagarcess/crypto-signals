@@ -77,3 +77,25 @@
 ### Type Hints & Recursion
 - [2026-01-27] **Pydantic & Recursion**: When mapping nested Pydantic models to external schemas (e.g., BigQuery `RECORD`s), use explicit recursion. `issubclass(type, BaseModel)` works well for Pydantic V2, but be wary if V1 compatibility layers are introduced as they might not inherit cleanly.
 - [2026-01-27] **Type Unwrapping**: Python's `typing.get_origin` and `get_args` are essential for unwrapping `Optional[T]`, `List[T]`, and `Union[T, None]`. However, complex Unions (e.g., `Union[int, float]`) require specific handling logic and generally default to a lowest-common-denominator strategy (e.g., string) if not explicitly mapped.
+- [2026-01-29] **Type Hint Consistency**: When refactoring a function to return structured data (e.g., `List[str]` → `List[tuple[str, str]]`), update ALL return type annotations in the call chain. Forgetting helper methods causes mypy/pyright false errors and confuses code reviewers.
+
+### Exception Handling & CI/CD
+- [2026-01-29] **Silent Failures**: Never swallow exceptions in CLI tools without re-raising. `except Exception as e: logger.error(...)` without `raise` causes the script to exit with code 0, falsely reporting success in CI/CD pipelines.
+- [2026-01-29] **Redundant Exception Handling**: `except (SpecificError, Exception)` is redundant since `Exception` catches everything. Either catch only the specific error for targeted handling, or just catch `Exception`. Mixing them adds no value and signals code smell to reviewers.
+
+### BigQuery Schema Evolution
+- [2026-01-29] **ALTER TABLE Multi-Column**: BigQuery supports adding multiple columns in a single `ALTER TABLE` statement with comma-separated `ADD COLUMN` clauses. This is more efficient than individual ALTER statements and ensures atomicity within BigQuery's eventual consistency.
+- [2026-01-29] **Migration CLI Pattern**: For controlled schema evolution, create a CLI tool that: (1) validates schema drift with `strict_mode=False`, (2) generates DDL programmatically, (3) executes with proper error propagation. This avoids manual SQL and integrates with existing validation frameworks.
+
+### Code Review Best Practices
+- [2026-01-29] **Jules Delegation Review**: When reviewing work delegated to AI assistants (like Jules), focus on: (1) type safety / annotation consistency, (2) exception handling completeness, (3) test coverage for error paths. AI-generated code often handles happy paths well but may miss edge case handling and CI/CD implications.
+
+### Broker API Constraints
+- [2026-01-29] **Alpaca Notional Minimum**: Alpaca rejects orders with notional value below $1 (crypto) or $10 (equity). Use a safety buffer (e.g., $15) and validate BEFORE submitting to avoid API errors. Log the calculated notional value for debugging.
+- [2026-01-29] **DRY Validation Pattern**: When the same validation logic applies across multiple execution paths (e.g., crypto vs equity), extract to a helper method immediately. Duplicated validation logic drifts over time and leads to inconsistent behavior.
+- [2026-01-29] **Helper Method Naming**: For boolean validation helpers, use `_is_*_sufficient()` or `_has_*()` naming convention. This makes the condition readable in if-statements: `if not self._is_notional_value_sufficient(qty, signal)`.
+
+### Discord API
+- [2026-01-29] **Forum Channel Thread Requirement**: Discord Forum Channels (type 15) require `thread_name` in webhook payloads. Omitting it causes `400 Bad Request`. Add a config flag (e.g., `DISCORD_USE_FORUMS`) to conditionally include `thread_name`.
+- [2026-01-29] **Module-Level Constants**: For sets used in multiple methods (e.g., `BULLISH_PATTERNS`), define as module-level `frozenset` to avoid duplication and enable O(1) lookups. This also makes the constant visible for import/testing.
+- [2026-01-29] **Text Channel Fallback**: When posting to Discord with `thread_name` but the webhook targets a Text Channel (not Forum), Discord returns `400`. Implement retry logic that strips `thread_name` and retries for graceful degradation.
