@@ -21,6 +21,12 @@
 - [2026-01-22] **SDK Limitations**: The `TradingClient` (v2) in `alpaca-py` lacks a `get_account_activities` method. Use the raw REST method `client.get("/account/activities", params=...)` instead.
 - [2026-01-22] **Raw API**: When using `client.get`, `date` objects in parameters must be explicitly converted to string (ISO format). Response objects are raw dicts/lists and should be wrapped (e.g., `_ActivityWrapper`) to maintain object attribute compatibility with typed codebases.
 - [2026-01-22] **CFEE Settlement**: Crypto fees are posted as asynchronous `CFEE` events at T+1 (end of day), not at transaction time. Real-time logging requires an 'Estimated Fee' model, followed by a T+1 'Patch Pipeline' to reconcile actuals.
+
+### Error Handling
+- **Metric instrumentation must trigger alarms**: Defining metrics is useless if they aren't connected to alerts.
+- **Failures must be recorded at source**: Catch exceptions in sub-routines (like Position Sync), record the failure metric, then log. Do not rely on the outer-most global catch-all to record granular metrics.
+- **Implicit pipelines are still pipelines**: Main loop sub-routines (like state reconciliation, position sync) are functional pipelines and must be instrumented with `metrics.record_failure()` just like formal pipelines.
+
 - [2026-01-25] **404 Handling**: A `404 Not Found` from Alpaca's `get_open_position` does NOT imply the position was closed manually. It handles both "never existed" and "already closed". To confirm a manual exit, you must explicitly search `get_orders(status='filled', side=OPPOSITE)` for a closing trade. Relying on 404 alone leads to false positives ("Exit Gaps").
 - [2026-01-27] **Typing**: When using `alpaca-py` request objects in conditional blocks (Crypto vs Equity), assign them to distinct variables (e.g., `crypto_req` vs `stock_req`) rather than reusing a generic `req` variable. This avoids Mypy union type confusion where it cannot infer the specific attributes available on `req` later in the block.
 - [2026-01-27] **Typing**: Always use `alpaca.trading.enums` (e.g., `QueryOrderStatus.CLOSED`) instead of raw strings for API requests. Mypy strict mode often flags raw strings as incompatible with the expected Enum type.
