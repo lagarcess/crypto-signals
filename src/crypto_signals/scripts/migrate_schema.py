@@ -1,4 +1,3 @@
-
 import importlib
 
 import typer
@@ -47,6 +46,7 @@ def migrate_schema(table_id: str, model: type[BaseModel]) -> None:
         logger.info(f"Successfully added {len(missing_columns)} columns to {table_id}.")
     except Exception as e:
         logger.error(f"Failed to alter table {table_id}: {e}")
+        raise
 
 
 def main(

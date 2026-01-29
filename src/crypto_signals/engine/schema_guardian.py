@@ -1,7 +1,6 @@
 import datetime
 from typing import Any, List, Type
 
-from google.api_core.exceptions import NotFound
 from google.cloud import bigquery
 from loguru import logger
 from pydantic import BaseModel
@@ -43,13 +42,15 @@ class SchemaGuardian:
             model: Pydantic model class
 
         Returns:
-            A tuple containing (missing_columns, type_mismatches).
+            A tuple containing:
+              - missing_columns: List of (column_name, bq_type) tuples
+              - type_mismatches: List of error message strings
         """
         try:
             table = self.client.get_table(table_id)
-        except (NotFound, Exception) as e:
+        except Exception as e:
             logger.error(f"Failed to fetch table schema for {table_id}: {e}")
-            raise e
+            raise
 
         missing_columns, type_mismatches = self._validate_fields(
             model.model_fields.items(), table.schema
@@ -59,7 +60,9 @@ class SchemaGuardian:
             # Format the error messages for logging, but return the structured data
             error_messages = []
             if missing_columns:
-                formatted_missing = [f"{name} ({btype})" for name, btype in missing_columns]
+                formatted_missing = [
+                    f"{name} ({btype})" for name, btype in missing_columns
+                ]
                 error_messages.append(f"Missing columns: {', '.join(formatted_missing)}")
             if type_mismatches:
                 error_messages.append(f"Type mismatch: {', '.join(type_mismatches)}")
@@ -79,7 +82,7 @@ class SchemaGuardian:
         model_fields: Any,
         bq_schema: List[bigquery.SchemaField],
         parent_path: str = "",
-    ) -> tuple[List[str], List[str]]:
+    ) -> tuple[List[tuple[str, str]], List[str]]:
         """
         Recursively validate Pydantic fields against BigQuery schema fields.
 

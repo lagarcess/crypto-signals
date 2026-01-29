@@ -1,6 +1,6 @@
-
 from unittest.mock import MagicMock, patch
 
+import pytest
 from crypto_signals.scripts.migrate_schema import migrate_schema
 
 
@@ -78,3 +78,27 @@ def test_migrate_schema_only_type_mismatches(mock_bq_client, mock_schema_guardia
 
     # Assert
     mock_client_instance.query.assert_not_called()
+
+
+@patch("crypto_signals.scripts.migrate_schema.SchemaGuardian")
+@patch("crypto_signals.scripts.migrate_schema.bigquery.Client")
+def test_migrate_schema_raises_on_alter_failure(mock_bq_client, mock_schema_guardian):
+    """
+    Test that migrate_schema raises an exception when ALTER TABLE fails.
+    This ensures CI/CD correctly reports failure instead of silent success.
+    """
+    # Arrange
+    mock_guardian_instance = MagicMock()
+    mock_guardian_instance.validate_schema.return_value = (
+        [("new_column", "STRING")],
+        [],
+    )
+    mock_schema_guardian.return_value = mock_guardian_instance
+
+    mock_client_instance = MagicMock()
+    mock_client_instance.query.side_effect = Exception("BigQuery ALTER TABLE failed")
+    mock_bq_client.return_value = mock_client_instance
+
+    # Act & Assert
+    with pytest.raises(Exception, match="BigQuery ALTER TABLE failed"):
+        migrate_schema("dummy_table", MagicMock())
