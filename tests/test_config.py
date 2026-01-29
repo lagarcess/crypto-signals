@@ -51,6 +51,7 @@ def test_validate_credentials_if_execution_enabled(base_env):
         with pytest.raises(ValidationError):
             Settings()
 
+
 def test_validate_credentials_if_execution_disabled(base_env):
     """Test that credentials are not required when execution is disabled."""
     env = base_env.copy()

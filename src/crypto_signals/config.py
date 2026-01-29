@@ -229,14 +229,20 @@ class Settings(BaseSettings):
         """Validate fields that are required only under certain conditions."""
         if not self.TEST_MODE:
             if not self.LIVE_CRYPTO_DISCORD_WEBHOOK_URL:
-                raise ValueError("LIVE_CRYPTO_DISCORD_WEBHOOK_URL is required when TEST_MODE=False")
+                raise ValueError(
+                    "LIVE_CRYPTO_DISCORD_WEBHOOK_URL is required when TEST_MODE=False"
+                )
             if not self.LIVE_STOCK_DISCORD_WEBHOOK_URL:
-                raise ValueError("LIVE_STOCK_DISCORD_WEBHOOK_URL is required when TEST_MODE=False")
+                raise ValueError(
+                    "LIVE_STOCK_DISCORD_WEBHOOK_URL is required when TEST_MODE=False"
+                )
         if self.ENABLE_EXECUTION:
             if not self.ALPACA_API_KEY:
                 raise ValueError("ALPACA_API_KEY is required when ENABLE_EXECUTION=True")
             if not self.ALPACA_SECRET_KEY:
-                raise ValueError("ALPACA_SECRET_KEY is required when ENABLE_EXECUTION=True")
+                raise ValueError(
+                    "ALPACA_SECRET_KEY is required when ENABLE_EXECUTION=True"
+                )
         return self
 
     @property
