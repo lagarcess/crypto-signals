@@ -1063,6 +1063,7 @@ def main(
                             f"Failed to sync position {pos.position_id}: {e}",
                             extra={"position_id": pos.position_id},
                         )
+                        metrics.record_failure("position_sync_single", 0)
 
                 sync_duration = time.time() - sync_start
                 logger.info(
@@ -1076,6 +1077,7 @@ def main(
                 )
             except Exception as e:
                 logger.error(f"Position sync failed: {e}", exc_info=True)
+                metrics.record_failure("position_sync", time.time() - sync_start)
 
         # Display Rich execution summary table
         total_duration = time.time() - app_start_time
