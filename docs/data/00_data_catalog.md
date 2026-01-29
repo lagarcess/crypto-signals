@@ -133,7 +133,7 @@ Defines the tradable universe and asset-specific constraints.
     *   `fee_calculation_type`: `ESTIMATED` | `ACTUAL`.
 *   **Execution Metrics**:
     *   `multiplier`: Contract multiplier (default 1).
-    *   `slippage_pct`: `(Fill - Signal) / Signal`.
+    *   `slippage_pct`: `abs(Fill - Signal) / Signal`.
     *   `trade_duration`: Seconds open.
     *   `entry_time`, `exit_time`.
     *   `exit_price_finalized`: Final weighted avg exit price.
