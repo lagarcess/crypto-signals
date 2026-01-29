@@ -43,6 +43,7 @@ from crypto_signals.observability import (
     log_execution_time,
     setup_gcp_logging,
 )
+from crypto_signals.pipelines.account_snapshot import AccountSnapshotPipeline
 from crypto_signals.pipelines.fee_patch import FeePatchPipeline
 from crypto_signals.pipelines.price_patch import PricePatchPipeline
 from crypto_signals.pipelines.trade_archival import TradeArchivalPipeline
@@ -162,6 +163,7 @@ def main(
             trade_archival = TradeArchivalPipeline()
             fee_patch = FeePatchPipeline()
             price_patch = PricePatchPipeline()
+            account_snapshot = AccountSnapshotPipeline()
 
         # Job Locking
         job_id = "signal_generator_cron"
@@ -184,6 +186,16 @@ def main(
                 f"Cleanup complete: {deleted_signals} signals, "
                 f"{deleted_rejected} rejected signals, {deleted_positions} positions."
             )
+
+            # --- Account Snapshot ---
+            logger.info("Running Account Snapshot Pipeline...")
+            try:
+                account_snapshot.run()
+                logger.info("✅ Account Snapshot Pipeline completed successfully.")
+            except Exception as e:
+                logger.error(f"Account Snapshot Pipeline failed: {e}")
+                # Non-blocking, continue execution
+
             job_metadata_repo.update_last_run_date("daily_cleanup", today)
         else:
             logger.info("Daily cleanup has already run today. Skipping.")
