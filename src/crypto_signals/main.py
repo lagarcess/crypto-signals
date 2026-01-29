@@ -174,8 +174,28 @@ def main(
         # Ensure lock is released on exit
         atexit.register(job_lock_repo.release_lock, job_id)
 
-        # === DAILY CLEANUP ===
+        # === ACCOUNT SNAPSHOT (New Independent Job) ===
         today = datetime.now(timezone.utc).date()
+        last_snapshot = job_metadata_repo.get_last_run_date("account_snapshot")
+
+        if last_snapshot != today:
+            logger.info("Running Account Snapshot Pipeline...")
+            snapshot_start = time.time()
+            try:
+                account_snapshot.run()
+                logger.info("✅ Account Snapshot Pipeline completed successfully.")
+                metrics.record_success("account_snapshot", time.time() - snapshot_start)
+
+                # Update metadata ONLY on success
+                job_metadata_repo.update_last_run_date("account_snapshot", today)
+            except Exception as e:
+                logger.error(f"Account Snapshot Pipeline failed: {e}")
+                # Vital: Record failure so summary table shows "Errors: 1"
+                metrics.record_failure("account_snapshot", time.time() - snapshot_start)
+        else:
+            logger.info("Account Snapshot has already run today. Skipping.")
+
+        # === DAILY CLEANUP ===
         last_cleanup_date = job_metadata_repo.get_last_run_date("daily_cleanup")
         if last_cleanup_date != today:
             logger.info("Running daily cleanup...")
@@ -189,19 +209,6 @@ def main(
             job_metadata_repo.update_last_run_date("daily_cleanup", today)
         else:
             logger.info("Daily cleanup has already run today. Skipping.")
-
-        # === ACCOUNT SNAPSHOT ===
-        last_snapshot_date = job_metadata_repo.get_last_run_date("account_snapshot")
-        if last_snapshot_date != today:
-            logger.info("Running Account Snapshot Pipeline...")
-            try:
-                account_snapshot.run()
-                logger.info("✅ Account Snapshot Pipeline completed successfully.")
-                job_metadata_repo.update_last_run_date("account_snapshot", today)
-            except Exception as e:
-                logger.error(f"Account Snapshot Pipeline failed: {e}")
-        else:
-            logger.info("Account Snapshot has already run today. Skipping.")
 
         # === STATE RECONCILIATION (Issue #113) ===
         # Detect and heal zombie/orphan positions before main loop
