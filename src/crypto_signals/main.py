@@ -43,6 +43,7 @@ from crypto_signals.observability import (
     log_execution_time,
     setup_gcp_logging,
 )
+from crypto_signals.pipelines.account_snapshot import AccountSnapshotPipeline
 from crypto_signals.pipelines.fee_patch import FeePatchPipeline
 from crypto_signals.pipelines.price_patch import PricePatchPipeline
 from crypto_signals.pipelines.trade_archival import TradeArchivalPipeline
@@ -162,6 +163,7 @@ def main(
             trade_archival = TradeArchivalPipeline()
             fee_patch = FeePatchPipeline()
             price_patch = PricePatchPipeline()
+            account_snapshot = AccountSnapshotPipeline()
 
         # Job Locking
         job_id = "signal_generator_cron"
@@ -172,8 +174,28 @@ def main(
         # Ensure lock is released on exit
         atexit.register(job_lock_repo.release_lock, job_id)
 
-        # === DAILY CLEANUP ===
+        # === ACCOUNT SNAPSHOT (New Independent Job) ===
         today = datetime.now(timezone.utc).date()
+        last_snapshot = job_metadata_repo.get_last_run_date("account_snapshot")
+
+        if last_snapshot != today:
+            logger.info("Running Account Snapshot Pipeline...")
+            snapshot_start = time.time()
+            try:
+                account_snapshot.run()
+                logger.info("✅ Account Snapshot Pipeline completed successfully.")
+                metrics.record_success("account_snapshot", time.time() - snapshot_start)
+
+                # Update metadata ONLY on success
+                job_metadata_repo.update_last_run_date("account_snapshot", today)
+            except Exception as e:
+                logger.error(f"Account Snapshot Pipeline failed: {e}")
+                # Vital: Record failure so summary table shows "Errors: 1"
+                metrics.record_failure("account_snapshot", time.time() - snapshot_start)
+        else:
+            logger.info("Account Snapshot has already run today. Skipping.")
+
+        # === DAILY CLEANUP ===
         last_cleanup_date = job_metadata_repo.get_last_run_date("daily_cleanup")
         if last_cleanup_date != today:
             logger.info("Running daily cleanup...")
@@ -936,6 +958,7 @@ def main(
         # Synchronize open positions with Alpaca broker state.
         # This updates TP/SL leg IDs and detects externally closed positions.
         # =========================================================================
+        slippage_values = []  # Track slippage for summary
         if settings.ENABLE_EXECUTION:
             logger.info("Syncing open positions with Alpaca...")
             sync_start = time.time()
@@ -943,7 +966,6 @@ def main(
                 open_positions = position_repo.get_open_positions()
                 synced_count = 0
                 closed_count = 0
-                slippage_values = []  # Track slippage for summary
 
                 for pos in open_positions:
                     if shutdown_requested:
@@ -1085,22 +1107,14 @@ def main(
 
         # Calculate average slippage from position sync (if available)
         avg_slippage = None
-        if settings.ENABLE_EXECUTION and "slippage_values" in dir():
-            if slippage_values:
-                avg_slippage = sum(slippage_values) / len(slippage_values)
-
-        # Calculate total errors from metrics collector for accurate summary
-        metrics_summary = metrics.get_summary()
-        total_errors = sum(
-            stats.get("failure_count", 0) for stats in metrics_summary.values()
-        )
+        if slippage_values:
+            avg_slippage = sum(slippage_values) / len(slippage_values)
 
         summary_table = create_execution_summary_table(
             total_duration=total_duration,
             symbols_processed=symbols_processed,
             total_symbols=len(portfolio_items),
             signals_found=signals_found,
-            errors_encountered=total_errors,
             avg_slippage_pct=avg_slippage,
         )
         console.print(summary_table)

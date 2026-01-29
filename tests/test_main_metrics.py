@@ -27,6 +27,7 @@ def mock_deps_metrics():
         patch("crypto_signals.main.get_stock_data_client"),
         patch("crypto_signals.main.get_crypto_data_client"),
         patch("crypto_signals.main.get_trading_client"),
+        patch("crypto_signals.main.AccountSnapshotPipeline"),
     ):
         # Configure Metrics Mock
         mock_metrics = MagicMock()

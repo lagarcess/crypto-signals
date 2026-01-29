@@ -329,7 +329,6 @@ def create_execution_summary_table(
     symbols_processed: int,
     total_symbols: int,
     signals_found: int,
-    errors_encountered: int,
     symbol_results: Optional[List[Dict[str, Any]]] = None,
     avg_slippage_pct: Optional[float] = None,
 ) -> Table:
@@ -341,13 +340,19 @@ def create_execution_summary_table(
         symbols_processed: Number of symbols successfully processed
         total_symbols: Total number of symbols in portfolio
         signals_found: Number of trading signals detected
-        errors_encountered: Number of error occurrences
         symbol_results: Optional list of per-symbol results for detailed table
         avg_slippage_pct: Optional average entry slippage percentage
 
     Returns:
         Rich Table object ready to be printed
     """
+    # Get total errors from the single source of truth: the metrics collector
+    metrics = get_metrics_collector()
+    metrics_summary = metrics.get_summary()
+    total_errors = sum(
+        stats.get("failure_count", 0) for stats in metrics_summary.values()
+    )
+
     # Summary statistics table
     summary_table = Table(
         title="📊 EXECUTION SUMMARY",
@@ -361,7 +366,7 @@ def create_execution_summary_table(
 
     # Calculate success rate
     success_rate = (
-        (symbols_processed - errors_encountered) / symbols_processed * 100
+        (symbols_processed - total_errors) / symbols_processed * 100
         if symbols_processed > 0
         else 0
     )
@@ -371,7 +376,7 @@ def create_execution_summary_table(
     summary_table.add_row("🎯 Signals Found", str(signals_found))
     summary_table.add_row(
         "❌ Errors Encountered",
-        f"[red]{errors_encountered}[/red]" if errors_encountered > 0 else "0",
+        f"[red]{total_errors}[/red]" if total_errors > 0 else "0",
     )
     summary_table.add_row("✅ Success Rate", f"{success_rate:.1f}%")
 
