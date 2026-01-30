@@ -107,6 +107,29 @@ def test_extract(pipeline, mock_firestore):
     assert raw_data[0]["_doc_id"] == "sig_1"
 
 
+def test_extract_filters_by_cutoff(pipeline, mock_firestore):
+    """Verify that the where() clause is called with the correct T-7 cutoff time."""
+    # 1. Arrange
+    now = datetime.now(timezone.utc)
+
+    # This is the expected cutoff value to be passed to the where() clause
+    expected_cutoff = now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=7)
+
+    # 2. Act
+    # We patch datetime.now() to control the input to the cutoff calculation
+    with patch("crypto_signals.pipelines.rejected_signal_archival.datetime", autospec=True) as mock_dt:
+        mock_dt.now.return_value = now
+
+        # Execute the method under test
+        raw_data = pipeline.extract()
+
+    # 3. Assert
+    # Verify that the where() method was called with the correct arguments
+    mock_firestore.collection.return_value.where.assert_called_once_with(
+        field_path="created_at", op_string="<", value=expected_cutoff
+    )
+
+
 def test_transform_long_tp_hit(pipeline, mock_market_provider):
     """Test transforming a Long signal that would have hit TP1."""
     created_at = datetime.now(timezone.utc) - timedelta(days=8)
