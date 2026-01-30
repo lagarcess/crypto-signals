@@ -2,6 +2,7 @@
 
 from datetime import date
 from unittest.mock import ANY, MagicMock, Mock, call, patch
+import contextlib
 
 import pytest
 from crypto_signals.domain.schemas import (
@@ -32,100 +33,64 @@ def caplog(caplog):
 @pytest.fixture
 def mock_dependencies():
     """Mock all external dependencies used in main.py."""
-    with (
-        patch("crypto_signals.main.get_stock_data_client") as stock_client,
-        patch("crypto_signals.main.get_crypto_data_client") as crypto_client,
-        patch("crypto_signals.main.get_trading_client") as trading_client,
-        patch("crypto_signals.main.MarketDataProvider") as market_provider,
-        patch("crypto_signals.main.SignalGenerator") as generator,
-        patch("crypto_signals.main.SignalRepository") as repo,
-        patch("crypto_signals.main.DiscordClient") as discord,
-        patch("crypto_signals.main.AssetValidationService") as asset_validator,
-        patch("crypto_signals.main.get_settings") as mock_settings,
-        patch("crypto_signals.main.init_secrets", return_value=True) as mock_secrets,
-        patch("crypto_signals.main.load_config_from_firestore") as mock_firestore_config,
-        patch("crypto_signals.main.PositionRepository") as position_repo,
-        patch("crypto_signals.main.ExecutionEngine") as execution_engine,
-        patch("crypto_signals.main.JobLockRepository") as job_lock,
-        patch("crypto_signals.main.RejectedSignalRepository") as rejected_repo,
-        patch("crypto_signals.main.TradeArchivalPipeline") as trade_archival,
-        patch("crypto_signals.main.FeePatchPipeline") as fee_patch,
-        patch("crypto_signals.main.PricePatchPipeline") as price_patch,
-        patch("crypto_signals.main.StateReconciler") as reconciler,
-        patch("crypto_signals.main.JobMetadataRepository") as job_metadata_repo,
-    ):
-        job_metadata_repo.return_value.get_last_run_date.return_value = None
-        # Configure mock settings
-        mock_settings.return_value.CRYPTO_SYMBOLS = [
-            "BTC/USD",
-            "ETH/USD",
-            "XRP/USD",
-        ]
-        # Simulate Basic Plan: Empty equities by default
-        mock_settings.return_value.EQUITY_SYMBOLS = []
-        mock_settings.return_value.RATE_LIMIT_DELAY = 0.0  # Disable delay for tests
-        mock_settings.return_value.ENABLE_GCP_LOGGING = False
-        mock_settings.return_value.DISCORD_BOT_TOKEN = "test_token"
-        mock_settings.return_value.DISCORD_CHANNEL_ID_CRYPTO = "123"
-        mock_settings.return_value.DISCORD_CHANNEL_ID_STOCK = "456"
+    with contextlib.ExitStack() as stack:
+        mocks = {
+            "stock_client": stack.enter_context(patch("crypto_signals.main.get_stock_data_client")),
+            "crypto_client": stack.enter_context(patch("crypto_signals.main.get_crypto_data_client")),
+            "trading_client": stack.enter_context(patch("crypto_signals.main.get_trading_client")),
+            "market_provider": stack.enter_context(patch("crypto_signals.main.MarketDataProvider")),
+            "generator": stack.enter_context(patch("crypto_signals.main.SignalGenerator")),
+            "repo": stack.enter_context(patch("crypto_signals.main.SignalRepository")),
+            "discord": stack.enter_context(patch("crypto_signals.main.DiscordClient")),
+            "asset_validator": stack.enter_context(patch("crypto_signals.main.AssetValidationService")),
+            "settings": stack.enter_context(patch("crypto_signals.main.get_settings")),
+            "secrets": stack.enter_context(patch("crypto_signals.main.init_secrets", return_value=True)),
+            "firestore_config": stack.enter_context(patch("crypto_signals.main.load_config_from_firestore")),
+            "position_repo": stack.enter_context(patch("crypto_signals.main.PositionRepository")),
+            "execution_engine": stack.enter_context(patch("crypto_signals.main.ExecutionEngine")),
+            "job_lock": stack.enter_context(patch("crypto_signals.main.JobLockRepository")),
+            "rejected_repo": stack.enter_context(patch("crypto_signals.main.RejectedSignalRepository")),
+            "trade_archival": stack.enter_context(patch("crypto_signals.main.TradeArchivalPipeline")),
+            "fee_patch": stack.enter_context(patch("crypto_signals.main.FeePatchPipeline")),
+            "price_patch": stack.enter_context(patch("crypto_signals.main.PricePatchPipeline")),
+            "reconciler": stack.enter_context(patch("crypto_signals.main.StateReconciler")),
+            "job_metadata_repo": stack.enter_context(patch("crypto_signals.main.JobMetadataRepository")),
+            "subprocess": stack.enter_context(patch("subprocess.check_output")),
+        }
 
-        # Default: No Firestore config (fallback behavior)
-        mock_firestore_config.return_value = {}
+        mocks["job_metadata_repo"].return_value.get_last_run_date.return_value = None
+        mocks["settings"].return_value.CRYPTO_SYMBOLS = ["BTC/USD", "ETH/USD", "XRP/USD"]
+        mocks["settings"].return_value.EQUITY_SYMBOLS = []
+        mocks["settings"].return_value.RATE_LIMIT_DELAY = 0.0
+        mocks["settings"].return_value.ENABLE_GCP_LOGGING = False
+        mocks["settings"].return_value.DISCORD_BOT_TOKEN = "test_token"
+        mocks["settings"].return_value.DISCORD_CHANNEL_ID_CRYPTO = "123"
+        mocks["settings"].return_value.DISCORD_CHANNEL_ID_STOCK = "456"
+        mocks["settings"].return_value.ENVIRONMENT = "DEV"
+        mocks["settings"].return_value.MAX_CRYPTO_POSITIONS = 5
+        mocks["settings"].return_value.MAX_EQUITY_POSITIONS = 5
+        mocks["settings"].return_value.RISK_PER_TRADE = 100.0
+        mocks["settings"].return_value.ENABLE_EXECUTION = False
+        mocks["subprocess"].return_value = b"test-hash"
+        mocks["firestore_config"].return_value = {}
 
-        # Configure MarketDataProvider to return non-empty DataFrame by default
-        # This prevents main.py from skipping processing due to "No data" check
-        # Use side_effect to ensure a fresh clean mock (or consistent one) with empty=False
         def get_daily_bars_side_effect(*args, **kwargs):
             m = MagicMock()
             m.empty = False
             return m
+        mocks["market_provider"].return_value.get_daily_bars.side_effect = get_daily_bars_side_effect
 
-        market_provider.return_value.get_daily_bars.side_effect = (
-            get_daily_bars_side_effect
-        )
-
-        # Configure AssetValidationService to pass-through all symbols
-        # (validation is tested separately in test_asset_service.py)
         def get_valid_portfolio_side_effect(symbols, asset_class):
             return list(symbols)
+        mocks["asset_validator"].return_value.get_valid_portfolio.side_effect = get_valid_portfolio_side_effect
 
-        asset_validator.return_value.get_valid_portfolio.side_effect = (
-            get_valid_portfolio_side_effect
-        )
+        mocks["job_lock"].return_value.acquire_lock.return_value = True
+        mocks["discord"].return_value.find_thread_by_signal_id.return_value = None
+        mocks["trade_archival"].return_value.run.return_value = 0
+        mocks["fee_patch"].return_value.run.return_value = 0
+        mocks["price_patch"].return_value.run.return_value = 0
 
-        # Configure JobLock to always succeed
-        job_lock.return_value.acquire_lock.return_value = True
-
-        # Configure Discord Thread Recovery to return None by default (not found)
-        # This fixes regression in existing tests that don't expect recovery
-        discord.return_value.find_thread_by_signal_id.return_value = None
-
-        # Configure Pipeline default returns (int) to avoid TypeError in comparisons
-        trade_archival.return_value.run.return_value = 0
-        fee_patch.return_value.run.return_value = 0
-        price_patch.return_value.run.return_value = 0
-
-        yield {
-            "stock_client": stock_client,
-            "crypto_client": crypto_client,
-            "trading_client": trading_client,
-            "market_provider": market_provider,
-            "generator": generator,
-            "repo": repo,
-            "discord": discord,
-            "asset_validator": asset_validator,
-            "settings": mock_settings,
-            "secrets": mock_secrets,
-            "firestore_config": mock_firestore_config,
-            "position_repo": position_repo,
-            "execution_engine": execution_engine,
-            "job_lock": job_lock,
-            "rejected_repo": rejected_repo,
-            "trade_archival": trade_archival,
-            "fee_patch": fee_patch,
-            "price_patch": price_patch,
-            "reconciler": reconciler,
-        }
+        yield mocks
 
 
 def test_main_execution_flow(mock_dependencies):

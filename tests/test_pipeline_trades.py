@@ -102,6 +102,7 @@ def test_active_trade_validation_loop(
         mock_job_metadata_repo = stack.enter_context(
             patch("crypto_signals.main.JobMetadataRepository")
         )
+        mock_subprocess = stack.enter_context(patch("subprocess.check_output"))
 
         mock_job_metadata_repo.return_value.get_last_run_date.return_value = None
         mock_job_lock.return_value.acquire_lock.return_value = True
@@ -117,6 +118,11 @@ def test_active_trade_validation_loop(
         mock_settings.return_value.RATE_LIMIT_DELAY = 0.0
         mock_settings.return_value.ENABLE_EXECUTION = False
         mock_settings.return_value.ENABLE_GCP_LOGGING = False
+        mock_settings.return_value.ENVIRONMENT = "DEV"
+        mock_settings.return_value.MAX_CRYPTO_POSITIONS = 5
+        mock_settings.return_value.MAX_EQUITY_POSITIONS = 5
+        mock_settings.return_value.RISK_PER_TRADE = 100.0
+        mock_subprocess.return_value = b"test-hash"
 
         active_sig = SignalFactory.build(
             status=SignalStatus.INVALIDATED,
