@@ -46,8 +46,10 @@ from crypto_signals.observability import (
     setup_gcp_logging,
 )
 from crypto_signals.pipelines.account_snapshot import AccountSnapshotPipeline
+from crypto_signals.pipelines.expired_signal_archival import ExpiredSignalArchivalPipeline
 from crypto_signals.pipelines.fee_patch import FeePatchPipeline
 from crypto_signals.pipelines.price_patch import PricePatchPipeline
+from crypto_signals.pipelines.rejected_signal_archival import RejectedSignalArchival
 from crypto_signals.pipelines.strategy_sync import StrategySyncPipeline
 from crypto_signals.pipelines.trade_archival import TradeArchivalPipeline
 from crypto_signals.repository.firestore import (
@@ -223,6 +225,8 @@ def main(
 
             # Pipeline Services
             trade_archival = TradeArchivalPipeline()
+            rejected_archival = RejectedSignalArchival()
+            expired_archival = ExpiredSignalArchivalPipeline()
             fee_patch = FeePatchPipeline()
             price_patch = PricePatchPipeline()
             account_snapshot = AccountSnapshotPipeline()
@@ -263,6 +267,30 @@ def main(
             )
         else:
             logger.info("Account Snapshot has already run today. Skipping.")
+
+        # === REJECTED SIGNAL ARCHIVAL (Issue #183) ===
+        # Archive "Ghost Trades" to BigQuery for analysis
+        # MUST run before daily cleanup deletes the source data
+        _run_pipeline(
+            rejected_archival,
+            "rejected_archival",
+            lambda count: logger.info(
+                f"✅ Rejected signal archival complete: {f'{count} signals archived' if count > 0 else 'No signals to archive'}"
+            ),
+            metrics_collector=metrics,
+        )
+
+        # === EXPIRED SIGNAL ARCHIVAL (Issue #183) ===
+        # Archive "Noise" to BigQuery for analysis
+        # MUST run before daily cleanup deletes the source data
+        _run_pipeline(
+            expired_archival,
+            "expired_archival",
+            lambda count: logger.info(
+                f"✅ Expired signal archival complete: {f'{count} signals archived' if count > 0 else 'No signals to archive'}"
+            ),
+            metrics_collector=metrics,
+        )
 
         # === DAILY CLEANUP ===
         last_cleanup_date = job_metadata_repo.get_last_run_date("daily_cleanup")
@@ -325,6 +353,7 @@ def main(
                 ),
                 metrics_collector=metrics,
             )
+
         else:
             logger.warning("⚠️ Skipping trade archival due to reconciliation failure.")
 
