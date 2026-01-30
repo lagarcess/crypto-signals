@@ -121,7 +121,7 @@ def test_extract_filters_by_cutoff(pipeline, mock_firestore):
         mock_dt.now.return_value = now
 
         # Execute the method under test
-        raw_data = pipeline.extract()
+        pipeline.extract()
 
     # 3. Assert
     # Verify that the where() method was called with the correct arguments

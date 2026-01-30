@@ -10,7 +10,7 @@ Pattern: Extract-Transform-Load
 3. Load: Push to BigQuery via BasePipeline
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any, Dict, List
 
 import pandas as pd
@@ -80,11 +80,9 @@ class RejectedSignalArchival(BigQueryPipelineBase):
         logger.info(f"[{self.job_name}] extracting rejected signals from Firestore...")
 
         # Get signals older than 7 days
-        settings = get_settings()
-        validity_window = timedelta(days=settings.TTL_DAYS_DEV)
         cutoff = datetime.now(timezone.utc).replace(
             hour=0, minute=0, second=0, microsecond=0
-        ) - validity_window
+        )
 
         docs = (
             self.firestore_client.collection(self.source_collection)
