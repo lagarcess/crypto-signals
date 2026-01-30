@@ -18,11 +18,7 @@ from loguru import logger
 from pydantic import BaseModel
 
 from crypto_signals.config import get_settings
-from crypto_signals.engine.schema_guardian import (
-    Clustering,
-    SchemaGuardian,
-    TimePartitioning,
-)
+from crypto_signals.engine.schema_guardian import SchemaGuardian
 
 
 class BigQueryPipelineBase(ABC):
@@ -50,8 +46,6 @@ class BigQueryPipelineBase(ABC):
         id_column: str,
         partition_column: str,
         schema_model: Type[BaseModel],
-        partitioning: TimePartitioning | None = None,
-        clustering: Clustering | None = None,
     ):
         """Initialize the pipeline with configuration and BigQuery client."""
         self.job_name = job_name
@@ -60,8 +54,6 @@ class BigQueryPipelineBase(ABC):
         self.id_column = id_column
         self.partition_column = partition_column
         self.schema_model = schema_model
-        self.partitioning = partitioning
-        self.clustering = clustering
 
         # Initialize BigQuery Client
         # We use the project from settings to ensure we target the right GCP env
@@ -234,10 +226,7 @@ class BigQueryPipelineBase(ABC):
             logger.info(f"[{self.job_name}] Validating BigQuery Schema...")
             # The guardian will raise an exception if strict_mode is True and there's a mismatch
             self.guardian.validate_schema(
-            table_id=self.fact_table_id,
-            model=self.schema_model,
-            expected_partitioning=self.partitioning,
-            expected_clustering=self.clustering,
+                table_id=self.fact_table_id, model=self.schema_model
             )
 
             # 1. Extract

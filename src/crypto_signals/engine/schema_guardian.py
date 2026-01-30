@@ -3,20 +3,7 @@ from typing import Any, List, Type
 
 from google.cloud import bigquery
 from loguru import logger
-from pydantic import BaseModel, Field
-
-
-class TimePartitioning(BaseModel):
-    """BigQuery Time Partitioning Config."""
-
-    type: str = Field(..., description="Partitioning type (e.g., 'DAY', 'MONTH')")
-    field: str = Field(..., description="The field to partition on")
-
-
-class Clustering(BaseModel):
-    """BigQuery Clustering Config."""
-
-    fields: List[str] = Field(..., description="List of fields to cluster by")
+from pydantic import BaseModel
 
 
 class SchemaMismatchError(Exception):
@@ -45,21 +32,19 @@ class SchemaGuardian:
         self.strict_mode = strict_mode
 
     def validate_schema(
-        self,
-        table_id: str,
-        model: Type[BaseModel],
-        expected_partitioning: TimePartitioning | None = None,
-        expected_clustering: Clustering | None = None,
-    ) -> None:
+        self, table_id: str, model: Type[BaseModel]
+    ) -> tuple[List[tuple[str, str]], List[str]]:
         """
-        Validates BQ schema, partitioning, and clustering against expected configs.
+        Validates that the BigQuery table schema matches the Pydantic model.
+
         Args:
             table_id: Full table ID (project.dataset.table)
-            model: Pydantic model class for schema validation.
-            expected_partitioning: Optional config for time partitioning.
-            expected_clustering: Optional config for clustering.
-        Raises:
-            SchemaMismatchError: If validation fails in strict mode.
+            model: Pydantic model class
+
+        Returns:
+            A tuple containing:
+              - missing_columns: List of (column_name, bq_type) tuples
+              - type_mismatches: List of error message strings
         """
         try:
             table = self.client.get_table(table_id)
@@ -67,38 +52,30 @@ class SchemaGuardian:
             logger.error(f"Failed to fetch table schema for {table_id}: {e}")
             raise
 
-        # 1. Field Schema Validation (re-uses existing logic)
         missing_columns, type_mismatches = self._validate_fields(
             model.model_fields.items(), table.schema
         )
 
-        # 2. Partitioning Validation
-        partitioning_errors = self._validate_partitioning(
-            table, expected_partitioning
-        )
+        if missing_columns or type_mismatches:
+            # Format the error messages for logging, but return the structured data
+            error_messages = []
+            if missing_columns:
+                formatted_missing = [
+                    f"{name} ({btype})" for name, btype in missing_columns
+                ]
+                error_messages.append(f"Missing columns: {', '.join(formatted_missing)}")
+            if type_mismatches:
+                error_messages.append(f"Type mismatch: {', '.join(type_mismatches)}")
 
-        # 3. Clustering Validation
-        clustering_errors = self._validate_clustering(table, expected_clustering)
-
-        # 4. Aggregate and Raise if needed
-        all_errors = []
-        if missing_columns:
-            formatted = [f"{name} ({btype})" for name, btype in missing_columns]
-            all_errors.append(f"Missing columns: {', '.join(formatted)}")
-        if type_mismatches:
-            all_errors.append(f"Type mismatch: {', '.join(type_mismatches)}")
-        if partitioning_errors:
-            all_errors.append(f"Partitioning Validation Failed: {partitioning_errors}")
-        if clustering_errors:
-            all_errors.append(f"Clustering Validation Failed: {clustering_errors}")
-
-        if all_errors:
             full_error = f"Schema Validation Failed for {table_id}: " + "; ".join(
-                all_errors
+                error_messages
             )
             logger.critical(full_error)
+
             if self.strict_mode:
                 raise SchemaMismatchError(full_error)
+
+        return missing_columns, type_mismatches
 
     def _validate_fields(
         self,
@@ -212,41 +189,3 @@ class SchemaGuardian:
             pass  # Not a class
 
         return self.TYPE_MAPPING.get(py_type, "STRING"), False
-
-    def _validate_partitioning(
-        self, table: bigquery.Table, expected: TimePartitioning | None
-    ) -> str | None:
-        """Validate table's time partitioning."""
-        if not expected:
-            return None
-
-        if not table.time_partitioning:
-            return "Table is not partitioned"
-
-        if table.time_partitioning.type_ != expected.type:
-            return f"Expected type {expected.type}, found {table.time_partitioning.type_}"
-
-        # Note: BQ API returns 'field' as None for DAY partitioning with no field
-        if table.time_partitioning.field != expected.field:
-            return f"Expected field {expected.field}, found {table.time_partitioning.field}"
-
-        return None
-
-    def _validate_clustering(
-        self, table: bigquery.Table, expected: Clustering | None
-    ) -> str | None:
-        """Validate table's clustering keys."""
-        if not expected:
-            return None
-
-        if not table.clustering_fields:
-            return "Table is not clustered"
-
-        # BQ returns sorted list, so we sort ours for a canonical comparison
-        expected_fields = sorted(expected.fields)
-        actual_fields = sorted(table.clustering_fields)
-
-        if expected_fields != actual_fields:
-            return f"Expected {expected_fields}, found {actual_fields}"
-
-        return None

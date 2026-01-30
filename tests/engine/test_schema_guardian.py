@@ -2,19 +2,11 @@ from typing import Optional
 from unittest.mock import MagicMock
 
 import pytest
-from crypto_signals.engine.schema_guardian import (
-    Clustering,
-    SchemaGuardian,
-    SchemaMismatchError,
-    TimePartitioning,
-)
+from crypto_signals.engine.schema_guardian import SchemaGuardian, SchemaMismatchError
 from google.cloud import bigquery
 from pydantic import BaseModel
 
 # --- Mocks & Fixtures ---
-
-
-import datetime
 
 
 class SimpleModel(BaseModel):
@@ -22,7 +14,6 @@ class SimpleModel(BaseModel):
     age: int
     score: float
     is_active: bool
-    some_date: datetime.date
 
 
 class ComplexModel(BaseModel):
@@ -53,7 +44,6 @@ def test_validate_schema_success(guardian, mock_bq_client):
         bigquery.SchemaField("age", "INTEGER"),
         bigquery.SchemaField("score", "FLOAT"),
         bigquery.SchemaField("is_active", "BOOLEAN"),
-        bigquery.SchemaField("some_date", "DATE"),
     ]
     mock_bq_client.get_table.return_value = mock_table
 
@@ -106,7 +96,6 @@ def test_validate_schema_compatible_types_float_numeric(guardian, mock_bq_client
         bigquery.SchemaField("age", "INTEGER"),
         bigquery.SchemaField("score", "NUMERIC"),  # Compatible with float
         bigquery.SchemaField("is_active", "BOOLEAN"),
-        bigquery.SchemaField("some_date", "DATE"),
     ]
     mock_bq_client.get_table.return_value = mock_table
 
@@ -164,75 +153,3 @@ def test_validate_nested_schema(guardian, mock_bq_client):
 
     # This should pass if recursion is implemented, fail otherwise
     guardian.validate_schema("project.dataset.table", ParentModel)
-
-
-def test_validate_schema_partitioning_and_clustering_success(guardian, mock_bq_client):
-    """Test that validation passes with correct partitioning and clustering."""
-    mock_table = MagicMock()
-    mock_table.schema = [
-        bigquery.SchemaField("name", "STRING"),
-        bigquery.SchemaField("age", "INTEGER"),
-        bigquery.SchemaField("score", "FLOAT"),
-        bigquery.SchemaField("is_active", "BOOLEAN"),
-        bigquery.SchemaField("some_date", "DATE"),
-    ]
-    mock_table.time_partitioning = MagicMock(type_="DAY", field="some_date")
-    mock_table.clustering_fields = ["name"]
-    mock_bq_client.get_table.return_value = mock_table
-
-    # Should not raise
-    guardian.validate_schema(
-        "project.dataset.table",
-        SimpleModel,
-        expected_partitioning=TimePartitioning(type="DAY", field="some_date"),
-        expected_clustering=Clustering(fields=["name"]),
-    )
-
-
-def test_validate_schema_partitioning_missing(guardian, mock_bq_client):
-    """Test failure when partitioning is expected but not configured."""
-    mock_table = MagicMock()
-    mock_table.schema = [bigquery.SchemaField("name", "STRING")]
-    mock_table.time_partitioning = None  # No partitioning
-    mock_bq_client.get_table.return_value = mock_table
-
-    with pytest.raises(SchemaMismatchError, match="Partitioning Validation Failed"):
-        guardian.validate_schema(
-            "project.dataset.table",
-            SimpleModel,
-            expected_partitioning=TimePartitioning(type="DAY", field="some_date"),
-        )
-
-
-def test_validate_schema_clustering_missing(guardian, mock_bq_client):
-    """Test failure when clustering is expected but not configured."""
-    mock_table = MagicMock()
-    mock_table.schema = [bigquery.SchemaField("name", "STRING")]
-    mock_table.time_partitioning = MagicMock(type_="DAY", field="some_date")
-    mock_table.clustering_fields = None  # No clustering
-    mock_bq_client.get_table.return_value = mock_table
-
-    with pytest.raises(SchemaMismatchError, match="Clustering Validation Failed"):
-        guardian.validate_schema(
-            "project.dataset.table",
-            SimpleModel,
-            expected_partitioning=TimePartitioning(type="DAY", field="some_date"),
-            expected_clustering=Clustering(fields=["name"]),
-        )
-
-
-def test_validate_schema_clustering_mismatch(guardian, mock_bq_client):
-    """Test failure when clustering keys are different."""
-    mock_table = MagicMock()
-    mock_table.schema = [bigquery.SchemaField("name", "STRING")]
-    mock_table.time_partitioning = MagicMock(type_="DAY", field="some_date")
-    mock_table.clustering_fields = ["wrong_field"]  # Mismatched key
-    mock_bq_client.get_table.return_value = mock_table
-
-    with pytest.raises(SchemaMismatchError, match="Clustering Validation Failed"):
-        guardian.validate_schema(
-            "project.dataset.table",
-            SimpleModel,
-            expected_partitioning=TimePartitioning(type="DAY", field="some_date"),
-            expected_clustering=Clustering(fields=["name"]),
-        )
