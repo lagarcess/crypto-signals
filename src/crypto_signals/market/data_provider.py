@@ -112,20 +112,22 @@ class MarketDataProvider:
     @retry_with_backoff(max_retries=3, initial_delay=1.0, backoff_factor=2.0)
     def get_daily_bars(
         self,
-        symbol: str,
+        symbol: str | list[str],
         asset_class: AssetClass,
         lookback_days: int = 365,
     ) -> pd.DataFrame:
         """
-        Fetch daily bars for a symbol.
+        Fetch daily bars for a symbol or list of symbols.
 
         Args:
-            symbol: Ticker symbol (e.g. "BTC/USD", "AAPL")
+            symbol: Ticker symbol (e.g. "BTC/USD") or list of symbols
             asset_class: Asset class (CRYPTO or EQUITY)
             lookback_days: Number of days of history to fetch
 
         Returns:
-            pd.DataFrame: DataFrame indexed by date (UTC)
+            pd.DataFrame:
+                - If single symbol: DataFrame indexed by date (UTC)
+                - If list of symbols: MultiIndex DataFrame (symbol, date)
 
         Raises:
             MarketDataError: If data is empty or fetch fails
@@ -207,7 +209,7 @@ class MarketDataProvider:
 
 
 def _fetch_bars_core(
-    symbol: str,
+    symbol: str | list[str],
     asset_class: AssetClass,
     lookback_days: int,
     stock_client: StockHistoricalDataClient,
@@ -218,7 +220,7 @@ def _fetch_bars_core(
     Core implementation of get_daily_bars (uncached).
 
     Args:
-        symbol: Ticker symbol
+        symbol: Ticker symbol or list of symbols
         asset_class: Asset Class
         lookback_days: Lookback period
         stock_client: Alpaca Stock Client
@@ -260,10 +262,20 @@ def _fetch_bars_core(
 
         # Reset index if multi-indexed (symbol, date) -> just date
         # Alpaca bars.df usually has MultiIndex [symbol, timestamp]
-        if isinstance(df.index, pd.MultiIndex):
+        # logic: if we passed a single symbol (str), we want to return just date index (convenience)
+        # if we passed a list, we KEEP the multiindex [symbol, timestamp] so caller can separate
+        if isinstance(symbol, str) and isinstance(df.index, pd.MultiIndex):
             df = df.reset_index(level=0, drop=True)
 
-        df.index = pd.to_datetime(df.index)
+        # Ensure timestamp level (or index) is datetime
+        # If MultiIndex, level 1 is timestamp. If single index, index is timestamp.
+        if isinstance(df.index, pd.MultiIndex):
+            # Check if second level is not datetime (rare but possible if re-ordered)
+            # Usually Alpaca returns [symbol, timestamp]
+            pass  # Alpaca SDK handles this well usually
+        else:
+            df.index = pd.to_datetime(df.index)
+
         return df
 
     except MarketDataError:

@@ -1,5 +1,6 @@
 from typing import NamedTuple, Optional
 
+import pandas as pd
 from alpaca.trading.client import TradingClient
 from alpaca.trading.models import TradeAccount
 from crypto_signals.config import get_settings
@@ -135,6 +136,7 @@ class RiskEngine:
         """
         Gate: Correlation Risk.
         Rejects trade if highly correlated (>0.8) with any open position.
+        Optimized to fetch market data in batches per asset class.
         """
         if not self.market_provider:
             return RiskCheckResult(passed=True, reason="Skipped: No Market Provider")
@@ -144,44 +146,107 @@ class RiskEngine:
             if not open_positions:
                 return RiskCheckResult(passed=True)
 
-            # Fetch candidate history
-            # Use 90 days for robust correlation
-            candidate_bars = self.market_provider.get_daily_bars(
-                signal.symbol, signal.asset_class, lookback_days=90
-            )
+            # Group symbols by Asset Class to batch requests
+            # We want to check correlation against ALL open positions.
+            # We also need the candidate signal's data.
 
-            if "close" in candidate_bars.columns:
-                candidate_series = candidate_bars["close"]
-            else:
+            # Map: AssetClass -> set(symbols)
+            symbols_by_class = {AssetClass.CRYPTO: set(), AssetClass.EQUITY: set()}
+
+            # Add candidate
+            symbols_by_class[signal.asset_class].add(signal.symbol)
+
+            # Add open positions (excluding self if somehow in list)
+            filtered_positions = [p for p in open_positions if p.symbol != signal.symbol]
+            if not filtered_positions:
+                # If only open position is self (re-entry?), no correlation check needed against others
+                return RiskCheckResult(passed=True)
+
+            for pos in filtered_positions:
+                symbols_by_class[pos.asset_class].add(pos.symbol)
+
+            # Fetch Data Batches
+            # Map: symbol -> pd.Series (Close prices)
+            price_series_map = {}
+
+            for asset_class, symbols in symbols_by_class.items():
+                if not symbols:
+                    continue
+
+                symbol_list = list(symbols)
+                try:
+                    # Batch fetch
+                    bars_df = self.market_provider.get_daily_bars(
+                        symbol_list, asset_class, lookback_days=90
+                    )
+
+                    # Process response
+                    # If single symbol passed (list of length 1), it might return single-index DF depending on impl details,
+                    # but our updating logic says: "If list of symbols: MultiIndex DataFrame".
+                    # However, if we pass a list of length 1, let's be robust.
+
+                    if isinstance(bars_df.index, pd.MultiIndex):
+                        # MultiIndex: (symbol, timestamp)
+                        # We want to extract close price for each symbol
+                        # Efficient way: loop through unique symbols in index
+                        # distinct_symbols = bars_df.index.get_level_values(0).unique()
+                        # But better to just iterate over what we requested
+
+                        for sym in symbol_list:
+                            try:
+                                # xs is robust for selecting from MultiIndex
+                                # Check if symbol exists in index first to avoid KeyError
+                                if sym in bars_df.index.get_level_values(0):
+                                    sym_data = bars_df.xs(sym, level=0)
+                                    if "close" in sym_data.columns:
+                                        price_series_map[sym] = sym_data["close"]
+                            except KeyError:
+                                continue
+                    else:
+                        # Single index (timestamp) - implies only one symbol was returned/requested
+                        # OR the provider stripped the index.
+                        # Since we modified provider to keep MultiIndex if list is passed, this shouldn't happen
+                        # unless we passed a list of 1 and logic was ambiguous?
+                        # Actually, my change says: `if isinstance(symbol, str)`.
+                        # So if we pass `["BTC/USD"]`, it is NOT a str, so it should keep MultiIndex.
+                        # EXCEPT if the API returns a single-level DF naturally for some reason (which it usually doesn't for bars).
+                        # But let's handle the case if it somehow is single index:
+                        if len(symbol_list) == 1:
+                            if "close" in bars_df.columns:
+                                price_series_map[symbol_list[0]] = bars_df["close"]
+
+                except Exception as e:
+                    logger.warning(f"Failed to fetch batch data for {asset_class}: {e}")
+                    # If we fail to get data for the CANDIDATE, we must fail.
+                    # If we fail to get data for a position, we normally block access.
+                    # Let's inspect what's missing later.
+
+            # Check if we have candidate data
+            if signal.symbol not in price_series_map:
                 return RiskCheckResult(
                     passed=False,
-                    reason=f"Market data missing close price for {signal.symbol}",
+                    reason=f"Market data missing for candidate {signal.symbol}",
                 )
 
-            for pos in open_positions:
-                if pos.symbol == signal.symbol:
-                    continue  # Skip self
+            candidate_series = price_series_map[signal.symbol]
+
+            # Compare against all open positions
+            for pos in filtered_positions:
+                if pos.symbol not in price_series_map:
+                    logger.warning(
+                        f"Market data for existing position {pos.symbol} is missing. Blocking trade precautiously."
+                    )
+                    return RiskCheckResult(
+                        passed=False,
+                        reason=f"Could not verify correlation due to missing data for {pos.symbol}",
+                    )
+
+                pos_series = price_series_map[pos.symbol]
 
                 try:
-                    pos_bars = self.market_provider.get_daily_bars(
-                        pos.symbol, pos.asset_class, lookback_days=90
-                    )
-                    if "close" not in pos_bars.columns:
-                        logger.warning(
-                            f"Market data for existing position {pos.symbol} is missing 'close' price. Blocking trade as a precaution."
-                        )
-                        return RiskCheckResult(
-                            passed=False,
-                            reason=f"Could not verify correlation due to missing data for {pos.symbol}",
-                        )
-
-                    pos_series = pos_bars["close"]
-
                     # Pandas corr handles alignment via index (dates)
                     correlation = candidate_series.corr(pos_series)
 
-                    # Check for high correlation (>0.8)
-                    # Note: Handle NaN if series don't overlap enough
                     if correlation is not None and correlation > 0.8:
                         reason = (
                             f"Correlation Risk: {signal.symbol} is {correlation:.2f} "
@@ -189,13 +254,11 @@ class RiskEngine:
                         )
                         logger.warning(reason)
                         return RiskCheckResult(passed=False, reason=reason)
-
                 except Exception as e:
-                    # Fail safe: Block if we can't verify correlation
-                    logger.warning(f"Could not calc correlation for {pos.symbol}: {e}")
+                    logger.warning(f"Correlation calc error for {pos.symbol}: {e}")
                     return RiskCheckResult(
                         passed=False,
-                        reason=f"Error checking correlation with {pos.symbol}: {e}",
+                        reason=f"Error calculating correlation with {pos.symbol}: {e}",
                     )
 
             return RiskCheckResult(passed=True)
