@@ -1,5 +1,5 @@
 import datetime
-from typing import Any, List, Type
+from typing import Any, List, Optional, Type
 
 from google.cloud import bigquery
 from loguru import logger
@@ -32,7 +32,11 @@ class SchemaGuardian:
         self.strict_mode = strict_mode
 
     def validate_schema(
-        self, table_id: str, model: Type[BaseModel]
+        self,
+        table_id: str,
+        model: Type[BaseModel],
+        require_partitioning: bool = False,
+        clustering_fields: Optional[List[str]] = None,
     ) -> tuple[List[tuple[str, str]], List[str]]:
         """
         Validates that the BigQuery table schema matches the Pydantic model.
@@ -40,6 +44,8 @@ class SchemaGuardian:
         Args:
             table_id: Full table ID (project.dataset.table)
             model: Pydantic model class
+            require_partitioning: Enforce that the table is partitioned (Time or Range).
+            clustering_fields: Enforce exact match of clustering fields.
 
         Returns:
             A tuple containing:
@@ -56,7 +62,21 @@ class SchemaGuardian:
             model.model_fields.items(), table.schema
         )
 
-        if missing_columns or type_mismatches:
+        # --- New Checks (Partitioning & Clustering) ---
+        partitioning_error = None
+        if require_partitioning:
+            # Check for either TimePartitioning or RangePartitioning
+            if not (table.time_partitioning or table.range_partitioning):
+                partitioning_error = "Table is not partitioned"
+
+        clustering_error = None
+        if clustering_fields is not None:
+            # table.clustering_fields returns a list of strings or None
+            actual_clustering = table.clustering_fields or []
+            if actual_clustering != clustering_fields:
+                clustering_error = f"Clustering mismatch: Expected {clustering_fields}, Found {actual_clustering}"
+
+        if missing_columns or type_mismatches or partitioning_error or clustering_error:
             # Format the error messages for logging, but return the structured data
             error_messages = []
             if missing_columns:
@@ -66,6 +86,10 @@ class SchemaGuardian:
                 error_messages.append(f"Missing columns: {', '.join(formatted_missing)}")
             if type_mismatches:
                 error_messages.append(f"Type mismatch: {', '.join(type_mismatches)}")
+            if partitioning_error:
+                error_messages.append(partitioning_error)
+            if clustering_error:
+                error_messages.append(clustering_error)
 
             full_error = f"Schema Validation Failed for {table_id}: " + "; ".join(
                 error_messages

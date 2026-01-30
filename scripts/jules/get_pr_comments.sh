@@ -44,4 +44,4 @@ echo "🟢 Comments downloaded to: $JSON_FILE"
 echo "🔵 [2/2] Parsing comments into readable format..."
 
 # 5. Parse & Display
-poetry run python scripts/parse_pr_comments.py "$JSON_FILE"
+poetry run python scripts/jules/parse_pr_comments.py "$JSON_FILE"

@@ -7,6 +7,7 @@ from alpaca.trading.models import TradeAccount
 from crypto_signals.config import Settings
 from crypto_signals.domain.schemas import AssetClass
 from crypto_signals.engine.risk import RiskEngine
+from crypto_signals.market.data_provider import MarketDataProvider
 from crypto_signals.repository.firestore import PositionRepository
 
 # Ensure AssetClass is available in module scope for test methods
@@ -30,6 +31,10 @@ class TestRiskEngine:
         return MagicMock(spec=PositionRepository)
 
     @pytest.fixture
+    def mock_market_provider(self):
+        return MagicMock(spec=MarketDataProvider)
+
+    @pytest.fixture
     def mock_client(self):
         client = MagicMock()
         # default healthy account
@@ -43,13 +48,17 @@ class TestRiskEngine:
         return client
 
     @pytest.fixture
-    def risk_engine(self, mock_client, mock_repo, mock_settings):
+    def risk_engine(self, mock_client, mock_repo, mock_settings, mock_market_provider):
         # Patch the engine's settings property or injected dependency
         # Patch get_settings() dependency for RiskEngine
         with pytest.MonkeyPatch.context() as m:
             # Patch at module level where it's imported
             m.setattr("crypto_signals.engine.risk.get_settings", lambda: mock_settings)
-            engine = RiskEngine(trading_client=mock_client, repository=mock_repo)
+            engine = RiskEngine(
+                trading_client=mock_client,
+                repository=mock_repo,
+                market_provider=mock_market_provider,
+            )
             yield engine
 
     def test_check_buying_power_crypto_pass(self, risk_engine):

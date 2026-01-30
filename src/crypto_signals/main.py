@@ -214,7 +214,9 @@ def main(
                 discord_client=discord,
                 settings=settings,
             )
-            execution_engine = ExecutionEngine(reconciler=reconciler)
+            execution_engine = ExecutionEngine(
+                reconciler=reconciler, market_provider=market_provider
+            )
             job_lock_repo = JobLockRepository()
             rejected_repo = RejectedSignalRepository()  # Shadow signal persistence
             job_metadata_repo = JobMetadataRepository()

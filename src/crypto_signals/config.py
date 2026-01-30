@@ -192,6 +192,12 @@ class Settings(BaseSettings):
         ),
     )
 
+    # Market Data Caching
+    ENABLE_MARKET_DATA_CACHE: bool = Field(
+        default=False,
+        description="Enable disk caching for market data. Useful for backtesting/dev.",
+    )
+
     CLEANUP_ON_FAILURE: bool = Field(
         default=True,
         description="Auto-delete documents from Firestore if they fail Pydantic validation",

@@ -482,6 +482,10 @@ class Position(BaseModel):
         ...,
         description="Trading symbol (e.g., 'BTC/USD', 'NVDA'). Required for emergency closes.",
     )
+    asset_class: AssetClass = Field(
+        default=AssetClass.CRYPTO,
+        description="Asset class (CRYPTO or EQUITY). Defaults to CRYPTO for backward compatibility.",
+    )
     signal_id: str = Field(
         ...,
         description="Reference to the Signal that triggered this position",

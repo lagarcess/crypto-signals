@@ -10,7 +10,7 @@ to ensure idempotency and data consistency.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Type
+from typing import Any, Dict, List, Optional, Type
 
 from google.api_core.exceptions import NotFound
 from google.cloud import bigquery
@@ -46,6 +46,7 @@ class BigQueryPipelineBase(ABC):
         id_column: str,
         partition_column: str,
         schema_model: Type[BaseModel],
+        clustering_fields: Optional[List[str]] = None,
     ):
         """Initialize the pipeline with configuration and BigQuery client."""
         self.job_name = job_name
@@ -54,6 +55,7 @@ class BigQueryPipelineBase(ABC):
         self.id_column = id_column
         self.partition_column = partition_column
         self.schema_model = schema_model
+        self.clustering_fields = clustering_fields
 
         # Initialize BigQuery Client
         # We use the project from settings to ensure we target the right GCP env
@@ -226,7 +228,10 @@ class BigQueryPipelineBase(ABC):
             logger.info(f"[{self.job_name}] Validating BigQuery Schema...")
             # The guardian will raise an exception if strict_mode is True and there's a mismatch
             self.guardian.validate_schema(
-                table_id=self.fact_table_id, model=self.schema_model
+                table_id=self.fact_table_id,
+                model=self.schema_model,
+                require_partitioning=True,
+                clustering_fields=self.clustering_fields,
             )
 
             # 1. Extract

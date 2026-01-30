@@ -10,7 +10,7 @@ Pattern: Extract-Transform-Load
 3. Load: Push to BigQuery via BasePipeline
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List
 
 import pandas as pd
@@ -29,6 +29,9 @@ from crypto_signals.pipelines.base import BigQueryPipelineBase
 
 # Crypto fee constant (0.25% taker fee for base tier)
 CRYPTO_TAKER_FEE_PCT = 0.0025
+
+# Validity window for signals (7 days)
+VALIDITY_WINDOW_DAYS = 7
 
 
 class RejectedSignalArchival(BigQueryPipelineBase):
@@ -82,7 +85,7 @@ class RejectedSignalArchival(BigQueryPipelineBase):
         # Get signals older than 7 days
         cutoff = datetime.now(timezone.utc).replace(
             hour=0, minute=0, second=0, microsecond=0
-        )
+        ) - timedelta(days=VALIDITY_WINDOW_DAYS)
 
         docs = (
             self.firestore_client.collection(self.source_collection)
