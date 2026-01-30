@@ -543,3 +543,30 @@ For issues, questions, or contributions, please open an issue on GitHub.
 ---
 
 **⚠️ Disclaimer**: This software is for educational purposes only. Cryptocurrency and stock trading involves substantial risk of loss. Use at your own risk.
+
+## Market Data Caching
+
+Market data caching is **disabled by default** but available for development/backtesting.
+
+### Enable Caching
+
+Set environment variable or .env:
+```bash
+ENABLE_MARKET_DATA_CACHE=true
+```
+
+### Cache Behavior
+- **Location**: `~/.gemini/cache/market_data/` (relative to project root in .gemini/cache)
+- **TTL**: Expires daily at midnight UTC
+- **Size Limit**: None (joblib default)
+- **Eviction**: Manual clear only
+
+### When to Enable
+- ✅ During backtesting development (avoid redundant API calls)
+- ✅ Testing/debugging with frequent restarts
+- ❌ Production (data refreshes daily, cache hit rate ~0%)
+
+### Clear Cache
+```bash
+rm -rf .gemini/cache/
+```
