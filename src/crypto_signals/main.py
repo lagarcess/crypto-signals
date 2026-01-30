@@ -268,6 +268,30 @@ def main(
         else:
             logger.info("Account Snapshot has already run today. Skipping.")
 
+        # === REJECTED SIGNAL ARCHIVAL (Issue #183) ===
+        # Archive "Ghost Trades" to BigQuery for analysis
+        # MUST run before daily cleanup deletes the source data
+        _run_pipeline(
+            rejected_archival,
+            "rejected_archival",
+            lambda count: logger.info(
+                f"✅ Rejected signal archival complete: {f'{count} signals archived' if count > 0 else 'No signals to archive'}"
+            ),
+            metrics_collector=metrics,
+        )
+
+        # === EXPIRED SIGNAL ARCHIVAL (Issue #183) ===
+        # Archive "Noise" to BigQuery for analysis
+        # MUST run before daily cleanup deletes the source data
+        _run_pipeline(
+            expired_archival,
+            "expired_archival",
+            lambda count: logger.info(
+                f"✅ Expired signal archival complete: {f'{count} signals archived' if count > 0 else 'No signals to archive'}"
+            ),
+            metrics_collector=metrics,
+        )
+
         # === DAILY CLEANUP ===
         last_cleanup_date = job_metadata_repo.get_last_run_date("daily_cleanup")
         if last_cleanup_date != today:
@@ -330,35 +354,8 @@ def main(
                 metrics_collector=metrics,
             )
 
-            # === REJECTED SIGNAL ARCHIVAL (Issue #183) ===
-            # Archive "Ghost Trades" to BigQuery for analysis
-            _run_pipeline(
-                rejected_archival,
-                "rejected_archival",
-                lambda count: logger.info(
-                    f"✅ Rejected signal archival complete: {count} signals archived"
-                    if count > 0
-                    else "✅ Rejected signal archival complete: No signals to archive"
-                ),
-                metrics_collector=metrics,
-            )
-
-            # === EXPIRED SIGNAL ARCHIVAL (Issue #183) ===
-            # Archive "Noise" to BigQuery for analysis
-            _run_pipeline(
-                expired_archival,
-                "expired_archival",
-                lambda count: logger.info(
-                    f"✅ Expired signal archival complete: {count} signals archived"
-                    if count > 0
-                    else "✅ Expired signal archival complete: No signals to archive"
-                ),
-                metrics_collector=metrics,
-            )
         else:
-            logger.warning(
-                "⚠️ Skipping trade/signal archival due to reconciliation failure."
-            )
+            logger.warning("⚠️ Skipping trade archival due to reconciliation failure.")
 
         # === FEE RECONCILIATION (Issue #140) ===
         # Patch estimated fees with actual CFEE data before generating new signals

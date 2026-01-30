@@ -258,10 +258,10 @@ def test_main_execution_flow(mock_dependencies):
     # Verify precise call order (Names only to avoid fragile call object comparison)
     actual_calls = [c[0] for c in pipeline_manager.mock_calls]
     assert actual_calls == [
-        "reconcile",
-        "archive",
         "rejected_archive",
         "expired_archive",
+        "reconcile",
+        "archive",
         "fee_patch",
     ], f"Actual calls mismatch: {actual_calls}"
 
