@@ -27,7 +27,10 @@ from crypto_signals.market.exceptions import MarketDataError
 from crypto_signals.observability import log_api_error
 
 # Configure joblib memory cache
-memory = joblib.Memory(location=".gemini/cache", verbose=0)
+# Only set location if caching is enabled to avoid creating directories in production
+settings = get_settings()
+location = ".gemini/cache" if settings.ENABLE_MARKET_DATA_CACHE else None
+memory = joblib.Memory(location=location, verbose=0)
 
 
 def retry_with_backoff(max_retries=3, initial_delay=1.0, backoff_factor=2.0):
