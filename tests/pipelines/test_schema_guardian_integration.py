@@ -65,7 +65,10 @@ def test_pipeline_validates_schema_before_running(pipeline):
 
     # Assert validation was called with correct args
     pipeline.mock_guardian_instance.validate_schema.assert_called_once_with(
-        table_id="proj.ds.fact", model=MockModel
+        table_id="proj.ds.fact",
+        model=MockModel,
+        expected_partitioning=None,
+        expected_clustering=None,
     )
 
 

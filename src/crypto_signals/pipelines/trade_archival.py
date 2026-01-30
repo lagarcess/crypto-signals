@@ -29,6 +29,7 @@ from crypto_signals.config import (
     get_trading_client,
 )
 from crypto_signals.domain.schemas import ExitReason, OrderSide, TradeExecution
+from crypto_signals.engine.schema_guardian import Clustering, TimePartitioning
 from crypto_signals.market.data_provider import MarketDataProvider
 from crypto_signals.pipelines.base import BigQueryPipelineBase
 
@@ -58,6 +59,8 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
             id_column="trade_id",
             partition_column="ds",
             schema_model=TradeExecution,
+            partitioning=TimePartitioning(type="DAY", field="created_at"),
+            clustering=Clustering(fields=["symbol", "strategy"]),
         )
 
         # Initialize Source Clients
