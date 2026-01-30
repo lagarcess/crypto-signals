@@ -37,6 +37,7 @@ from crypto_signals.domain.schemas import (
     OrderSide as DomainOrderSide,
 )
 from crypto_signals.engine.risk import RiskEngine
+from crypto_signals.market.data_provider import MarketDataProvider
 from crypto_signals.observability import console
 from crypto_signals.repository.firestore import PositionRepository
 from loguru import logger
@@ -78,6 +79,7 @@ class ExecutionEngine:
         trading_client: Optional[TradingClient] = None,
         repository: Optional[PositionRepository] = None,
         reconciler: Optional[Any] = None,
+        market_provider: Optional[MarketDataProvider] = None,
     ):
         """
         Initialize the ExecutionEngine.
@@ -92,7 +94,9 @@ class ExecutionEngine:
         # Initialize Repo for Risk Engine
         self.repo = repository if repository else PositionRepository()
         self.reconciler = reconciler
-        self.risk_engine = RiskEngine(self.alpaca, self.repo)
+        self.risk_engine = RiskEngine(
+            self.alpaca, self.repo, market_provider=market_provider
+        )
 
         # Environment Logging
         logger.info(
@@ -217,6 +221,7 @@ class ExecutionEngine:
                 ds=signal.ds,
                 account_id="paper",
                 symbol=signal.symbol,
+                asset_class=signal.asset_class,
                 signal_id=signal.signal_id,
                 alpaca_order_id=str(cast(Order, order).id),
                 entry_order_id=str(cast(Order, order).id),  # For CFEE attribution
@@ -318,6 +323,7 @@ class ExecutionEngine:
                 ds=signal.ds,
                 account_id="paper",  # All trades use paper account; TEST_MODE only controls Discord routing
                 symbol=signal.symbol,
+                asset_class=signal.asset_class,
                 signal_id=signal.signal_id,
                 alpaca_order_id=str(cast(Order, order).id),
                 entry_order_id=str(cast(Order, order).id),  # For CFEE attribution
@@ -392,6 +398,7 @@ class ExecutionEngine:
             ds=signal.ds,
             account_id="theoretical",
             symbol=signal.symbol,
+            asset_class=signal.asset_class,
             signal_id=signal.signal_id,
             alpaca_order_id=f"theo-{signal.signal_id[:8]}",  # Dummy ID
             discord_thread_id=signal.discord_thread_id,
@@ -429,6 +436,7 @@ class ExecutionEngine:
             ds=signal.ds,
             account_id="risk_blocked",
             symbol=signal.symbol,
+            asset_class=signal.asset_class,
             signal_id=signal.signal_id,
             alpaca_order_id=None,
             discord_thread_id=signal.discord_thread_id,

@@ -4,6 +4,7 @@ from alpaca.trading.client import TradingClient
 from alpaca.trading.models import TradeAccount
 from crypto_signals.config import get_settings
 from crypto_signals.domain.schemas import AssetClass, Signal
+from crypto_signals.market.data_provider import MarketDataProvider
 from crypto_signals.repository.firestore import PositionRepository
 from loguru import logger
 
@@ -23,9 +24,15 @@ class RiskEngine:
     3. Daily Account Drawdown Limits
     """
 
-    def __init__(self, trading_client: TradingClient, repository: PositionRepository):
+    def __init__(
+        self,
+        trading_client: TradingClient,
+        repository: PositionRepository,
+        market_provider: Optional[MarketDataProvider] = None,
+    ):
         self.alpaca = trading_client
         self.repo = repository
+        self.market_provider = market_provider
         self.settings = get_settings()
 
     def validate_signal(self, signal: Signal) -> RiskCheckResult:
@@ -43,7 +50,12 @@ class RiskEngine:
         if not sector_check.passed:
             return sector_check
 
-        # 3. Buying Power (Broker Constraints) - Most expensive call (API) if not cached
+        # 3. Correlation Risk (Portfolio Diversification) - Expensive (Data Fetch)
+        correlation_check = self.check_correlation(signal)
+        if not correlation_check.passed:
+            return correlation_check
+
+        # 4. Buying Power (Broker Constraints) - Most expensive call (API) if not cached
         # Note: We need an estimated cost. Using RISK_PER_TRADE is a safe floor,
         # but ideally we use (entry * qty). Since we haven't calc'd qty yet,
         # we check if we have at least MIN_ASSET_BP_USD available.
@@ -118,6 +130,75 @@ class RiskEngine:
         except Exception as e:
             logger.error(f"Risk Check Failed (Sector Cap): {e}")
             return RiskCheckResult(passed=False, reason=f"Error checking sector cap: {e}")
+
+    def check_correlation(self, signal: Signal) -> RiskCheckResult:
+        """
+        Gate: Correlation Risk.
+        Rejects trade if highly correlated (>0.8) with any open position.
+        """
+        if not self.market_provider:
+            return RiskCheckResult(passed=True, reason="Skipped: No Market Provider")
+
+        try:
+            open_positions = self.repo.get_open_positions()
+            if not open_positions:
+                return RiskCheckResult(passed=True)
+
+            # Fetch candidate history
+            # Use 90 days for robust correlation
+            candidate_bars = self.market_provider.get_daily_bars(
+                signal.symbol, signal.asset_class, lookback_days=90
+            )
+
+            if "close" in candidate_bars.columns:
+                candidate_series = candidate_bars["close"]
+            else:
+                return RiskCheckResult(
+                    passed=False,
+                    reason=f"Market data missing close price for {signal.symbol}",
+                )
+
+            for pos in open_positions:
+                if pos.symbol == signal.symbol:
+                    continue  # Skip self
+
+                try:
+                    pos_bars = self.market_provider.get_daily_bars(
+                        pos.symbol, pos.asset_class, lookback_days=90
+                    )
+                    if "close" not in pos_bars.columns:
+                        continue
+
+                    pos_series = pos_bars["close"]
+
+                    # Pandas corr handles alignment via index (dates)
+                    correlation = candidate_series.corr(pos_series)
+
+                    # Check for high correlation (>0.8)
+                    # Note: Handle NaN if series don't overlap enough
+                    if correlation is not None and correlation > 0.8:
+                        reason = (
+                            f"Correlation Risk: {signal.symbol} is {correlation:.2f} "
+                            f"correlated with existing position {pos.symbol}"
+                        )
+                        logger.warning(reason)
+                        return RiskCheckResult(passed=False, reason=reason)
+
+                except Exception as e:
+                    # Fail safe: Block if we can't verify correlation
+                    logger.warning(f"Could not calc correlation for {pos.symbol}: {e}")
+                    return RiskCheckResult(
+                        passed=False,
+                        reason=f"Error checking correlation with {pos.symbol}: {e}",
+                    )
+
+            return RiskCheckResult(passed=True)
+
+        except Exception as e:
+            logger.error(f"Risk Check Failed (Correlation): {e}")
+            return RiskCheckResult(
+                passed=False, reason=f"Error checking correlation: {e}"
+            )
 
     def check_buying_power(
         self, asset_class: AssetClass, required_amount: float
