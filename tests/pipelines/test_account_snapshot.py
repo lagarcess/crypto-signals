@@ -259,11 +259,14 @@ def test_pipeline_run_skip_cleanup(pipeline):
         patch.object(pipeline, "_load_to_staging"),
         patch.object(pipeline, "_execute_merge"),
         patch.object(pipeline, "cleanup") as mock_clean,
+        # Mock guardian validation to avoid schema errors during test
+        patch.object(pipeline.guardian, "validate_schema") as mock_validate,
     ):
         mock_ext.return_value = ["raw"]
         mock_trans.return_value = ["processed"]
 
         pipeline.run()
 
+        mock_validate.assert_called_once()
         mock_ext.assert_called_once()
         mock_clean.assert_not_called()

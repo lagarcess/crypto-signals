@@ -22,6 +22,11 @@ class ComplexModel(BaseModel):
     tags: list[str] = []  # Lists not fully supported in V1 but good to check
 
 
+class PartitionModel(BaseModel):
+    name: str
+    ds: str
+
+
 @pytest.fixture
 def mock_bq_client():
     return MagicMock(spec=bigquery.Client)
@@ -153,3 +158,97 @@ def test_validate_nested_schema(guardian, mock_bq_client):
 
     # This should pass if recursion is implemented, fail otherwise
     guardian.validate_schema("project.dataset.table", ParentModel)
+
+
+def test_validate_schema_partitioning_success(guardian, mock_bq_client):
+    """Test that validation passes when partitioning is required and present."""
+    mock_table = MagicMock()
+    # Mock schema
+    mock_table.schema = [
+        bigquery.SchemaField("name", "STRING"),
+        bigquery.SchemaField("ds", "STRING"),
+    ]
+    # Mock partitioning
+    mock_table.time_partitioning = bigquery.TimePartitioning(field="ds")
+
+    mock_bq_client.get_table.return_value = mock_table
+
+    guardian.validate_schema(
+        "project.dataset.table", PartitionModel, require_partitioning=True
+    )
+
+
+def test_validate_schema_partitioning_missing(guardian, mock_bq_client):
+    """Test that validation fails when partitioning is required but missing."""
+    mock_table = MagicMock()
+    mock_table.schema = [
+        bigquery.SchemaField("name", "STRING"),
+        bigquery.SchemaField("ds", "STRING"),
+    ]
+    # No partitioning
+    mock_table.time_partitioning = None
+    mock_table.range_partitioning = None  # Also check range partitioning?
+
+    mock_bq_client.get_table.return_value = mock_table
+
+    with pytest.raises(SchemaMismatchError) as exc:
+        guardian.validate_schema(
+            "project.dataset.table", PartitionModel, require_partitioning=True
+        )
+
+    assert "Table is not partitioned" in str(exc.value)
+
+
+def test_validate_schema_clustering_success(guardian, mock_bq_client):
+    """Test that validation passes when clustering matches."""
+    mock_table = MagicMock()
+    mock_table.schema = [
+        bigquery.SchemaField("name", "STRING"),
+        bigquery.SchemaField("ds", "STRING"),
+    ]
+    mock_table.clustering_fields = ["name"]
+
+    mock_bq_client.get_table.return_value = mock_table
+
+    guardian.validate_schema(
+        "project.dataset.table", PartitionModel, clustering_fields=["name"]
+    )
+
+
+def test_validate_schema_clustering_mismatch(guardian, mock_bq_client):
+    """Test that validation fails when clustering does not match."""
+    mock_table = MagicMock()
+    mock_table.schema = [
+        bigquery.SchemaField("name", "STRING"),
+        bigquery.SchemaField("ds", "STRING"),
+    ]
+    # Actual is ["ds"], expected is ["name"]
+    mock_table.clustering_fields = ["ds"]
+
+    mock_bq_client.get_table.return_value = mock_table
+
+    with pytest.raises(SchemaMismatchError) as exc:
+        guardian.validate_schema(
+            "project.dataset.table", PartitionModel, clustering_fields=["name"]
+        )
+
+    assert "Clustering mismatch" in str(exc.value)
+
+
+def test_validate_schema_clustering_missing_on_table(guardian, mock_bq_client):
+    """Test that validation fails when clustering is expected but table has none."""
+    mock_table = MagicMock()
+    mock_table.schema = [
+        bigquery.SchemaField("name", "STRING"),
+        bigquery.SchemaField("ds", "STRING"),
+    ]
+    mock_table.clustering_fields = None
+
+    mock_bq_client.get_table.return_value = mock_table
+
+    with pytest.raises(SchemaMismatchError) as exc:
+        guardian.validate_schema(
+            "project.dataset.table", PartitionModel, clustering_fields=["name"]
+        )
+
+    assert "Clustering mismatch" in str(exc.value)
