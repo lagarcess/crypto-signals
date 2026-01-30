@@ -96,7 +96,8 @@ echo ""
 echo "🧪 Running Critical Regression Tests..."
 # Only run the relevant caching tests for now to be fast
 # Disable coverage to prevent false negatives on partial runs
-if poetry run pytest tests/market/test_data_provider_caching.py -q -p no:cov; then
+# Override addopts to ignore pyproject.toml defaults
+if poetry run pytest -o "addopts=" tests/market/test_data_provider_caching.py -q -p no:cov; then
     echo -e "${GREEN}✅ Regression tests passed.${NC}"
 else
     echo -e "${RED}❌ Regression tests FAILED.${NC}"
