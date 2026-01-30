@@ -10,7 +10,6 @@ from datetime import datetime, timedelta, timezone
 from functools import wraps
 from typing import Optional
 
-from joblib import Memory
 import pandas as pd
 from alpaca.data.enums import Adjustment
 from alpaca.data.historical import CryptoHistoricalDataClient, StockHistoricalDataClient
@@ -24,7 +23,7 @@ from alpaca.data.timeframe import TimeFrame
 from crypto_signals.domain.schemas import AssetClass
 from crypto_signals.market.exceptions import MarketDataError
 from crypto_signals.observability import log_api_error
-
+from joblib import Memory
 
 # --- CACHING ---
 # Initialize joblib Memory for caching market data
