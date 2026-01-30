@@ -106,3 +106,5 @@
 
 ### Testing
 - [2026-01-29] **Pydantic Mocking**: When unit testing logic that relies on Pydantic's `model_dump()`, mocking the model instance with `MagicMock` often fails because `model_dump` is a complex method. Use real Pydantic model instances in tests whenever possible to avoid "mock drift" where tests pass but runtime fails.
+- [2026-01-29] **ExitStack Pattern**: When a test requires patching many dependencies (e.g., > 10) to isolate a "God Function" like `main()`, use `contextlib.ExitStack`. Standard nested `with patch():` blocks hit Python's stack limit (`SyntaxError: too many statically nested blocks`).
+- [2026-01-29] **Pytest Config Override**: If `pyproject.toml` enforces strict plugins (like `pytest-cov`) that are failing in a specific environment, use `pytest -o "addopts=" ...` to override the configuration at runtime and isolate the test logic from the tooling environment.

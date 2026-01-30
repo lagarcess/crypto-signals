@@ -68,6 +68,31 @@ warmup_jit()
 shutdown_requested = False
 
 
+def _run_pipeline(pipeline, name: str, success_log_fn, metrics_collector=None) -> None:
+    """
+    Helper to run a pipeline with standardized logging and metrics.
+
+    Args:
+        pipeline: The pipeline instance to run.
+        name: The name of the pipeline for metrics/logging.
+        success_log_fn: A callback that receives the result and logs success.
+        metrics_collector: Optional metrics collector (fetches default if None).
+    """
+    logger.info(f"Running {name} Pipeline...")
+    start_time = time.time()
+
+    # Use provided collector or fetch new one
+    metrics = metrics_collector or get_metrics_collector()
+
+    try:
+        result = pipeline.run()
+        success_log_fn(result)
+        metrics.record_success(name, time.time() - start_time)
+    except Exception as e:
+        logger.error(f"{name} Pipeline failed: {e}")
+        metrics.record_failure(name, time.time() - start_time)
+
+
 def signal_handler(signum, frame):
     """Handle shutdown signals gracefully."""
     global shutdown_requested
@@ -177,39 +202,32 @@ def main(
         atexit.register(job_lock_repo.release_lock, job_id)
 
         # === STRATEGY SYNC (SCD Type 2) ===
-        logger.info("Running Strategy Synchronization Pipeline...")
-        strategy_sync_start = time.time()
-        try:
-            synced_strategies = strategy_sync.run()
-            if synced_strategies > 0:
-                logger.info(
-                    f"✅ Strategy Sync complete: {synced_strategies} versions updated."
-                )
-            else:
-                logger.info("✅ Strategy Sync complete: No changes detected.")
-            metrics.record_success("strategy_sync", time.time() - strategy_sync_start)
-        except Exception as e:
-            logger.error(f"Strategy Sync failed: {e}")
-            metrics.record_failure("strategy_sync", time.time() - strategy_sync_start)
+        # === STRATEGY SYNC (SCD Type 2) ===
+        _run_pipeline(
+            strategy_sync,
+            "strategy_sync",
+            lambda count: logger.info(
+                f"✅ Strategy Sync complete: {count} versions updated."
+                if count > 0
+                else "✅ Strategy Sync complete: No changes detected."
+            ),
+            metrics_collector=metrics,
+        )
 
         # === ACCOUNT SNAPSHOT (New Independent Job) ===
         today = datetime.now(timezone.utc).date()
         last_snapshot = job_metadata_repo.get_last_run_date("account_snapshot")
 
         if last_snapshot != today:
-            logger.info("Running Account Snapshot Pipeline...")
-            snapshot_start = time.time()
-            try:
-                account_snapshot.run()
-                logger.info("✅ Account Snapshot Pipeline completed successfully.")
-                metrics.record_success("account_snapshot", time.time() - snapshot_start)
-
-                # Update metadata ONLY on success
-                job_metadata_repo.update_last_run_date("account_snapshot", today)
-            except Exception as e:
-                logger.error(f"Account Snapshot Pipeline failed: {e}")
-                # Vital: Record failure so summary table shows "Errors: 1"
-                metrics.record_failure("account_snapshot", time.time() - snapshot_start)
+            _run_pipeline(
+                account_snapshot,
+                "account_snapshot",
+                lambda _: [
+                    logger.info("✅ Account Snapshot Pipeline completed successfully."),
+                    job_metadata_repo.update_last_run_date("account_snapshot", today),
+                ],
+                metrics_collector=metrics,
+            )
         else:
             logger.info("Account Snapshot has already run today. Skipping.")
 
@@ -264,21 +282,16 @@ def main(
         # Move Closed Positions -> BigQuery (Before Fee Patch!)
         # Must run AFTER reconciliation (so we archive what was just closed)
         if not reconciliation_failed:
-            logger.info("Running trade archival...")
-            trade_archival_start_time = time.time()
-            try:
-                archival_count = trade_archival.run()
-                if archival_count > 0:
-                    logger.info(
-                        f"✅ Trade archival complete: {archival_count} trades archived"
-                    )
-                else:
-                    logger.info("✅ Trade archival complete: No closed trades to archive")
-            except Exception as e:
-                logger.error(f"Trade archival failed: {e}")
-                metrics.record_failure(
-                    "trade_archival", time.time() - trade_archival_start_time
-                )
+            _run_pipeline(
+                trade_archival,
+                "trade_archival",
+                lambda count: logger.info(
+                    f"✅ Trade archival complete: {count} trades archived"
+                    if count > 0
+                    else "✅ Trade archival complete: No closed trades to archive"
+                ),
+                metrics_collector=metrics,
+            )
         else:
             logger.warning("⚠️ Skipping trade archival due to reconciliation failure.")
 
@@ -286,21 +299,16 @@ def main(
         # Patch estimated fees with actual CFEE data before generating new signals
         # Runs T+1 reconciliation for trades older than 24 hours
         if not reconciliation_failed:
-            logger.info("Running fee reconciliation...")
-            fee_patch_start_time = time.time()
-            try:
-                patched_count = fee_patch.run()
-
-                if patched_count > 0:
-                    logger.info(
-                        f"✅ Fee reconciliation complete: {patched_count} trades updated"
-                    )
-                else:
-                    logger.info("✅ Fee reconciliation complete: No trades to update")
-            except Exception as e:
-                logger.error(f"Fee reconciliation failed: {e}")
-                metrics.record_failure("fee_patch", time.time() - fee_patch_start_time)
-                # Non-blocking - continue with signal generation
+            _run_pipeline(
+                fee_patch,
+                "fee_patch",
+                lambda count: logger.info(
+                    f"✅ Fee reconciliation complete: {count} trades updated"
+                    if count > 0
+                    else "✅ Fee reconciliation complete: No trades to update"
+                ),
+                metrics_collector=metrics,
+            )
         else:
             logger.warning("⚠️ Skipping fee reconciliation due to reconciliation failure.")
 
@@ -308,25 +316,16 @@ def main(
         # Patch $0.00 exit prices with actual fill prices from Alpaca
         # Runs for historical repair and daily reconciliation
         if not reconciliation_failed:
-            logger.info("Running exit price reconciliation...")
-            price_patch_start_time = time.time()
-            try:
-                patched_count = price_patch.run()
-
-                if patched_count > 0:
-                    logger.info(
-                        f"✅ Exit price reconciliation complete: {patched_count} trades repaired"
-                    )
-                else:
-                    logger.info(
-                        "✅ Exit price reconciliation complete: No trades to repair"
-                    )
-            except Exception as e:
-                logger.error(f"Exit price reconciliation failed: {e}")
-                metrics.record_failure(
-                    "price_patch", time.time() - price_patch_start_time
-                )
-                # Non-blocking - continue with signal generation
+            _run_pipeline(
+                price_patch,
+                "price_patch",
+                lambda count: logger.info(
+                    f"✅ Exit price reconciliation complete: {count} trades repaired"
+                    if count > 0
+                    else "✅ Exit price reconciliation complete: No trades to repair"
+                ),
+                metrics_collector=metrics,
+            )
         else:
             logger.warning(
                 "⚠️ Skipping exit price reconciliation due to reconciliation failure."

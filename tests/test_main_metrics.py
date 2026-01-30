@@ -1,3 +1,4 @@
+from contextlib import ExitStack
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -7,28 +8,35 @@ from crypto_signals.main import main
 @pytest.fixture
 def mock_deps_metrics():
     """Mock dependencies for metric testing."""
-    with (
-        patch("crypto_signals.main.get_metrics_collector") as mock_get_metrics,
-        patch("crypto_signals.main.get_settings") as mock_settings,
-        patch("crypto_signals.main.PositionRepository") as mock_pos_repo,
-        patch("crypto_signals.main.ExecutionEngine") as mock_exec_engine,
-        patch("crypto_signals.main.SignalGenerator"),
-        patch("crypto_signals.main.SignalRepository"),
-        patch("crypto_signals.main.MarketDataProvider"),
-        patch("crypto_signals.main.DiscordClient"),
-        patch("crypto_signals.main.init_secrets", return_value=True),
-        patch("crypto_signals.main.JobLockRepository"),
-        patch("crypto_signals.main.AssetValidationService"),
-        patch("crypto_signals.main.StateReconciler"),
-        patch("crypto_signals.main.TradeArchivalPipeline"),
-        patch("crypto_signals.main.FeePatchPipeline"),
-        patch("crypto_signals.main.PricePatchPipeline"),
-        patch("crypto_signals.main.JobMetadataRepository"),
-        patch("crypto_signals.main.get_stock_data_client"),
-        patch("crypto_signals.main.get_crypto_data_client"),
-        patch("crypto_signals.main.get_trading_client"),
-        patch("crypto_signals.main.AccountSnapshotPipeline"),
-    ):
+    with ExitStack() as stack:
+        mock_get_metrics = stack.enter_context(
+            patch("crypto_signals.main.get_metrics_collector")
+        )
+        mock_settings = stack.enter_context(patch("crypto_signals.main.get_settings"))
+        mock_pos_repo = stack.enter_context(
+            patch("crypto_signals.main.PositionRepository")
+        )
+        mock_exec_engine = stack.enter_context(
+            patch("crypto_signals.main.ExecutionEngine")
+        )
+        stack.enter_context(patch("crypto_signals.main.SignalGenerator"))
+        stack.enter_context(patch("crypto_signals.main.SignalRepository"))
+        stack.enter_context(patch("crypto_signals.main.MarketDataProvider"))
+        stack.enter_context(patch("crypto_signals.main.DiscordClient"))
+        stack.enter_context(patch("crypto_signals.main.init_secrets", return_value=True))
+        stack.enter_context(patch("crypto_signals.main.JobLockRepository"))
+        stack.enter_context(patch("crypto_signals.main.AssetValidationService"))
+        stack.enter_context(patch("crypto_signals.main.StateReconciler"))
+        stack.enter_context(patch("crypto_signals.main.TradeArchivalPipeline"))
+        stack.enter_context(patch("crypto_signals.main.FeePatchPipeline"))
+        stack.enter_context(patch("crypto_signals.main.PricePatchPipeline"))
+        stack.enter_context(patch("crypto_signals.main.JobMetadataRepository"))
+        stack.enter_context(patch("crypto_signals.main.get_stock_data_client"))
+        stack.enter_context(patch("crypto_signals.main.get_crypto_data_client"))
+        stack.enter_context(patch("crypto_signals.main.get_trading_client"))
+        stack.enter_context(patch("crypto_signals.main.AccountSnapshotPipeline"))
+        stack.enter_context(patch("crypto_signals.main.StrategySyncPipeline"))
+
         # Configure Metrics Mock
         mock_metrics = MagicMock()
         mock_metrics.get_summary.return_value = {}
