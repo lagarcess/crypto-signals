@@ -1,11 +1,11 @@
-from unittest.mock import MagicMock, patch
-import pytest
 from datetime import date
+from unittest.mock import MagicMock, patch
+
 from crypto_signals.domain.schemas import AssetClass, OrderSide, Signal, SignalStatus
 from crypto_signals.engine.execution import ExecutionEngine
 
-class TestExecutionAccountID:
 
+class TestExecutionAccountID:
     def test_account_id_is_used_instead_of_hardcoded_string(self):
         """
         Verify that ExecutionEngine uses the real Alpaca Account UUID
@@ -50,18 +50,21 @@ class TestExecutionAccountID:
             side=OrderSide.BUY,
         )
 
-        with patch("crypto_signals.engine.execution.get_settings", return_value=mock_settings), \
-             patch("crypto_signals.engine.execution.RiskEngine") as MockRiskEngine:
-
+        with (
+            patch(
+                "crypto_signals.engine.execution.get_settings", return_value=mock_settings
+            ),
+            patch("crypto_signals.engine.execution.RiskEngine") as MockRiskEngine,
+        ):
             # Configure RiskEngine to PASS
             mock_risk_instance = MockRiskEngine.return_value
             from crypto_signals.engine.risk import RiskCheckResult
+
             mock_risk_instance.validate_signal.return_value = RiskCheckResult(passed=True)
 
             # Initialize Engine
             engine = ExecutionEngine(
-                trading_client=mock_trading_client,
-                repository=MagicMock()
+                trading_client=mock_trading_client, repository=MagicMock()
             )
 
             # Execute Signal
@@ -71,5 +74,31 @@ class TestExecutionAccountID:
             assert position is not None
             # THIS ASSERTION SHOULD FAIL until the fix is implemented
             # Currently it returns "paper"
-            assert position.account_id == expected_account_id, \
-                f"Expected account_id {expected_account_id}, but got {position.account_id}"
+            assert (
+                position.account_id == expected_account_id
+            ), f"Expected account_id {expected_account_id}, but got {position.account_id}"
+
+    def test_account_id_defaults_to_unknown_on_error(self):
+        """
+        Verify that ExecutionEngine defaults account_id to 'unknown'
+        when the Alpaca API fails.
+        """
+        mock_headers = MagicMock()
+        mock_headers.is_paper_trading = True
+
+        mock_trading_client = MagicMock()
+        from alpaca.common.exceptions import APIError
+
+        # Simulate API Error
+        mock_trading_client.get_account.side_effect = APIError("API Connection Failed")
+
+        with patch("crypto_signals.engine.execution.get_settings") as mock_settings_ref:
+            mock_settings = mock_settings_ref.return_value
+            mock_settings.ENVIRONMENT = "PROD"
+
+            # Allow initialization despite error (via try-except block)
+            engine = ExecutionEngine(
+                trading_client=mock_trading_client, repository=MagicMock()
+            )
+
+            assert engine.account_id == "unknown"
