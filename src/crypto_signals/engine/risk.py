@@ -167,7 +167,13 @@ class RiskEngine:
                         pos.symbol, pos.asset_class, lookback_days=90
                     )
                     if "close" not in pos_bars.columns:
-                        continue
+                        logger.warning(
+                            f"Market data for existing position {pos.symbol} is missing 'close' price. Blocking trade as a precaution."
+                        )
+                        return RiskCheckResult(
+                            passed=False,
+                            reason=f"Could not verify correlation due to missing data for {pos.symbol}",
+                        )
 
                     pos_series = pos_bars["close"]
 

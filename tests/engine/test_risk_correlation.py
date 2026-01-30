@@ -32,16 +32,11 @@ class TestRiskCorrelation:
             settings.MAX_DAILY_DRAWDOWN_PCT = 0.05
             settings.MIN_ASSET_BP_USD = 100.0
             m.setattr("crypto_signals.engine.risk.get_settings", lambda: settings)
-            # This will fail until RiskEngine is updated to accept market_provider
-            # But we are writing tests first.
-            try:
-                return RiskEngine(trading_client=mock_client, repository=mock_repo, market_provider=mock_market_provider)
-            except TypeError:
-                # Fallback for initial run before implementation
-                engine = RiskEngine(trading_client=mock_client, repository=mock_repo)
-                # Manually inject for testing if not supported yet
-                engine.market_provider = mock_market_provider
-                return engine
+            return RiskEngine(
+                trading_client=mock_client,
+                repository=mock_repo,
+                market_provider=mock_market_provider,
+            )
 
     def create_signal(self, symbol="BTC/USD"):
         return Signal(
