@@ -138,11 +138,6 @@ class StrategySyncPipeline(BigQueryPipelineBase):
         1. Close old records (Update valid_to)
         2. Insert new records
         """
-        if not self._check_table_exists(self.fact_table_id):
-             # If table missing, we should probably fail or handle it.
-             # Base class raises error if fact table missing in `_execute_merge`.
-             pass
-
         logger.info(f"[{self.job_name}] Executing SCD Type 2 Merge...")
 
         # 1. Update existing current records that have a new version in staging

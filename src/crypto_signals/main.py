@@ -187,6 +187,7 @@ def main(
                 )
             else:
                 logger.info("✅ Strategy Sync complete: No changes detected.")
+            metrics.record_success("strategy_sync", time.time() - strategy_sync_start)
         except Exception as e:
             logger.error(f"Strategy Sync failed: {e}")
             metrics.record_failure("strategy_sync", time.time() - strategy_sync_start)
