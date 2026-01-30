@@ -223,6 +223,12 @@ class ReconciliationReport(BaseModel):
 # =============================================================================
 
 
+class ConfluenceConfig(BaseModel):
+    """Configuration for confluence factors."""
+    rsi_threshold: Optional[float] = None
+    volume_multiplier: Optional[float] = None
+
+
 class StrategyConfig(BaseModel):
     """
     Strategy configuration stored in Firestore dim_strategies collection.
@@ -254,11 +260,11 @@ class StrategyConfig(BaseModel):
         default_factory=dict,
         description="Risk management parameters (stop_loss_pct, take_profit_pct, etc.)",
     )
-    confluence_config: Dict[str, Any] = Field(
-        default_factory=dict,
+    confluence_config: ConfluenceConfig = Field(
+        default_factory=ConfluenceConfig,
         description="Configuration for confluence factors (e.g., RSI thresholds, Volume multipliers)",
     )
-    pattern_overrides: Dict[str, Any] = Field(
+    pattern_overrides: Dict[str, Dict[str, Any]] = Field(
         default_factory=dict,
         description="Symbol-specific overrides for pattern parameters (e.g., custom stop loss for BTC)",
     )
