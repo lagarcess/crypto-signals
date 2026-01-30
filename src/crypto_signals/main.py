@@ -10,6 +10,7 @@ import signal
 import sys
 import time
 from datetime import datetime, timezone
+from typing import Any, Callable
 
 import typer
 from loguru import logger
@@ -68,7 +69,9 @@ warmup_jit()
 shutdown_requested = False
 
 
-def _run_pipeline(pipeline, name: str, success_log_fn, metrics_collector=None) -> None:
+def _run_pipeline(
+    pipeline, name: str, success_log_fn: Callable[[Any], None], metrics_collector=None
+) -> None:
     """
     Helper to run a pipeline with standardized logging and metrics.
 

@@ -10,7 +10,6 @@ import json
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 
-# from google.cloud import firestore
 from loguru import logger
 
 from crypto_signals.config import get_settings
@@ -107,7 +106,7 @@ class StrategySyncPipeline(BigQueryPipelineBase):
                     # Create Staging Record
                     staging_record = {
                         "strategy_id": strategy_id,
-                        "active": data.get("active", False),
+                        "active": data["active"],
                         "timeframe": data.get("timeframe", ""),
                         "asset_class": data.get("asset_class", "CRYPTO"),
                         "assets": data.get("assets", []),
