@@ -78,11 +78,14 @@ else
              echo -e "${GREEN}✅ Docker build successful.${NC}"
 
              echo "   Running smoke test..."
-             if docker run --rm -e DISABLE_SECRET_MANAGER=true -e ENVIRONMENT=DEV crypto-signals:preflight python -m crypto_signals.main --smoke-test > /dev/null 2>&1; then
+             if docker run --rm --env-file .env -e DISABLE_SECRET_MANAGER=true -e ENVIRONMENT=DEV crypto-signals:preflight python -m crypto_signals.main --smoke-test > /dev/null 2>&1; then
                  echo -e "${GREEN}✅ Smoke test passed.${NC}"
              else
                  echo -e "${RED}❌ Smoke test failed!${NC}"
-                 # exit 1  <-- strict mode off for now
+                 # Rerun without suppression to show error
+                 echo -e "${YELLOW}   Error Details:${NC}"
+                 docker run --rm --env-file .env -e DISABLE_SECRET_MANAGER=true -e ENVIRONMENT=DEV crypto-signals:preflight python -m crypto_signals.main --smoke-test || true
+                 # exit 1
              fi
         else
              echo -e "${RED}❌ Docker build failed.${NC}"
