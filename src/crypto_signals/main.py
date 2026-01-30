@@ -219,13 +219,15 @@ def main(
         last_snapshot = job_metadata_repo.get_last_run_date("account_snapshot")
 
         if last_snapshot != today:
+
+            def log_and_update(_):
+                logger.info("✅ Account Snapshot Pipeline completed successfully.")
+                job_metadata_repo.update_last_run_date("account_snapshot", today)
+
             _run_pipeline(
                 account_snapshot,
                 "account_snapshot",
-                lambda _: [
-                    logger.info("✅ Account Snapshot Pipeline completed successfully."),
-                    job_metadata_repo.update_last_run_date("account_snapshot", today),
-                ],
+                log_and_update,
                 metrics_collector=metrics,
             )
         else:
