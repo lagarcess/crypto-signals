@@ -42,7 +42,8 @@ for ISSUE_NUM in "$@"; do
     echo ""
 done
 
-echo "=" 80
+printf '%.0s=' {1..80}
+echo ""
 echo "✅ Successfully processed: $SUCCESS_COUNT issues"
 echo "❌ Failed: $FAIL_COUNT issues"
 echo ""
