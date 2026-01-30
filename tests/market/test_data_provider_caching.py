@@ -54,7 +54,22 @@ def test_caching_disabled_by_default(provider, mock_clients):
     provider.get_daily_bars("AAPL", AssetClass.EQUITY, lookback_days=10)
 
     # Should call API twice (no caching)
+    # Should call API twice (no caching)
     assert stock_client.get_stock_bars.call_count == 2
+
+
+def test_memory_location_is_none_by_default():
+    """
+    Regression Test: Ensure joblib memory location is None by default.
+
+    This is critical for production containers where the application user
+    may not have permission to create the .gemini/cache directory.
+    """
+    from crypto_signals.market.data_provider import memory
+
+    # When cache is disabled (default), location must be None
+    # to prevent directory creation attempts at import time.
+    assert memory.location is None
 
 
 def test_caching_enabled(mock_clients):
