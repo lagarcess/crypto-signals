@@ -100,10 +100,18 @@ class ExecutionEngine:
 
         # Fetch Account ID for data joins (Issue #182)
         try:
+            from alpaca.common.exceptions import APIError
+
             self.account_id = str(self.alpaca.get_account().id)
-        except Exception as e:
+        except APIError as e:
             logger.warning(
                 f"Failed to fetch Alpaca account ID: {e}. Defaulting to 'unknown'.",
+                extra={"error": str(e)},
+            )
+            self.account_id = "unknown"
+        except Exception as e:
+            logger.error(
+                f"An unexpected error occurred while fetching Alpaca account ID: {e}. Defaulting to 'unknown'.",
                 extra={"error": str(e)},
             )
             self.account_id = "unknown"

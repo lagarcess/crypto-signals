@@ -69,7 +69,31 @@ class TestExecutionAccountID:
 
             # Verification
             assert position is not None
-            # THIS ASSERTION SHOULD FAIL until the fix is implemented
-            # Currently it returns "paper"
             assert position.account_id == expected_account_id, \
                 f"Expected account_id {expected_account_id}, but got {position.account_id}"
+
+    def test_account_id_defaults_to_unknown_on_api_error(self):
+        """
+        Verify that ExecutionEngine sets account_id to 'unknown' when
+        fetching the account ID fails.
+        """
+        # Mock Settings
+        mock_settings = MagicMock()
+        mock_settings.ENVIRONMENT = "PROD"
+        mock_settings.is_paper_trading = True
+
+        # Mock Trading Client to raise exception
+        mock_trading_client = MagicMock()
+        mock_trading_client.get_account.side_effect = Exception("API Connection Failed")
+
+        with patch("crypto_signals.engine.execution.get_settings", return_value=mock_settings), \
+             patch("crypto_signals.engine.execution.RiskEngine"):
+
+            # Initialize Engine
+            engine = ExecutionEngine(
+                trading_client=mock_trading_client,
+                repository=MagicMock()
+            )
+
+            # Verify fallback
+            assert engine.account_id == "unknown"
