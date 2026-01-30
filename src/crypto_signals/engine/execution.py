@@ -98,9 +98,19 @@ class ExecutionEngine:
             self.alpaca, self.repo, market_provider=market_provider
         )
 
+        # Fetch Account ID for data joins (Issue #182)
+        try:
+            self.account_id = str(self.alpaca.get_account().id)
+        except Exception as e:
+            logger.warning(
+                f"Failed to fetch Alpaca account ID: {e}. Defaulting to 'unknown'.",
+                extra={"error": str(e)},
+            )
+            self.account_id = "unknown"
+
         # Environment Logging
         logger.info(
-            f"Execution Engine Initialized [Env: {settings.ENVIRONMENT} | Mode: {'PAPER' if settings.is_paper_trading else 'LIVE'}]"
+            f"Execution Engine Initialized [Env: {settings.ENVIRONMENT} | Mode: {'PAPER' if settings.is_paper_trading else 'LIVE'} | Account: {self.account_id}]"
         )
 
     def execute_signal(self, signal: Signal) -> Optional[Position]:
@@ -219,7 +229,7 @@ class ExecutionEngine:
             position = Position(
                 position_id=signal.signal_id,
                 ds=signal.ds,
-                account_id="paper",
+                account_id=self.account_id,
                 symbol=signal.symbol,
                 asset_class=signal.asset_class,
                 signal_id=signal.signal_id,
@@ -321,7 +331,7 @@ class ExecutionEngine:
             position = Position(
                 position_id=signal.signal_id,
                 ds=signal.ds,
-                account_id="paper",  # All trades use paper account; TEST_MODE only controls Discord routing
+                account_id=self.account_id,
                 symbol=signal.symbol,
                 asset_class=signal.asset_class,
                 signal_id=signal.signal_id,
