@@ -9,7 +9,8 @@ import atexit
 import signal
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+from typing import Any, Callable, Optional, Protocol
 
 import typer
 from loguru import logger
@@ -35,6 +36,7 @@ from crypto_signals.market.asset_service import AssetValidationService
 from crypto_signals.market.data_provider import MarketDataProvider
 from crypto_signals.notifications.discord import DiscordClient
 from crypto_signals.observability import (
+    MetricsCollector,
     configure_logging,
     console,
     create_execution_summary_table,
@@ -68,7 +70,21 @@ warmup_jit()
 shutdown_requested = False
 
 
-def _run_pipeline(pipeline, name: str, success_log_fn, metrics_collector=None) -> None:
+# Pipeline Protocol for type safety
+class Pipeline(Protocol):
+    """Protocol defining the interface for all pipelines."""
+
+    def run(self) -> Any:
+        """Execute the pipeline and return result."""
+        ...
+
+
+def _run_pipeline(
+    pipeline: Pipeline,
+    name: str,
+    success_log_fn: Callable[[Any], None],
+    metrics_collector: Optional["MetricsCollector"] = None,
+) -> None:
     """
     Helper to run a pipeline with standardized logging and metrics.
 
@@ -99,6 +115,24 @@ def signal_handler(signum, frame):
     signal_name = signal.Signals(signum).name
     logger.info(f"Received {signal_name} signal. Initiating graceful shutdown...")
     shutdown_requested = True
+
+
+def _create_account_snapshot_callback(job_metadata_repo, today_date: date):
+    """Create callback for account snapshot pipeline success.
+
+    Args:
+        job_metadata_repo: Repository for updating job metadata
+        today_date: Today's date for metadata update
+
+    Returns:
+        Callback function for _run_pipeline
+    """
+
+    def callback(_result):
+        logger.info("✅ Account Snapshot Pipeline completed successfully.")
+        job_metadata_repo.update_last_run_date("account_snapshot", today_date)
+
+    return callback
 
 
 def main(
@@ -222,10 +256,7 @@ def main(
             _run_pipeline(
                 account_snapshot,
                 "account_snapshot",
-                lambda _: [
-                    logger.info("✅ Account Snapshot Pipeline completed successfully."),
-                    job_metadata_repo.update_last_run_date("account_snapshot", today),
-                ],
+                _create_account_snapshot_callback(job_metadata_repo, today),
                 metrics_collector=metrics,
             )
         else:
