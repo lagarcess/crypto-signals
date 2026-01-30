@@ -358,6 +358,18 @@ poetry run pre-commit install
 poetry run pre-commit run --all-files
 ```
 
+### Preflight Verification (Recommended)
+
+Run the comprehensive preflight script before creating a PR. This automates environment checks, regression tests, and container verification.
+
+```bash
+# Run generic preflight checks (Git Bash)
+./scripts/preflight.sh
+
+# Skip container checks (if Docker is not running)
+./scripts/preflight.sh --skip-container
+```
+
 ### Pre-Push Hook (Recommended)
 
 **Automatically runs tests before every push** to prevent CI failures.
