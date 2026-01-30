@@ -21,6 +21,7 @@ from alpaca.data.requests import (
     StockLatestTradeRequest,
 )
 from alpaca.data.timeframe import TimeFrame
+from crypto_signals.config import get_settings
 from crypto_signals.domain.schemas import AssetClass
 from crypto_signals.market.exceptions import MarketDataError
 from crypto_signals.observability import log_api_error
@@ -126,19 +127,33 @@ class MarketDataProvider:
         Raises:
             MarketDataError: If data is empty or fetch fails
         """
-        # Calculate cache key based on current hour to ensure freshness
-        # This acts as a TTL for the joblib cache
-        cache_key = datetime.now(timezone.utc).strftime("%Y-%m-%d-%H")
+        settings = get_settings()
 
+        # If caching is enabled, use the cached wrapper.
+        # Otherwise, call the core function directly.
         try:
-            return _get_daily_bars_impl(
-                symbol=symbol,
-                asset_class=asset_class,
-                lookback_days=lookback_days,
-                stock_client=self.stock_client,
-                crypto_client=self.crypto_client,
-                cache_key=cache_key,
-            )
+            if settings.ENABLE_MARKET_DATA_CACHE:
+                # Calculate cache key based on current DATE (midnight UTC) to ensure freshness
+                # This acts as a TTL for the joblib cache
+                cache_key = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+                return _fetch_bars_cached(
+                    symbol=symbol,
+                    asset_class=asset_class,
+                    lookback_days=lookback_days,
+                    stock_client=self.stock_client,
+                    crypto_client=self.crypto_client,
+                    cache_key=cache_key,
+                )
+            else:
+                return _fetch_bars_core(
+                    symbol=symbol,
+                    asset_class=asset_class,
+                    lookback_days=lookback_days,
+                    stock_client=self.stock_client,
+                    crypto_client=self.crypto_client,
+                    cache_key="no-cache",
+                )
         except MarketDataError:
             raise
         except Exception as e:
@@ -187,8 +202,7 @@ class MarketDataProvider:
                 f"Failed to fetch latest price for {symbol}: {e}"
             ) from e
 
-@memory.cache(ignore=["stock_client", "crypto_client"])
-def _get_daily_bars_impl(
+def _fetch_bars_core(
     symbol: str,
     asset_class: AssetClass,
     lookback_days: int,
@@ -197,7 +211,7 @@ def _get_daily_bars_impl(
     cache_key: str,
 ) -> pd.DataFrame:
     """
-    Cached implementation of get_daily_bars.
+    Core implementation of get_daily_bars (uncached).
 
     Args:
         symbol: Ticker symbol
@@ -205,7 +219,7 @@ def _get_daily_bars_impl(
         lookback_days: Lookback period
         stock_client: Alpaca Stock Client
         crypto_client: Alpaca Crypto Client
-        cache_key: Time-based key for cache invalidation (e.g. hourly timestamp)
+        cache_key: Passed for compatibility with cached version, ignored here.
     """
     try:
         end_dt = datetime.now(timezone.utc)
@@ -251,6 +265,11 @@ def _get_daily_bars_impl(
     except MarketDataError:
         raise
     except Exception as e:
-        # We catch exceptions to wrap them, but also to ensure joblib doesn't cache failures?
-        # Joblib does not cache exceptions by default.
-        raise MarketDataError(f"Error in _get_daily_bars_impl: {e}") from e
+        raise MarketDataError(f"Error in _fetch_bars_core: {e}") from e
+
+
+# Create a cached version of the core function
+_fetch_bars_cached = memory.cache(
+    _fetch_bars_core,
+    ignore=["stock_client", "crypto_client"],
+)
