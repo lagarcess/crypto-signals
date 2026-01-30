@@ -8,14 +8,14 @@
 ## 1. Hot Storage (Firestore)
 
 ### `dim_strategies` (Strategy Entity)
-*Status: Implemented (Firestore) | Relationship: One-to-Many with `live_signals`*
-The "Brain" of the system.
+*Status: Implemented (Firestore + BigQuery SCD Type 2) | Relationship: One-to-Many with `live_signals`*
+The "Brain" of the system. Now synced to BigQuery via `StrategySyncPipeline` (Issue #195).
 *   **`strategy_id`** (PK): Unique ID (e.g., `btc_daily_hammer_v1`).
 *   **`active`**: Kill switch (Boolean).
 *   **`assets`**: List of tradable symbols.
 *   **`risk_params`**: JSON. Rules for position sizing (`stop_loss_pct`, `risk_per_trade`).
-*   **`confluence_config`**: JSON. (Issue #198) Filters required for entry (e.g., `{"min_adx": 25, "min_volume_ratio": 1.5}`).
-*   **`pattern_overrides`**: JSON. (Issue #198) Specific tweaks per pattern type (e.g., `{"Bullish Engulfing": {"strict_trend": true}}`).
+*   **`confluence_config`**: JSON. (Issue #198 - In Progress) Filters required for entry (e.g., `{"min_adx": 25, "min_volume_ratio": 1.5}`).
+*   **`pattern_overrides`**: JSON. (Issue #198 - In Progress) Specific tweaks per pattern type (e.g., `{"Bullish Engulfing": {"strict_trend": true}}`).
 *   **`doc_id`**: Auto-generated document ID.
 
 ### `dim_assets` (Asset Universe)
@@ -154,7 +154,8 @@ Defines the tradable universe and asset-specific constraints.
 *   **`max_drawdown_daily`**: Worst intraday drop.
 
 ### `snapshot_accounts` (Account Health Metrics)
-*Status: Planned (Loop D, Issue #196) | Relationship: Periodic Snapshot of Account State*
+*Status: Implemented (Loop D, Issue #196 ✅) | Relationship: Periodic Snapshot of Account State*
+Daily snapshots captured via `AccountSnapshotPipeline`.
 *   **`account_id`**
 *   **`snapshot_time`**
 *   **Equity Metrics**:

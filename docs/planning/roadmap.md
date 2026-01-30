@@ -28,9 +28,9 @@ Evolve the system from a simple signal generator to a robust, strategy-agnostic 
 - [x] **#191**: Critical: Schema Mismatch in fact_trades (Missing Columns) - *Resolved via `migrate-schema` CLI*.
 - [x] **#192**: Critical: Order Execution Failed (Cost Basis < $10) - *Resolved via `_is_notional_value_sufficient()` check*.
 - [x] **#193**: Critical: Discord Notification Failed (Forum Thread Requirement) - *Resolved via `_generate_thread_name()` helper*.
-- [ ] **#194**: Bug: False Negative in Execution Summary (Zero Errors Reported).
-- [ ] **#195**: Feature: Strategy Sync Pipeline (SCD Type 2).
-- [ ] **#196**: Critical: Account Snapshot Orchestration (Loop D).
+- [x] **#194**: Bug: False Negative Error Reporting - *Resolved via metrics refactor* (PR #204, #207).
+- [x] **#195**: Feature: Strategy Sync Pipeline (SCD Type 2) - *Implemented* (PR #206, #207).
+- [x] **#196**: Critical: Account Snapshot Orchestration (Loop D) - *Implemented* (PR #205, #207).
 - [ ] **#197**: Ops: Metadata Enrichment (Git Hash & Config).
 - [ ] **#198**: Tech Debt: Formalize Defaults in `dim_strategies`.
 
