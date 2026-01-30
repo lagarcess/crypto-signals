@@ -254,6 +254,14 @@ class StrategyConfig(BaseModel):
         default_factory=dict,
         description="Risk management parameters (stop_loss_pct, take_profit_pct, etc.)",
     )
+    confluence_config: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Configuration for confluence factors (e.g., RSI thresholds, Volume multipliers)",
+    )
+    pattern_overrides: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Symbol-specific overrides for pattern parameters (e.g., custom stop loss for BTC)",
+    )
 
 
 # =============================================================================
