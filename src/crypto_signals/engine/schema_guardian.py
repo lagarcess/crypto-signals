@@ -74,16 +74,9 @@ class SchemaGuardian:
             # table.clustering_fields returns a list of strings or None
             actual_clustering = table.clustering_fields or []
             if actual_clustering != clustering_fields:
-                clustering_error = (
-                    f"Clustering mismatch: Expected {clustering_fields}, Found {actual_clustering}"
-                )
+                clustering_error = f"Clustering mismatch: Expected {clustering_fields}, Found {actual_clustering}"
 
-        if (
-            missing_columns
-            or type_mismatches
-            or partitioning_error
-            or clustering_error
-        ):
+        if missing_columns or type_mismatches or partitioning_error or clustering_error:
             # Format the error messages for logging, but return the structured data
             error_messages = []
             if missing_columns:

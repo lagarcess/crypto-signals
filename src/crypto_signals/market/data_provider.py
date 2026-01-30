@@ -202,6 +202,7 @@ class MarketDataProvider:
                 f"Failed to fetch latest price for {symbol}: {e}"
             ) from e
 
+
 def _fetch_bars_core(
     symbol: str,
     asset_class: AssetClass,
