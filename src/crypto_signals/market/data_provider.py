@@ -104,7 +104,7 @@ class MarketDataProvider:
     @retry_with_backoff(max_retries=3, initial_delay=1.0, backoff_factor=2.0)
     def get_daily_bars(
         self,
-        symbol: str,
+        symbol: str | list[str],
         asset_class: AssetClass,
         lookback_days: int = 365,
     ) -> pd.DataFrame:
@@ -112,7 +112,7 @@ class MarketDataProvider:
         Fetch daily bars for a symbol.
 
         Args:
-            symbol: Ticker symbol (e.g. "BTC/USD", "AAPL")
+            symbol: Ticker symbol (e.g. "BTC/USD", "AAPL") or a list of symbols.
             asset_class: Asset class (CRYPTO or EQUITY)
             lookback_days: Number of days of history to fetch
 

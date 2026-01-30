@@ -184,6 +184,11 @@ class Settings(BaseSettings):
         description="Minimum buying power required to perform a trade.",
     )
 
+    MAX_ASSET_CORRELATION: float = Field(
+        default=0.8,
+        description="Maximum correlation allowed between a new position and an existing one.",
+    )
+
     ENABLE_EQUITIES: bool = Field(
         default=False,
         description=(

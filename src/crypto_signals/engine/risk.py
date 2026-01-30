@@ -1,9 +1,11 @@
 from typing import NamedTuple, Optional
 
+import pandas as pd
 from alpaca.trading.client import TradingClient
 from alpaca.trading.models import TradeAccount
 from crypto_signals.config import get_settings
 from crypto_signals.domain.schemas import AssetClass, Signal
+from crypto_signals.market.data_provider import MarketDataProvider
 from crypto_signals.repository.firestore import PositionRepository
 from loguru import logger
 
@@ -23,9 +25,15 @@ class RiskEngine:
     3. Daily Account Drawdown Limits
     """
 
-    def __init__(self, trading_client: TradingClient, repository: PositionRepository):
+    def __init__(
+        self,
+        trading_client: TradingClient,
+        repository: PositionRepository,
+        market_data_provider: MarketDataProvider,
+    ):
         self.alpaca = trading_client
         self.repo = repository
+        self.market_data_provider = market_data_provider
         self.settings = get_settings()
 
     def validate_signal(self, signal: Signal) -> RiskCheckResult:
@@ -52,6 +60,11 @@ class RiskEngine:
         )
         if not bp_check.passed:
             return bp_check
+
+        # 4. Correlation Risk (Portfolio Concentration)
+        correlation_check = self.check_correlation_risk(signal)
+        if not correlation_check.passed:
+            return correlation_check
 
         return RiskCheckResult(passed=True)
 
@@ -157,4 +170,67 @@ class RiskEngine:
             logger.error(f"Risk Check Failed (Buying Power): {e}")
             return RiskCheckResult(
                 passed=False, reason=f"Error checking buying power: {e}"
+            )
+
+    def check_correlation_risk(self, signal: Signal) -> RiskCheckResult:
+        """
+        Gate: Correlation Risk.
+        Prevents adding a new position that is highly correlated with existing open positions.
+        """
+        try:
+            open_positions = self.repo.get_open_positions(
+                asset_class=signal.asset_class
+            )
+            if not open_positions:
+                return RiskCheckResult(passed=True)
+
+            # Fetch data for the new signal
+            new_symbol_bars = self.market_data_provider.get_daily_bars(
+                symbol=signal.symbol,
+                asset_class=signal.asset_class,
+                lookback_days=90,
+            )
+            new_symbol_closes = new_symbol_bars[["close"]].rename(
+                columns={"close": signal.symbol}
+            )
+
+            # Batch fetch data for all existing positions
+            existing_symbols = [p.symbol for p in open_positions]
+            existing_symbols_bars = self.market_data_provider.get_daily_bars(
+                symbol=existing_symbols,
+                asset_class=signal.asset_class,
+                lookback_days=90,
+            )
+
+            for position in open_positions:
+                # Extract data for the specific existing position from the batch
+                if isinstance(existing_symbols_bars.index, pd.MultiIndex):
+                    position_bars = existing_symbols_bars.loc[position.symbol]
+                else:
+                    position_bars = existing_symbols_bars
+
+                existing_symbol_closes = position_bars[["close"]].rename(
+                    columns={"close": position.symbol}
+                )
+
+                # Perform correlation check
+                merged_closes = pd.concat(
+                    [new_symbol_closes, existing_symbol_closes], axis=1
+                ).dropna()
+                correlation = merged_closes.corr().iloc[0, 1]
+
+                if correlation > self.settings.MAX_ASSET_CORRELATION:
+                    reason = (
+                        f"High correlation with open position {position.symbol}: "
+                        f"{correlation:.2f} > {self.settings.MAX_ASSET_CORRELATION}"
+                    )
+                    logger.warning(reason)
+                    return RiskCheckResult(passed=False, reason=reason)
+
+            return RiskCheckResult(passed=True)
+
+        except Exception as e:
+            logger.error(f"Risk Check Failed (Correlation): {e}")
+            return RiskCheckResult(
+                passed=False, reason=f"Error checking correlation: {e}"
             )

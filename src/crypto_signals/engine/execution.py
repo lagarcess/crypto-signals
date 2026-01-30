@@ -24,7 +24,12 @@ from alpaca.trading.requests import (
     StopLossRequest,
     TakeProfitRequest,
 )
-from crypto_signals.config import get_settings, get_trading_client
+from crypto_signals.config import (
+    get_crypto_data_client,
+    get_settings,
+    get_stock_data_client,
+    get_trading_client,
+)
 from crypto_signals.domain.schemas import (
     AssetClass,
     ExitReason,
@@ -37,6 +42,7 @@ from crypto_signals.domain.schemas import (
     OrderSide as DomainOrderSide,
 )
 from crypto_signals.engine.risk import RiskEngine
+from crypto_signals.market.data_provider import MarketDataProvider
 from crypto_signals.observability import console
 from crypto_signals.repository.firestore import PositionRepository
 from loguru import logger
@@ -78,6 +84,7 @@ class ExecutionEngine:
         trading_client: Optional[TradingClient] = None,
         repository: Optional[PositionRepository] = None,
         reconciler: Optional[Any] = None,
+        market_data_provider: Optional[MarketDataProvider] = None,
     ):
         """
         Initialize the ExecutionEngine.
@@ -91,8 +98,15 @@ class ExecutionEngine:
 
         # Initialize Repo for Risk Engine
         self.repo = repository if repository else PositionRepository()
+        self.market_data_provider = (
+            market_data_provider
+            if market_data_provider
+            else MarketDataProvider(get_stock_data_client(), get_crypto_data_client())
+        )
         self.reconciler = reconciler
-        self.risk_engine = RiskEngine(self.alpaca, self.repo)
+        self.risk_engine = RiskEngine(
+            self.alpaca, self.repo, self.market_data_provider
+        )
 
         # Environment Logging
         logger.info(
