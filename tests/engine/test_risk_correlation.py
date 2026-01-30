@@ -113,6 +113,25 @@ class TestRiskCorrelation:
         eth_df = pd.DataFrame({"close": eth_prices}, index=dates)
 
         def get_bars_side_effect(symbol, asset_class, lookback_days=90):
+            # Handle list input (new batching behavior)
+            if isinstance(symbol, list):
+                dfs = []
+                keys = []
+                for s in symbol:
+                    if s == "BTC/USD":
+                        dfs.append(btc_df)
+                        keys.append(s)
+                    elif s == "ETH/USD":
+                        dfs.append(eth_df)
+                        keys.append(s)
+
+                if not dfs:
+                    return pd.DataFrame()
+
+                # Create MultiIndex DF
+                return pd.concat(dfs, keys=keys, names=["symbol", "timestamp"])
+
+            # Handle single input (fallback or old behavior if any)
             if symbol == "BTC/USD":
                 return btc_df
             elif symbol == "ETH/USD":
@@ -148,6 +167,20 @@ class TestRiskCorrelation:
         eth_df = pd.DataFrame({"close": eth_prices}, index=dates)
 
         def get_bars_side_effect(symbol, asset_class, lookback_days=90):
+            if isinstance(symbol, list):
+                dfs = []
+                keys = []
+                for s in symbol:
+                    if s == "BTC/USD":
+                        dfs.append(btc_df)
+                        keys.append(s)
+                    elif s == "ETH/USD":
+                        dfs.append(eth_df)
+                        keys.append(s)
+                if not dfs:
+                    return pd.DataFrame()
+                return pd.concat(dfs, keys=keys, names=["symbol", "timestamp"])
+
             if symbol == "BTC/USD":
                 return btc_df
             elif symbol == "ETH/USD":
@@ -179,4 +212,7 @@ class TestRiskCorrelation:
         result = risk_engine.check_correlation(signal)
         # Should fail safe (block)
         assert result.passed is False
-        assert "error checking correlation" in result.reason.lower()
+        assert (
+            "error checking correlation" in result.reason.lower()
+            or "market data missing" in result.reason.lower()
+        )
