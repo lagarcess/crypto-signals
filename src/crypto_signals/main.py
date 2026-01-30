@@ -9,7 +9,6 @@ import atexit
 import signal
 import sys
 import time
-import subprocess
 from datetime import datetime, timezone
 
 import typer
@@ -26,7 +25,6 @@ from crypto_signals.config import (
 from crypto_signals.domain.schemas import (
     AssetClass,
     ExitReason,
-    JobMetadata,
     SignalStatus,
     TradeStatus,
 )
@@ -68,34 +66,6 @@ warmup_jit()
 
 # Global flag for graceful shutdown
 shutdown_requested = False
-
-
-def _get_job_metadata(job_id: str) -> JobMetadata:
-    """Helper to create a JobMetadata object."""
-    settings = get_settings()
-    try:
-        git_hash = (
-            subprocess.check_output(["git", "rev-parse", "--short", "HEAD"])
-            .decode("ascii")
-            .strip()
-        )
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        logger.warning("Could not determine git hash. Defaulting to 'unknown'.")
-        git_hash = "unknown"
-
-    config_snapshot = {
-        "max_crypto_positions": settings.MAX_CRYPTO_POSITIONS,
-        "max_equity_positions": settings.MAX_EQUITY_POSITIONS,
-        "risk_per_trade": settings.RISK_PER_TRADE,
-        "enable_execution": settings.ENABLE_EXECUTION,
-    }
-    return JobMetadata(
-        job_id=job_id,
-        last_run_timestamp=datetime.now(timezone.utc),
-        git_hash=git_hash,
-        environment=settings.ENVIRONMENT,
-        config_snapshot=config_snapshot,
-    )
 
 
 def _run_pipeline(pipeline, name: str, success_log_fn, metrics_collector=None) -> None:
@@ -254,9 +224,7 @@ def main(
                 "account_snapshot",
                 lambda _: [
                     logger.info("✅ Account Snapshot Pipeline completed successfully."),
-                    job_metadata_repo.update_job_metadata(
-                        _get_job_metadata("account_snapshot")
-                    ),
+                    job_metadata_repo.update_last_run_date("account_snapshot", today),
                 ],
                 metrics_collector=metrics,
             )
@@ -274,7 +242,7 @@ def main(
                 f"Cleanup complete: {deleted_signals} signals, "
                 f"{deleted_rejected} rejected signals, {deleted_positions} positions."
             )
-            job_metadata_repo.update_job_metadata(_get_job_metadata("daily_cleanup"))
+            job_metadata_repo.update_last_run_date("daily_cleanup", today)
         else:
             logger.info("Daily cleanup has already run today. Skipping.")
 

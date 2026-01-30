@@ -15,7 +15,6 @@ from typing import Any, Dict, Optional, cast
 from crypto_signals.config import get_settings
 from crypto_signals.domain.schemas import (
     AssetClass,
-    JobMetadata,
     Position,
     Signal,
     SignalStatus,
@@ -719,20 +718,21 @@ class JobMetadataRepository:
         snapshot = doc_ref.get()
         if snapshot.exists:
             data = snapshot.to_dict()
-            last_run_timestamp = data.get("last_run_timestamp")
-            if last_run_timestamp:
-                return last_run_timestamp.date()
+            last_run_str = data.get("last_run_date")
+            if last_run_str:
+                return date.fromisoformat(last_run_str)
         return None
 
-    def update_job_metadata(self, metadata: JobMetadata) -> None:
+    def update_last_run_date(self, job_id: str, run_date: date) -> None:
         """
-        Update the metadata for a specific job.
+        Update the last run date for a specific job.
 
         Args:
-            metadata: A JobMetadata object containing the job metadata.
+            job_id: The unique identifier for the job.
+            run_date: The date the job was run.
         """
-        doc_ref = self.db.collection(self.collection_name).document(metadata.job_id)
-        doc_ref.set(metadata.model_dump())
+        doc_ref = self.db.collection(self.collection_name).document(job_id)
+        doc_ref.set({"last_run_date": run_date.isoformat()})
 
 
 class StrategyRepository:

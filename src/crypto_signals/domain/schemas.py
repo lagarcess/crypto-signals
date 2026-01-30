@@ -1421,14 +1421,3 @@ class StagingStrategy(BaseModel):
         default=True,
         description="SCD2: Flag for current record",
     )
-
-
-class JobMetadata(BaseModel):
-    """
-    Metadata for a job run, stored in Firestore.
-    """
-    job_id: str
-    last_run_timestamp: datetime
-    git_hash: str
-    environment: str
-    config_snapshot: Dict[str, Any]

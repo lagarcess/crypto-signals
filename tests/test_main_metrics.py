@@ -36,7 +36,6 @@ def mock_deps_metrics():
         stack.enter_context(patch("crypto_signals.main.get_trading_client"))
         stack.enter_context(patch("crypto_signals.main.AccountSnapshotPipeline"))
         stack.enter_context(patch("crypto_signals.main.StrategySyncPipeline"))
-        mock_subprocess = stack.enter_context(patch("subprocess.check_output"))
 
         # Configure Metrics Mock
         mock_metrics = MagicMock()
@@ -49,11 +48,6 @@ def mock_deps_metrics():
         mock_settings.return_value.CRYPTO_SYMBOLS = ["BTC/USD"]
         mock_settings.return_value.EQUITY_SYMBOLS = []
         mock_settings.return_value.RATE_LIMIT_DELAY = 0.0
-        mock_settings.return_value.ENVIRONMENT = "DEV"
-        mock_settings.return_value.MAX_CRYPTO_POSITIONS = 5
-        mock_settings.return_value.MAX_EQUITY_POSITIONS = 5
-        mock_settings.return_value.RISK_PER_TRADE = 100.0
-        mock_subprocess.return_value = b"test-hash"
 
         # Configure Job Lock
         # (Already mocked in context manager, but ensure acquire returns True)
