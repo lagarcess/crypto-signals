@@ -7,8 +7,15 @@ import pytest
 from alpaca.data.historical import CryptoHistoricalDataClient, StockHistoricalDataClient
 from alpaca.data.timeframe import TimeFrame
 from crypto_signals.domain.schemas import AssetClass
-from crypto_signals.market.data_provider import MarketDataProvider
+from crypto_signals.market.data_provider import MarketDataProvider, memory
 from crypto_signals.market.exceptions import MarketDataError
+
+
+@pytest.fixture(autouse=True)
+def clear_cache_before_test():
+    """Fixture to clear the joblib cache before each test."""
+    memory.clear()
+    yield
 
 
 @pytest.fixture
@@ -41,8 +48,9 @@ def test_get_daily_bars_equity_success(provider, mock_stock_client):
     # Setup
     mock_bars = Mock()
     # Mock dataframe response
+    dates = pd.to_datetime(["2023-01-01", "2023-01-02"])
     df_data = {"close": [150.0, 155.0]}
-    df = pd.DataFrame(df_data)
+    df = pd.DataFrame(df_data, index=dates)
     mock_bars.df = df
     mock_stock_client.get_stock_bars.return_value = mock_bars
 
@@ -64,8 +72,9 @@ def test_get_daily_bars_crypto_success(provider, mock_crypto_client):
     """Test fetching crypto bars proxies to crypto client correctly."""
     # Setup
     mock_bars = Mock()
+    dates = pd.to_datetime(["2023-01-01", "2023-01-02"])
     df_data = {"close": [50000.0, 51000.0]}
-    df = pd.DataFrame(df_data)
+    df = pd.DataFrame(df_data, index=dates)
     mock_bars.df = df
     mock_crypto_client.get_crypto_bars.return_value = mock_bars
 

@@ -28,6 +28,7 @@ pandas-ta-classic = {git = "https://github.com/xgboosted/pandas-ta-classic.git",
 rich = "^13.0.0"
 typer = "^0.20.1"
 numba = {version = ">=0.60.0", python = ">=3.10"}
+joblib = "^1.4.2"
 
 [build-system]
 requires = ["poetry-core"]

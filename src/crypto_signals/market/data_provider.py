@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 from functools import wraps
 from typing import Optional
 
+from joblib import Memory
 import pandas as pd
 from alpaca.data.enums import Adjustment
 from alpaca.data.historical import CryptoHistoricalDataClient, StockHistoricalDataClient
@@ -23,6 +24,12 @@ from alpaca.data.timeframe import TimeFrame
 from crypto_signals.domain.schemas import AssetClass
 from crypto_signals.market.exceptions import MarketDataError
 from crypto_signals.observability import log_api_error
+
+
+# --- CACHING ---
+# Initialize joblib Memory for caching market data
+# Cache validity: 1 hour (3600 seconds)
+memory = Memory(".gemini/cache", verbose=0)
 
 
 def retry_with_backoff(max_retries=3, initial_delay=1.0, backoff_factor=2.0):
@@ -79,6 +86,69 @@ def retry_with_backoff(max_retries=3, initial_delay=1.0, backoff_factor=2.0):
     return decorator
 
 
+@memory.cache(ignore=["stock_client", "crypto_client"])
+def _fetch_daily_bars_cached(
+    symbol: str,
+    asset_class: AssetClass,
+    lookback_days: int,
+    # This dummy timestamp invalidates the cache every hour
+    cache_key_timestamp: str,
+    stock_client: StockHistoricalDataClient,
+    crypto_client: CryptoHistoricalDataClient,
+) -> pd.DataFrame:
+    """
+    Cached, low-level function to fetch daily bars.
+    Joblib caches the result based on the function's arguments. The clients
+    are ignored to prevent pickling errors. The cache_key_timestamp is a
+    dummy parameter that changes every hour to enforce cache expiration.
+    """
+    try:
+        end_dt = datetime.now(timezone.utc)
+        start_dt = end_dt - timedelta(days=lookback_days)
+
+        if asset_class == AssetClass.CRYPTO:
+            # Crypto Request
+            crypto_req = CryptoBarsRequest(
+                symbol_or_symbols=symbol,
+                timeframe=TimeFrame.Day,
+                start=start_dt,
+                end=end_dt,
+            )
+            bars = crypto_client.get_crypto_bars(crypto_req)
+        elif asset_class == AssetClass.EQUITY:
+            # Stock Request
+            stock_req = StockBarsRequest(
+                symbol_or_symbols=symbol,
+                timeframe=TimeFrame.Day,
+                start=start_dt,
+                end=end_dt,
+                adjustment=Adjustment.SPLIT,  # Adjust for splits
+            )
+            bars = stock_client.get_stock_bars(stock_req)
+        else:
+            raise MarketDataError(f"Unsupported asset class: {asset_class}")
+
+        # Convert to DataFrame
+        # Mypy sees bars as (BarSet | dict), but we know it returns BarSet here for the request
+        df = bars.df  # type: ignore
+
+        if df.empty:
+            raise MarketDataError(f"No daily bars found for {symbol}")
+
+        # Reset index if multi-indexed (symbol, date) -> just date
+        # Alpaca bars.df usually has MultiIndex [symbol, timestamp]
+        if isinstance(df.index, pd.MultiIndex):
+            df = df.reset_index(level=0, drop=True)
+
+        df.index = pd.to_datetime(df.index)
+        return df
+
+    except MarketDataError:
+        raise
+    except Exception as e:
+        raise MarketDataError(f"Failed to fetch daily bars for {symbol}: {e}") from e
+
+
 class MarketDataProvider:
     """
     Provider for market data (Stocks and Crypto).
@@ -122,51 +192,18 @@ class MarketDataProvider:
         Raises:
             MarketDataError: If data is empty or fetch fails
         """
-        try:
-            end_dt = datetime.now(timezone.utc)
-            start_dt = end_dt - timedelta(days=lookback_days)
+        # Generate a timestamp string that changes every hour (e.g., "2023-10-27-15")
+        # This acts as a manual expiration for the cache.
+        cache_key_timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d-%H")
 
-            if asset_class == AssetClass.CRYPTO:
-                # Crypto Request
-                crypto_req = CryptoBarsRequest(
-                    symbol_or_symbols=symbol,
-                    timeframe=TimeFrame.Day,
-                    start=start_dt,
-                    end=end_dt,
-                )
-                bars = self.crypto_client.get_crypto_bars(crypto_req)
-            elif asset_class == AssetClass.EQUITY:
-                # Stock Request
-                stock_req = StockBarsRequest(
-                    symbol_or_symbols=symbol,
-                    timeframe=TimeFrame.Day,
-                    start=start_dt,
-                    end=end_dt,
-                    adjustment=Adjustment.SPLIT,  # Adjust for splits
-                )
-                bars = self.stock_client.get_stock_bars(stock_req)
-            else:
-                raise MarketDataError(f"Unsupported asset class: {asset_class}")
-
-            # Convert to DataFrame
-            # Mypy sees bars as (BarSet | dict), but we know it returns BarSet here for the request
-            df = bars.df  # type: ignore
-
-            if df.empty:
-                raise MarketDataError(f"No daily bars found for {symbol}")
-
-            # Reset index if multi-indexed (symbol, date) -> just date
-            # Alpaca bars.df usually has MultiIndex [symbol, timestamp]
-            if isinstance(df.index, pd.MultiIndex):
-                df = df.reset_index(level=0, drop=True)
-
-            df.index = pd.to_datetime(df.index)
-            return df
-
-        except MarketDataError:
-            raise
-        except Exception as e:
-            raise MarketDataError(f"Failed to fetch daily bars for {symbol}: {e}") from e
+        return _fetch_daily_bars_cached(
+            symbol=symbol,
+            asset_class=asset_class,
+            lookback_days=lookback_days,
+            cache_key_timestamp=cache_key_timestamp,
+            stock_client=self.stock_client,
+            crypto_client=self.crypto_client,
+        )
 
     @retry_with_backoff(max_retries=3, initial_delay=1.0, backoff_factor=2.0)
     def get_latest_price(self, symbol: str, asset_class: AssetClass) -> float:
