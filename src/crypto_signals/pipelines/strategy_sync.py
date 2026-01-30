@@ -26,6 +26,9 @@ class StrategySyncPipeline(BigQueryPipelineBase):
     records in BigQuery.
     """
 
+    # Config fields tracked for change detection
+    RELEVANT_CONFIG_KEYS = ["active", "timeframe", "asset_class", "assets", "risk_params"]
+
     def __init__(self):
         super().__init__(
             job_name="strategy_sync",
@@ -39,9 +42,7 @@ class StrategySyncPipeline(BigQueryPipelineBase):
 
     def _calculate_hash(self, config_data: Dict[str, Any]) -> str:
         """Calculate a deterministic hash of the configuration."""
-        # Relevant fields for change detection
-        relevant_keys = ["active", "timeframe", "asset_class", "assets", "risk_params"]
-        subset = {k: config_data.get(k) for k in relevant_keys}
+        subset = {k: config_data.get(k) for k in self.RELEVANT_CONFIG_KEYS}
 
         # Sort keys for deterministic JSON serialization
         serialized = json.dumps(subset, sort_keys=True, default=str)
@@ -102,6 +103,13 @@ class StrategySyncPipeline(BigQueryPipelineBase):
                     logger.info(
                         f"Change detected for {strategy_id}. New Hash: {config_hash[:8]}"
                     )
+
+                    # Validate required 'active' field explicitly
+                    if "active" not in data:
+                        logger.error(
+                            f"Strategy {strategy_id} missing required 'active' field"
+                        )
+                        continue
 
                     # Create Staging Record
                     staging_record = {
