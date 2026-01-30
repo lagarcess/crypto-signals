@@ -57,10 +57,12 @@ The **Golden Thread** is the happy path of data flow that proves the system is h
 *   **Target**: `fact_signals_expired` (BigQuery).
 *   **Logic**: Calculate `max_mfe` (Did we miss a moonshot?) and archive.
 
-### Loop D: Account Snapshot (Pulse Check)
+### Loop D: Account Snapshot (Pulse Check) ✅
+*   **Status**: Implemented (Issue #196, PR #205, #207)
 *   **Source**: Alpaca Account API.
 *   **Target**: `snapshot_accounts` (BigQuery).
 *   **Logic**: Daily "End of Day" snapshot of Equity, Margin, and Greeks.
+*   **Orchestration**: Runs daily via `main.py`, checks last run date to prevent duplicates.
 
 ---
 
