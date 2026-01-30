@@ -198,3 +198,40 @@ def test_run_calls_schema_guardian(pipeline, mock_firestore, sample_fact_rejecte
 
     # Assert that SchemaGuardian.validate_schema was called
     pipeline.guardian.validate_schema.assert_called_once()
+
+
+def test_extract_cutoff_date(pipeline, mock_firestore):
+    """Test that the extract method uses a cutoff date of T-7 days."""
+    # Setup mock to avoid crash
+    mock_query = (
+        mock_firestore.collection.return_value.where.return_value.limit.return_value
+    )
+    mock_query.stream.return_value = []
+
+    pipeline.extract()
+
+    # Get the arguments passed to 'where'
+    call_args = mock_firestore.collection.return_value.where.call_args
+    assert call_args is not None
+
+    # Check arguments
+    kwargs = call_args.kwargs
+    cutoff_arg = kwargs.get("value")
+
+    if cutoff_arg is None and len(call_args.args) >= 3:
+        # Positional args: field_path, op_string, value
+        cutoff_arg = call_args.args[2]
+
+    assert cutoff_arg is not None, "Could not find cutoff value in arguments"
+
+    # Calculate expected cutoff (approx 7 days ago)
+    now = datetime.now(timezone.utc)
+
+    # We expect the cutoff to be roughly 7 days ago.
+    # Since the implementation floors to midnight, the diff could be slightly more than 7 days
+    # depending on current time of day.
+    # Example: Now is T+0 12:00. Cutoff should be T-7 00:00. Diff is 7 days 12 hours.
+    # Current Buggy: Cutoff is T+0 00:00. Diff is 12 hours (0 days).
+    diff = now - cutoff_arg
+
+    assert diff.days >= 7, f"Expected cutoff >= 7 days ago, but got diff: {diff}"
