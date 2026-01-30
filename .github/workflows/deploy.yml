@@ -135,7 +135,11 @@ jobs:
           IMAGE_SHA="${{ env.IMAGE_BASE }}:${{ github.sha }}"
 
           echo "🔍 Testing container can import module..."
-          docker run --rm "$IMAGE_SHA" python -c "import crypto_signals.main; print('✅ Module import successful')"
+          docker run --rm \
+            -e GOOGLE_CLOUD_PROJECT=${{ vars.GOOGLE_CLOUD_PROJECT }} \
+            -e DISABLE_SECRET_MANAGER=true \
+            "$IMAGE_SHA" \
+            python -c "import crypto_signals.main; print('✅ Module import successful')"
 
           echo "💨 Running containerized smoke test..."
           docker run --rm \
