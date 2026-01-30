@@ -1366,3 +1366,58 @@ class StagingPerformance(BaseModel):
         ...,
         description="Sensitivity to market movements",
     )
+
+
+# =============================================================================
+# BIGQUERY: STRATEGY SCD TYPE 2 (Tables: dim_strategies, stg_strategies_import)
+# =============================================================================
+
+
+class StagingStrategy(BaseModel):
+    """
+    Staging model for Strategy Configuration (SCD Type 2).
+
+    This matches the target `dim_strategies` table schema but is used for staging
+    and merge operations.
+    """
+
+    strategy_id: str = Field(
+        ...,
+        description="Natural key: Strategy identifier",
+    )
+    active: bool = Field(
+        ...,
+        description="Whether the strategy is currently active",
+    )
+    timeframe: str = Field(
+        ...,
+        description="Trading timeframe (e.g., '1D', '4H', '1H')",
+    )
+    asset_class: AssetClass = Field(
+        ...,
+        description="Asset class this strategy trades (CRYPTO or EQUITY)",
+    )
+    assets: List[str] = Field(
+        ...,
+        description="List of asset symbols this strategy trades",
+    )
+    risk_params: str = Field(
+        ...,
+        description="JSON string representation of risk management parameters",
+    )
+    config_hash: str = Field(
+        ...,
+        description="Hash of the configuration to detect changes",
+    )
+    valid_from: datetime = Field(
+        ...,
+        description="SCD2: Start of validity period",
+    )
+    valid_to: Optional[datetime] = Field(
+        default=None,
+        description="SCD2: End of validity period (NULL for current)",
+    )
+    is_current: bool = Field(
+        default=True,
+        description="SCD2: Flag for current record",
+    )

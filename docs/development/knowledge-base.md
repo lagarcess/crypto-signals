@@ -99,3 +99,12 @@
 - [2026-01-29] **Forum Channel Thread Requirement**: Discord Forum Channels (type 15) require `thread_name` in webhook payloads. Omitting it causes `400 Bad Request`. Add a config flag (e.g., `DISCORD_USE_FORUMS`) to conditionally include `thread_name`.
 - [2026-01-29] **Module-Level Constants**: For sets used in multiple methods (e.g., `BULLISH_PATTERNS`), define as module-level `frozenset` to avoid duplication and enable O(1) lookups. This also makes the constant visible for import/testing.
 - [2026-01-29] **Text Channel Fallback**: When posting to Discord with `thread_name` but the webhook targets a Text Channel (not Forum), Discord returns `400`. Implement retry logic that strips `thread_name` and retries for graceful degradation.
+
+### Architecture & Patterns
+- [2026-01-29] **Repository Pattern**: Always encapsulate Firestore access (e.g., `dim_strategies`) in a dedicated Repository class rather than using raw clients in pipelines. This ensures consistent error handling, centralized query logic, and significantly easier mocking in unit tests.
+- [2026-01-29] **Merge Strategy**: When merging multiple concurrent feature branches (e.g., Metrics Fixes, Strategy Sync, Snapshot), carefully inspect central orchestration files like `main.py`. Automated merges often drop lines or duplicate logic blocks. Verify the presence of ALL features post-merge before running tests.
+
+### Testing
+- [2026-01-29] **Pydantic Mocking**: When unit testing logic that relies on Pydantic's `model_dump()`, mocking the model instance with `MagicMock` often fails because `model_dump` is a complex method. Use real Pydantic model instances in tests whenever possible to avoid "mock drift" where tests pass but runtime fails.
+- [2026-01-29] **ExitStack Pattern**: When a test requires patching many dependencies (e.g., > 10) to isolate a "God Function" like `main()`, use `contextlib.ExitStack`. Standard nested `with patch():` blocks hit Python's stack limit (`SyntaxError: too many statically nested blocks`).
+- [2026-01-29] **Pytest Config Override**: If `pyproject.toml` enforces strict plugins (like `pytest-cov`) that are failing in a specific environment, use `pytest -o "addopts=" ...` to override the configuration at runtime and isolate the test logic from the tooling environment.

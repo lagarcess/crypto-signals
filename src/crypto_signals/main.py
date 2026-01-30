@@ -43,8 +43,10 @@ from crypto_signals.observability import (
     log_execution_time,
     setup_gcp_logging,
 )
+from crypto_signals.pipelines.account_snapshot import AccountSnapshotPipeline
 from crypto_signals.pipelines.fee_patch import FeePatchPipeline
 from crypto_signals.pipelines.price_patch import PricePatchPipeline
+from crypto_signals.pipelines.strategy_sync import StrategySyncPipeline
 from crypto_signals.pipelines.trade_archival import TradeArchivalPipeline
 from crypto_signals.repository.firestore import (
     JobLockRepository,
@@ -64,6 +66,31 @@ warmup_jit()
 
 # Global flag for graceful shutdown
 shutdown_requested = False
+
+
+def _run_pipeline(pipeline, name: str, success_log_fn, metrics_collector=None) -> None:
+    """
+    Helper to run a pipeline with standardized logging and metrics.
+
+    Args:
+        pipeline: The pipeline instance to run.
+        name: The name of the pipeline for metrics/logging.
+        success_log_fn: A callback that receives the result and logs success.
+        metrics_collector: Optional metrics collector (fetches default if None).
+    """
+    logger.info(f"Running {name} Pipeline...")
+    start_time = time.time()
+
+    # Use provided collector or fetch new one
+    metrics = metrics_collector or get_metrics_collector()
+
+    try:
+        result = pipeline.run()
+        success_log_fn(result)
+        metrics.record_success(name, time.time() - start_time)
+    except Exception as e:
+        logger.error(f"{name} Pipeline failed: {e}")
+        metrics.record_failure(name, time.time() - start_time)
 
 
 def signal_handler(signum, frame):
@@ -162,6 +189,8 @@ def main(
             trade_archival = TradeArchivalPipeline()
             fee_patch = FeePatchPipeline()
             price_patch = PricePatchPipeline()
+            account_snapshot = AccountSnapshotPipeline()
+            strategy_sync = StrategySyncPipeline()
 
         # Job Locking
         job_id = "signal_generator_cron"
@@ -172,8 +201,37 @@ def main(
         # Ensure lock is released on exit
         atexit.register(job_lock_repo.release_lock, job_id)
 
-        # === DAILY CLEANUP ===
+        # === STRATEGY SYNC (SCD Type 2) ===
+        # === STRATEGY SYNC (SCD Type 2) ===
+        _run_pipeline(
+            strategy_sync,
+            "strategy_sync",
+            lambda count: logger.info(
+                f"✅ Strategy Sync complete: {count} versions updated."
+                if count > 0
+                else "✅ Strategy Sync complete: No changes detected."
+            ),
+            metrics_collector=metrics,
+        )
+
+        # === ACCOUNT SNAPSHOT (New Independent Job) ===
         today = datetime.now(timezone.utc).date()
+        last_snapshot = job_metadata_repo.get_last_run_date("account_snapshot")
+
+        if last_snapshot != today:
+            _run_pipeline(
+                account_snapshot,
+                "account_snapshot",
+                lambda _: [
+                    logger.info("✅ Account Snapshot Pipeline completed successfully."),
+                    job_metadata_repo.update_last_run_date("account_snapshot", today),
+                ],
+                metrics_collector=metrics,
+            )
+        else:
+            logger.info("Account Snapshot has already run today. Skipping.")
+
+        # === DAILY CLEANUP ===
         last_cleanup_date = job_metadata_repo.get_last_run_date("daily_cleanup")
         if last_cleanup_date != today:
             logger.info("Running daily cleanup...")
@@ -192,6 +250,7 @@ def main(
         # Detect and heal zombie/orphan positions before main loop
         logger.info("Running state reconciliation...")
         reconciliation_failed = False
+        reconciliation_start_time = time.time()
         try:
             reconciliation_report = reconciler.reconcile()
 
@@ -213,6 +272,9 @@ def main(
                 f"Reconciliation failed: {e}",
                 extra={"error": str(e)},
             )
+            metrics.record_failure(
+                "reconciliation", time.time() - reconciliation_start_time
+            )
             # Mark as failed to prevent archival of potentially inconsistent state
             reconciliation_failed = True
 
@@ -220,17 +282,16 @@ def main(
         # Move Closed Positions -> BigQuery (Before Fee Patch!)
         # Must run AFTER reconciliation (so we archive what was just closed)
         if not reconciliation_failed:
-            logger.info("Running trade archival...")
-            try:
-                archival_count = trade_archival.run()
-                if archival_count > 0:
-                    logger.info(
-                        f"✅ Trade archival complete: {archival_count} trades archived"
-                    )
-                else:
-                    logger.info("✅ Trade archival complete: No closed trades to archive")
-            except Exception as e:
-                logger.error(f"Trade archival failed: {e}")
+            _run_pipeline(
+                trade_archival,
+                "trade_archival",
+                lambda count: logger.info(
+                    f"✅ Trade archival complete: {count} trades archived"
+                    if count > 0
+                    else "✅ Trade archival complete: No closed trades to archive"
+                ),
+                metrics_collector=metrics,
+            )
         else:
             logger.warning("⚠️ Skipping trade archival due to reconciliation failure.")
 
@@ -238,19 +299,16 @@ def main(
         # Patch estimated fees with actual CFEE data before generating new signals
         # Runs T+1 reconciliation for trades older than 24 hours
         if not reconciliation_failed:
-            logger.info("Running fee reconciliation...")
-            try:
-                patched_count = fee_patch.run()
-
-                if patched_count > 0:
-                    logger.info(
-                        f"✅ Fee reconciliation complete: {patched_count} trades updated"
-                    )
-                else:
-                    logger.info("✅ Fee reconciliation complete: No trades to update")
-            except Exception as e:
-                logger.error(f"Fee reconciliation failed: {e}")
-                # Non-blocking - continue with signal generation
+            _run_pipeline(
+                fee_patch,
+                "fee_patch",
+                lambda count: logger.info(
+                    f"✅ Fee reconciliation complete: {count} trades updated"
+                    if count > 0
+                    else "✅ Fee reconciliation complete: No trades to update"
+                ),
+                metrics_collector=metrics,
+            )
         else:
             logger.warning("⚠️ Skipping fee reconciliation due to reconciliation failure.")
 
@@ -258,21 +316,16 @@ def main(
         # Patch $0.00 exit prices with actual fill prices from Alpaca
         # Runs for historical repair and daily reconciliation
         if not reconciliation_failed:
-            logger.info("Running exit price reconciliation...")
-            try:
-                patched_count = price_patch.run()
-
-                if patched_count > 0:
-                    logger.info(
-                        f"✅ Exit price reconciliation complete: {patched_count} trades repaired"
-                    )
-                else:
-                    logger.info(
-                        "✅ Exit price reconciliation complete: No trades to repair"
-                    )
-            except Exception as e:
-                logger.error(f"Exit price reconciliation failed: {e}")
-                # Non-blocking - continue with signal generation
+            _run_pipeline(
+                price_patch,
+                "price_patch",
+                lambda count: logger.info(
+                    f"✅ Exit price reconciliation complete: {count} trades repaired"
+                    if count > 0
+                    else "✅ Exit price reconciliation complete: No trades to repair"
+                ),
+                metrics_collector=metrics,
+            )
         else:
             logger.warning(
                 "⚠️ Skipping exit price reconciliation due to reconciliation failure."
@@ -316,7 +369,6 @@ def main(
         # Execution Loop with Rich Progress Bar
         signals_found = 0
         symbols_processed = 0
-        errors_encountered = 0
 
         with create_portfolio_progress(len(portfolio_items)) as (progress, task):
             for idx, (symbol, asset_class) in enumerate(portfolio_items):
@@ -905,7 +957,6 @@ def main(
                                 )
 
                 except Exception as e:
-                    errors_encountered += 1
                     symbol_duration = time.time() - symbol_start_time
                     metrics.record_failure("signal_generation", symbol_duration)
                     logger.error(
@@ -924,6 +975,7 @@ def main(
         # Synchronize open positions with Alpaca broker state.
         # This updates TP/SL leg IDs and detects externally closed positions.
         # =========================================================================
+        slippage_values = []  # Track slippage for summary
         if settings.ENABLE_EXECUTION:
             logger.info("Syncing open positions with Alpaca...")
             sync_start = time.time()
@@ -931,7 +983,6 @@ def main(
                 open_positions = position_repo.get_open_positions()
                 synced_count = 0
                 closed_count = 0
-                slippage_values = []  # Track slippage for summary
 
                 for pos in open_positions:
                     if shutdown_requested:
@@ -1051,6 +1102,7 @@ def main(
                             f"Failed to sync position {pos.position_id}: {e}",
                             extra={"position_id": pos.position_id},
                         )
+                        metrics.record_failure("position_sync_single", 0)
 
                 sync_duration = time.time() - sync_start
                 logger.info(
@@ -1064,6 +1116,7 @@ def main(
                 )
             except Exception as e:
                 logger.error(f"Position sync failed: {e}", exc_info=True)
+                metrics.record_failure("position_sync", time.time() - sync_start)
 
         # Display Rich execution summary table
         total_duration = time.time() - app_start_time
@@ -1071,16 +1124,14 @@ def main(
 
         # Calculate average slippage from position sync (if available)
         avg_slippage = None
-        if settings.ENABLE_EXECUTION and "slippage_values" in dir():
-            if slippage_values:
-                avg_slippage = sum(slippage_values) / len(slippage_values)
+        if slippage_values:
+            avg_slippage = sum(slippage_values) / len(slippage_values)
 
         summary_table = create_execution_summary_table(
             total_duration=total_duration,
             symbols_processed=symbols_processed,
             total_symbols=len(portfolio_items),
             signals_found=signals_found,
-            errors_encountered=errors_encountered,
             avg_slippage_pct=avg_slippage,
         )
         console.print(summary_table)
