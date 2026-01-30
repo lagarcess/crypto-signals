@@ -34,26 +34,50 @@ def caplog(caplog):
 def mock_dependencies():
     """Mock all external dependencies used in main.py."""
     with ExitStack() as stack:
-        stock_client = stack.enter_context(patch("crypto_signals.main.get_stock_data_client"))
-        crypto_client = stack.enter_context(patch("crypto_signals.main.get_crypto_data_client"))
-        trading_client = stack.enter_context(patch("crypto_signals.main.get_trading_client"))
-        market_provider = stack.enter_context(patch("crypto_signals.main.MarketDataProvider"))
+        stock_client = stack.enter_context(
+            patch("crypto_signals.main.get_stock_data_client")
+        )
+        crypto_client = stack.enter_context(
+            patch("crypto_signals.main.get_crypto_data_client")
+        )
+        trading_client = stack.enter_context(
+            patch("crypto_signals.main.get_trading_client")
+        )
+        market_provider = stack.enter_context(
+            patch("crypto_signals.main.MarketDataProvider")
+        )
         generator = stack.enter_context(patch("crypto_signals.main.SignalGenerator"))
         repo = stack.enter_context(patch("crypto_signals.main.SignalRepository"))
         discord = stack.enter_context(patch("crypto_signals.main.DiscordClient"))
-        asset_validator = stack.enter_context(patch("crypto_signals.main.AssetValidationService"))
+        asset_validator = stack.enter_context(
+            patch("crypto_signals.main.AssetValidationService")
+        )
         mock_settings = stack.enter_context(patch("crypto_signals.main.get_settings"))
-        mock_secrets = stack.enter_context(patch("crypto_signals.main.init_secrets", return_value=True))
-        mock_firestore_config = stack.enter_context(patch("crypto_signals.main.load_config_from_firestore"))
-        position_repo = stack.enter_context(patch("crypto_signals.main.PositionRepository"))
-        execution_engine = stack.enter_context(patch("crypto_signals.main.ExecutionEngine"))
+        mock_secrets = stack.enter_context(
+            patch("crypto_signals.main.init_secrets", return_value=True)
+        )
+        mock_firestore_config = stack.enter_context(
+            patch("crypto_signals.main.load_config_from_firestore")
+        )
+        position_repo = stack.enter_context(
+            patch("crypto_signals.main.PositionRepository")
+        )
+        execution_engine = stack.enter_context(
+            patch("crypto_signals.main.ExecutionEngine")
+        )
         job_lock = stack.enter_context(patch("crypto_signals.main.JobLockRepository"))
-        rejected_repo = stack.enter_context(patch("crypto_signals.main.RejectedSignalRepository"))
-        trade_archival = stack.enter_context(patch("crypto_signals.main.TradeArchivalPipeline"))
+        rejected_repo = stack.enter_context(
+            patch("crypto_signals.main.RejectedSignalRepository")
+        )
+        trade_archival = stack.enter_context(
+            patch("crypto_signals.main.TradeArchivalPipeline")
+        )
         fee_patch = stack.enter_context(patch("crypto_signals.main.FeePatchPipeline"))
         price_patch = stack.enter_context(patch("crypto_signals.main.PricePatchPipeline"))
         reconciler = stack.enter_context(patch("crypto_signals.main.StateReconciler"))
-        job_metadata_repo = stack.enter_context(patch("crypto_signals.main.JobMetadataRepository"))
+        job_metadata_repo = stack.enter_context(
+            patch("crypto_signals.main.JobMetadataRepository")
+        )
         rejected_archival = stack.enter_context(
             patch("crypto_signals.main.RejectedSignalArchival")
         )
