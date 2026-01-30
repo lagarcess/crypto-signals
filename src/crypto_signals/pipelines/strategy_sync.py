@@ -10,12 +10,13 @@ import json
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 
-from google.cloud import firestore
+# from google.cloud import firestore
 from loguru import logger
 
 from crypto_signals.config import get_settings
 from crypto_signals.domain.schemas import StagingStrategy
 from crypto_signals.pipelines.base import BigQueryPipelineBase
+from crypto_signals.repository.firestore import StrategyRepository
 
 
 class StrategySyncPipeline(BigQueryPipelineBase):
@@ -35,7 +36,7 @@ class StrategySyncPipeline(BigQueryPipelineBase):
             partition_column="valid_from",  # Used for partitioning if applicable
             schema_model=StagingStrategy,
         )
-        self.firestore_client = firestore.Client(project=get_settings().GOOGLE_CLOUD_PROJECT)
+        self.repository = StrategyRepository()
 
     def _calculate_hash(self, config_data: Dict[str, Any]) -> str:
         """Calculate a deterministic hash of the configuration."""
@@ -53,7 +54,9 @@ class StrategySyncPipeline(BigQueryPipelineBase):
         Returns: Dict[strategy_id, config_hash]
         """
         if not self._check_table_exists(self.fact_table_id):
-            logger.warning(f"Target table {self.fact_table_id} does not exist. Assuming empty state.")
+            logger.warning(
+                f"Target table {self.fact_table_id} does not exist. Assuming empty state."
+            )
             return {}
 
         query = f"""
@@ -73,10 +76,9 @@ class StrategySyncPipeline(BigQueryPipelineBase):
         Extract strategies from Firestore and determine changes.
         """
         logger.info("Extracting strategies from Firestore...")
-        collection_ref = self.firestore_client.collection("dim_strategies")
-        docs = list(collection_ref.stream())
+        strategies = self.repository.get_all_strategies()
 
-        if not docs:
+        if not strategies:
             logger.info("No strategies found in Firestore.")
             return []
 
@@ -86,21 +88,21 @@ class StrategySyncPipeline(BigQueryPipelineBase):
         new_versions = []
         now = datetime.now(timezone.utc)
 
-        for doc in docs:
-            data = doc.to_dict()
+        for strategy in strategies:
             try:
-                # Add ID if missing (use doc.id)
-                if "strategy_id" not in data:
-                    data["strategy_id"] = doc.id
+                # Convert Pydantic model to dict for processing
+                data = strategy.model_dump(mode="python")
 
                 # Calculate Hash
                 config_hash = self._calculate_hash(data)
 
-                strategy_id = data["strategy_id"]
+                strategy_id = strategy.strategy_id
                 current_hash = bq_state.get(strategy_id)
 
                 if current_hash != config_hash:
-                    logger.info(f"Change detected for {strategy_id}. New Hash: {config_hash[:8]}")
+                    logger.info(
+                        f"Change detected for {strategy_id}. New Hash: {config_hash[:8]}"
+                    )
 
                     # Create Staging Record
                     staging_record = {
@@ -115,14 +117,14 @@ class StrategySyncPipeline(BigQueryPipelineBase):
                         "config_hash": config_hash,
                         "valid_from": now,
                         "valid_to": None,
-                        "is_current": True
+                        "is_current": True,
                     }
                     new_versions.append(staging_record)
                 else:
                     logger.debug(f"No change for {strategy_id}")
 
             except Exception as e:
-                logger.error(f"Error processing strategy {doc.id}: {e}")
+                logger.error(f"Error processing strategy {strategy.strategy_id}: {e}")
                 continue
 
         logger.info(f"Found {len(new_versions)} strategy updates.")

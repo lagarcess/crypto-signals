@@ -18,6 +18,7 @@ from crypto_signals.domain.schemas import (
     Position,
     Signal,
     SignalStatus,
+    StrategyConfig,
     TradeStatus,
 )
 from crypto_signals.observability import log_validation_error
@@ -732,3 +733,45 @@ class JobMetadataRepository:
         """
         doc_ref = self.db.collection(self.collection_name).document(job_id)
         doc_ref.set({"last_run_date": run_date.isoformat()})
+
+
+class StrategyRepository:
+    """Repository for managing Strategy configurations (dim_strategies)."""
+
+    def __init__(self):
+        """Initialize Firestore client."""
+        settings = get_settings()
+        self.db = firestore.Client(project=settings.GOOGLE_CLOUD_PROJECT)
+        self.collection_name = "dim_strategies"
+
+    def get_all_strategies(self) -> list[StrategyConfig]:
+        """
+        Get all strategies from Firestore.
+
+        Returns:
+            List of StrategyConfig objects.
+        """
+        logger.info(f"Fetching all strategies from {self.collection_name}")
+        collection_ref = self.db.collection(self.collection_name)
+        docs = list(collection_ref.stream())
+
+        strategies = []
+        for doc in docs:
+            data = doc.to_dict()
+            # Ensure strategy_id exists (use doc.id if missing)
+            if "strategy_id" not in data:
+                data["strategy_id"] = doc.id
+
+            try:
+                strategies.append(StrategyConfig(**data))
+            except ValidationError as e:
+                log_validation_error(doc.id, e)
+                logger.warning(f"Skipping invalid strategy config: {doc.id}")
+
+        return strategies
+
+    def save(self, strategy: StrategyConfig) -> None:
+        """Save a strategy configuration."""
+        doc_ref = self.db.collection(self.collection_name).document(strategy.strategy_id)
+        doc_ref.set(strategy.model_dump(mode="json"))
+        logger.info(f"Saved strategy config: {strategy.strategy_id}")
