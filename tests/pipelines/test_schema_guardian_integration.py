@@ -65,7 +65,10 @@ def test_pipeline_validates_schema_before_running(pipeline):
 
     # Assert validation was called with correct args
     pipeline.mock_guardian_instance.validate_schema.assert_called_once_with(
-        table_id="proj.ds.fact", model=MockModel
+        table_id="proj.ds.fact",
+        model=MockModel,
+        require_partitioning=True,
+        clustering_fields=None,
     )
 
 
@@ -98,3 +101,22 @@ def test_pipeline_fails_on_schema_mismatch(pipeline):
         pipeline.run()
 
     pipeline.extract.assert_not_called()
+
+
+def test_pipeline_validates_clustering(pipeline):
+    """Test that pipeline calls guardian with clustering_fields."""
+    # We need to re-instantiate or modify pipeline to have clustering_fields
+    pipeline.clustering_fields = ["id"]
+
+    # Mock extract
+    pipeline.extract = MagicMock(return_value=[])
+
+    pipeline.run()
+
+    instance = pipeline.mock_guardian_instance
+    instance.validate_schema.assert_called_with(
+        table_id="proj.ds.fact",
+        model=MockModel,
+        require_partitioning=True,
+        clustering_fields=["id"],
+    )
