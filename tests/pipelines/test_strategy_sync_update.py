@@ -2,8 +2,9 @@ import json
 from unittest.mock import MagicMock, patch
 
 import pytest
-from crypto_signals.domain.schemas import StrategyConfig, AssetClass
+from crypto_signals.domain.schemas import AssetClass, StrategyConfig
 from crypto_signals.pipelines.strategy_sync import StrategySyncPipeline
+
 
 class TestStrategySyncUpdate:
     """Tests for StrategySyncPipeline updates including new fields."""
@@ -21,7 +22,9 @@ class TestStrategySyncUpdate:
     @pytest.fixture
     def pipeline(self, mock_repo, mock_bq_client):
         # We need to mock BigQueryPipelineBase.__init__ because it creates a BQ client
-        with patch("crypto_signals.pipelines.base.bigquery.Client", return_value=mock_bq_client):
+        with patch(
+            "crypto_signals.pipelines.base.bigquery.Client", return_value=mock_bq_client
+        ):
             pipeline = StrategySyncPipeline()
             pipeline.repository = mock_repo
             pipeline.bq_client = mock_bq_client
@@ -39,15 +42,15 @@ class TestStrategySyncUpdate:
             asset_class=AssetClass.CRYPTO,
             assets=["BTC/USD"],
             risk_params={"stop_loss_pct": 0.02},
-            confluence_config={"rsi_period": 14}, # New field value
-            pattern_overrides={}
+            confluence_config={"rsi_period": 14},  # New field value
+            pattern_overrides={},
         )
         mock_repo.get_all_strategies.return_value = [strategy]
 
         # 2. Setup BigQuery State Mock (Simulate OLD state without confluence config)
         # Calculate hash of old config
         old_config_data = strategy.model_dump()
-        old_config_data["confluence_config"] = {} # Difference!
+        old_config_data["confluence_config"] = {}  # Difference!
 
         # We need to manually calculate the hash using the pipeline's logic
         # but the pipeline's _calculate_hash method uses RELEVANT_CONFIG_KEYS
@@ -55,7 +58,9 @@ class TestStrategySyncUpdate:
 
         # To simulate a change, we pretend BQ has a different hash.
         # Any different hash will trigger an update.
-        pipeline._get_bq_current_state = MagicMock(return_value={"strat_1": "old_hash_123"})
+        pipeline._get_bq_current_state = MagicMock(
+            return_value={"strat_1": "old_hash_123"}
+        )
 
         # 3. Run Extract
         staging_records = pipeline.extract()
@@ -82,7 +87,7 @@ class TestStrategySyncUpdate:
             "assets": ["BTC/USD"],
             "risk_params": {},
             "confluence_config": {"rsi": 14},
-            "pattern_overrides": {}
+            "pattern_overrides": {},
         }
 
         config2 = {
@@ -91,8 +96,8 @@ class TestStrategySyncUpdate:
             "asset_class": "CRYPTO",
             "assets": ["BTC/USD"],
             "risk_params": {},
-            "confluence_config": {"rsi": 21}, # Changed!
-            "pattern_overrides": {}
+            "confluence_config": {"rsi": 21},  # Changed!
+            "pattern_overrides": {},
         }
 
         hash1 = pipeline._calculate_hash(config1)
@@ -111,7 +116,7 @@ class TestStrategySyncUpdate:
             assets=["BTC/USD"],
             risk_params={"sl": 0.1},
             confluence_config={"rsi": 14},
-            pattern_overrides={"engulfing": {"p": 1}}
+            pattern_overrides={"engulfing": {"p": 1}},
         )
         mock_repo.get_all_strategies.return_value = [strategy]
 
