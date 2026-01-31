@@ -81,6 +81,7 @@ jobs:
           ALPACA_PAPER_TRADING: "$(clean_var "${{ vars.ALPACA_PAPER_TRADING }}")"
           GOOGLE_CLOUD_PROJECT: "${{ vars.GOOGLE_CLOUD_PROJECT }}"
           CRYPTO_SYMBOLS: "${{ vars.CRYPTO_SYMBOLS }}"
+          DISCORD_USE_FORUMS: "${{ vars.DISCORD_USE_FORUMS }}"
           EOF
           gcloud run jobs describe crypto-signals-job --region=${{ vars.GCP_REGION }} --format="value(name)"
 
@@ -175,6 +176,7 @@ jobs:
           DISCORD_CHANNEL_ID_CRYPTO: "${{ vars.DISCORD_CHANNEL_ID_CRYPTO }}"
           DISCORD_CHANNEL_ID_STOCK: "${{ vars.DISCORD_CHANNEL_ID_STOCK }}"
           CRYPTO_SYMBOLS: "${{ vars.CRYPTO_SYMBOLS }}"
+          DISCORD_USE_FORUMS: "${{ vars.DISCORD_USE_FORUMS }}"
           EOF
 
           gcloud run jobs update crypto-signals-job \
