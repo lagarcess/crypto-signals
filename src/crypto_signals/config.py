@@ -94,9 +94,10 @@ class Settings(BaseSettings):
     )
 
     # Google Cloud Logging (for production environments)
-    ENABLE_GCP_LOGGING: bool = Field(
-        default=False,
-        description="Enable Google Cloud Logging sink (for Cloud Run/GKE)",
+    # Defaults to True in PROD, False in DEV (handled by validator)
+    ENABLE_GCP_LOGGING: bool | None = Field(
+        default=None,
+        description="Enable Google Cloud Logging. Defaults to True if ENVIRONMENT=PROD.",
     )
 
     # Environment Mode (PROD or DEV)
@@ -243,6 +244,11 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def validate_conditional_requirements(self) -> "Settings":
         """Validate fields that are required only under certain conditions."""
+
+        # Default Enable GCP Logging to True in PROD if not specified
+        if self.ENABLE_GCP_LOGGING is None:
+            self.ENABLE_GCP_LOGGING = self.ENVIRONMENT == "PROD"
+
         if not self.TEST_MODE:
             if not self.LIVE_CRYPTO_DISCORD_WEBHOOK_URL:
                 raise ValueError(

@@ -94,7 +94,7 @@ def main():
         sys.exit(1)
 
     # Read and parse JSON
-    with open(json_path, "r", encoding="utf-8") as f:
+    with open(json_path, "r", encoding="utf-8-sig") as f:
         issue_data = json.load(f)
 
     # Format output

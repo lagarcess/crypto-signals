@@ -1,5 +1,6 @@
 """Unit tests for the BigQueryPipelineBase class."""
 
+import textwrap
 from datetime import date
 from typing import Any, List
 from unittest.mock import patch
@@ -104,24 +105,46 @@ def test_execute_merge_constructs_correct_sql(pipeline, mock_bq_client):
     """Test dynamic SQL generation for MERGE statement."""
     pipeline._execute_merge()
 
-    # Capture the query call
     call_args = mock_bq_client.query.call_args
     assert call_args is not None
     query = call_args[0][0]
 
-    # Check key components
-    assert "MERGE `test-project.dataset.fact_test` T" in query
-    assert "USING `test-project.dataset.stg_test` S" in query
-    assert "ON T.id = S.id" in query
-    assert "AND T.ds = S.ds" in query
+    # Columns are now sorted: ['ds', 'id', 'value']
+    expected_query = textwrap.dedent(f"""
+        MERGE `{pipeline.fact_table_id}` T
+        USING `{pipeline.staging_table_id}` S
+        ON T.id = S.id AND T.ds = S.ds
+        WHEN MATCHED THEN
+            UPDATE SET T.value = S.value
+        WHEN NOT MATCHED THEN
+            INSERT (ds, id, value)
+            VALUES (S.ds, S.id, S.value)
+    """).strip()
 
-    # Check UPDATE clause (should NOT update id or ds)
-    assert "T.value = S.value" in query
-    assert "T.id = S.id" not in query.split("UPDATE SET")[1]
+    def normalize(s):
+        return " ".join(s.split())
 
-    # Check INSERT clause
-    assert "INSERT (id, ds, value)" in query
-    assert "VALUES (S.id, S.ds, S.value)" in query
+    assert normalize(query) == normalize(expected_query)
+
+
+def test_cleanup_staging_executes_correct_sql(pipeline, mock_bq_client):
+    """Test that cleanup_staging runs the correct DELETE SQL."""
+    pipeline.cleanup_staging()
+
+    call_args = mock_bq_client.query.call_args
+    assert call_args is not None
+    query = call_args[0][0]
+
+    expected_query = textwrap.dedent(f"""
+            DELETE FROM `test-project.dataset.stg_test`
+            WHERE ds < DATE_SUB(CURRENT_DATE(), INTERVAL {pipeline.STAGING_CLEANUP_DAYS} DAY)
+        """).strip()
+
+    # Normalize whitespace to avoid indentation issues
+    def normalize(s):
+        return " ".join(s.split())
+
+    assert normalize(query) == normalize(expected_query)
 
 
 def test_run_orchestrates_flow(pipeline):
@@ -133,6 +156,7 @@ def test_run_orchestrates_flow(pipeline):
         patch.object(pipeline, "_truncate_staging") as mock_trunc,
         patch.object(pipeline, "_load_to_staging") as mock_load,
         patch.object(pipeline, "_execute_merge") as mock_merge,
+        patch.object(pipeline, "cleanup_staging") as mock_cleanup_staging,
         patch.object(pipeline, "cleanup") as mock_cleanup,
     ):
         mock_extract.return_value = [{"id": "1", "ds": date(2024, 1, 1), "value": 100}]
@@ -145,6 +169,7 @@ def test_run_orchestrates_flow(pipeline):
         mock_trunc.assert_called_once()
         mock_load.assert_called_once()
         mock_merge.assert_called_once()
+        mock_cleanup_staging.assert_called_once()
         mock_cleanup.assert_called_once()
 
 

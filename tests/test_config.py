@@ -128,3 +128,39 @@ def test_load_config_from_firestore_error(base_env):
     ):
         config = load_config_from_firestore()
         assert config == {}
+
+
+def test_gcp_logging_auto_enable_prod(base_env):
+    """Test that GCP Logging is auto-enabled in PROD when unset."""
+    env = base_env.copy()
+    env["ENVIRONMENT"] = "PROD"
+    # Ensure ENABLE_GCP_LOGGING is unset in env
+    if "ENABLE_GCP_LOGGING" in env:
+        del env["ENABLE_GCP_LOGGING"]
+
+    with patch.dict(os.environ, env, clear=True):
+        settings = Settings(_env_file=None)
+        assert settings.ENABLE_GCP_LOGGING is True
+
+
+def test_gcp_logging_disable_override_prod(base_env):
+    """Test that GCP Logging can be explicitly disabled in PROD."""
+    env = base_env.copy()
+    env["ENVIRONMENT"] = "PROD"
+    env["ENABLE_GCP_LOGGING"] = "False"
+
+    with patch.dict(os.environ, env, clear=True):
+        settings = Settings(_env_file=None)
+        assert settings.ENABLE_GCP_LOGGING is False
+
+
+def test_gcp_logging_defaults_false_dev(base_env):
+    """Test that GCP Logging defaults to False in DEV."""
+    env = base_env.copy()
+    env["ENVIRONMENT"] = "DEV"
+    if "ENABLE_GCP_LOGGING" in env:
+        del env["ENABLE_GCP_LOGGING"]
+
+    with patch.dict(os.environ, env, clear=True):
+        settings = Settings(_env_file=None)
+        assert settings.ENABLE_GCP_LOGGING is False
