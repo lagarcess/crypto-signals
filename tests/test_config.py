@@ -144,37 +144,37 @@ def test_warn_if_logging_disabled_in_prod(base_env):
             Settings()
 
 
-def test_no_warn_if_logging_enabled_in_prod(base_env):
-    """Test that no warning is issued if logging is enabled in PROD."""
+@pytest.mark.parametrize(
+    "env_overrides",
+    [
+        pytest.param(
+            {
+                "ENVIRONMENT": "PROD",
+                "ENABLE_GCP_LOGGING": "True",
+                "TEST_MODE": "False",
+                "LIVE_CRYPTO_DISCORD_WEBHOOK_URL": "https://discord.com/api/webhooks/live_crypto",
+                "LIVE_STOCK_DISCORD_WEBHOOK_URL": "https://discord.com/api/webhooks/live_stock",
+            },
+            id="prod_logging_enabled",
+        ),
+        pytest.param(
+            {
+                "ENVIRONMENT": "DEV",
+                "ENABLE_GCP_LOGGING": "False",
+            },
+            id="dev_logging_disabled",
+        ),
+    ],
+)
+def test_no_gcp_logging_warning(base_env, env_overrides):
+    """Test that no GCP logging warning is issued in non-warning scenarios."""
     env = base_env.copy()
-    env["ENVIRONMENT"] = "PROD"
-    env["ENABLE_GCP_LOGGING"] = "True"
-    env["TEST_MODE"] = "False"
-    env["LIVE_CRYPTO_DISCORD_WEBHOOK_URL"] = "https://discord.com/api/webhooks/live_crypto"
-    env["LIVE_STOCK_DISCORD_WEBHOOK_URL"] = "https://discord.com/api/webhooks/live_stock"
+    env.update(env_overrides)
 
     with patch.dict(os.environ, env):
         with warnings.catch_warnings(record=True) as record:
             warnings.simplefilter("always")
             Settings()
-            relevant_warnings = [
-                w for w in record if "GCP Logging is disabled in PROD" in str(w.message)
-            ]
-            assert len(relevant_warnings) == 0
-
-
-def test_no_warn_in_dev(base_env):
-    """Test that no warning is issued in DEV, even if logging is disabled."""
-    env = base_env.copy()
-    env["ENVIRONMENT"] = "DEV"
-    env["ENABLE_GCP_LOGGING"] = "False"
-    # TEST_MODE defaults to True in base_env
-
-    with patch.dict(os.environ, env):
-        with warnings.catch_warnings(record=True) as record:
-            warnings.simplefilter("always")
-            Settings()
-            relevant_warnings = [
-                w for w in record if "GCP Logging is disabled in PROD" in str(w.message)
-            ]
-            assert len(relevant_warnings) == 0
+            assert not any(
+                "GCP Logging is disabled in PROD" in str(w.message) for w in record
+            )
