@@ -742,14 +742,18 @@ class JobMetadataRepository:
             metadata: Dictionary of metadata to save. Dates are auto-serialized.
         """
         doc_ref = self.db.collection(self.collection_name).document(job_id)
-
-        # Serialize dates in top-level dictionary
-        data = metadata.copy()
-        for key, value in data.items():
-            if isinstance(value, date):
-                data[key] = value.isoformat()
-
+        data = self._serialize_metadata(metadata)
         doc_ref.set(data, merge=True)
+
+    def _serialize_metadata(self, data: Any) -> Any:
+        """Recursively serialize date objects to ISO strings."""
+        if isinstance(data, dict):
+            return {k: self._serialize_metadata(v) for k, v in data.items()}
+        elif isinstance(data, list):
+            return [self._serialize_metadata(v) for v in data]
+        elif isinstance(data, date):
+            return data.isoformat()
+        return data
 
 
 class StrategyRepository:

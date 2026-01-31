@@ -29,12 +29,13 @@ def get_job_context(settings: Settings) -> Dict[str, Any]:
     """
     Extract critical configuration settings for job metadata.
     """
-    return {
-        "ENVIRONMENT": settings.ENVIRONMENT,
-        "TEST_MODE": settings.TEST_MODE,
-        "MAX_CRYPTO_POSITIONS": settings.MAX_CRYPTO_POSITIONS,
-        "MAX_EQUITY_POSITIONS": settings.MAX_EQUITY_POSITIONS,
-        "RISK_PER_TRADE": settings.RISK_PER_TRADE,
-        "ENABLE_EXECUTION": settings.ENABLE_EXECUTION,
-        "ALPACA_PAPER_TRADING": settings.ALPACA_PAPER_TRADING,
+    critical_settings = {
+        "ENVIRONMENT",
+        "TEST_MODE",
+        "MAX_CRYPTO_POSITIONS",
+        "MAX_EQUITY_POSITIONS",
+        "RISK_PER_TRADE",
+        "ENABLE_EXECUTION",
+        "ALPACA_PAPER_TRADING",
     }
+    return settings.model_dump(include=critical_settings)

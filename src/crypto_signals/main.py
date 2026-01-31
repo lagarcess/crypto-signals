@@ -1252,15 +1252,16 @@ def main(
             logger.info("Signal generation cycle complete.")
 
         # Persist Final Job Metadata
+        now = datetime.now(timezone.utc)
         job_metadata_repo.save_job_metadata(
             "signal_generator_cron",
             {
-                "last_run_date": datetime.now(timezone.utc).date(),
+                "last_run_date": now.date(),
                 "git_hash": git_hash,
                 "config": job_context,
                 "duration_seconds": time.time() - app_start_time,
                 "environment": settings.ENVIRONMENT,
-                "executed_at": datetime.now(timezone.utc),
+                "executed_at": now,
             },
         )
 
