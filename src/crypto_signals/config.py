@@ -6,6 +6,7 @@ pydantic-settings for validation and environment variable loading.
 """
 
 import os
+import warnings
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -243,6 +244,14 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def validate_conditional_requirements(self) -> "Settings":
         """Validate fields that are required only under certain conditions."""
+        # Check GCP Logging in PROD
+        if self.ENVIRONMENT == "PROD" and not self.ENABLE_GCP_LOGGING:
+            warnings.warn(
+                "GCP Logging is disabled in PROD. This is not recommended.",
+                UserWarning,
+                stacklevel=2,
+            )
+
         if not self.TEST_MODE:
             if not self.LIVE_CRYPTO_DISCORD_WEBHOOK_URL:
                 raise ValueError(

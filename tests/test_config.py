@@ -1,4 +1,5 @@
 import os
+import warnings
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -128,3 +129,52 @@ def test_load_config_from_firestore_error(base_env):
     ):
         config = load_config_from_firestore()
         assert config == {}
+
+def test_warn_if_logging_disabled_in_prod(base_env):
+    """Test that a warning is issued if logging is disabled in PROD."""
+    env = base_env.copy()
+    env["ENVIRONMENT"] = "PROD"
+    env["ENABLE_GCP_LOGGING"] = "False"
+    env["TEST_MODE"] = "False"
+    env["LIVE_CRYPTO_DISCORD_WEBHOOK_URL"] = "https://discord.com/api/webhooks/live_crypto"
+    env["LIVE_STOCK_DISCORD_WEBHOOK_URL"] = "https://discord.com/api/webhooks/live_stock"
+
+    with patch.dict(os.environ, env):
+        with pytest.warns(UserWarning, match="GCP Logging is disabled in PROD"):
+            Settings()
+
+
+def test_no_warn_if_logging_enabled_in_prod(base_env):
+    """Test that no warning is issued if logging is enabled in PROD."""
+    env = base_env.copy()
+    env["ENVIRONMENT"] = "PROD"
+    env["ENABLE_GCP_LOGGING"] = "True"
+    env["TEST_MODE"] = "False"
+    env["LIVE_CRYPTO_DISCORD_WEBHOOK_URL"] = "https://discord.com/api/webhooks/live_crypto"
+    env["LIVE_STOCK_DISCORD_WEBHOOK_URL"] = "https://discord.com/api/webhooks/live_stock"
+
+    with patch.dict(os.environ, env):
+        with warnings.catch_warnings(record=True) as record:
+            warnings.simplefilter("always")
+            Settings()
+            relevant_warnings = [
+                w for w in record if "GCP Logging is disabled in PROD" in str(w.message)
+            ]
+            assert len(relevant_warnings) == 0
+
+
+def test_no_warn_in_dev(base_env):
+    """Test that no warning is issued in DEV, even if logging is disabled."""
+    env = base_env.copy()
+    env["ENVIRONMENT"] = "DEV"
+    env["ENABLE_GCP_LOGGING"] = "False"
+    # TEST_MODE defaults to True in base_env
+
+    with patch.dict(os.environ, env):
+        with warnings.catch_warnings(record=True) as record:
+            warnings.simplefilter("always")
+            Settings()
+            relevant_warnings = [
+                w for w in record if "GCP Logging is disabled in PROD" in str(w.message)
+            ]
+            assert len(relevant_warnings) == 0
