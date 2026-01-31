@@ -279,11 +279,38 @@ gcloud firestore indexes composite create \
 
 *Note: Index creation can take 5-10 minutes.*
 
-**Verification:**
+#### Verification Steps
+
+Operators should confirm that the index is created and being used to avoid silent performance degradation.
+
+**1. Check Index Status**
+
+Ensure the index is in `READY` state:
 
 ```bash
-gcloud firestore indexes composite list
+gcloud firestore indexes composite list --filter="collectionGroup=live_positions"
 ```
+
+**2. Verify Index Usage (Query Execution Plan)**
+
+To confirm the index is being used (and not falling back to a full table scan), you can use the Firestore execution plan in the GCP Console:
+
+1. Go to **Firestore Studio** > **Query Builder**.
+2. Construct a query:
+   - Collection: `live_positions`
+   - Filter: `status` == `OPEN`
+   - Filter: `asset_class` == `CRYPTO`
+3. Click **Explain** (instead of Run).
+4. Verify that the **Plan Summary** shows usage of the composite index.
+
+**3. Monitor Performance**
+
+The Risk Engine performs a sector cap check before every trade.
+- **Metric:** Track query latency for `count_open_positions_by_class`.
+- **Alert Threshold:** > 100ms
+- **Impact:** Slow checks can cause slippage or timeout errors.
+
+If latency spikes, verify the index is still present and `READY`.
 
 ---
 
