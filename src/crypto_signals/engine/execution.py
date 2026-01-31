@@ -16,6 +16,7 @@ from datetime import date, datetime, timedelta, timezone
 from time import sleep
 from typing import Any, Dict, List, Optional, cast
 
+from alpaca.common.exceptions import APIError
 from alpaca.trading.client import TradingClient
 from alpaca.trading.enums import OrderClass, OrderSide, TimeInForce
 from alpaca.trading.models import Order
@@ -99,22 +100,19 @@ class ExecutionEngine:
         )
 
         # Fetch Account ID for data joins (Issue #182)
+        self.account_id = "unknown"
         try:
-            from alpaca.common.exceptions import APIError
-
             self.account_id = str(self.alpaca.get_account().id)
         except APIError as e:
             logger.warning(
                 f"Failed to fetch Alpaca account ID: {e}. Defaulting to 'unknown'.",
                 extra={"error": str(e)},
             )
-            self.account_id = "unknown"
         except Exception as e:
             logger.error(
                 f"An unexpected error occurred while fetching Alpaca account ID: {e}. Defaulting to 'unknown'.",
                 extra={"error": str(e)},
             )
-            self.account_id = "unknown"
 
         # Environment Logging
         logger.info(

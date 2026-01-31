@@ -83,9 +83,6 @@ class TestExecutionAccountID:
         Verify that ExecutionEngine defaults account_id to 'unknown'
         when the Alpaca API fails.
         """
-        mock_headers = MagicMock()
-        mock_headers.is_paper_trading = True
-
         mock_trading_client = MagicMock()
         from alpaca.common.exceptions import APIError
 
