@@ -76,7 +76,7 @@ The **Golden Thread** is the happy path of data flow that proves the system is h
 
 ### Price Patch (`price_patch.py`)
 *   **Objective**: Fix missing or zero fill prices in `live_positions`.
-*   **Trigger**: Ad-hoc (when `filled_avg_price` is null).
+*   **Trigger**: Ad-hoc (when `entry_fill_price` is null).
 *   **Target**: Updates Firestore `live_positions` from Alpaca Order API.
 
 ---

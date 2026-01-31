@@ -10,7 +10,8 @@ Welcome to the Crypto Sentinel Wiki. This repository contains detailed guides on
 - **[Position Management](strategy/position-management.md)**: How the system manages open trades and runner positions.
 
 ## 🏗️ Architecture & Data
-- **[Data Architecture](architecture/data-architecture.md)**: Firestore/BigQuery sync patterns and schema definitions.
+- **[Data Handbook](data/00_data_handbook.md)**: **Consolidated Source of Truth** for all schemas and metrics.
+- **[Data Architecture](architecture/data-architecture.md)**: High-level Firestore/BigQuery sync patterns and Mermaid ER diagrams.
 - **[Discord Threading](architecture/discord-threading.md)**: Logic for linking signal updates to notification threads.
 - **[Knowledge Base](development/knowledge-base.md)**: Lessons learned and technical "gotchas".
 
