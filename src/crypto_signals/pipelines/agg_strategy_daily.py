@@ -8,8 +8,7 @@ the Aggregation Table (agg_strategy_daily).
 It implements the "Aggregation Layer" pattern to support fast dashboards.
 """
 
-import datetime
-from typing import Any, List, Type
+from typing import Any, List
 
 from google.api_core.exceptions import GoogleAPICallError, NotFound
 from google.cloud import bigquery
@@ -38,7 +37,9 @@ class DailyStrategyAggregation(BigQueryPipelineBase):
 
         # Define table IDs
         self.source_table_id = f"{project_id}.crypto_analytics.fact_trades{env_suffix}"
-        staging_table_id = f"{project_id}.crypto_analytics.stg_agg_strategy_daily{env_suffix}"
+        staging_table_id = (
+            f"{project_id}.crypto_analytics.stg_agg_strategy_daily{env_suffix}"
+        )
         fact_table_id = f"{project_id}.crypto_analytics.agg_strategy_daily{env_suffix}"
 
         super().__init__(
@@ -49,58 +50,6 @@ class DailyStrategyAggregation(BigQueryPipelineBase):
             partition_column="ds",
             schema_model=AggStrategyDaily,
         )
-
-    def _generate_bq_schema(self, model: Type[BaseModel]) -> List[bigquery.SchemaField]:
-        """
-        Dynamically generate BigQuery schema from Pydantic model.
-        """
-        schema = []
-
-        # Simple mapping for this specific use case
-        # For a more robust solution, we would iterate over fields and handle nested models
-        # But AggStrategyDaily is flat.
-
-        type_mapping = {
-            str: "STRING",
-            int: "INTEGER",
-            float: "FLOAT",
-            bool: "BOOLEAN",
-            datetime.datetime: "TIMESTAMP",
-            datetime.date: "DATE",
-        }
-
-        for name, field_info in model.model_fields.items():
-            # Handle Optional types if needed, but for AggStrategyDaily all are required
-            # Unwrapping logic could be added here similar to SchemaGuardian if models get complex
-
-            python_type = field_info.annotation
-
-            # Basic unwrapping for simple Optional (if any future changes add them)
-            # (Simplified version of SchemaGuardian._unwrap_type)
-            import typing
-            origin = typing.get_origin(python_type)
-            if origin is typing.Union:
-                args = typing.get_args(python_type)
-                for arg in args:
-                    if arg is not type(None):
-                        python_type = arg
-                        break
-
-            # Ensure python_type is a type and not None for mypy
-            if python_type is None:
-                 bq_type = "STRING"
-            else:
-                 bq_type = type_mapping.get(python_type, "STRING") # type: ignore
-
-            mode = "REQUIRED"  # Default to required as per original implementation
-
-            # If field allows None, mode should be NULLABLE.
-            # In current AggStrategyDaily, all are "..." (Required) except maybe implicitly?
-            # Let's check the schema. All are "..."
-
-            schema.append(bigquery.SchemaField(name, bq_type, mode=mode))
-
-        return schema
 
     def _create_table_if_not_exists(self, table_id: str) -> None:
         """
@@ -115,8 +64,11 @@ class DailyStrategyAggregation(BigQueryPipelineBase):
         except NotFound:
             logger.info(f"[{self.job_name}] Table {table_id} not found. Creating...")
 
-        # Construct Schema dynamically from Pydantic model
-        schema = self._generate_bq_schema(self.schema_model)
+        # Construct Schema dynamically using SchemaGuardian
+        from crypto_signals.engine.schema_guardian import SchemaGuardian
+
+        guardian = SchemaGuardian(self.bq_client)
+        schema = guardian.generate_schema(self.schema_model)
 
         table = bigquery.Table(table_id, schema=schema)
 
@@ -179,7 +131,7 @@ class DailyStrategyAggregation(BigQueryPipelineBase):
             logger.error(f"[{self.job_name}] Failed to extract data: {e}")
             raise
         except Exception as e:
-             # Catch-all for other unforeseen errors to ensure logging
+            # Catch-all for other unforeseen errors to ensure logging
             logger.error(f"[{self.job_name}] Unexpected error during extraction: {e}")
             raise
 
