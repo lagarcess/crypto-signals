@@ -117,3 +117,11 @@
 - [2026-01-30] **Docker Env Files**: Docker's `--env-file` parser reads values literally and does NOT strip inline comments. A line like `VAR=val # comment` results in the value `"val # comment"`, causing Pydantic validation errors. Comments must be on their own lines.
 - [2026-01-30] **CI/CD Validation**: When running container validation checks (e.g., `python -c "import main"`) in GitHub Actions, you must explicitly inject required environment variables (like `GOOGLE_CLOUD_PROJECT`) if the module initialization relies on strict Pydantic settings. Using `vars.GOOGLE_CLOUD_PROJECT` context is preferred.
 - [2026-01-30] **Windows WSL**: On Windows, invoking `bash` from PowerShell may target a broken WSL distribution instead of Git Bash. Use the absolute path to the Git Bash executable (e.g., `& "C:\Program Files\Git\bin\bash.exe"`) for reliable script execution.
+
+### BigQuery & Data Engineering
+- [2026-01-30] **SQL Division**: BigQuery Standard SQL defaults to `FLOAT64` division (`/`). `SAFE_DIVIDE(x, y)` is useful for zero-safety but technically redundant in `GROUP BY` counts (guaranteed >= 1). However, defensive programming often prefers explicit safety.
+- [2026-01-30] **Schema Management**: Avoid hardcoding BigQuery schemas in pipelines. Use `SchemaGuardian` (or similar utility) to dynamically generate schemas from Pydantic models. This ensures single source of truth and eliminates drift.
+
+### Workflow & Git
+- [2026-01-30] **Reverting Feedback**: When rejecting PR feedback that was partially applied, ensure specific commits are reverted cleanly. `git reset` or `git revert` is safer than manual edits which might miss artifacts (like stale comments).
+- [2026-01-30] **Pre-Commit Formatting**: Tools like `ruff-format` modify files in place, causing git commits to fail. The remediation is to simply `git add` the modified files and retry the commit.
