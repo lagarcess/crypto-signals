@@ -13,6 +13,8 @@ Table dim_strategies [headercolor: #ff9900] {
   timeframe varchar [note: 'e.g. 1D']
   assets list [note: '["BTC/USD", "ETH/USD"]']
   risk_params json [note: '{"stop_loss_pct": 0.05}']
+  confluence_config json [note: '{"rsi_period": 14}']
+  pattern_overrides json [note: '{"bullish_engulfing": {"priority": 1}}']
   Note: 'Config table. Defines trading rules.'
 }
 

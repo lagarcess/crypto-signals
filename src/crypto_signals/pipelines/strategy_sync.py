@@ -27,7 +27,15 @@ class StrategySyncPipeline(BigQueryPipelineBase):
     """
 
     # Config fields tracked for change detection
-    RELEVANT_CONFIG_KEYS = ["active", "timeframe", "asset_class", "assets", "risk_params"]
+    RELEVANT_CONFIG_KEYS = [
+        "active",
+        "timeframe",
+        "asset_class",
+        "assets",
+        "risk_params",
+        "confluence_config",
+        "pattern_overrides",
+    ]
 
     def __init__(self):
         super().__init__(
@@ -121,6 +129,12 @@ class StrategySyncPipeline(BigQueryPipelineBase):
                         "risk_params": json.dumps(
                             data.get("risk_params", {}), sort_keys=True, default=str
                         ),
+                        "confluence_config": json.dumps(
+                            data.get("confluence_config", {}), sort_keys=True, default=str
+                        ),
+                        "pattern_overrides": json.dumps(
+                            data.get("pattern_overrides", {}), sort_keys=True, default=str
+                        ),
                         "config_hash": config_hash,
                         "valid_from": now,
                         "valid_to": None,
@@ -164,9 +178,9 @@ class StrategySyncPipeline(BigQueryPipelineBase):
         # 2. Insert new records
         insert_query = f"""
             INSERT INTO `{self.fact_table_id}`
-            (strategy_id, active, timeframe, asset_class, assets, risk_params, config_hash, valid_from, valid_to, is_current)
+            (strategy_id, active, timeframe, asset_class, assets, risk_params, confluence_config, pattern_overrides, config_hash, valid_from, valid_to, is_current)
             SELECT
-                strategy_id, active, timeframe, asset_class, assets, risk_params, config_hash, valid_from, valid_to, is_current
+                strategy_id, active, timeframe, asset_class, assets, risk_params, confluence_config, pattern_overrides, config_hash, valid_from, valid_to, is_current
             FROM `{self.staging_table_id}`
         """
 

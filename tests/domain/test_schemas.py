@@ -573,3 +573,90 @@ class TestTradeExecutionModel:
 
         assert "exit_order_id" in serialized
         assert serialized["exit_order_id"] == "serialized-exit-order-id"
+
+
+# =============================================================================
+# STRATEGY CONFIG MODEL TESTS (Issue #198)
+# =============================================================================
+
+
+class TestStrategyConfigDefaults:
+    """Tests for StrategyConfig defaults and completeness."""
+
+    def test_strategy_config_defaults(self):
+        """Test that new fields default to empty dicts when missing."""
+        config = StrategyConfig(
+            strategy_id="test_strategy",
+            active=True,
+            timeframe="1D",
+            asset_class=AssetClass.CRYPTO,
+            assets=["BTC/USD"],
+            risk_params={"stop_loss_pct": 0.02},
+        )
+
+        assert config.confluence_config == {}
+        assert isinstance(config.confluence_config, dict)
+        assert config.pattern_overrides == {}
+        assert isinstance(config.pattern_overrides, dict)
+
+    def test_strategy_config_explicit_values(self):
+        """Test that new fields accept explicit values."""
+        confluence_config = {"rsi_period": 14}
+        pattern_overrides = {"bullish_engulfing": {"priority": 1}}
+
+        config = StrategyConfig(
+            strategy_id="test_strategy",
+            active=True,
+            timeframe="1D",
+            asset_class=AssetClass.CRYPTO,
+            assets=["BTC/USD"],
+            risk_params={"stop_loss_pct": 0.02},
+            confluence_config=confluence_config,
+            pattern_overrides=pattern_overrides,
+        )
+
+        assert config.confluence_config == confluence_config
+        assert config.pattern_overrides == pattern_overrides
+
+    def test_strategy_config_json_serialization(self):
+        """Verify JSON serialization for BigQuery compatibility."""
+        confluence_config = {"rsi_period": 14}
+        pattern_overrides = {"bullish_engulfing": {"priority": 1}}
+
+        config = StrategyConfig(
+            strategy_id="test_strategy",
+            active=True,
+            timeframe="1D",
+            asset_class=AssetClass.CRYPTO,
+            assets=["BTC/USD"],
+            risk_params={"stop_loss_pct": 0.02},
+            confluence_config=confluence_config,
+            pattern_overrides=pattern_overrides,
+        )
+
+        serialized = config.model_dump(mode="json")
+
+        assert "confluence_config" in serialized
+        assert serialized["confluence_config"] == confluence_config
+        assert "pattern_overrides" in serialized
+        assert serialized["pattern_overrides"] == pattern_overrides
+
+    def test_strategy_config_json_serialization_defaults(self):
+        """Verify JSON serialization includes defaults."""
+        config = StrategyConfig(
+            strategy_id="test_strategy",
+            active=True,
+            timeframe="1D",
+            asset_class=AssetClass.CRYPTO,
+            assets=["BTC/USD"],
+            risk_params={"stop_loss_pct": 0.02},
+        )
+
+        serialized = config.model_dump(mode="json")
+
+        # Usually defaults are included by default in model_dump unless exclude_defaults=True.
+        # We want them included for BigQuery schema consistency.
+        assert "confluence_config" in serialized
+        assert serialized["confluence_config"] == {}
+        assert "pattern_overrides" in serialized
+        assert serialized["pattern_overrides"] == {}
