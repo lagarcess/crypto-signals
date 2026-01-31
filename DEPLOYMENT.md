@@ -148,6 +148,11 @@ Go to **Settings → Secrets and variables → Actions → Repository variables*
     poetry run python scripts/run_migration.py
     ```
 
+ ### Firestore Index Verification (Issue 127)
+
+ Ensure the sector cap composite index is active to prevent performance degradation.
+ See [Verification Steps](./docs/operations/deployment-guide.md#verification-steps) in the deployment guide.
+
  ### Verification Commands
 
 ```bash
