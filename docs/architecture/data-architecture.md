@@ -5,7 +5,8 @@
 This document outlines the high-level data flow and storage schema for Crypto Sentinel.
 
 > [!IMPORTANT]
-> **Source of Truth**: All detailed field definitions are now consolidated in the [Data Handbook](file:///d:/Users/garce/git-repos/crypto-signals/docs/data/00_data_handbook.md).
+> [!IMPORTANT]
+> **Source of Truth**: All detailed field definitions are now consolidated in the [Data Handbook](../data/00_data_handbook.md).
 
 ---
 
@@ -72,17 +73,17 @@ erDiagram
 
 | Collection | Description | Target handbook |
 | :--- | :--- | :--- |
-| **dim_strategies** | Configuration for trading strategies. | [Handbook §3.A](file:///d:/Users/garce/git-repos/crypto-signals/docs/data/00_data_handbook.md#a-operational-storage-firestore-hot) |
-| **live_signals** | Ephemeral trading opportunities. | [Handbook §4.Signal](file:///d:/Users/garce/git-repos/crypto-signals/docs/data/00_data_handbook.md#live-signal-live_signals) |
-| **live_positions** | Active trades managed by the bot. | [Handbook §3.A](file:///d:/Users/garce/git-repos/crypto-signals/docs/data/00_data_handbook.md#a-operational-storage-firestore-hot) |
+| **dim_strategies** | Configuration for trading strategies. | [Handbook §3.A](../data/00_data_handbook.md#a-operational-storage-firestore-hot) |
+| **live_signals** | Ephemeral trading opportunities. | [Handbook §4.Signal](../data/00_data_handbook.md#live-signal-live_signals) |
+| **live_positions** | Active trades managed by the bot. | [Handbook §3.A](../data/00_data_handbook.md#a-operational-storage-firestore-hot) |
 
 ### Cold Storage (BigQuery)
 **Dataset**: `{{PROJECT_ID}}.crypto_analytics`
 
 | Table Name | Type | Key Columns | Target Handbook |
 | :--- | :--- | :--- | :--- |
-| **fact_trades** | FACT | `trade_id`, `pnl_usd`, `pnl_pct` | [Handbook §4.Trade](file:///d:/Users/garce/git-repos/crypto-signals/docs/data/00_data_handbook.md#trade-execution-fact_trades) |
-| **snapshot_accounts** | SNAPSHOT | `account_id`, `equity`, `ds` | [Handbook §4.Account](file:///d:/Users/garce/git-repos/crypto-signals/docs/data/00_data_handbook.md#account-snapshot-snapshot_accounts) |
+| **fact_trades** | FACT | `trade_id`, `pnl_usd`, `pnl_pct` | [Handbook §4.Trade](../data/00_data_handbook.md#trade-execution-fact_trades) |
+| **snapshot_accounts** | SNAPSHOT | `account_id`, `equity`, `ds` | [Handbook §4.Account](../data/00_data_handbook.md#account-snapshot-snapshot_accounts) |
 
 ---
 

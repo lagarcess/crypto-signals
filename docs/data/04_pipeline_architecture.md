@@ -1,7 +1,7 @@
 # 04. Pipeline Architecture & Strategy
 
 > [!IMPORTANT]
-> **Source of Truth**: Detailed storage schemas are co-located in the [Data Handbook](file:///d:/Users/garce/git-repos/crypto-signals/docs/data/00_data_handbook.md).
+> **Source of Truth**: Detailed storage schemas are co-located in the [Data Handbook](./00_data_handbook.md).
 
 ## 1. Architecture Strategy (ETL vs ELT)
 
