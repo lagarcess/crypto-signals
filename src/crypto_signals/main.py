@@ -60,6 +60,7 @@ from crypto_signals.repository.firestore import (
     SignalRepository,
 )
 from crypto_signals.secrets_manager import init_secrets
+from crypto_signals.utils.metadata import get_git_hash, get_job_context
 
 # Configure logging with Rich integration
 configure_logging(level="INFO")
@@ -137,12 +138,16 @@ def signal_handler(signum, frame):
     shutdown_requested = True
 
 
-def _create_account_snapshot_callback(job_metadata_repo, today_date: date):
+def _create_account_snapshot_callback(
+    job_metadata_repo, today_date: date, git_hash: str, environment: str
+):
     """Create callback for account snapshot pipeline success.
 
     Args:
         job_metadata_repo: Repository for updating job metadata
         today_date: Today's date for metadata update
+        git_hash: Current git hash
+        environment: Current environment (PROD/DEV)
 
     Returns:
         Callback function for _run_pipeline
@@ -150,7 +155,14 @@ def _create_account_snapshot_callback(job_metadata_repo, today_date: date):
 
     def callback(_result):
         logger.info("✅ Account Snapshot Pipeline completed successfully.")
-        job_metadata_repo.update_last_run_date("account_snapshot", today_date)
+        job_metadata_repo.save_job_metadata(
+            "account_snapshot",
+            {
+                "last_run_date": today_date,
+                "git_hash": git_hash,
+                "environment": environment,
+            },
+        )
 
     return callback
 
@@ -186,6 +198,11 @@ def main(
 
     logger.info("Starting Crypto Sentinel Signal Generator...")
     app_start_time = time.time()
+
+    # Capture Execution Context
+    git_hash = get_git_hash()
+    job_context = get_job_context(settings)
+    logger.info(f"Execution Context: Git={git_hash}, Env={settings.ENVIRONMENT}")
 
     try:
         # Initialize Secrets
@@ -280,7 +297,9 @@ def main(
             _run_pipeline(
                 account_snapshot,
                 "account_snapshot",
-                _create_account_snapshot_callback(job_metadata_repo, today),
+                _create_account_snapshot_callback(
+                    job_metadata_repo, today, git_hash, settings.ENVIRONMENT
+                ),
                 metrics_collector=metrics,
             )
         else:
@@ -321,7 +340,14 @@ def main(
                 f"Cleanup complete: {deleted_signals} signals, "
                 f"{deleted_rejected} rejected signals, {deleted_positions} positions."
             )
-            job_metadata_repo.update_last_run_date("daily_cleanup", today)
+            job_metadata_repo.save_job_metadata(
+                "daily_cleanup",
+                {
+                    "last_run_date": today,
+                    "git_hash": git_hash,
+                    "environment": settings.ENVIRONMENT,
+                },
+            )
         else:
             logger.info("Daily cleanup has already run today. Skipping.")
 
@@ -1224,6 +1250,19 @@ def main(
             logger.info("Signal generation cycle interrupted by shutdown request.")
         else:
             logger.info("Signal generation cycle complete.")
+
+        # Persist Final Job Metadata
+        job_metadata_repo.save_job_metadata(
+            "signal_generator_cron",
+            {
+                "last_run_date": datetime.now(timezone.utc).date(),
+                "git_hash": git_hash,
+                "config": job_context,
+                "duration_seconds": time.time() - app_start_time,
+                "environment": settings.ENVIRONMENT,
+                "executed_at": datetime.now(timezone.utc),
+            },
+        )
 
     except Exception as e:
         logger.critical(f"Fatal error in main application loop: {e}", exc_info=True)

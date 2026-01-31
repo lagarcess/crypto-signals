@@ -731,8 +731,25 @@ class JobMetadataRepository:
             job_id: The unique identifier for the job.
             run_date: The date the job was run.
         """
+        self.save_job_metadata(job_id, {"last_run_date": run_date})
+
+    def save_job_metadata(self, job_id: str, metadata: Dict[str, Any]) -> None:
+        """
+        Save job metadata to Firestore (merge update).
+
+        Args:
+            job_id: The unique identifier for the job.
+            metadata: Dictionary of metadata to save. Dates are auto-serialized.
+        """
         doc_ref = self.db.collection(self.collection_name).document(job_id)
-        doc_ref.set({"last_run_date": run_date.isoformat()})
+
+        # Serialize dates in top-level dictionary
+        data = metadata.copy()
+        for key, value in data.items():
+            if isinstance(value, date):
+                data[key] = value.isoformat()
+
+        doc_ref.set(data, merge=True)
 
 
 class StrategyRepository:
