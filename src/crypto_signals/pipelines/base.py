@@ -174,7 +174,7 @@ class BigQueryPipelineBase(ABC):
         logger.info(f"[{self.job_name}] Executing MERGE operation...")
 
         # 1. Get all column names from the model
-        columns = list(self.schema_model.model_fields.keys())
+        columns = sorted(list(self.schema_model.model_fields.keys()))
 
         # 2. Build UPDATE clause (T.col = S.col)
         # We generally update ALL columns on match to ensure consistency
