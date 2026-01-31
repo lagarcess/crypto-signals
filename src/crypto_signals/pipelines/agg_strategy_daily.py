@@ -18,6 +18,7 @@ from pydantic import BaseModel
 
 from crypto_signals.config import get_settings
 from crypto_signals.domain.schemas import AggStrategyDaily
+from crypto_signals.engine.schema_guardian import SchemaGuardian
 from crypto_signals.pipelines.base import BigQueryPipelineBase
 
 
@@ -65,8 +66,6 @@ class DailyStrategyAggregation(BigQueryPipelineBase):
             logger.info(f"[{self.job_name}] Table {table_id} not found. Creating...")
 
         # Construct Schema dynamically using SchemaGuardian
-        from crypto_signals.engine.schema_guardian import SchemaGuardian
-
         guardian = SchemaGuardian(self.bq_client)
         schema = guardian.generate_schema(self.schema_model)
 

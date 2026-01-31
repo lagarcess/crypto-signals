@@ -111,6 +111,24 @@ def _run_pipeline(
         metrics.record_failure(name, time.time() - start_time)
 
 
+def _log_pipeline_result(
+    title: str, count: int, unit: str = "signals", action: str = "archived"
+) -> None:
+    """
+    Log standardized completion message for pipelines.
+
+    Args:
+        title: Readable name of the pipeline (e.g., "Rejected signal archival").
+        count: Number of items processed.
+        unit: Unit name (e.g., "signals", "trades").
+        action: Past tense action (e.g., "archived", "updated").
+    """
+    if count > 0:
+        logger.info(f"✅ {title} complete: {count} {unit} {action}")
+    else:
+        logger.info(f"✅ {title} complete: No {unit} to {action}")
+
+
 def signal_handler(signum, frame):
     """Handle shutdown signals gracefully."""
     global shutdown_requested
@@ -274,8 +292,8 @@ def main(
         _run_pipeline(
             rejected_archival,
             "rejected_archival",
-            lambda count: logger.info(
-                f"✅ Rejected signal archival complete: {f'{count} signals archived' if count > 0 else 'No signals to archive'}"
+            lambda count: _log_pipeline_result(
+                "Rejected signal archival", count, "signals", "archived"
             ),
             metrics_collector=metrics,
         )
@@ -286,8 +304,8 @@ def main(
         _run_pipeline(
             expired_archival,
             "expired_archival",
-            lambda count: logger.info(
-                f"✅ Expired signal archival complete: {f'{count} signals archived' if count > 0 else 'No signals to archive'}"
+            lambda count: _log_pipeline_result(
+                "Expired signal archival", count, "signals", "archived"
             ),
             metrics_collector=metrics,
         )
