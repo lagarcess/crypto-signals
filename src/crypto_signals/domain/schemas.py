@@ -1470,38 +1470,11 @@ class AggStrategyDaily(BaseModel):
     )
 
 
-class StagingAggStrategyDaily(BaseModel):
+class StagingAggStrategyDaily(AggStrategyDaily):
     """
     Staging model for daily strategy aggregation.
 
     Exact mirror of AggStrategyDaily.
     """
 
-    ds: date = Field(
-        ...,
-        description="Partition key - aggregation date",
-    )
-    agg_id: str = Field(
-        ...,
-        description="Unique identifier for the aggregation record (ds|strategy_id|symbol)",
-    )
-    strategy_id: str = Field(
-        ...,
-        description="Strategy identifier",
-    )
-    symbol: str = Field(
-        ...,
-        description="Asset symbol",
-    )
-    total_pnl: float = Field(
-        ...,
-        description="Total Profit/Loss in USD for the day",
-    )
-    win_rate: float = Field(
-        ...,
-        description="Win rate for the day (0.0 to 1.0)",
-    )
-    trade_count: int = Field(
-        ...,
-        description="Number of trades included in this aggregation",
-    )
+    pass

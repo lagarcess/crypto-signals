@@ -5,6 +5,7 @@ Tests for Daily Strategy Aggregation Pipeline.
 from unittest.mock import MagicMock, patch
 
 import pytest
+from google.api_core.exceptions import NotFound
 from google.cloud import bigquery
 
 from crypto_signals.domain.schemas import AggStrategyDaily
@@ -80,7 +81,7 @@ def test_create_table_if_not_exists(pipeline):
     pipeline.bq_client.create_table.assert_not_called()
 
     # Scenario 2: Table not found (Exception raised by get_table)
-    pipeline.bq_client.get_table.side_effect = Exception("Not Found")
+    pipeline.bq_client.get_table.side_effect = NotFound("Not Found")
     pipeline._create_table_if_not_exists("project.dataset.test_table")
 
     # Verify create_table called
