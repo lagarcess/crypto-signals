@@ -1,3 +1,4 @@
+import os
 import subprocess
 from typing import Any, Dict
 
@@ -21,7 +22,12 @@ def get_git_hash() -> str:
         )
         return result.stdout.strip()
     except Exception as e:
-        logger.warning(f"Failed to get git hash: {e}")
+        logger.warning(f"Failed to get git hash from command: {e}")
+        # Fallback to Environment Variables (Common in Docker/CI)
+        if git_sha := os.getenv("GIT_SHA"):
+            return git_sha
+        if revision_id := os.getenv("REVISION_ID"):
+            return revision_id
         return "unknown"
 
 
