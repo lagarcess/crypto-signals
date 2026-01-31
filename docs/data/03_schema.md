@@ -41,6 +41,8 @@ We utilize a **Star Schema** variant optimized for BigQuery (Columnar Storage).
 *   **`Trade`**: Fill Price, Qty, Fees, PnL, Entry Time, Exit Time.
 *   **`Account`**: Equity, Cash, Buying Power, Margin, Drawdown.
 
+*(See **5. Detailed Schema Reference** below for exact field definitions)*
+
 ### C. Physical Model (The Database View)
 *   **Hot Storage (Firestore)**: Document-oriented, optimized for *Write Speed* and *Real-time Access*.
     *   Collection: `dim_strategies` (Config).
@@ -81,3 +83,76 @@ We utilize a **Star Schema** variant optimized for BigQuery (Columnar Storage).
 *   **Solution**: `MIN_ORDER_NOTIONAL_USD` config ($15 default) validates orders before API submission.
 *   **Implementation**: `ExecutionEngine._is_notional_value_sufficient(qty, signal)` helper.
 *   **Behavior**: Orders below minimum are gracefully rejected with warning log, no API error.
+
+---
+
+## 5. Detailed Schema Reference
+
+### AccountSnapshot (Table: `snapshot_accounts`)
+
+*Partition Key: `ds`*
+
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `ds` | `date` | Partition key - snapshot date |
+| `account_id` | `str` | Alpaca account ID |
+| `equity` | `float` | Total account equity in USD |
+| `cash` | `float` | Available cash in USD |
+| `calmar_ratio` | `float` | Calmar ratio (annualized return / max drawdown) |
+| `drawdown_pct` | `float` | Current drawdown percentage from peak |
+| `buying_power` | `Optional[float]` | Current available buying power (Reg T) |
+| `regt_buying_power` | `Optional[float]` | Reg T buying power |
+| `daytrading_buying_power` | `Optional[float]` | Day trading buying power |
+| `crypto_buying_power` | `Optional[float]` | Non-marginable buying power (Crypto BP) |
+| `initial_margin` | `Optional[float]` | Initial margin requirement |
+| `maintenance_margin` | `Optional[float]` | Maintenance margin requirement |
+| `last_equity` | `Optional[float]` | Equity value at last close |
+| `long_market_value` | `Optional[float]` | Total market value of long positions |
+| `short_market_value` | `Optional[float]` | Total market value of short positions |
+| `currency` | `Optional[str]` | Account currency (e.g., USD) |
+| `status` | `Optional[str]` | Account status (e.g., ACTIVE) |
+| `pattern_day_trader` | `Optional[bool]` | Pattern Day Trader (PDT) flag |
+| `daytrade_count` | `Optional[int]` | Number of day trades in last 5 days |
+| `account_blocked` | `Optional[bool]` | Whether account is blocked |
+| `trade_suspended_by_user` | `Optional[bool]` | Whether trading is suspended by user |
+| `trading_blocked` | `Optional[bool]` | Whether trading is blocked |
+| `transfers_blocked` | `Optional[bool]` | Whether transfers are blocked |
+| `multiplier` | `Optional[float]` | Account leverage multiplier |
+| `sma` | `Optional[float]` | SMA value (Special Memorandum Account) |
+
+### TradeExecution (Table: `fact_trades`)
+
+*Partition Key: `ds`*
+
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `ds` | `date` | Partition key - date of trade execution |
+| `trade_id` | `str` | Unique identifier for this trade |
+| `account_id` | `str` | Alpaca account ID |
+| `strategy_id` | `str` | Strategy that executed this trade |
+| `asset_class` | `AssetClass` | Asset class traded (CRYPTO or EQUITY) |
+| `symbol` | `str` | Asset symbol traded |
+| `side` | `OrderSide` | Order side (buy or sell) |
+| `qty` | `float` | Quantity traded |
+| `entry_price` | `float` | Entry fill price |
+| `exit_price` | `float` | Exit fill price |
+| `entry_time` | `datetime` | UTC timestamp of entry fill |
+| `exit_time` | `datetime` | UTC timestamp of exit fill |
+| `exit_reason` | `ExitReason` | Reason for trade exit (e.g., 'TP1', 'COLOR_FLIP') |
+| `max_favorable_excursion` | `Optional[float]` | Highest price reached during trade |
+| `pnl_pct` | `float` | Profit/Loss as percentage |
+| `pnl_usd` | `float` | Profit/Loss in USD |
+| `fees_usd` | `float` | Total fees paid in USD |
+| `slippage_pct` | `float` | Slippage as percentage of entry price |
+| `trade_duration` | `int` | Trade duration in seconds |
+| `discord_thread_id` | `Optional[str]` | Discord thread ID for social context analytics |
+| `trailing_stop_final` | `Optional[float]` | Final trailing stop value at exit (Chandelier Exit for TP3) |
+| `target_entry_price` | `Optional[float]` | Original signal's entry price (target). Compare against entry_price for slippage. |
+| `alpaca_order_id` | `Optional[str]` | Alpaca broker's UUID for the entry order. Links to Alpaca dashboard for auditability. |
+| `exit_order_id` | `Optional[str]` | Alpaca broker's UUID for the exit order. Used for reconciliation and fill tracking. |
+| `fee_finalized` | `bool` | Whether actual fees have been reconciled from Alpaca CFEE activities (T+1 settlement) |
+| `actual_fee_usd` | `Optional[float]` | Actual fee from Alpaca CFEE (T+1 settlement). Replaces estimated fees_usd after reconciliation. |
+| `fee_calculation_type` | `str` | Source of fee data: 'ESTIMATED' (initial), 'ACTUAL_CFEE' (from Activities API), 'ACTUAL_COMMISSION' (from order) |
+| `fee_tier` | `Optional[str]` | Alpaca volume tier at time of trade (e.g., 'Tier 0: 0.25%'). Used for fee estimation and audit. |
+| `entry_order_id` | `Optional[str]` | Entry order ID for CFEE attribution (from Issue #139). Used to match CFEE activities to trades. |
+| `fee_reconciled_at` | `Optional[datetime]` | Timestamp when fees were reconciled from CFEE. NULL if still using estimates. |
