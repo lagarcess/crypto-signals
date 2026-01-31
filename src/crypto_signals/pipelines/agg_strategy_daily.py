@@ -113,9 +113,7 @@ class DailyStrategyAggregation(BigQueryPipelineBase):
                 strategy_id,
                 symbol,
                 SUM(pnl_usd) as total_pnl,
-                SUM(pnl_usd) as total_pnl,
                 SAFE_DIVIDE(COUNTIF(pnl_usd > 0), COUNT(*)) as win_rate,
-                COUNT(*) as trade_count
                 COUNT(*) as trade_count
             FROM `{self.source_table_id}`
             GROUP BY ds, strategy_id, symbol
