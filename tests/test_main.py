@@ -1,5 +1,6 @@
 """Unit tests for the main application entrypoint."""
 
+from contextlib import ExitStack
 from datetime import date
 from unittest.mock import ANY, MagicMock, Mock, call, patch
 
@@ -32,28 +33,58 @@ def caplog(caplog):
 @pytest.fixture
 def mock_dependencies():
     """Mock all external dependencies used in main.py."""
-    with (
-        patch("crypto_signals.main.get_stock_data_client") as stock_client,
-        patch("crypto_signals.main.get_crypto_data_client") as crypto_client,
-        patch("crypto_signals.main.get_trading_client") as trading_client,
-        patch("crypto_signals.main.MarketDataProvider") as market_provider,
-        patch("crypto_signals.main.SignalGenerator") as generator,
-        patch("crypto_signals.main.SignalRepository") as repo,
-        patch("crypto_signals.main.DiscordClient") as discord,
-        patch("crypto_signals.main.AssetValidationService") as asset_validator,
-        patch("crypto_signals.main.get_settings") as mock_settings,
-        patch("crypto_signals.main.init_secrets", return_value=True) as mock_secrets,
-        patch("crypto_signals.main.load_config_from_firestore") as mock_firestore_config,
-        patch("crypto_signals.main.PositionRepository") as position_repo,
-        patch("crypto_signals.main.ExecutionEngine") as execution_engine,
-        patch("crypto_signals.main.JobLockRepository") as job_lock,
-        patch("crypto_signals.main.RejectedSignalRepository") as rejected_repo,
-        patch("crypto_signals.main.TradeArchivalPipeline") as trade_archival,
-        patch("crypto_signals.main.FeePatchPipeline") as fee_patch,
-        patch("crypto_signals.main.PricePatchPipeline") as price_patch,
-        patch("crypto_signals.main.StateReconciler") as reconciler,
-        patch("crypto_signals.main.JobMetadataRepository") as job_metadata_repo,
-    ):
+    with ExitStack() as stack:
+        stock_client = stack.enter_context(
+            patch("crypto_signals.main.get_stock_data_client")
+        )
+        crypto_client = stack.enter_context(
+            patch("crypto_signals.main.get_crypto_data_client")
+        )
+        trading_client = stack.enter_context(
+            patch("crypto_signals.main.get_trading_client")
+        )
+        market_provider = stack.enter_context(
+            patch("crypto_signals.main.MarketDataProvider")
+        )
+        generator = stack.enter_context(patch("crypto_signals.main.SignalGenerator"))
+        repo = stack.enter_context(patch("crypto_signals.main.SignalRepository"))
+        discord = stack.enter_context(patch("crypto_signals.main.DiscordClient"))
+        asset_validator = stack.enter_context(
+            patch("crypto_signals.main.AssetValidationService")
+        )
+        mock_settings = stack.enter_context(patch("crypto_signals.main.get_settings"))
+        mock_secrets = stack.enter_context(
+            patch("crypto_signals.main.init_secrets", return_value=True)
+        )
+        mock_firestore_config = stack.enter_context(
+            patch("crypto_signals.main.load_config_from_firestore")
+        )
+        position_repo = stack.enter_context(
+            patch("crypto_signals.main.PositionRepository")
+        )
+        execution_engine = stack.enter_context(
+            patch("crypto_signals.main.ExecutionEngine")
+        )
+        job_lock = stack.enter_context(patch("crypto_signals.main.JobLockRepository"))
+        rejected_repo = stack.enter_context(
+            patch("crypto_signals.main.RejectedSignalRepository")
+        )
+        trade_archival = stack.enter_context(
+            patch("crypto_signals.main.TradeArchivalPipeline")
+        )
+        fee_patch = stack.enter_context(patch("crypto_signals.main.FeePatchPipeline"))
+        price_patch = stack.enter_context(patch("crypto_signals.main.PricePatchPipeline"))
+        reconciler = stack.enter_context(patch("crypto_signals.main.StateReconciler"))
+        job_metadata_repo = stack.enter_context(
+            patch("crypto_signals.main.JobMetadataRepository")
+        )
+        rejected_archival = stack.enter_context(
+            patch("crypto_signals.main.RejectedSignalArchival")
+        )
+        expired_archival = stack.enter_context(
+            patch("crypto_signals.main.ExpiredSignalArchivalPipeline")
+        )
+
         job_metadata_repo.return_value.get_last_run_date.return_value = None
         # Configure mock settings
         mock_settings.return_value.CRYPTO_SYMBOLS = [
@@ -104,6 +135,8 @@ def mock_dependencies():
         trade_archival.return_value.run.return_value = 0
         fee_patch.return_value.run.return_value = 0
         price_patch.return_value.run.return_value = 0
+        rejected_archival.return_value.run.return_value = 0
+        expired_archival.return_value.run.return_value = 0
 
         yield {
             "stock_client": stock_client,
@@ -125,6 +158,8 @@ def mock_dependencies():
             "fee_patch": fee_patch,
             "price_patch": price_patch,
             "reconciler": reconciler,
+            "rejected_archival": rejected_archival,
+            "expired_archival": expired_archival,
         }
 
 
@@ -175,6 +210,8 @@ def test_main_execution_flow(mock_dependencies):
     # Configure pipeline return values to prevent logging interaction (str/repr calls)
     mock_dependencies["trade_archival"].return_value.run.return_value = 5
     mock_dependencies["fee_patch"].return_value.run.return_value = 2
+    mock_dependencies["rejected_archival"].return_value.run.return_value = 3
+    mock_dependencies["expired_archival"].return_value.run.return_value = 4
 
     # Setup tracking for Reconcile -> Archive -> Fee Patch Sequence
     pipeline_manager = Mock()
@@ -183,6 +220,12 @@ def test_main_execution_flow(mock_dependencies):
     )
     pipeline_manager.attach_mock(
         mock_dependencies["trade_archival"].return_value.run, "archive"
+    )
+    pipeline_manager.attach_mock(
+        mock_dependencies["rejected_archival"].return_value.run, "rejected_archive"
+    )
+    pipeline_manager.attach_mock(
+        mock_dependencies["expired_archival"].return_value.run, "expired_archive"
     )
     pipeline_manager.attach_mock(
         mock_dependencies["fee_patch"].return_value.run, "fee_patch"
@@ -239,6 +282,8 @@ def test_main_execution_flow(mock_dependencies):
     # Verify precise call order (Names only to avoid fragile call object comparison)
     actual_calls = [c[0] for c in pipeline_manager.mock_calls]
     assert actual_calls == [
+        "rejected_archive",
+        "expired_archive",
         "reconcile",
         "archive",
         "fee_patch",

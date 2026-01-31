@@ -101,6 +101,35 @@ class SchemaGuardian:
 
         return missing_columns, type_mismatches
 
+    def generate_schema(self, model: Type[BaseModel]) -> List[bigquery.SchemaField]:
+        """
+        Generates a BigQuery schema from a Pydantic model.
+        """
+        schema = []
+        for name, field_info in model.model_fields.items():
+            # 1. Resolve Type
+            python_type = field_info.annotation
+            python_type = self._unwrap_type(python_type)
+
+            # Determine if REPEATED (List)
+            mode = "REQUIRED"  # Default
+            # TODO: Robust nullable/repeated detection.
+            # For now, relying on simple unwrap.
+            # If unwrapped from Optional, could be NULLABLE.
+
+            bq_type, is_nested = self._get_bq_type(python_type)
+
+            fields = ()
+            if is_nested:
+                # Recursive generation for nested models
+                # We need to instantiate a temporary SchemaGuardian or make this method recursive
+                # Since we are inside the instance, self.generate_schema works
+                fields = self.generate_schema(python_type)
+
+            schema.append(bigquery.SchemaField(name, bq_type, mode=mode, fields=fields))
+
+        return schema
+
     def _validate_fields(
         self,
         model_fields: Any,
