@@ -751,7 +751,7 @@ class JobMetadataRepository:
             return {k: self._serialize_metadata(v) for k, v in data.items()}
         elif isinstance(data, list):
             return [self._serialize_metadata(v) for v in data]
-        elif isinstance(data, date):
+        elif isinstance(data, (datetime, date)):
             return data.isoformat()
         return data
 

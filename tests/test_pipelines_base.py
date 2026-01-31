@@ -101,14 +101,30 @@ def test_load_to_staging_raises_on_error(pipeline, mock_bq_client):
         pipeline._load_to_staging([{"id": "1"}])
 
 
-def skip_test_execute_merge_constructs_correct_sql(pipeline, mock_bq_client):
-    """
-    SKIP: Test dynamic SQL generation for MERGE statement.
-    TODO: Fix this test. It fails in CI/Environment due to string capture issues.
-    Manual verification confirmed logic is correct (reproduce_sql.py).
-    """
+def test_execute_merge_constructs_correct_sql(pipeline, mock_bq_client):
+    """Test dynamic SQL generation for MERGE statement."""
     pipeline._execute_merge()
-    # ... logic skipped ...
+
+    call_args = mock_bq_client.query.call_args
+    assert call_args is not None
+    query = call_args[0][0]
+
+    # Columns are now sorted: ['ds', 'id', 'value']
+    expected_query = textwrap.dedent(f"""
+        MERGE `{pipeline.fact_table_id}` T
+        USING `{pipeline.staging_table_id}` S
+        ON T.id = S.id AND T.ds = S.ds
+        WHEN MATCHED THEN
+            UPDATE SET T.value = S.value
+        WHEN NOT MATCHED THEN
+            INSERT (ds, id, value)
+            VALUES (S.ds, S.id, S.value)
+    """).strip()
+
+    def normalize(s):
+        return " ".join(s.split())
+
+    assert normalize(query) == normalize(expected_query)
 
 
 def test_cleanup_staging_executes_correct_sql(pipeline, mock_bq_client):
