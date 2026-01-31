@@ -13,7 +13,8 @@ This guide documents the complete production deployment process for Crypto Senti
   - [1.1. Enable Required APIs](#11-enable-required-apis)
   - [1.2. Create Artifact Registry](#12-create-artifact-registry)
   - [1.3. Initialize Firestore](#13-initialize-firestore)
-  - [1.4. Initialize BigQuery](#14-initialize-bigquery)
+  - [1.4. Configure Firestore Indexes](#14-configure-firestore-indexes)
+  - [1.5. Initialize BigQuery](#15-initialize-bigquery)
 - [2. Service Account Configuration](#2-service-account-configuration)
   - [2.1. Create Custom Service Account (Recommended)](#21-create-custom-service-account-recommended)
   - [2.2. Grant Required Permissions](#22-grant-required-permissions)
@@ -264,7 +265,7 @@ gcloud firestore databases list
 ```
 
 
-### 1.5. Configure Firestore Indexes
+### 1.4. Configure Firestore Indexes
 
 The Risk Engine requires a **Composite Index** to efficiently enforce sector caps (`MAX_CRYPTO_POSITIONS`). Without this, the application will crash with a GRPC Error.
 
@@ -314,7 +315,7 @@ If latency spikes, verify the index is still present and `READY`.
 
 ---
 
-### 1.4. Initialize BigQuery
+### 1.5. Initialize BigQuery
 
 BigQuery is used for trade archival and analytics:
 
