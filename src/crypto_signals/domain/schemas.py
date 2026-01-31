@@ -1425,3 +1425,83 @@ class StagingStrategy(BaseModel):
         default=True,
         description="SCD2: Flag for current record",
     )
+
+
+# =============================================================================
+# BIGQUERY: AGG STRATEGY DAILY (Tables: agg_strategy_daily, stg_agg_strategy_daily)
+# =============================================================================
+
+
+class AggStrategyDaily(BaseModel):
+    """
+    Daily aggregated strategy performance metrics.
+
+    Stored in the agg_strategy_daily table.
+    Groups trades by strategy, symbol, and date to provide fast dashboard metrics.
+    """
+
+    ds: date = Field(
+        ...,
+        description="Partition key - aggregation date",
+    )
+    agg_id: str = Field(
+        ...,
+        description="Unique identifier for the aggregation record (ds|strategy_id|symbol)",
+    )
+    strategy_id: str = Field(
+        ...,
+        description="Strategy identifier",
+    )
+    symbol: str = Field(
+        ...,
+        description="Asset symbol",
+    )
+    total_pnl: float = Field(
+        ...,
+        description="Total Profit/Loss in USD for the day",
+    )
+    win_rate: float = Field(
+        ...,
+        description="Win rate for the day (0.0 to 1.0)",
+    )
+    trade_count: int = Field(
+        ...,
+        description="Number of trades included in this aggregation",
+    )
+
+
+class StagingAggStrategyDaily(BaseModel):
+    """
+    Staging model for daily strategy aggregation.
+
+    Exact mirror of AggStrategyDaily.
+    """
+
+    ds: date = Field(
+        ...,
+        description="Partition key - aggregation date",
+    )
+    agg_id: str = Field(
+        ...,
+        description="Unique identifier for the aggregation record (ds|strategy_id|symbol)",
+    )
+    strategy_id: str = Field(
+        ...,
+        description="Strategy identifier",
+    )
+    symbol: str = Field(
+        ...,
+        description="Asset symbol",
+    )
+    total_pnl: float = Field(
+        ...,
+        description="Total Profit/Loss in USD for the day",
+    )
+    win_rate: float = Field(
+        ...,
+        description="Win rate for the day (0.0 to 1.0)",
+    )
+    trade_count: int = Field(
+        ...,
+        description="Number of trades included in this aggregation",
+    )
