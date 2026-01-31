@@ -79,7 +79,7 @@ Optimized for aggregation, backtesting, and performance reporting.
 | `fees_usd` | `float` | Total fees paid |
 | `actual_fee_usd` | `float` | Reconciled fees (T+1 from Broker) |
 | `fee_finalized` | `bool` | True if actual fees are reconciled |
-| `slippage_pct` | `float` | `abs(Fill - Signal) / Signal` |
+| `slippage_pct` | `float` | `abs(entry_price - target_entry_price) / target_entry_price` |
 | `trade_duration` | `int` | Duration in seconds |
 | `max_favorable_excursion` | `float` | Best price reached during trade |
 
@@ -92,7 +92,9 @@ Optimized for aggregation, backtesting, and performance reporting.
 | `status` | `str` | Current lifecycle state |
 | `valid_until` | `datetime` | Logical expiration (24h/120h) |
 | `entry_price` | `float` | Target limit price |
-| `take_profit_1-3` | `float` | Calculated profit targets |
+| `take_profit_1` | `float` | First calculated profit target |
+| `take_profit_2` | `float` | Second calculated profit target |
+| `take_profit_3` | `float` | Third calculated profit target |
 | `pattern_name` | `str` | e.g., "Bullish Engulfing" |
 | `trade_type` | `str` | `EXECUTED`, `FILTERED`, `THEORETICAL` |
 

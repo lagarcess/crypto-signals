@@ -5,7 +5,6 @@
 This document outlines the high-level data flow and storage schema for Crypto Sentinel.
 
 > [!IMPORTANT]
-> [!IMPORTANT]
 > **Source of Truth**: All detailed field definitions are now consolidated in the [Data Handbook](../data/00_data_handbook.md).
 
 ---
