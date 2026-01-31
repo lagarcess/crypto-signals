@@ -34,8 +34,8 @@ We selected **ETL (Extract-Transform-Load)** over ELT for this phase.
 ### Cold Storage (BigQuery)
 *   **Role**: **Analytical History**.
 *   **Retention**: Infinite (Append-Only).
-*   **Partitioning**: Time-based (`entry_date` or `snapshot_date`) to optimize cost/performance.
-*   **Primary Key**: `trade_id` / `snapshot_id`.
+*   **Partitioning**: Time-based (`ds` / partition key) to optimize cost/performance.
+*   **Primary Key**: `trade_id` / `account_id` + `ds`.
 
 ---
 

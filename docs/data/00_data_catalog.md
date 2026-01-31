@@ -41,9 +41,7 @@ Defines the tradable universe and asset-specific constraints.
 *   **`created_at`**: Timestamp.
 *   **`entry_price`**: Limit price for entry.
 *   **`suggested_stop`**: Initial Stop Loss.
-*   **`tp1`, `tp2`, `tp3`**: Take Profit targets.
-*   **`max_mfe_during_validity`**: Max Favorable Excursion while signal was live.
-*   **`distance_to_trigger_pct`**: How close price got to entry.
+*   **`take_profit_1`, `take_profit_2`, `take_profit_3`**: Take Profit targets.
 *   **`valid_until`**: Logical expiration (24h).
 *   **`delete_at`**: Physical TTL (30 days).
 *   **`discord_thread_id`**: For notification threading.
@@ -64,8 +62,8 @@ Defines the tradable universe and asset-specific constraints.
 *   **`status`**: `OPEN`, `CLOSED`.
 *   **`side`**: `LONG` | `SHORT`.
 *   **`qty`**: Number of contracts/shares.
-*   **`filled_avg_price`**: Broker execution price.
-*   **`current_stop`**: Trailing stop value.
+*   **`entry_fill_price`**: Broker execution price.
+*   **`current_stop_loss`**: Trailing stop value.
 *   **Order Management**:
     *   `alpaca_order_id`: Parent Bracket Order ID.
     *   `tp_order_id`, `sl_order_id`: Child leg IDs.
@@ -81,7 +79,7 @@ Defines the tradable universe and asset-specific constraints.
     *   `scaled_out_price`: Avg price of scale-out.
     *   `breakeven_applied`: Boolean.
 *   **Real-time Metrics**:
-    *   `unrealized_pnl_usd/pct`: Floating P&L.
+    *   **`realized_pnl_usd/pct`**: Realized P&L (includes scale-outs).
     *   `entry_slippage_pct`: vs Target Entry.
     *   `exit_slippage_pct`: vs Target Exit.
 
@@ -132,12 +130,11 @@ Defines the tradable universe and asset-specific constraints.
     *   **`fee_finalized`**: Boolean (True = Reconciled).
     *   `fee_calculation_type`: `ESTIMATED` | `ACTUAL`.
 *   **Execution Metrics**:
-    *   `multiplier`: Contract multiplier (default 1).
+    *   **`multiplier`**: Contract multiplier (Currently missing in implementation - Issue #202).
     *   `slippage_pct`: `abs(Fill - Signal) / Signal`.
     *   `trade_duration`: Seconds open.
     *   `entry_time`, `exit_time`.
-    *   `exit_price_finalized`: Final weighted avg exit price.
-    *   `exit_price_reconciled_at`: Timestamp of exit pricing.
+    *   **`exit_price`**: Final weighted avg exit price.
     *   `max_favorable_excursion`: Highest price reached.
     *   `discord_thread_id`: Context link.
     *   `alpaca_order_id`: Audit link.
@@ -165,7 +162,7 @@ Daily snapshots captured via `AccountSnapshotPipeline`.
     *   `long_market_value`, `short_market_value`.
     *   `multiplier`: Account-level leverage multiplier.
 *   **Risk Metrics**:
-    *   `buying_power`: Total BP.
+    *   `buying_power`: Total BP (Reg T).
     *   `regt_buying_power`: Reg T BP.
     *   `daytrading_buying_power`: DT BP.
     *   `crypto_buying_power`: Crypto-specific BP.
