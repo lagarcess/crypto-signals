@@ -1,5 +1,4 @@
 import os
-import warnings
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -130,51 +129,38 @@ def test_load_config_from_firestore_error(base_env):
         config = load_config_from_firestore()
         assert config == {}
 
-def test_warn_if_logging_disabled_in_prod(base_env):
-    """Test that a warning is issued if logging is disabled in PROD."""
+
+def test_gcp_logging_auto_enable_prod(base_env):
+    """Test that GCP Logging is auto-enabled in PROD when unset."""
+    env = base_env.copy()
+    env["ENVIRONMENT"] = "PROD"
+    # Ensure ENABLE_GCP_LOGGING is unset in env
+    if "ENABLE_GCP_LOGGING" in env:
+        del env["ENABLE_GCP_LOGGING"]
+
+    with patch.dict(os.environ, env, clear=True):
+        settings = Settings(_env_file=None)
+        assert settings.ENABLE_GCP_LOGGING is True
+
+
+def test_gcp_logging_disable_override_prod(base_env):
+    """Test that GCP Logging can be explicitly disabled in PROD."""
     env = base_env.copy()
     env["ENVIRONMENT"] = "PROD"
     env["ENABLE_GCP_LOGGING"] = "False"
-    env["TEST_MODE"] = "False"
-    env["LIVE_CRYPTO_DISCORD_WEBHOOK_URL"] = "https://discord.com/api/webhooks/live_crypto"
-    env["LIVE_STOCK_DISCORD_WEBHOOK_URL"] = "https://discord.com/api/webhooks/live_stock"
 
-    with patch.dict(os.environ, env):
-        with pytest.warns(UserWarning, match="GCP Logging is disabled in PROD"):
-            Settings()
+    with patch.dict(os.environ, env, clear=True):
+        settings = Settings(_env_file=None)
+        assert settings.ENABLE_GCP_LOGGING is False
 
 
-@pytest.mark.parametrize(
-    "env_overrides",
-    [
-        pytest.param(
-            {
-                "ENVIRONMENT": "PROD",
-                "ENABLE_GCP_LOGGING": "True",
-                "TEST_MODE": "False",
-                "LIVE_CRYPTO_DISCORD_WEBHOOK_URL": "https://discord.com/api/webhooks/live_crypto",
-                "LIVE_STOCK_DISCORD_WEBHOOK_URL": "https://discord.com/api/webhooks/live_stock",
-            },
-            id="prod_logging_enabled",
-        ),
-        pytest.param(
-            {
-                "ENVIRONMENT": "DEV",
-                "ENABLE_GCP_LOGGING": "False",
-            },
-            id="dev_logging_disabled",
-        ),
-    ],
-)
-def test_no_gcp_logging_warning(base_env, env_overrides):
-    """Test that no GCP logging warning is issued in non-warning scenarios."""
+def test_gcp_logging_defaults_false_dev(base_env):
+    """Test that GCP Logging defaults to False in DEV."""
     env = base_env.copy()
-    env.update(env_overrides)
+    env["ENVIRONMENT"] = "DEV"
+    if "ENABLE_GCP_LOGGING" in env:
+        del env["ENABLE_GCP_LOGGING"]
 
-    with patch.dict(os.environ, env):
-        with warnings.catch_warnings(record=True) as record:
-            warnings.simplefilter("always")
-            Settings()
-            assert not any(
-                "GCP Logging is disabled in PROD" in str(w.message) for w in record
-            )
+    with patch.dict(os.environ, env, clear=True):
+        settings = Settings(_env_file=None)
+        assert settings.ENABLE_GCP_LOGGING is False
