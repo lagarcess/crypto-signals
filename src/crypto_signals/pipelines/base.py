@@ -38,6 +38,8 @@ class BigQueryPipelineBase(ABC):
         schema_model: Pydantic model class for validation and schema definition
     """
 
+    STAGING_CLEANUP_DAYS = 7
+
     def __init__(
         self,
         job_name: str,
@@ -218,7 +220,7 @@ class BigQueryPipelineBase(ABC):
 
         query = f"""
             DELETE FROM `{self.staging_table_id}`
-            WHERE {self.partition_column} < DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
+            WHERE {self.partition_column} < DATE_SUB(CURRENT_DATE(), INTERVAL {self.STAGING_CLEANUP_DAYS} DAY)
         """
         logger.info(
             f"[{self.job_name}] Cleaning up old partitions in {self.staging_table_id}"

@@ -1,5 +1,6 @@
 """Unit tests for the BigQueryPipelineBase class."""
 
+import textwrap
 from datetime import date
 from typing import Any, List
 from unittest.mock import patch
@@ -132,8 +133,16 @@ def test_cleanup_staging_executes_correct_sql(pipeline, mock_bq_client):
     assert call_args is not None
     query = call_args[0][0]
 
-    assert "DELETE FROM `test-project.dataset.stg_test`" in query
-    assert "WHERE ds < DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)" in query
+    expected_query = textwrap.dedent(f"""
+            DELETE FROM `test-project.dataset.stg_test`
+            WHERE ds < DATE_SUB(CURRENT_DATE(), INTERVAL {pipeline.STAGING_CLEANUP_DAYS} DAY)
+        """).strip()
+
+    # Normalize whitespace to avoid indentation issues
+    def normalize(s):
+        return " ".join(s.split())
+
+    assert normalize(query) == normalize(expected_query)
 
 
 def test_run_orchestrates_flow(pipeline):

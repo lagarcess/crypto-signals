@@ -119,12 +119,12 @@ class SchemaGuardian:
 
             bq_type, is_nested = self._get_bq_type(python_type)
 
-            fields: Any = ()
+            fields: tuple[bigquery.SchemaField, ...] = ()
             if is_nested:
                 # Recursive generation for nested models
                 # We need to instantiate a temporary SchemaGuardian or make this method recursive
                 # Since we are inside the instance, self.generate_schema works
-                fields = self.generate_schema(python_type)
+                fields = tuple(self.generate_schema(python_type))
 
             schema.append(bigquery.SchemaField(name, bq_type, mode=mode, fields=fields))
 
