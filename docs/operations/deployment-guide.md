@@ -13,7 +13,8 @@ This guide documents the complete production deployment process for Crypto Senti
   - [1.1. Enable Required APIs](#11-enable-required-apis)
   - [1.2. Create Artifact Registry](#12-create-artifact-registry)
   - [1.3. Initialize Firestore](#13-initialize-firestore)
-  - [1.4. Initialize BigQuery](#14-initialize-bigquery)
+  - [1.4. Configure Firestore Indexes](#14-configure-firestore-indexes)
+  - [1.5. Initialize BigQuery](#15-initialize-bigquery)
 - [2. Service Account Configuration](#2-service-account-configuration)
   - [2.1. Create Custom Service Account (Recommended)](#21-create-custom-service-account-recommended)
   - [2.2. Grant Required Permissions](#22-grant-required-permissions)
@@ -264,7 +265,7 @@ gcloud firestore databases list
 ```
 
 
-### 1.5. Configure Firestore Indexes
+### 1.4. Configure Firestore Indexes
 
 The Risk Engine requires a **Composite Index** to efficiently enforce sector caps (`MAX_CRYPTO_POSITIONS`). Without this, the application will crash with a GRPC Error.
 
@@ -279,15 +280,42 @@ gcloud firestore indexes composite create \
 
 *Note: Index creation can take 5-10 minutes.*
 
-**Verification:**
+#### Verification Steps
+
+Operators should confirm that the index is created and being used to avoid silent performance degradation.
+
+**1. Check Index Status**
+
+Ensure the index is in `READY` state:
 
 ```bash
-gcloud firestore indexes composite list
+gcloud firestore indexes composite list --filter="collectionGroup=live_positions"
 ```
+
+**2. Verify Index Usage (Query Execution Plan)**
+
+To confirm the index is being used (and not falling back to a full table scan), you can use the Firestore execution plan in the GCP Console:
+
+1. Go to **Firestore Studio** > **Query Builder**.
+2. Construct a query:
+   - Collection: `live_positions`
+   - Filter: `status` == `OPEN`
+   - Filter: `asset_class` == `CRYPTO`
+3. Click **Explain** (instead of Run).
+4. Verify that the **Plan Summary** shows usage of the composite index.
+
+**3. Monitor Performance**
+
+The Risk Engine performs a sector cap check before every trade.
+- **Metric:** Track query latency for `count_open_positions_by_class`.
+- **Alert Threshold:** > 100ms
+- **Impact:** Slow checks can cause slippage or timeout errors.
+
+If latency spikes, verify the index is still present and `READY`.
 
 ---
 
-### 1.4. Initialize BigQuery
+### 1.5. Initialize BigQuery
 
 BigQuery is used for trade archival and analytics:
 

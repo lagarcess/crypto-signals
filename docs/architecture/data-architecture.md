@@ -4,9 +4,60 @@
 
 This document outlines the high-level data flow and storage schema for Crypto Sentinel.
 
-> **Visual Schema**: A DBML file is available at `./current-schema.dbml` for generating visual diagrams.
+> [!IMPORTANT]
+> **Source of Truth**: All detailed field definitions are now consolidated in the [Data Handbook](../data/00_data_handbook.md).
 
-## Architecture Overview
+---
+
+## 1. System Entity Relationship (Hot-to-Cold)
+
+The following diagram illustrates the lifecycle of a trading signal from detection to analytical archival.
+
+```mermaid
+erDiagram
+    STRATEGY ||--o{ SIGNAL : generates
+    SIGNAL ||--o| POSITION : triggers
+    SIGNAL ||--o| REJECTION : results_in
+    POSITION ||--|| TRADE_FACT : archives_to
+    ACCOUNT ||--o{ SNAPSHOT : records
+
+    STRATEGY {
+        string strategy_id PK
+        json risk_params
+        boolean active
+    }
+    SIGNAL {
+        string signal_id PK
+        string strategy_id FK
+        datetime valid_until
+        string status
+    }
+    POSITION {
+        string position_id PK
+        string signal_id FK
+        float entry_fill_price
+        float current_stop_loss
+    }
+    TRADE_FACT {
+        string trade_id PK
+        string strategy_id FK
+        float pnl_usd
+        float pnl_pct
+    }
+    ACCOUNT {
+        string account_id PK
+        string currency
+    }
+    SNAPSHOT {
+        string account_id FK
+        date ds PK
+        float equity
+    }
+```
+
+---
+
+## 2. Architecture Overview
 
 1.  **Hot Storage (Firestore)**: Operational database for real-time signaling and trade management.
 2.  **Cold Storage (BigQuery)**: Analytical warehouse for backtesting, performance metrics, and account snapshots.
@@ -14,46 +65,28 @@ This document outlines the high-level data flow and storage schema for Crypto Se
 
 ---
 
-## 1. Hot Storage (Firestore)
+## 3. Storage Layer Details
 
+### Hot Storage (Firestore)
 **Project**: `{{PROJECT_ID}}`
-**Role**: Operational State & Configuration
 
-| Collection | Description | Key Fields |
+| Collection | Description | Target handbook |
 | :--- | :--- | :--- |
-| **dim_strategies** | Configuration for trading strategies. | `strategy_id`, `active`, `timeframe`, `assets`, `risk_params` |
-| **live_signals** | Ephemeral trading opportunities detected by engine. | `signal_id`, `status`, `symbol`, `pattern_name`, `expiration_at` |
-| **live_positions** | Active trades managed by the bot. | `position_id`, `status` (OPEN/CLOSED), `entry_fill_price`, `current_stop` |
+| **dim_strategies** | Configuration for trading strategies. | [Handbook §3.A](../data/00_data_handbook.md#a-operational-storage-firestore-hot) |
+| **live_signals** | Ephemeral trading opportunities. | [Handbook §4.Signal](../data/00_data_handbook.md#live-signal-live_signals) |
+| **live_positions** | Active trades managed by the bot. | [Handbook §3.A](../data/00_data_handbook.md#a-operational-storage-firestore-hot) |
 
----
-
-## 2. BigQuery Analytics
-
+### Cold Storage (BigQuery)
 **Dataset**: `{{PROJECT_ID}}.crypto_analytics`
-**Role**: Historical Analysis & Performance Reporting
 
-### Core Tables
-
-| Table Name | Type | Description | Key Columns |
+| Table Name | Type | Key Columns | Target Handbook |
 | :--- | :--- | :--- | :--- |
-| **fact_trades** | FACT | Immutable ledger of all completed trades. | `trade_id`, `pnl_usd`, `pnl_pct`, `slippage_pct`, `max_favorable_excursion` |
-| **snapshot_accounts** | SNAPSHOT | Daily snapshot of account equity and risk metrics. | `account_id`, `equity`, `cash`, `buying_power`, `calmar_ratio`, `drawdown_pct` |
-| **summary_strategy_performance** | AGGREGATE | Daily performance stats per strategy. | `strategy_id`, `win_rate`, `sharpe_ratio`, `profit_factor`, `alpha`, `beta` |
-
-### Environment Isolation
-
-We support isolated environments to prevent test data from polluting production analytics.
-
-| Environment | Firestore Collection | BigQuery Table Suffix |
-| :--- | :--- | :--- |
-| **PROD** | `live_positions` | (None) e.g., `fact_trades` |
-| **DEV / TEST** | `test_positions` | `_test` e.g., `fact_trades_test` |
-
-> **Note**: Pipeline logic automatically routes to the correct table based on the `ENVIRONMENT` setting.
+| **fact_trades** | FACT | `trade_id`, `pnl_usd`, `pnl_pct` | [Handbook §4.Trade](../data/00_data_handbook.md#trade-execution-fact_trades) |
+| **snapshot_accounts** | SNAPSHOT | `account_id`, `equity`, `ds` | [Handbook §4.Account](../data/00_data_handbook.md#account-snapshot-snapshot_accounts) |
 
 ---
 
-## 3. Data Flow
+## 4. Data Flow
 
 1.  **Trade Archival Pipeline**:
     *   **Source**: `live_positions` (Firestore) where `status = CLOSED`.

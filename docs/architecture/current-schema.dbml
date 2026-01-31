@@ -4,17 +4,14 @@
 
 // ==========================================
 //  HOT STORAGE (Firestore) - Operational
-//  Project: {{PROJECT_ID}}
 // ==========================================
 
 Table dim_strategies [headercolor: #ff9900] {
   strategy_id varchar [pk, note: 'Unique ID (e.g. btc_daily_hammer_v1)']
   active boolean [note: 'Kill switch']
-  timeframe varchar [note: 'e.g. 1D']
   assets list [note: '["BTC/USD", "ETH/USD"]']
   risk_params json [note: '{"stop_loss_pct": 0.05}']
   confluence_config json [note: '{"rsi_period": 14}']
-  pattern_overrides json [note: '{"bullish_engulfing": {"priority": 1}}']
   Note: 'Config table. Defines trading rules.'
 }
 
@@ -23,354 +20,86 @@ Table live_signals [headercolor: #e06666] {
   signal_id uuid [pk]
   strategy_id varchar [ref: > dim_strategies.strategy_id]
   symbol varchar
-  pattern_name varchar
-  status enum [note: 'WAITING, CONFIRMED, INVALIDATED']
-  expiration_at timestamp [note: 'TTL: 30 Days']
+  side enum [note: 'buy, sell']
+  status enum [note: 'WAITING, CONFIRMED, INVALIDATED, TP1_HIT']
+  entry_price float
+  take_profit_1 float
+  take_profit_2 float
+  take_profit_3 float
+  suggested_stop float
+  valid_until timestamp [note: 'Logical Expiration']
+  delete_at timestamp [note: 'TTL: 30 Days']
   Note: 'Ephemeral opportunities.'
 }
 
 Table live_positions [headercolor: #e06666] {
   ds string [note: 'Partition Key']
-  position_id uuid [pk]
+  position_id uuid [pk, note: 'Set to signal_id']
   account_id varchar [note: 'Alpaca Account ID']
   signal_id uuid [ref: - live_signals.signal_id]
-  discord_thread_id varchar [note: 'UX: Thread ID']
-  status enum [note: 'OPEN, CLOSED']
+  symbol varchar
+  side enum
+  qty float
   entry_fill_price float
   current_stop_loss float
-  Note: 'Active Trades (PROD).'
+  status enum [note: 'OPEN, CLOSED']
+  Note: 'Active Trades (Operational State).'
 }
 
 Table rejected_signals [headercolor: #e06666] {
   ds string
-  signal_id uuid [pk]
-  strategy_id varchar
-  rejection_reason varchar [note: 'Why it failed quality gate']
-  created_at timestamp
-  Note: 'Shadow tracking for quality gates. Source for theoretical P&L.'
-}
-
-// -- Test Environment Mirrors (Firestore) --
-
-Table test_positions [headercolor: #ea9999] {
-  ds string [note: 'Partition Key']
-  position_id uuid [pk]
-  account_id varchar
-  signal_id uuid
-  discord_thread_id varchar
-  status enum
-  entry_fill_price float
-  current_stop_loss float
-  Note: 'Active Trades (TEST/DEV). Exact mirror of live_positions.'
-}
-
-Table test_rejected_signals [headercolor: #ea9999] {
-  ds string
-  signal_id uuid [pk]
-  strategy_id varchar
+  signal_id uuid [pk, ref: - live_signals.signal_id]
+  strategy_id varchar [ref: > dim_strategies.strategy_id]
   rejection_reason varchar
-  created_at timestamp
-  Note: 'Shadow tracking (TEST/DEV). Exact mirror of rejected_signals.'
-}
-
-// ==========================================
-//  TRANSIENT STORAGE (BigQuery Staging)
-//  Dataset: crypto_analytics
-// ==========================================
-
-// -- PROD Staging --
-
-Table stg_trades_import [headercolor: #999999] {
-  ds date
-  trade_id uuid
-  account_id varchar
-  strategy_id varchar
-  symbol varchar
-  entry_time timestamp
-  exit_time timestamp
-  pnl_usd float
-  pnl_pct float
-  fees_usd float
-  slippage_pct float
-  trade_duration int
-  Note: 'Staging for fact_trades.'
-}
-
-Table stg_accounts_import [headercolor: #999999] {
-  ds date
-  account_id varchar
-  equity float
-  cash float
-  calmar_ratio float
-  drawdown_pct float
-  buying_power float
-  regt_buying_power float
-  daytrading_buying_power float
-  crypto_buying_power float
-  initial_margin float
-  maintenance_margin float
-  last_equity float
-  long_market_value float
-  short_market_value float
-  currency string
-  status string
-  pattern_day_trader boolean
-  daytrade_count int
-  account_blocked boolean
-  trading_blocked boolean
-  transfers_blocked boolean
-  multiplier float
-  sma float
-  Note: 'Staging for snapshot_accounts.'
-}
-
-Table stg_rejected_signals [headercolor: #999999] {
-  ds date
-  signal_id uuid
-  rejection_reason varchar
-  theoretical_pnl_usd float
-  theoretical_pnl_pct float
-  theoretical_fees_usd float
-  created_at timestamp
-  Note: 'Staging for fact_rejected_signals.'
-}
-
-Table stg_performance_import [headercolor: #999999] {
-  ds date
-  strategy_id varchar
-  total_trades int
-  win_rate float
-  profit_factor float
-  sharpe_ratio float
-  sortino_ratio float
-  max_drawdown_pct float
-  alpha float
-  beta float
-  Note: 'Staging for summary_strategy_performance.'
-}
-
-// -- TEST Staging --
-
-Table stg_trades_import_test [headercolor: #cccccc] {
-  ds date
-  trade_id uuid
-  account_id varchar
-  strategy_id varchar
-  symbol varchar
-  entry_time timestamp
-  exit_time timestamp
-  pnl_usd float
-  pnl_pct float
-  fees_usd float
-  slippage_pct float
-  trade_duration int
-  Note: 'Staging for fact_trades_test.'
-}
-
-Table stg_accounts_import_test [headercolor: #cccccc] {
-  ds date
-  account_id varchar
-  equity float
-  cash float
-  calmar_ratio float
-  drawdown_pct float
-  buying_power float
-  regt_buying_power float
-  daytrading_buying_power float
-  crypto_buying_power float
-  initial_margin float
-  maintenance_margin float
-  last_equity float
-  long_market_value float
-  short_market_value float
-  currency string
-  status string
-  pattern_day_trader boolean
-  daytrade_count int
-  account_blocked boolean
-  trading_blocked boolean
-  transfers_blocked boolean
-  multiplier float
-  sma float
-  Note: 'Staging for snapshot_accounts_test.'
-}
-
-Table stg_rejected_signals_test [headercolor: #cccccc] {
-  ds date
-  signal_id uuid
-  rejection_reason varchar
-  theoretical_pnl_usd float
-  theoretical_pnl_pct float
-  theoretical_fees_usd float
-  created_at timestamp
-  Note: 'Staging for fact_rejected_signals_test.'
+  Note: 'Signals that failed quality gate filters.'
 }
 
 // ==========================================
 //  COLD STORAGE (BigQuery) - Analytics
-//  Dataset: crypto_analytics
 // ==========================================
 
-// -- PROD Fact/Snapshot --
-
 Table fact_trades [headercolor: #6d9eeb] {
-  ds date [note: 'Partition Key']
-  trade_id uuid [pk]
+  ds date [pk, note: 'Partition Key']
+  trade_id uuid [pk, note: 'Links to position_id']
   account_id varchar
   strategy_id varchar [ref: > dim_strategies.strategy_id]
   symbol varchar
-  entry_time timestamp
-  exit_time timestamp
+  side varchar
+  qty float
+  entry_price float
+  exit_price float
   pnl_usd float
   pnl_pct float
   fees_usd float
-  slippage_pct float
-  trade_duration int [note: 'Unit: Milliseconds']
-  exit_order_id varchar [note: 'Alpaca exit order UUID']
-  Note: 'Immutable Ledger (PROD).'
+  actual_fee_usd float
+  fee_finalized boolean
+  trade_duration int
+  Note: 'Immutable Ledger of all CLOSED trades.'
 }
 
 Table snapshot_accounts [headercolor: #6d9eeb] {
-  ds date [note: 'Partition Key']
-  account_id varchar
+  ds date [pk, note: 'Partition Key']
+  account_id varchar [pk]
   equity float
   cash float
-  calmar_ratio float
-  drawdown_pct float
   buying_power float
-  regt_buying_power float
-  daytrading_buying_power float
-  crypto_buying_power float
-  initial_margin float
-  maintenance_margin float
-  last_equity float
-  long_market_value float
-  short_market_value float
-  currency string
-  status string
-  pattern_day_trader boolean
-  daytrade_count int
-  account_blocked boolean
-  trading_blocked boolean
-  transfers_blocked boolean
-  multiplier float
-  sma float
-  Note: 'Daily Account Ledger (PROD).'
+  drawdown_pct float
+  calmar_ratio float
+  Note: 'Daily Account state snapshots.'
 }
 
 Table fact_rejected_signals [headercolor: #6d9eeb] {
-  ds date
+  ds date [pk, note: 'Partition Key']
   signal_id uuid [pk]
-  rejection_reason varchar
-  theoretical_pnl_usd float
-  theoretical_pnl_pct float
-  theoretical_fees_usd float
-  created_at timestamp
-  Note: 'Analysis of shadow signals (PROD).'
-}
-
-Table summary_strategy_performance [headercolor: #38761d] {
-  ds date [note: 'Partition Key']
   strategy_id varchar [ref: > dim_strategies.strategy_id]
-  total_trades int
-  win_rate float
-  profit_factor float
-  sharpe_ratio float
-  sortino_ratio float
-  max_drawdown_pct float
-  alpha float
-  beta float
-  Note: 'Scoreboard (PROD).'
-}
-
-// -- TEST Fact/Snapshot --
-
-Table fact_trades_test [headercolor: #a4c2f4] {
-  ds date [note: 'Partition Key']
-  trade_id uuid [pk]
-  account_id varchar
-  strategy_id varchar
-  symbol varchar
-  entry_time timestamp
-  exit_time timestamp
-  pnl_usd float
-  pnl_pct float
-  fees_usd float
-  slippage_pct float
-  trade_duration int
-  exit_order_id varchar [note: 'Alpaca exit order UUID']
-  Note: 'Immutable Ledger (TEST).'
-}
-
-Table snapshot_accounts_test [headercolor: #a4c2f4] {
-  ds date [note: 'Partition Key']
-  account_id varchar
-  equity float
-  cash float
-  calmar_ratio float
-  drawdown_pct float
-  buying_power float
-  regt_buying_power float
-  daytrading_buying_power float
-  crypto_buying_power float
-  initial_margin float
-  maintenance_margin float
-  last_equity float
-  long_market_value float
-  short_market_value float
-  currency string
-  status string
-  pattern_day_trader boolean
-  daytrade_count int
-  account_blocked boolean
-  trading_blocked boolean
-  transfers_blocked boolean
-  multiplier float
-  sma float
-  Note: 'Daily Account Ledger (TEST).'
-}
-
-Table fact_rejected_signals_test [headercolor: #a4c2f4] {
-  ds date
-  signal_id uuid [pk]
   rejection_reason varchar
   theoretical_pnl_usd float
-  theoretical_pnl_pct float
-  theoretical_fees_usd float
-  created_at timestamp
-  Note: 'Analysis of shadow signals (TEST).'
+  Note: 'Analytical archival of rejected opportunities.'
 }
 
 // ==========================================
-//  DATA FLOW RELATIONSHIPS (The Golden Thread)
+//  HOT TO COLD RELATIONSHIPS (Lineage)
 // ==========================================
 
-// -- PROD FLOWS --
-
-// 1. Trade Lifecycle Flow (PROD)
-Ref: live_positions.position_id - stg_trades_import.trade_id //[note: "ETL: TradeArchival"]
-Ref: stg_trades_import.trade_id - fact_trades.trade_id //[note: "MERGE"]
-
-// 2. Account Snapshot Flow (PROD)
-Ref: stg_accounts_import.account_id - snapshot_accounts.account_id //[note: "ETL: AccountSnapshot"]
-
-// 3. Rejected Signal Flow (PROD)
-Ref: rejected_signals.signal_id - stg_rejected_signals.signal_id //[note: "ETL: RejectedSignalArchival"]
-Ref: stg_rejected_signals.signal_id - fact_rejected_signals.signal_id //[note: "MERGE"]
-
-// 4. Performance Aggregation (PROD)
-Ref: fact_trades.strategy_id - stg_performance_import.strategy_id //[note: "Aggregation"]
-Ref: stg_performance_import.strategy_id - summary_strategy_performance.strategy_id //[note: "MERGE"]
-
-// -- TEST FLOWS --
-
-// 1. Trade Lifecycle Flow (TEST)
-Ref: test_positions.position_id - stg_trades_import_test.trade_id //[note: "ETL: TradeArchival (Test)"]
-Ref: stg_trades_import_test.trade_id - fact_trades_test.trade_id //[note: "MERGE"]
-
-// 2. Account Snapshot Flow (TEST)
-Ref: stg_accounts_import_test.account_id - snapshot_accounts_test.account_id //[note: "ETL: AccountSnapshot (Test)"]
-
-// 3. Rejected Signal Flow (TEST)
-Ref: test_rejected_signals.signal_id - stg_rejected_signals_test.signal_id //[note: "ETL: RejectedSignalArchival (Test)"]
-Ref: stg_rejected_signals_test.signal_id - fact_rejected_signals_test.signal_id //[note: "MERGE"]
+Ref: live_positions.position_id - fact_trades.trade_id [note: 'ETL: TradeArchival']
+Ref: rejected_signals.signal_id - fact_rejected_signals.signal_id [note: 'ETL: RejectedSignalArchival']
