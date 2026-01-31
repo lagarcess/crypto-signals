@@ -254,6 +254,14 @@ class StrategyConfig(BaseModel):
         default_factory=dict,
         description="Risk management parameters (stop_loss_pct, take_profit_pct, etc.)",
     )
+    confluence_config: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Configuration for confluence factors (e.g. {rsi_period: 14})",
+    )
+    pattern_overrides: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Overrides for specific patterns (e.g. {bullish_engulfing: {priority: 1}})",
+    )
 
 
 # =============================================================================
