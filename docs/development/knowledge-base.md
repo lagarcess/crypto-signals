@@ -111,7 +111,8 @@
 
 ### Deployment & Infrastructure
 - [2026-01-30] **Container Permissions**: `joblib.Memory` creates a cache directory upon initialization. In restricted container environments (like Cloud Run), the application user often cannot write to the default location. Solved by initializing conditionally: `memory = joblib.Memory(location=None)` when caching is disabled. This prevents directory creation attempts during module import.
-- [2026-01-30] **Bash Scripting**: Using `echo "=" 80` does NOT repeat the character; it prints the literal string `= 80`. Use `printf '%.0s=' {1..80}` to generate a separator line.
+- [2026-01-30] **Bash Scripting**: When generating visual separators, `printf '%.0s=' {1..80}` is more portable and reliable than `echo "=" * 80` (which zsh handles but bash sometimes treats literally or requires loops).
+- **Pydantic Defaults**: For conditional defaults based on other fields (e.g. `ENVIRONMENT`), use `default=None` and a `@model_validator` to set the value. Avoiding `default_factory` for simple env-based logic keeps the schema cleaner and validation more predictable.
 - [2026-01-30] **Linting in Tests**: Test files (`tests/`) must adhere to the same linting standards as source code (including import sorting `I001`). `ruff check --fix` is essential before committing.
 - [2026-01-30] **Pre-Commit Hooks**: If pre-commit hooks modify files (e.g., formatting), the commit fails. You must re-stage the modified files (`git add`) and commit again. `pre-commit run --all-files` is a good manual check before pushing.
 - [2026-01-30] **Docker Env Files**: Docker's `--env-file` parser reads values literally and does NOT strip inline comments. A line like `VAR=val # comment` results in the value `"val # comment"`, causing Pydantic validation errors. Comments must be on their own lines.
