@@ -119,7 +119,7 @@ class SchemaGuardian:
 
             bq_type, is_nested = self._get_bq_type(python_type)
 
-            fields = ()
+            fields: Any = ()
             if is_nested:
                 # Recursive generation for nested models
                 # We need to instantiate a temporary SchemaGuardian or make this method recursive

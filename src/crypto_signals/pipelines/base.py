@@ -207,6 +207,25 @@ class BigQueryPipelineBase(ABC):
         query_job.result()  # Wait for completion
         logger.info(f"[{self.job_name}] MERGE completed successfully.")
 
+    def cleanup_staging(self) -> None:
+        """
+        Delete old partitions from Staging table (> 7 days).
+
+        This serves as Layer 1 of the Dual-Layer Cleanup Strategy.
+        """
+        if not self._check_table_exists(self.staging_table_id):
+            return
+
+        query = f"""
+            DELETE FROM `{self.staging_table_id}`
+            WHERE {self.partition_column} < DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
+        """
+        logger.info(
+            f"[{self.job_name}] Cleaning up old partitions in {self.staging_table_id}"
+        )
+        query_job = self.bq_client.query(query)
+        query_job.result()  # Wait for job to complete
+
     def run(self) -> int:
         """
         Orchestrate the full pipeline execution.
@@ -252,7 +271,10 @@ class BigQueryPipelineBase(ABC):
             # 5. Execute Merge
             self._execute_merge()
 
-            # 6. Cleanup - Re-validate for type safety (cheap vs BQ/Network ops)
+            # 6. Cleanup Staging (Old Partitions)
+            self.cleanup_staging()
+
+            # 7. Cleanup - Re-validate for type safety (cheap vs BQ/Network ops)
             # Use transformed_data to ensure all fields required by schema are present
             cleanup_models = [
                 self.schema_model.model_validate(d) for d in transformed_data
