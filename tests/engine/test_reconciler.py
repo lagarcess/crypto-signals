@@ -693,3 +693,90 @@ class TestReconcilerSettings:
 
             assert reconciler.settings == mock_settings
             mock_get_settings.assert_called_once()
+
+
+class TestSafetyMechanisms:
+    """Test critical safety mechanisms (Issue #244 fixes)."""
+
+    def test_reconcile_skips_young_zombies(
+        self,
+        mock_trading_client,
+        mock_position_repo,
+        mock_discord_client,
+        mock_settings,
+        sample_open_position,
+    ):
+        """Reconciliation ignores zombies created within the grace period (Race Condition protection)."""
+        from datetime import datetime, timedelta, timezone
+
+        # 1. Setup: Zombie Position (Open in DB, Missing in Alpaca)
+        mock_trading_client.get_all_positions.return_value = []
+
+        # 2. Make it "Young" (created 1 minute ago)
+        sample_open_position.created_at = datetime.now(timezone.utc) - timedelta(
+            minutes=1
+        )
+        mock_position_repo.get_open_positions.return_value = [sample_open_position]
+
+        reconciler = StateReconciler(
+            alpaca_client=mock_trading_client,
+            position_repo=mock_position_repo,
+            discord_client=mock_discord_client,
+            settings=mock_settings,
+        )
+
+        # 3. Execute with default 5 min grace period
+        report = reconciler.reconcile(min_age_minutes=5)
+
+        # 4. Assertions
+        # Should NOT be healed/closed
+        mock_position_repo.update_position.assert_not_called()
+
+        # Should not be in critical issues (it's skipped intentionaly)
+        assert len(report.critical_issues) == 0
+        # Should not be counted as a processed zombie in the final report lists
+        # (implementation detail: logic creates zombies list first, then loops.
+        # Check if code removes it from list or just skips actions.
+        # Based on code: it iterates zombies but `continue`. So it IS in report.zombies list but NO action taken)
+        assert "BTC/USD" in report.zombies
+
+    def test_reconcile_refuses_to_close_unverified_zombie(
+        self,
+        mock_trading_client,
+        mock_position_repo,
+        mock_discord_client,
+        mock_settings,
+        sample_open_position,
+    ):
+        """Reconciliation REFUSES to close a zombie if manual verification fails."""
+        from datetime import datetime, timedelta, timezone
+
+        # 1. Setup: Old Zombie (valid age)
+        mock_trading_client.get_all_positions.return_value = []
+        sample_open_position.created_at = datetime.now(timezone.utc) - timedelta(hours=1)
+        mock_position_repo.get_open_positions.return_value = [sample_open_position]
+
+        reconciler = StateReconciler(
+            alpaca_client=mock_trading_client,
+            position_repo=mock_position_repo,
+            discord_client=mock_discord_client,
+            settings=mock_settings,
+        )
+
+        # 2. Mock Verification to FAIL (return False)
+        # using patch object on the specific instance method
+        with patch.object(
+            reconciler, "handle_manual_exit_verification", return_value=False
+        ):
+            report = reconciler.reconcile()
+
+        # 3. Assertions
+        # CRITICAL: Database must NOT be updated (Position must remain OPEN)
+        mock_position_repo.update_position.assert_not_called()
+
+        # Should log critical issue
+        assert len(report.critical_issues) > 0
+        assert any("CRITICAL SYNC ISSUE" in i for i in report.critical_issues)
+
+        # Should alert Discord
+        assert mock_discord_client.send_message.called
