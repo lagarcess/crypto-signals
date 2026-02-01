@@ -183,7 +183,9 @@ class SchemaGuardian:
                     policy_tags=field.policy_tags,
                 )
                 new_fields.append(safe_field)
-                logger.info(f"Detected new field: {field.name} ({field.field_type}, mode={safe_mode})")
+                logger.info(
+                    f"Detected new field: {field.name} ({field.field_type}, mode={safe_mode})"
+                )
 
         if not new_fields:
             logger.info(f"No new fields to add to {table_id}.")

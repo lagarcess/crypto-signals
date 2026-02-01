@@ -1,4 +1,3 @@
-
 import unittest
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
@@ -40,7 +39,7 @@ class TestReconcilerReproduction(unittest.TestCase):
         pos.status = TradeStatus.OPEN
         pos.position_id = "pos-123"
         pos.trade_type = "EXECUTED"
-        pos.created_at = now - timedelta(seconds=10) # 10 seconds old
+        pos.created_at = now - timedelta(seconds=10)  # 10 seconds old
 
         self.mock_repo.get_open_positions.return_value = [pos]
 
@@ -49,7 +48,9 @@ class TestReconcilerReproduction(unittest.TestCase):
 
         # 4. Assertion: It should NOT be closed.
         self.mock_repo.update_position.assert_not_called()
-        print("\n[Verification] Race condition fix confirmed: Young position was SKIPPED.")
+        print(
+            "\n[Verification] Race condition fix confirmed: Young position was SKIPPED."
+        )
 
     def test_manual_verification_usage_failure(self):
         """
@@ -66,12 +67,14 @@ class TestReconcilerReproduction(unittest.TestCase):
         pos.status = TradeStatus.OPEN
         pos.position_id = "pos-456"
         pos.trade_type = "EXECUTED"
-        pos.created_at = now - timedelta(minutes=10) # 10 minutes old (older than 5)
+        pos.created_at = now - timedelta(minutes=10)  # 10 minutes old (older than 5)
 
         self.mock_repo.get_open_positions.return_value = [pos]
 
         # 3. Mock handle_manual_exit_verification to return False
-        with patch.object(self.reconciler, 'handle_manual_exit_verification', return_value=False) as mock_verify:
+        with patch.object(
+            self.reconciler, "handle_manual_exit_verification", return_value=False
+        ) as mock_verify:
             # 4. Execution
             report = self.reconciler.reconcile()
 
@@ -84,7 +87,9 @@ class TestReconcilerReproduction(unittest.TestCase):
             # 7. Critical issue reported
             assert len(report.critical_issues) > 0
             assert "CRITICAL SYNC ISSUE" in report.critical_issues[0]
-            print("[Verification] Verification logic confirmed: Verification called, position NOT closed on failure.")
+            print(
+                "[Verification] Verification logic confirmed: Verification called, position NOT closed on failure."
+            )
 
     def test_manual_verification_usage_success(self):
         """
@@ -107,7 +112,9 @@ class TestReconcilerReproduction(unittest.TestCase):
 
         # 3. Mock handle_manual_exit_verification to return True
         # NOTE: The real method updates the position object. Here we just return True.
-        with patch.object(self.reconciler, 'handle_manual_exit_verification', return_value=True) as mock_verify:
+        with patch.object(
+            self.reconciler, "handle_manual_exit_verification", return_value=True
+        ) as mock_verify:
             # 4. Execution
             self.reconciler.reconcile()
 
@@ -116,4 +123,6 @@ class TestReconcilerReproduction(unittest.TestCase):
 
             # 6. Assertion: Position WAS updated
             self.mock_repo.update_position.assert_called_once_with(pos)
-            print("[Verification] Verification logic confirmed: Position updated on success.")
+            print(
+                "[Verification] Verification logic confirmed: Position updated on success."
+            )
