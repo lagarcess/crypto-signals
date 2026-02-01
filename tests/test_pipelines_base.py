@@ -89,7 +89,7 @@ def test_load_to_staging_inserts_rows(pipeline, mock_bq_client):
     pipeline._load_to_staging(data)
 
     mock_bq_client.insert_rows_json.assert_called_with(
-        "test-project.dataset.stg_test", data
+        "test-project.dataset.stg_test", data, ignore_unknown_values=True
     )
 
 
