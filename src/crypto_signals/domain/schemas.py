@@ -658,6 +658,11 @@ class Position(BaseModel):
         default=0.0,
         description="Aggregate realized PnL as percentage of entry. Updated in real-time.",
     )
+    # === Position Metadata ===
+    created_at: Optional[datetime] = Field(
+        default=None,
+        description="UTC timestamp when position was created in Firestore.",
+    )
     # === TTL for GCP Firestore Cleanup ===
     delete_at: Optional[datetime] = Field(
         default=None,
