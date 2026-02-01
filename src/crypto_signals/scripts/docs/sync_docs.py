@@ -91,9 +91,6 @@ CONFIG_MAP = {
         table_name="fact_rejected_signals",
         header_color="#6d9eeb",
         pk_fields=["ds", "signal_id"],
-        refs={
-            "strategy_id": "> dim_strategies.strategy_id",
-        },
         table_note="Analytical archival of rejected opportunities.",
     ),
 }
@@ -220,20 +217,11 @@ class DBMLGenerator:
 
         if isinstance(type_, type):
             if issubclass(type_, Enum):
-                return "enum"  # Or varchar, but DBML supports enum keyword (though usually requires definition)
-                # In existing DBML it uses 'enum' or 'varchar' or 'string'.
-                # Let's check existing DBML: side enum, status enum.
-                # So 'enum' is used as a type keyword here even if not defined as separate Enum block.
+                return "enum"
             if type_ is datetime:
                 return "timestamp"
             if type_ is date:
-                return "date"  # Or string if partitioned string?
-                # Existing DBML uses 'string' for ds in some tables, 'date' in others.
-                # live_signals.ds is string. fact_trades.ds is date.
-                # In schemas.py, ds is date.
-                # I should probably respect what Pydantic says (date), or map to existing usage?
-                # The existing DBML seems to map date->date mostly, but live_signals.ds is string.
-                # I'll default to 'date' for date, 'timestamp' for datetime.
+                return "date"
             if type_ is str:
                 return "varchar"
             if type_ is int:
@@ -293,8 +281,7 @@ def sync_docs(
             any_changes = True
     else:
         console.print(f"[red]Handbook not found at {handbook_path}[/red]")
-        if check:
-            sys.exit(1)
+        sys.exit(1)
 
     # 2. Update DBML
     dbml_path = docs_dir / "architecture" / "current-schema.dbml"
@@ -327,8 +314,7 @@ def sync_docs(
             any_changes = True
     else:
         console.print(f"[red]DBML not found at {dbml_path}[/red]")
-        if check:
-            sys.exit(1)
+        sys.exit(1)
 
     if check:
         if any_changes:

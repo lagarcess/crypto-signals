@@ -60,3 +60,20 @@ def test_sync_docs_execution(tmp_path):
 
     finally:
         os.chdir(original_cwd)
+
+
+def test_sync_docs_missing_files(tmp_path):
+    """
+    Test that sync-docs fails if files are missing.
+    """
+    docs_dir = tmp_path / "docs"
+    docs_dir.mkdir()
+
+    original_cwd = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        result = runner.invoke(app, [])
+        assert result.exit_code == 1
+        assert "Handbook not found" in result.stdout
+    finally:
+        os.chdir(original_cwd)
