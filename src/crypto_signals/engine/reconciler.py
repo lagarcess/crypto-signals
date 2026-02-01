@@ -20,6 +20,7 @@ Example:
 """
 
 import time
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from alpaca.trading.client import TradingClient
@@ -81,7 +82,7 @@ class StateReconciler:
             },
         )
 
-    def reconcile(self) -> ReconciliationReport:
+    def reconcile(self, min_age_minutes: int = 5) -> ReconciliationReport:
         """
         Execute full reconciliation between Alpaca and Firestore.
 
@@ -93,6 +94,9 @@ class StateReconciler:
         5. Heal zombies: Mark CLOSED_EXTERNALLY in Firestore
         6. Alert orphans: Send critical Discord notification
         7. Return reconciliation report
+
+        Args:
+            min_age_minutes: Minimum age of position to be considered for zombie healing (race condition protection).
 
         Returns:
             ReconciliationReport: Summary of reconciliation results
@@ -177,12 +181,29 @@ class StateReconciler:
             for symbol in zombies:
                 try:
                     pos = symbol_to_position.get(symbol)
-                    if pos:
-                        # Mark as closed externally
-                        pos.status = TradeStatus.CLOSED
-                        pos.exit_reason = ExitReason.CLOSED_EXTERNALLY
+                    if not pos:
+                        continue
 
-                        # Update Firestore
+                    # ISSUE 244 FIX: Race Condition Protection
+                    # Skip positions created recently (< min_age_minutes) as Alpaca might be syncing
+                    if pos.created_at:
+                        age = datetime.now(timezone.utc) - pos.created_at
+                        if age < timedelta(minutes=min_age_minutes):
+                            logger.warning(
+                                f"Skipping young zombie candidate {symbol}",
+                                extra={
+                                    "symbol": symbol,
+                                    "age_seconds": age.total_seconds(),
+                                    "min_age_minutes": min_age_minutes,
+                                },
+                            )
+                            continue
+
+                    # ISSUE 244 FIX: Unused Verification Logic
+                    # Verify exit via manual order history before closing
+                    if self.handle_manual_exit_verification(pos):
+                        # Verification successful - save the updated position
+                        # pos.status/exit_reason already updated by handle_manual_exit_verification
                         self.position_repo.update_position(pos)
                         reconciled_count += 1
 
@@ -191,20 +212,37 @@ class StateReconciler:
                             extra={
                                 "symbol": symbol,
                                 "position_id": pos.position_id,
-                                "status": "CLOSED_EXTERNALLY",
+                                "status": pos.status,
+                                "exit_reason": pos.exit_reason,
                             },
                         )
+                        # Notification is sent by handle_manual_exit_verification
+                    else:
+                        # Verification failed - Critical Sync Issue
+                        error_msg = (
+                            f"CRITICAL SYNC ISSUE: {symbol} is OPEN in DB but MISSING in Alpaca. "
+                            "No matching exit order found."
+                        )
+                        logger.critical(
+                            error_msg,
+                            extra={
+                                "symbol": symbol,
+                                "position_id": pos.position_id,
+                            },
+                        )
+                        critical_issues.append(error_msg)
 
-                        # Send Discord notification
+                        # Send critical alert for unverified zombie
                         try:
                             self.discord.send_message(
-                                f"🧟 **ZOMBIE HEALED**: {symbol}\n"
-                                f"Position was closed in Alpaca but marked OPEN in DB.\n"
-                                f"Status updated to CLOSED_EXTERNALLY."
+                                f"🛑 **CRITICAL SYNC FAILURE**: {symbol}\n"
+                                f"Position is missing from Alpaca but **NO EXIT ORDER FOUND**.\n"
+                                f"System will NOT close it automatically.\n"
+                                f"**Action Required**: Investigate immediately."
                             )
                         except Exception as e:
                             logger.warning(
-                                f"Failed to send Discord notification for zombie {symbol}: {e}"
+                                f"Failed to send sync failure alert for {symbol}: {e}"
                             )
 
                 except Exception as e:

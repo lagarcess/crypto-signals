@@ -526,6 +526,11 @@ class PositionRepository:
         if "ds" in position_data and isinstance(position_data["ds"], date):
             position_data["ds"] = position_data["ds"].isoformat()
 
+        # Remove created_at from payload to allow logic below to handle it
+        # This prevents overwriting existing created_at with None if the model has it as None
+        if "created_at" in position_data:
+            del position_data["created_at"]
+
         if doc.exists:
             # Update existing document, preserve created_at
             position_data["updated_at"] = datetime.now(timezone.utc)

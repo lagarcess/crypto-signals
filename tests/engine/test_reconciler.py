@@ -273,15 +273,25 @@ class TestHealingAndAlerts:
             settings=mock_settings,
         )
 
-        reconciler.reconcile()
+        # Mock verification to succeed so that update_position is called
+        # We need to simulate the side effect of updating the position object
+        def verify_side_effect(pos):
+            pos.status = TradeStatus.CLOSED
+            pos.exit_reason = ExitReason.MANUAL_EXIT
+            return True
+
+        with patch.object(
+            reconciler, "handle_manual_exit_verification", side_effect=verify_side_effect
+        ):
+            reconciler.reconcile()
 
         # Verify update was called
         mock_position_repo.update_position.assert_called()
 
-        # Verify the position was marked CLOSED_EXTERNALLY
+        # Verify the position was marked CLOSED (reason is now MANUAL_EXIT due to verification)
         called_position = mock_position_repo.update_position.call_args[0][0]
         assert called_position.status == TradeStatus.CLOSED
-        assert called_position.exit_reason == ExitReason.CLOSED_EXTERNALLY
+        assert called_position.exit_reason == ExitReason.MANUAL_EXIT
 
     def test_alert_orphan_sends_discord_message(
         self,
