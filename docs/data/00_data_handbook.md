@@ -52,51 +52,112 @@ Optimized for aggregation, backtesting, and performance reporting.
 ### Account Snapshot (`snapshot_accounts`)
 *Daily snapshots captured via `AccountSnapshotPipeline`.*
 
+<!-- GENERATED: AccountSnapshot -->
 | Field | Type | Description |
 | :--- | :--- | :--- |
-| `ds` | `date` | Partition key |
+| `ds` | `date` | Partition key - snapshot date |
 | `account_id` | `str` | Alpaca account ID |
 | `equity` | `float` | Total account equity in USD |
 | `cash` | `float` | Available cash in USD |
-| `buying_power` | `float` | Total Buying Power (Reg T) |
-| `drawdown_pct` | `float` | % down from High Water Mark |
-| `calmar_ratio` | `float` | Annual Return / Max Drawdown |
+| `calmar_ratio` | `float` | Calmar ratio (annualized return / max drawdown) |
+| `drawdown_pct` | `float` | Current drawdown percentage from peak |
+| `buying_power` | `float` | Current available buying power (Reg T) |
+| `regt_buying_power` | `float` | Reg T buying power |
+| `daytrading_buying_power` | `float` | Day trading buying power |
+| `crypto_buying_power` | `float` | Non-marginable buying power (Crypto BP) |
+| `initial_margin` | `float` | Initial margin requirement |
+| `maintenance_margin` | `float` | Maintenance margin requirement |
+| `last_equity` | `float` | Equity value at last close |
+| `long_market_value` | `float` | Total market value of long positions |
+| `short_market_value` | `float` | Total market value of short positions |
+| `currency` | `str` | Account currency (e.g., USD) |
+| `status` | `str` | Account status (e.g., ACTIVE) |
+| `pattern_day_trader` | `bool` | Pattern Day Trader (PDT) flag |
+| `daytrade_count` | `int` | Number of day trades in last 5 days |
+| `account_blocked` | `bool` | Whether account is blocked |
+| `trade_suspended_by_user` | `bool` | Whether trading is suspended by user |
+| `trading_blocked` | `bool` | Whether trading is blocked |
+| `transfers_blocked` | `bool` | Whether transfers are blocked |
+| `multiplier` | `float` | Account leverage multiplier |
+| `sma` | `float` | SMA value (Special Memorandum Account) |
+<!-- END_GENERATED -->
 
 ### Trade Execution (`fact_trades`)
 *Immutable ledger derived from closed `Position` objects.*
 
+<!-- GENERATED: TradeExecution -->
 | Field | Type | Description |
 | :--- | :--- | :--- |
-| `ds` | `date` | Execution date |
-| `trade_id` | `str` | Unique identifier (signal_id) |
-| `strategy_id` | `str` | Originating strategy |
-| `symbol` | `str` | Traded asset |
-| `side` | `str` | `buy` or `sell` |
-| `qty` | `float` | Traded quantity |
-| `entry_price` | `float` | Fill price at entry |
-| `exit_price` | `float` | Weighted average fill price at exit |
-| `pnl_usd` | `float` | Net P&L in USD (after fees) |
-| `fees_usd` | `float` | Total fees paid |
-| `actual_fee_usd` | `float` | Reconciled fees (T+1 from Broker) |
-| `fee_finalized` | `bool` | True if actual fees are reconciled |
-| `slippage_pct` | `float` | `abs(entry_price - target_entry_price) / target_entry_price` |
-| `trade_duration` | `int` | Duration in seconds |
-| `max_favorable_excursion` | `float` | Best price reached during trade |
+| `ds` | `date` | Partition key - date of trade execution |
+| `trade_id` | `str` | Unique identifier for this trade |
+| `account_id` | `str` | Alpaca account ID |
+| `strategy_id` | `str` | Strategy that executed this trade |
+| `asset_class` | `str` | Asset class traded (CRYPTO or EQUITY) |
+| `symbol` | `str` | Asset symbol traded |
+| `side` | `str` | Order side (buy or sell) |
+| `qty` | `float` | Quantity traded |
+| `entry_price` | `float` | Entry fill price |
+| `exit_price` | `float` | Exit fill price |
+| `entry_time` | `datetime` | UTC timestamp of entry fill |
+| `exit_time` | `datetime` | UTC timestamp of exit fill |
+| `exit_reason` | `str` | Reason for trade exit (e.g., 'TP1', 'COLOR_FLIP') |
+| `max_favorable_excursion` | `float` | Highest price reached during trade |
+| `pnl_pct` | `float` | Profit/Loss as percentage |
+| `pnl_usd` | `float` | Profit/Loss in USD |
+| `fees_usd` | `float` | Total fees paid in USD |
+| `slippage_pct` | `float` | Slippage as percentage of entry price |
+| `trade_duration` | `int` | Trade duration in seconds |
+| `discord_thread_id` | `str` | Discord thread ID for social context analytics |
+| `trailing_stop_final` | `float` | Final trailing stop value at exit (Chandelier Exit for TP3) |
+| `target_entry_price` | `float` | Original signal's entry price (target). Compare against entry_price for slippage. |
+| `alpaca_order_id` | `str` | Alpaca broker's UUID for the entry order. Links to Alpaca dashboard for auditability. |
+| `exit_order_id` | `str` | Alpaca broker's UUID for the exit order. Used for reconciliation and fill tracking. |
+| `fee_finalized` | `bool` | Whether actual fees have been reconciled from Alpaca CFEE activities (T+1 settlement) |
+| `actual_fee_usd` | `float` | Actual fee from Alpaca CFEE (T+1 settlement). Replaces estimated fees_usd after reconciliation. |
+| `fee_calculation_type` | `str` | Source of fee data: 'ESTIMATED' (initial), 'ACTUAL_CFEE' (from Activities API), 'ACTUAL_COMMISSION' (from order) |
+| `fee_tier` | `str` | Alpaca volume tier at time of trade (e.g., 'Tier 0: 0.25%'). Used for fee estimation and audit. |
+| `entry_order_id` | `str` | Entry order ID for CFEE attribution (from Issue #139). Used to match CFEE activities to trades. |
+| `fee_reconciled_at` | `datetime` | Timestamp when fees were reconciled from CFEE. NULL if still using estimates. |
+| `scaled_out_prices` | `List[Dict]` | History of scale-outs used for weighted average calculation. Not persisted to BQ. |
+| `original_qty` | `float` | Original quantity before any scale-outs. Used for weighted average calculation. Not persisted to BQ. |
+<!-- END_GENERATED -->
 
 ### Live Signal (`live_signals`)
 *Ephemeral opportunities identified by the engine.*
 
+<!-- GENERATED: Signal -->
 | Field | Type | Description |
 | :--- | :--- | :--- |
-| `signal_id` | `str` | Deterministic UUID (`ds|strat|sym`) |
-| `status` | `str` | Current lifecycle state |
-| `valid_until` | `datetime` | Logical expiration (24h/120h) |
-| `entry_price` | `float` | Target limit price |
-| `take_profit_1` | `float` | First calculated profit target |
-| `take_profit_2` | `float` | Second calculated profit target |
-| `take_profit_3` | `float` | Third calculated profit target |
-| `pattern_name` | `str` | e.g., "Bullish Engulfing" |
-| `trade_type` | `str` | `EXECUTED`, `FILTERED`, `THEORETICAL` |
+| `signal_id` | `str` | Deterministic UUID5 hash of ds\|strategy_id\|symbol |
+| `ds` | `date` | Date stamp when the signal was generated |
+| `strategy_id` | `str` | Strategy that generated this signal |
+| `symbol` | `str` | Asset symbol (e.g., 'BTC/USD', 'AAPL') |
+| `asset_class` | `str` | Asset class (CRYPTO or EQUITY) |
+| `confluence_factors` | `List[str]` | List of triggers/patterns (e.g., 'RSI_DIV', 'VCP_COMPRESSION') |
+| `entry_price` | `float` | Price at the time signal was triggered (candle close) |
+| `pattern_name` | `str` | Name of the pattern detected (e.g., 'bullish_engulfing') |
+| `status` | `str` | Current lifecycle status of the signal |
+| `suggested_stop` | `float` | Suggested stop-loss price for this signal |
+| `valid_until` | `datetime` | Logical expiration of the trading opportunity (24h window from candle close) |
+| `delete_at` | `datetime` | Physical expiration for database TTL cleanup (30 days). Used by GCP TTL policy. |
+| `invalidation_price` | `float` | Structure-based invalidation level (early exit) |
+| `take_profit_1` | `float` | First profit target (Conservative, e.g., 2*ATR) |
+| `take_profit_2` | `float` | Second profit target (Structural, e.g., 4*ATR) |
+| `take_profit_3` | `float` | Current volatility-adjusted trailing stop (Chandelier Exit) for Runner positions |
+| `exit_reason` | `str` | Reason for trade exit (e.g., ExitReason.TP1) |
+| `discord_thread_id` | `str` | Discord thread ID for linking all lifecycle updates back to the original broadcast |
+| `side` | `str` | Trade direction (BUY for Long, SELL for Short). Defaults to BUY for backward compatibility. |
+| `pattern_duration_days` | `int` | Duration in days from first pivot to signal (for MACRO classification) |
+| `pattern_span_days` | `int` | Time span from first to last structural pivot in the pattern (geometric extent) |
+| `pattern_classification` | `str` | Pattern scale: 'STANDARD_PATTERN' (5-90 days) or 'MACRO_PATTERN' (>90 days) |
+| `structural_anchors` | `List[Dict]` | List of structural pivots defining pattern geometry: [{price, timestamp, pivot_type}] |
+| `rejection_reason` | `str` | Reason for rejection if status is REJECTED_BY_FILTER (e.g., 'Volume 1.2x < 1.5x Required') |
+| `rejection_metadata` | `Dict` | Forensic data for validation failures (e.g., raw invalid stops for audit) |
+| `confluence_snapshot` | `Dict` | Snapshot of indicator values at rejection: {rsi, adx, sma_trend, volume_ratio, rr_ratio} |
+| `harmonic_metadata` | `Dict` | Harmonic pattern ratios for Fibonacci-based patterns: {B_ratio, D_ratio, wave3_to_wave1_ratio, etc.} |
+| `created_at` | `datetime` | UTC timestamp when signal was created. Used for skip-on-creation cooldown in check_exits. |
+| `trade_type` | `str` | Trade classification: EXECUTED (broker order filled), FILTERED (quality gate rejection), THEORETICAL (execution failed, simulating). |
+<!-- END_GENERATED -->
 
 ---
 
