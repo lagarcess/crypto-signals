@@ -15,8 +15,6 @@ console = Console()
 QTY_COMPARISON_EPSILON = 0.0001
 
 
-
-
 def _serialize_to_dict(obj: Any) -> Dict[str, Any]:
     """Safely serialize an object to a dictionary."""
     if hasattr(obj, "model_dump"):
@@ -101,7 +99,9 @@ def verify(
                 pass
             else:
                 if not json_output:
-                    rprint(f"[bold red]Error fetching position from Alpaca: {e}[/bold red]")
+                    rprint(
+                        f"[bold red]Error fetching position from Alpaca: {e}[/bold red]"
+                    )
                 raise typer.Exit(code=1) from e
         except Exception as e:
             if not json_output:

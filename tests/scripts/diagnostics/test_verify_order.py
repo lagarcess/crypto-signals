@@ -120,7 +120,11 @@ def test_verify_position_match(mock_trading_client, mock_position_repo):
     assert result.exit_code == 0
     # Use generic status check as colored output might vary
     # Rich might wrap text or add styles, so we check for key phrases
-    assert "MATCH" in result.stdout or "No discrepancies found" in result.stdout or "discrepancies found" not in result.stdout
+    assert (
+        "MATCH" in result.stdout
+        or "No discrepancies found" in result.stdout
+        or "discrepancies found" not in result.stdout
+    )
 
 
 def test_json_output(mock_trading_client):
