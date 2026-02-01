@@ -49,7 +49,7 @@ jobs:
           pip-audit --strict
 
       - name: Verify Documentation
-        run: poetry run sync-docs --check
+        run: PYTHONPATH=src poetry run sync-docs --check
 
       - name: Test
         run: |
