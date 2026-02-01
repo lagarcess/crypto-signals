@@ -72,7 +72,7 @@ def verify(
 
         except APIError as e:
             # The Alpaca API returns a 404 status code for not found orders.
-            if "not found" in str(e).lower():
+            if e.status_code == 404:
                 result["order_status"] = "not_found"
             else:
                 if not json_output:
@@ -95,7 +95,7 @@ def verify(
         except APIError as e:
             # Not found is an expected outcome if there's no open position.
             # Alpaca typically returns 404/not found msg for position not found
-            if "not found" in str(e).lower():
+            if e.status_code == 404:
                 pass
             else:
                 if not json_output:
