@@ -29,6 +29,7 @@ description: code hygiene and clarity pass before final review
      - Correct command paths (e.g., `python -m crypto_signals.scripts.diagnostics.*`)
      - Accurate workflow folder references (issues/, plan/, pr/, review/, verify/, etc (it evolves, keep it organized and intuitive))
    - **Consistency Check**: Ensure all docs show the same folder structure for `temp/`
+   - **Auto-Sync**: Run `poetry run sync-docs` to ensure schemas are up-to-date.
    - Update if necessary to match the new code state.
 
 4. **AI Reasoning Sanitization**

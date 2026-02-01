@@ -31,6 +31,7 @@ description: Create a comprehensive Pull Request from current changes
      - Critical system behavior changes.
      - New configuration requirements.
    - **Privacy Check**: Ensure no sensitive internal logs or secrets are exposed in public docs.
+   - **Auto-Sync**: Run `poetry run sync-docs` to regenerate Handbook and DBML from the latest schema.
    - Commit these documentation changes.
 
 5. **PR Documentation Generation**
@@ -42,7 +43,7 @@ description: Create a comprehensive Pull Request from current changes
      ```markdown
      ## Problem
 
-     [Link to Issue #]
+     Fixes #[Issue Number]
      [Description of the problem this PR solves]
 
      ## Solution
