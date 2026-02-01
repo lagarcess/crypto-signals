@@ -26,9 +26,19 @@ def mock_position_repo():
         yield mock.return_value
 
 
+class MockAPIError(APIError):
+    def __init__(self, message="not found"):
+        super().__init__(message)
+
+    @property
+    def status_code(self):
+        return 404
+
+
 def test_verify_order_not_found(mock_trading_client):
     # Setup
-    mock_trading_client.get_order_by_id.side_effect = APIError("not found")
+    err = MockAPIError()
+    mock_trading_client.get_order_by_id.side_effect = err
 
     # Execute
     result = runner.invoke(app, ["--order-id", "non-existent-id"])
@@ -129,7 +139,8 @@ def test_verify_position_match(mock_trading_client, mock_position_repo):
 
 def test_json_output(mock_trading_client):
     # Setup
-    mock_trading_client.get_order_by_id.side_effect = APIError("not found")
+    err = MockAPIError()
+    mock_trading_client.get_order_by_id.side_effect = err
 
     # Execute
     result = runner.invoke(app, ["--order-id", "non-existent-id", "--json"])
