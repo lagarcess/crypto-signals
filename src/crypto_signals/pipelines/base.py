@@ -250,14 +250,19 @@ class BigQueryPipelineBase(ABC):
         try:
             # 0. Pre-flight Check: Validate Schema
             logger.info(f"[{self.job_name}] Validating BigQuery Schema...")
-            try:
-                # The guardian will raise an exception if strict_mode is True and there's a mismatch
+
+            def _validate_schema():
+                """Helper to run schema validation with current pipeline settings."""
                 self.guardian.validate_schema(
                     table_id=self.fact_table_id,
                     model=self.schema_model,
                     require_partitioning=True,
                     clustering_fields=self.clustering_fields,
                 )
+
+            try:
+                # The guardian will raise an exception if strict_mode is True and there's a mismatch
+                _validate_schema()
             except SchemaMismatchError:
                 settings = get_settings()
                 if settings.SCHEMA_MIGRATION_AUTO:
@@ -268,12 +273,7 @@ class BigQueryPipelineBase(ABC):
 
                     # Retry validation to ensure compliance
                     logger.info(f"[{self.job_name}] Re-validating BigQuery Schema...")
-                    self.guardian.validate_schema(
-                        table_id=self.fact_table_id,
-                        model=self.schema_model,
-                        require_partitioning=True,
-                        clustering_fields=self.clustering_fields,
-                    )
+                    _validate_schema()
                 else:
                     raise
 

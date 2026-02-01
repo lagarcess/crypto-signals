@@ -2,6 +2,7 @@ import datetime
 import typing
 from typing import Any, List, Optional, Type
 
+from google.api_core.exceptions import GoogleAPICallError, NotFound
 from google.cloud import bigquery
 from loguru import logger
 from pydantic import BaseModel
@@ -55,7 +56,7 @@ class SchemaGuardian:
         """
         try:
             table = self.client.get_table(table_id)
-        except Exception as e:
+        except (NotFound, GoogleAPICallError) as e:
             logger.error(f"Failed to fetch table schema for {table_id}: {e}")
             raise
 
@@ -158,7 +159,7 @@ class SchemaGuardian:
         """
         try:
             table = self.client.get_table(table_id)
-        except Exception as e:
+        except (NotFound, GoogleAPICallError) as e:
             logger.error(f"Failed to fetch table schema for {table_id}: {e}")
             raise
 
@@ -169,17 +170,20 @@ class SchemaGuardian:
         for field in desired_schema:
             if field.name not in current_schema_map:
                 # CRITICAL: BigQuery does not allow adding REQUIRED columns to existing tables.
-                # We must force mode="NULLABLE" for all new fields during migration.
+                # We force mode="NULLABLE" only if the desired mode is "REQUIRED".
+                # "REPEATED" fields (Lists) can be added as-is.
+                safe_mode = "NULLABLE" if field.mode == "REQUIRED" else field.mode
+
                 safe_field = bigquery.SchemaField(
                     name=field.name,
                     field_type=field.field_type,
-                    mode="NULLABLE",
+                    mode=safe_mode,
                     description=field.description,
                     fields=field.fields,
                     policy_tags=field.policy_tags,
                 )
                 new_fields.append(safe_field)
-                logger.info(f"Detected new field: {field.name} ({field.field_type})")
+                logger.info(f"Detected new field: {field.name} ({field.field_type}, mode={safe_mode})")
 
         if not new_fields:
             logger.info(f"No new fields to add to {table_id}.")
