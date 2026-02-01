@@ -1,4 +1,5 @@
 import datetime
+import typing
 from typing import Any, List, Optional, Type
 
 from google.cloud import bigquery
@@ -109,26 +110,91 @@ class SchemaGuardian:
         for name, field_info in model.model_fields.items():
             # 1. Resolve Type
             python_type = field_info.annotation
+
+            # Detect Nullable (Optional[T] or Union[T, None])
+            is_nullable = False
+            origin = typing.get_origin(python_type)
+            if origin is typing.Union:
+                args = typing.get_args(python_type)
+                if type(None) in args:
+                    is_nullable = True
+
+            # Detect Repeated (List[T])
+            is_repeated = False
+            if origin is list or origin is List:
+                is_repeated = True
+
+            # Unwrap to get the core type for BQ mapping
             python_type = self._unwrap_type(python_type)
 
-            # Determine if REPEATED (List)
-            mode = "REQUIRED"  # Default
-            # TODO: Robust nullable/repeated detection.
-            # For now, relying on simple unwrap.
-            # If unwrapped from Optional, could be NULLABLE.
+            mode = "REQUIRED"
+            if is_nullable:
+                mode = "NULLABLE"
+            if is_repeated:
+                mode = "REPEATED"
 
             bq_type, is_nested = self._get_bq_type(python_type)
 
             fields: tuple[bigquery.SchemaField, ...] = ()
             if is_nested:
                 # Recursive generation for nested models
-                # We need to instantiate a temporary SchemaGuardian or make this method recursive
-                # Since we are inside the instance, self.generate_schema works
                 fields = tuple(self.generate_schema(python_type))
 
             schema.append(bigquery.SchemaField(name, bq_type, mode=mode, fields=fields))
 
         return schema
+
+    def migrate_schema(
+        self,
+        table_id: str,
+        model: Type[BaseModel],
+    ) -> None:
+        """
+        Alters the BigQuery table to add missing columns.
+
+        Args:
+            table_id: Full table ID (project.dataset.table)
+            model: Pydantic model class
+        """
+        try:
+            table = self.client.get_table(table_id)
+        except Exception as e:
+            logger.error(f"Failed to fetch table schema for {table_id}: {e}")
+            raise
+
+        desired_schema = self.generate_schema(model)
+        current_schema_map = {field.name: field for field in table.schema}
+
+        new_fields = []
+        for field in desired_schema:
+            if field.name not in current_schema_map:
+                # CRITICAL: BigQuery does not allow adding REQUIRED columns to existing tables.
+                # We must force mode="NULLABLE" for all new fields during migration.
+                safe_field = bigquery.SchemaField(
+                    name=field.name,
+                    field_type=field.field_type,
+                    mode="NULLABLE",
+                    description=field.description,
+                    fields=field.fields,
+                    policy_tags=field.policy_tags,
+                )
+                new_fields.append(safe_field)
+                logger.info(f"Detected new field: {field.name} ({field.field_type})")
+
+        if not new_fields:
+            logger.info(f"No new fields to add to {table_id}.")
+            return
+
+        # Append new fields to the existing schema
+        updated_schema = table.schema[:]
+        updated_schema.extend(new_fields)
+        table.schema = updated_schema
+
+        logger.info(
+            f"Migrating schema for {table_id}: Adding {len(new_fields)} columns..."
+        )
+        self.client.update_table(table, ["schema"])
+        logger.info(f"Schema migration successful for {table_id}.")
 
     def _validate_fields(
         self,
