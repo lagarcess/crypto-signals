@@ -1,7 +1,8 @@
 import json
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 
 import typer
+from alpaca.common.exceptions import APIError
 from rich import print as rprint
 from rich.console import Console
 
@@ -10,6 +11,21 @@ from crypto_signals.repository.firestore import PositionRepository
 
 app = typer.Typer(help="Deep Order Verification Tool")
 console = Console()
+
+QTY_COMPARISON_EPSILON = 0.0001
+
+
+
+
+def _serialize_to_dict(obj: Any) -> Dict[str, Any]:
+    """Safely serialize an object to a dictionary."""
+    if hasattr(obj, "model_dump"):
+        return dict(obj.model_dump())
+    if hasattr(obj, "dict"):
+        return dict(obj.dict())
+    if hasattr(obj, "__dict__"):
+        return dict(obj.__dict__)
+    return {}
 
 
 @app.command()
@@ -44,57 +60,63 @@ def verify(
     if order_id:
         try:
             order = client.get_order_by_id(order_id)
-            # Serialize order to dict safely
-            if hasattr(order, "model_dump"):
-                order_data = order.model_dump()
-            elif hasattr(order, "dict"):
-                order_data = order.dict()
-            else:
-                order_data = order.__dict__
+            order_data = _serialize_to_dict(order)
 
             result["alpaca_order"] = order_data
             result["order_status"] = "found"
 
             # If symbol not provided, try to infer from order
             if not symbol:
-                # Alpaca Order objects usually have 'symbol' attribute
-                # Accessing via dictionary if it's already converted, or attribute
                 if isinstance(order_data, dict):
                     symbol = order_data.get("symbol")
                 elif hasattr(order, "symbol"):
                     symbol = order.symbol
 
-        except Exception:
-            result["order_status"] = "not_found"
-            # Only record error if it's NOT a 404 (which is expected if ID is wrong)
-            # But here we assume ID provided SHOULD exist or we want to verify it doesn't.
-            # So "not_found" is a valid status.
-            # If it's a connection error, that's different.
-            # We assume 404 means "definitely not on Alpaca".
-            pass
+        except APIError as e:
+            # The Alpaca API returns a 404 status code for not found orders.
+            if "not found" in str(e).lower():
+                result["order_status"] = "not_found"
+            else:
+                if not json_output:
+                    rprint(f"[bold red]Error fetching order from Alpaca: {e}[/bold red]")
+                # Assuming critical error, but for CLI tool usually better to exit or report
+                raise typer.Exit(code=1) from e
+        except Exception as e:
+            if not json_output:
+                rprint(
+                    f"[bold red]An unexpected error occurred while fetching order: {e}[/bold red]"
+                )
+            raise typer.Exit(code=1) from e
 
     # 2. Check Positions
     if symbol:
         # Alpaca Position
         try:
             pos = client.get_open_position(symbol)
-            if hasattr(pos, "model_dump"):
-                pos_data = pos.model_dump()
-            elif hasattr(pos, "dict"):
-                pos_data = pos.dict()
+            result["alpaca_position"] = _serialize_to_dict(pos)
+        except APIError as e:
+            # Not found is an expected outcome if there's no open position.
+            # Alpaca typically returns 404/not found msg for position not found
+            if "not found" in str(e).lower():
+                pass
             else:
-                pos_data = pos.__dict__
-            result["alpaca_position"] = pos_data
-        except Exception:
-            # Not found is expected if closed
-            pass
+                if not json_output:
+                    rprint(f"[bold red]Error fetching position from Alpaca: {e}[/bold red]")
+                raise typer.Exit(code=1) from e
+        except Exception as e:
+            if not json_output:
+                rprint(
+                    f"[bold red]An unexpected error occurred while fetching position: {e}[/bold red]"
+                )
+            raise typer.Exit(code=1) from e
 
         # Firestore Position
         open_positions = repo.get_open_positions()
         fs_pos = next((p for p in open_positions if p.symbol == symbol), None)
 
         if fs_pos:
-            result["firestore_position"] = fs_pos.model_dump(mode="json")
+            # Firestore models usually have model_dump/dict too
+            result["firestore_position"] = _serialize_to_dict(fs_pos)
 
         # 3. Cross Check
         alpaca_exists = result["alpaca_position"] is not None
@@ -110,11 +132,14 @@ def verify(
             a_qty = float(result["alpaca_position"].get("qty", 0))
             f_qty = float(result["firestore_position"].get("qty", 0))
 
-            # Use a small epsilon for float comparison
-            if abs(a_qty - f_qty) > 0.0001:
+            if abs(a_qty - f_qty) > QTY_COMPARISON_EPSILON:
                 result["discrepancies"].append(
                     f"Quantity Mismatch: Alpaca={a_qty}, Firestore={f_qty}"
                 )
+            else:
+                # Ensure discrepancies list is empty if no mismatch
+                # logic above appends, so if we are here and list is empty, it remains empty
+                pass
 
     # Output
     if json_output:
