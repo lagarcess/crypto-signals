@@ -1779,7 +1779,7 @@ class TestMicroCapEdgeCases:
             # Should be capped at MAX_POSITION_SIZE
             assert qty >= 0, "Qty should be non-negative"
             # If capping is implemented, should not exceed reasonable limit
-            assert qty <= 10_000_000 or qty > 0, "Qty is outside reasonable bounds"
+            assert qty == 1_000_000, "Qty should be capped at MAX_POSITION_SIZE"
 
     def test_validate_signal_with_negative_stop_loss(self):
         """Test that _validate_signal_parameters catches negative stops.

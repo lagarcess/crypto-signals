@@ -8,10 +8,7 @@ def assert_dicts_equal(
     """
     Asserts that two dictionaries are equal, providing a helpful error message with diff.
     """
-    msg = (
-        f"{context_msg}\nExpected: {expected}\nActual: {actual}" if context_msg else None
-    )
-    assert actual == expected, msg
+    assert actual == expected, context_msg
 
 
 def assert_payload_matches(
