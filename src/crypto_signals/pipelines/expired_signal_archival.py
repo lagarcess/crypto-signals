@@ -20,6 +20,7 @@ from typing import Any, Dict, List
 
 import pandas as pd
 from google.cloud import firestore
+from google.cloud.firestore import FieldFilter
 from loguru import logger
 from pydantic import BaseModel
 
@@ -74,8 +75,8 @@ class ExpiredSignalArchivalPipeline(BigQueryPipelineBase):
 
         docs = (
             self.firestore_client.collection(self.source_collection)
-            .where("status", "==", "EXPIRED")
-            .where("valid_until", "<", cutoff)
+            .where(filter=FieldFilter("status", "==", "EXPIRED"))
+            .where(filter=FieldFilter("valid_until", "<", cutoff))
             .stream()
         )
 

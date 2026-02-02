@@ -15,6 +15,7 @@ from typing import Any, Dict, List
 
 import pandas as pd
 from google.cloud import firestore
+from google.cloud.firestore import FieldFilter
 from loguru import logger
 from pydantic import BaseModel
 
@@ -89,7 +90,7 @@ class RejectedSignalArchival(BigQueryPipelineBase):
 
         docs = (
             self.firestore_client.collection(self.source_collection)
-            .where(field_path="created_at", op_string="<", value=cutoff)
+            .where(filter=FieldFilter("created_at", "<", cutoff))
             .limit(100)  # Process in batches
             .stream()
         )

@@ -218,6 +218,12 @@ def test_extract_cutoff_date(pipeline, mock_firestore):
     kwargs = call_args.kwargs
     cutoff_arg = kwargs.get("value")
 
+    if cutoff_arg is None and "filter" in kwargs:
+        # FieldFilter used: .where(filter=FieldFilter(field, op, value))
+        field_filter = kwargs["filter"]
+        # FieldFilter objects store the value in the 'value' attribute
+        cutoff_arg = field_filter.value
+
     if cutoff_arg is None and len(call_args.args) >= 3:
         # Positional args: field_path, op_string, value
         cutoff_arg = call_args.args[2]

@@ -324,16 +324,16 @@ class SignalRepository:
 
         query = (
             self.db.collection(self.collection_name)
-            .where("symbol", "==", symbol)
-            .where("status", "in", [s.value for s in exit_statuses])
-            .where("timestamp", ">=", cutoff_time)
+            .where(filter=FieldFilter("symbol", "==", symbol))
+            .where(filter=FieldFilter("status", "in", [s.value for s in exit_statuses]))
+            .where(filter=FieldFilter("timestamp", ">=", cutoff_time))
             .order_by("timestamp", direction=firestore.Query.DESCENDING)
             .limit(1)
         )
 
         # Optional pattern filter (Fix #2 - prevents different patterns from being blocked)
         if pattern_name:
-            query = query.where("pattern_name", "==", pattern_name)
+            query = query.where(filter=FieldFilter("pattern_name", "==", pattern_name))
 
         docs = query.stream()
         for doc in docs:

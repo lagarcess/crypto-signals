@@ -19,6 +19,7 @@ from typing import Any, List
 import pandas as pd
 from alpaca.common.exceptions import APIError
 from google.cloud import firestore
+from google.cloud.firestore import FieldFilter
 from loguru import logger
 from pydantic import BaseModel
 
@@ -200,7 +201,7 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
         # Query CLOSED positions (deleted after successful merge via cleanup)
         docs = (
             self.firestore_client.collection(self.source_collection)
-            .where("status", "==", "CLOSED")
+            .where(filter=FieldFilter("status", "==", "CLOSED"))
             .stream()
         )
 
