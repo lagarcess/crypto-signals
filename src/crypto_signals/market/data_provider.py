@@ -231,9 +231,6 @@ def _fetch_bars_core(
         crypto_client: Alpaca Crypto Client
         cache_key: Passed for compatibility with cached version, ignored here.
     """
-    # Defensive coding: Ensure lookback_days is valid (Issue #252)
-    lookback_days = lookback_days or 365
-
     try:
         end_dt = datetime.now(timezone.utc)
         start_dt = end_dt - timedelta(days=lookback_days)
