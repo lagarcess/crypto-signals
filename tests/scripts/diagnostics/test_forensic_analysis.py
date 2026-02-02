@@ -59,9 +59,9 @@ def test_analyze_exit_gap_no_gaps():
 
         results = analyze_exit_gap(mock_console, mock_settings)
 
-        assert results["closed_positions"] == 1
-        assert results["sell_orders"] == 1
-        assert results["gaps"] == 0
+        assert results["closed_positions"] == 1, "Expected 1 closed position in results"
+        assert results["sell_orders"] == 1, "Expected 1 sell order in results"
+        assert results["gaps"] == 0, f"Expected 0 gaps, found {results['gaps']}"
 
 
 def test_analyze_exit_gap_with_gap():
@@ -103,5 +103,7 @@ def test_analyze_exit_gap_with_gap():
 
         results = analyze_exit_gap(mock_console, mock_settings)
 
-        assert results["gaps"] == 1
-        assert results["gap_details"][0]["symbol"] == "ETH/USD"
+        assert results["gaps"] == 1, "Expected 1 gap detection when order is missing"
+        assert (
+            results["gap_details"][0]["symbol"] == "ETH/USD"
+        ), "Gap details should match the missing symbol 'ETH/USD'"

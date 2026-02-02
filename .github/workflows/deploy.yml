@@ -168,6 +168,7 @@ jobs:
         run: |
           clean_var() { echo "$1" | xargs; }
           cat > env_vars.yaml <<EOF
+          COMMIT_SHA: "${{ github.sha }}"
           TEST_MODE: "$(clean_var "${{ vars.TEST_MODE }}")"
           ALPACA_PAPER_TRADING: "$(clean_var "${{ vars.ALPACA_PAPER_TRADING }}")"
           ENABLE_EXECUTION: "$(clean_var "${{ vars.ENABLE_EXECUTION }}")"

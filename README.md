@@ -58,6 +58,10 @@ Crypto Sentinel is a production-ready trading bot that:
   - Alerts orphans via Discord for manual investigation
   - Runs automatically at job startup, non-blocking, PROD-gated
 - ✅ **Zombie Signal Prevention**: Two-phase commit ensures database tracking before Discord notification, with automated compensation for failures.
+- ✅ **Forensic Stabilization & Robustness** (Issue #252/253):
+  - **Defensive Lookback**: Safely defaults `lookback_days` to 365 if missing in configuration, preventing runtime crashes.
+  - **Safe Schema Hydration**: Coerces missing or null `strategy_id` to `"UNKNOWN"` in `TradeExecution` schema, ensuring data integrity during analytics archival.
+  - **Deterministic Testing**: Regression suite uses mocked time to guarantee consistency in logic verification.
 - ✅ **Docker Support**: Multi-stage builds with security best practices
 
 ### Automated Execution
@@ -277,6 +281,7 @@ crypto-signals/
 | `ENABLE_EXECUTION`                | No       | `false` | Enable bracket order execution                                    |
 | `ENABLE_EQUITIES`                 | No       | `false` | Enable stock trading (requires Alpaca SIP data plan)              |
 | `RISK_PER_TRADE`                  | No       | `100.0` | Fixed dollar amount to risk per trade                             |
+| `GIT_SHA` / `COMMIT_SHA`          | No       | -       | Manual git hash override (Cloud Run fallback)                     |
 
 ### Portfolio Configuration
 

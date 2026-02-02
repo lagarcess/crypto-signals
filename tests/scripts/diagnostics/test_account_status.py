@@ -42,10 +42,14 @@ def test_get_account_summary_mocked():
 
         summary = get_account_summary()
 
-        assert summary["cash"] == 10000.0
-        assert summary["portfolio_value"] == 15000.0
-        assert len(summary["positions"]) == 1
-        assert summary["positions"][0]["symbol"] == "BTC/USD"
+        assert summary["cash"] == 10000.0, "Cash balance mismatch in summary"
+        assert (
+            summary["portfolio_value"] == 15000.0
+        ), "Portfolio value mismatch in summary"
+        assert len(summary["positions"]) == 1, "Expected exactly 1 position in summary"
+        assert (
+            summary["positions"][0]["symbol"] == "BTC/USD"
+        ), "Position symbol mismatch in summary"
 
 
 def test_write_report(tmp_path):
@@ -66,7 +70,9 @@ def test_write_report(tmp_path):
     output_path = tmp_path / "report.txt"
     write_report(summary, output_path)
 
-    assert output_path.exists()
+    assert output_path.exists(), "Report file was not created"
     content = output_path.read_text()
-    assert "ALPACA ACCOUNT STATUS REPORT" in content
-    assert "Cash: $1,000.00" in content
+    assert (
+        "ALPACA ACCOUNT STATUS REPORT" in content
+    ), "Report title missing in generated file"
+    assert "Cash: $1,000.00" in content, "Formatted cash value missing in report"

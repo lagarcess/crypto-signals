@@ -134,6 +134,9 @@ class MarketDataProvider:
         """
         settings = get_settings()
 
+        # Defensive coding: Upstream callers might pass None (Issue #252)
+        lookback_days = lookback_days or 365
+
         # If caching is enabled, use the cached wrapper.
         # Otherwise, call the core function directly.
         try:
