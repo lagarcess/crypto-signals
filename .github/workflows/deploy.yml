@@ -48,6 +48,9 @@ jobs:
           pip install pip-audit
           pip-audit --strict
 
+      - name: Verify Documentation
+        run: PYTHONPATH=src poetry run sync-docs --check
+
       - name: Test
         run: |
           PYTHONPATH=src poetry run pytest tests/ \
@@ -177,6 +180,7 @@ jobs:
           DISCORD_CHANNEL_ID_STOCK: "${{ vars.DISCORD_CHANNEL_ID_STOCK }}"
           CRYPTO_SYMBOLS: "${{ vars.CRYPTO_SYMBOLS }}"
           DISCORD_USE_FORUMS: "${{ vars.DISCORD_USE_FORUMS }}"
+          SCHEMA_MIGRATION_AUTO: "$(clean_var "${{ vars.SCHEMA_MIGRATION_AUTO }}")"
           EOF
 
           gcloud run jobs update crypto-signals-job \

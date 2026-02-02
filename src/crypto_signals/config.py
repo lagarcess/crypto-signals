@@ -209,6 +209,10 @@ class Settings(BaseSettings):
         default=True,
         description="If True, raise error on schema mismatch. If False, log warning only.",
     )
+    SCHEMA_MIGRATION_AUTO: bool = Field(
+        default=True,
+        description="Automatically add missing columns to BigQuery tables.",
+    )
 
     # === Cooldown Configuration (Issue #117 Strategic Feedback) ===
     COOLDOWN_SCOPE: str = Field(

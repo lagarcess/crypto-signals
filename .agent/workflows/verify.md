@@ -12,7 +12,7 @@ description: strict code review, system verification, and auto-commit
    - run linting: `poetry run ruff check src` (or equivalent).
    - run smoke test (Main Flow check):
      `python -m src.crypto_signals.main --smoke-test` (or `poetry run python -m src.crypto_signals.main --smoke-test`)
-   - **Doc Parity**: Verify root-vs-wiki synchronization: `poetry run python scripts/verify_doc_parity.py`
+   - **Doc Parity**: Verify root-vs-wiki synchronization: `poetry run sync-docs --check`
    - **On Failure**: Automatically trigger the `/fix` workflow to attempt self-correction.
      - *Note*: If coverage is below 63%, Use `/fix` to identify untested paths and add tests.
 

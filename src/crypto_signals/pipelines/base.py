@@ -18,7 +18,7 @@ from loguru import logger
 from pydantic import BaseModel
 
 from crypto_signals.config import get_settings
-from crypto_signals.engine.schema_guardian import SchemaGuardian
+from crypto_signals.engine.schema_guardian import SchemaGuardian, SchemaMismatchError
 
 
 class BigQueryPipelineBase(ABC):
@@ -152,7 +152,10 @@ class BigQueryPipelineBase(ABC):
         )
 
         # insert_rows_json handles batching automatically
-        errors = self.bq_client.insert_rows_json(self.staging_table_id, data)
+        # Safe Hydration (Bronze Layer): Ignore unknown values to prevent data loss on schema drift
+        errors = self.bq_client.insert_rows_json(
+            self.staging_table_id, data, ignore_unknown_values=True
+        )
 
         if errors:
             error_msg = f"[{self.job_name}] Failed to insert rows to staging: {errors}"
@@ -247,13 +250,32 @@ class BigQueryPipelineBase(ABC):
         try:
             # 0. Pre-flight Check: Validate Schema
             logger.info(f"[{self.job_name}] Validating BigQuery Schema...")
-            # The guardian will raise an exception if strict_mode is True and there's a mismatch
-            self.guardian.validate_schema(
-                table_id=self.fact_table_id,
-                model=self.schema_model,
-                require_partitioning=True,
-                clustering_fields=self.clustering_fields,
-            )
+
+            def _validate_schema():
+                """Helper to run schema validation with current pipeline settings."""
+                self.guardian.validate_schema(
+                    table_id=self.fact_table_id,
+                    model=self.schema_model,
+                    require_partitioning=True,
+                    clustering_fields=self.clustering_fields,
+                )
+
+            try:
+                # The guardian will raise an exception if strict_mode is True and there's a mismatch
+                _validate_schema()
+            except SchemaMismatchError:
+                settings = get_settings()
+                if settings.SCHEMA_MIGRATION_AUTO:
+                    logger.warning(
+                        f"[{self.job_name}] Schema mismatch detected. Attempting auto-migration..."
+                    )
+                    self.guardian.migrate_schema(self.fact_table_id, self.schema_model)
+
+                    # Retry validation to ensure compliance
+                    logger.info(f"[{self.job_name}] Re-validating BigQuery Schema...")
+                    _validate_schema()
+                else:
+                    raise
 
             # 1. Extract
             raw_data = self.extract()
