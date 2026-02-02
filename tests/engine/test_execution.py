@@ -132,7 +132,7 @@ class TestExecuteSignal:
         position = execution_engine.execute_signal(sample_equity_signal)
 
         # Verify order was submitted and position returned
-        assert position is not None
+        assert position is not None, "Execution failed to return a position object"
         mock_trading_client.submit_order.assert_called_once()
 
         # Get the order request that was passed
@@ -142,7 +142,9 @@ class TestExecuteSignal:
         # Verify bracket order class
         from alpaca.trading.enums import OrderClass
 
-        assert order_request.order_class == OrderClass.BRACKET
+        assert (
+            order_request.order_class == OrderClass.BRACKET
+        ), f"Expected BRACKET order class, got {order_request.order_class}"
 
     def test_take_profit_matches_signal(
         self, execution_engine, sample_equity_signal, mock_trading_client
@@ -165,7 +167,7 @@ class TestExecuteSignal:
         # Verify take profit
         assert order_request.take_profit.limit_price == round(
             sample_equity_signal.take_profit_1, 2
-        )
+        ), "Take profit price mismatch in order request"
 
     def test_stop_loss_matches_signal(
         self, execution_engine, sample_equity_signal, mock_trading_client
@@ -188,7 +190,7 @@ class TestExecuteSignal:
         # Verify stop loss
         assert order_request.stop_loss.stop_price == round(
             sample_equity_signal.suggested_stop, 2
-        )
+        ), "Stop loss price mismatch in order request"
 
     def test_client_order_id_matches_signal_id(
         self, execution_engine, sample_signal, mock_trading_client
@@ -209,7 +211,9 @@ class TestExecuteSignal:
         order_request = call_args[0][0]
 
         # Verify client_order_id
-        assert order_request.client_order_id == sample_signal.signal_id
+        assert (
+            order_request.client_order_id == sample_signal.signal_id
+        ), "client_order_id does not match signal_id"
 
     def test_qty_calculation(self, execution_engine, sample_signal, mock_trading_client):
         """Verify qty calculation: RISK_PER_TRADE / (entry_price - stop_loss)."""
@@ -231,7 +235,9 @@ class TestExecuteSignal:
 
         # Verify qty calculation: 100 / (50000 - 48000) = 0.05
         expected_qty = round(100.0 / 2000.0, 6)
-        assert order_request.qty == expected_qty
+        assert (
+            order_request.qty == expected_qty
+        ), f"Quantity mismatch. Expected {expected_qty}, got {order_request.qty}"
 
     def test_execution_blocked_when_not_paper_trading(
         self, sample_signal, mock_trading_client
@@ -268,8 +274,10 @@ class TestExecuteSignal:
             mock_trading_client.submit_order.assert_not_called()
 
             # Verify THEORETICAL position was created (fallback)
-            assert position is not None
-            assert position.trade_type == "THEORETICAL"
+            assert position is not None, "Execution failed to return a position object"
+            assert (
+                position.trade_type == "THEORETICAL"
+            ), f"Expected THEORETICAL trade type, got {position.trade_type}"
 
     def test_execution_blocked_when_disabled(self, sample_signal, mock_trading_client):
         """Verify execution is blocked when ENABLE_EXECUTION=False."""
@@ -322,13 +330,21 @@ class TestExecuteSignal:
         position = execution_engine.execute_signal(sample_signal)
 
         # Verify position was created
-        assert position is not None
-        assert position.position_id == sample_signal.signal_id
-        assert position.delete_at is not None
-        assert position.signal_id == sample_signal.signal_id
-        assert position.current_stop_loss == sample_signal.suggested_stop
-        assert position.entry_fill_price == sample_signal.entry_price
-        assert position.side == sample_signal.side
+        assert position is not None, "Execution failed to return a position object"
+        assert (
+            position.position_id == sample_signal.signal_id
+        ), "position_id does not match signal_id"
+        assert position.delete_at is not None, "delete_at timestamp missing in position"
+        assert (
+            position.signal_id == sample_signal.signal_id
+        ), "signal_id mismatch in position"
+        assert (
+            position.current_stop_loss == sample_signal.suggested_stop
+        ), "current_stop_loss mismatch in position"
+        assert (
+            position.entry_fill_price == sample_signal.entry_price
+        ), "entry_fill_price mismatch in position"
+        assert position.side == sample_signal.side, "side mismatch in position"
 
     def test_sell_order_side(
         self, execution_engine, sample_sell_signal, mock_trading_client
@@ -345,7 +361,7 @@ class TestExecuteSignal:
         position = execution_engine.execute_signal(sample_sell_signal)
 
         # Verify order was submitted
-        assert position is not None
+        assert position is not None, "Execution failed to return a position object"
         mock_trading_client.submit_order.assert_called_once()
 
         # Get the order request
@@ -355,8 +371,10 @@ class TestExecuteSignal:
         # Verify SELL order side
         from alpaca.trading.enums import OrderSide as AlpacaOrderSide
 
-        assert order_request.side == AlpacaOrderSide.SELL
-        assert position.side == OrderSide.SELL
+        assert (
+            order_request.side == AlpacaOrderSide.SELL
+        ), "Order request side is not SELL"
+        assert position.side == OrderSide.SELL, "Position side is not SELL"
 
 
 class TestCryptoOrderFlow:
@@ -389,7 +407,9 @@ class TestCryptoOrderFlow:
         order_request = call_args[0][0]
 
         # Verify NO order_class parameter (simple market order)
-        assert order_request.order_class is None
+        assert (
+            order_request.order_class is None
+        ), "Crypto order should not have an order_class (should be None)"
 
     def test_crypto_uses_gtc_time_in_force(
         self, execution_engine, sample_signal, mock_trading_client
@@ -412,7 +432,9 @@ class TestCryptoOrderFlow:
         order_request = call_args[0][0]
 
         # Verify GTC time_in_force
-        assert order_request.time_in_force == TimeInForce.GTC
+        assert (
+            order_request.time_in_force == TimeInForce.GTC
+        ), "Crypto order must use GTC time_in_force"
 
     def test_crypto_position_has_manual_sl_tp_fields(
         self, execution_engine, sample_signal, mock_trading_client
@@ -429,11 +451,17 @@ class TestCryptoOrderFlow:
         position = execution_engine.execute_signal(sample_signal)
 
         # Verify Position has SL/TP for manual tracking
-        assert position is not None
-        assert position.current_stop_loss == sample_signal.suggested_stop
+        assert position is not None, "Execution failed to return a position object"
+        assert (
+            position.current_stop_loss == sample_signal.suggested_stop
+        ), "Position stopped loss not initialized correctly"
         # TP order IDs should be None (no bracket legs)
-        assert position.tp_order_id is None
-        assert position.sl_order_id is None
+        assert (
+            position.tp_order_id is None
+        ), "Crypto position should not have tp_order_id initially"
+        assert (
+            position.sl_order_id is None
+        ), "Crypto position should not have sl_order_id initially"
 
     def test_crypto_no_take_profit_in_order(
         self, execution_engine, sample_signal, mock_trading_client
@@ -456,7 +484,7 @@ class TestCryptoOrderFlow:
         # Verify no take_profit in request (crypto uses manual tracking)
         assert (
             not hasattr(order_request, "take_profit") or order_request.take_profit is None
-        )
+        ), "Crypto order request should not have take_profit set"
 
     def test_crypto_no_stop_loss_in_order(
         self, execution_engine, sample_signal, mock_trading_client
@@ -477,7 +505,9 @@ class TestCryptoOrderFlow:
         order_request = call_args[0][0]
 
         # Verify no stop_loss in request (crypto uses manual tracking)
-        assert not hasattr(order_request, "stop_loss") or order_request.stop_loss is None
+        assert (
+            not hasattr(order_request, "stop_loss") or order_request.stop_loss is None
+        ), "Crypto order request should not have stop_loss set"
 
 
 class TestValidateSignal:
@@ -497,7 +527,9 @@ class TestValidateSignal:
             take_profit_1=None,  # Missing!
         )
 
-        assert execution_engine._validate_signal(signal) is False
+        assert (
+            execution_engine._validate_signal(signal) is False
+        ), "Validation should fail when take_profit_1 is missing"
 
     def test_missing_stop_fails(self, execution_engine):
         """Verify validation fails when suggested_stop is missing."""
@@ -513,7 +545,9 @@ class TestValidateSignal:
             take_profit_1=55000.0,
         )
 
-        assert execution_engine._validate_signal(signal) is False
+        assert (
+            execution_engine._validate_signal(signal) is False
+        ), "Validation should fail when suggested_stop is 0"
 
     def test_negative_stop_fails(self, execution_engine):
         """Verify validation fails when suggested_stop is negative."""
@@ -529,7 +563,9 @@ class TestValidateSignal:
             take_profit_1=55000.0,
         )
 
-        assert execution_engine._validate_signal(signal) is False
+        assert (
+            execution_engine._validate_signal(signal) is False
+        ), "Validation should fail when suggested_stop is negative"
 
 
 class TestCalculateQty:
@@ -541,7 +577,7 @@ class TestCalculateQty:
         qty = execution_engine._calculate_qty(sample_signal)
 
         # Crypto should be rounded to 6 decimals: 100 / 2000 = 0.05
-        assert qty == round(100.0 / 2000.0, 6)
+        assert qty == round(100.0 / 2000.0, 6), "Qty calculation incorrect for crypto"
 
     def test_equity_fractional_shares(self, execution_engine):
         """Verify equity uses 4 decimal precision."""
@@ -560,7 +596,7 @@ class TestCalculateQty:
         qty = execution_engine._calculate_qty(signal)
 
         # Equity should be rounded to 4 decimals: 100 / (150 - 145) = 20
-        assert qty == round(100.0 / 5.0, 4)
+        assert qty == round(100.0 / 5.0, 4), "Qty calculation incorrect for equity"
 
 
 class TestErrorHandling:
@@ -579,7 +615,7 @@ class TestErrorHandling:
         position = execution_engine.execute_signal(sample_signal)
 
         # Verify
-        assert position is None
+        assert position is None, "Position should be None on API failure"
 
 
 class TestGetOrderDetails:
@@ -597,8 +633,8 @@ class TestGetOrderDetails:
         order = execution_engine.get_order_details("order-123")
 
         # Verify
-        assert order is not None
-        assert order.status == "filled"
+        assert order is not None, "get_order_details returned None for existing order"
+        assert order.status == "filled", "Order status mismatch"
         mock_trading_client.get_order_by_id.assert_called_once_with("order-123")
 
     def test_get_order_details_not_found(self, execution_engine, mock_trading_client):
@@ -610,7 +646,7 @@ class TestGetOrderDetails:
         order = execution_engine.get_order_details("nonexistent-order")
 
         # Verify
-        assert order is None
+        assert order is None, "get_order_details should return None for nonexistent order"
 
 
 class TestSyncPositionStatus:
@@ -659,9 +695,9 @@ class TestSyncPositionStatus:
         updated = execution_engine.sync_position_status(position)
 
         # Verify leg IDs extracted
-        assert updated.tp_order_id == "tp-leg-uuid-123"
-        assert updated.sl_order_id == "sl-leg-uuid-456"
-        assert updated.entry_fill_price == 50100.0
+        assert updated.tp_order_id == "tp-leg-uuid-123", "TP order ID mismatch"
+        assert updated.sl_order_id == "sl-leg-uuid-456", "SL order ID mismatch"
+        assert updated.entry_fill_price == 50100.0, "Entry fill price mismatch"
 
     def test_sync_detects_external_close_via_tp(
         self, execution_engine, mock_trading_client
@@ -708,7 +744,9 @@ class TestSyncPositionStatus:
         updated = execution_engine.sync_position_status(position)
 
         # Verify
-        assert updated.status == TradeStatus.CLOSED
+        assert (
+            updated.status == TradeStatus.CLOSED
+        ), "Position status should be CLOSED after TP fill"
 
     def test_sync_captures_exit_fill_price_on_tp_fill(
         self, execution_engine, mock_trading_client
@@ -758,9 +796,13 @@ class TestSyncPositionStatus:
         updated = execution_engine.sync_position_status(position)
 
         # Verify exit details captured
-        assert updated.status == TradeStatus.CLOSED
-        assert updated.exit_fill_price == 55000.0
-        assert updated.exit_time == datetime(2025, 1, 15, 14, 30, 0, tzinfo=timezone.utc)
+        assert (
+            updated.status == TradeStatus.CLOSED
+        ), "Position status should be CLOSED after TP fill"
+        assert updated.exit_fill_price == 55000.0, "Exit fill price mismatch"
+        assert updated.exit_time == datetime(
+            2025, 1, 15, 14, 30, 0, tzinfo=timezone.utc
+        ), "Exit time mismatch"
 
     def test_sync_captures_exit_details_on_sl_fill(
         self, execution_engine, mock_trading_client
@@ -816,9 +858,13 @@ class TestSyncPositionStatus:
         updated = execution_engine.sync_position_status(position)
 
         # Verify exit details captured
-        assert updated.status == TradeStatus.CLOSED
-        assert updated.exit_fill_price == 48000.0
-        assert updated.exit_time == datetime(2025, 1, 15, 16, 0, 0, tzinfo=timezone.utc)
+        assert (
+            updated.status == TradeStatus.CLOSED
+        ), "Position status should be CLOSED after SL fill"
+        assert updated.exit_fill_price == 48000.0, "Exit fill price mismatch"
+        assert updated.exit_time == datetime(
+            2025, 1, 15, 16, 0, 0, tzinfo=timezone.utc
+        ), "Exit time mismatch"
 
     def test_sync_detects_manual_exit_when_not_found(
         self, execution_engine, mock_trading_client
@@ -881,10 +927,16 @@ class TestSyncPositionStatus:
         updated = execution_engine.sync_position_status(position)
 
         # Verify
-        assert updated.status == TradeStatus.CLOSED
-        assert updated.exit_reason == ExitReason.MANUAL_EXIT
-        assert updated.exit_fill_price == 52000.0
-        assert updated.exit_time == datetime(2025, 1, 15, 17, 0, 0, tzinfo=timezone.utc)
+        assert (
+            updated.status == TradeStatus.CLOSED
+        ), "Position status should be CLOSED on manual exit"
+        assert (
+            updated.exit_reason == ExitReason.MANUAL_EXIT
+        ), "Exit reason should be MANUAL_EXIT"
+        assert updated.exit_fill_price == 52000.0, "Exit fill price mismatch"
+        assert updated.exit_time == datetime(
+            2025, 1, 15, 17, 0, 0, tzinfo=timezone.utc
+        ), "Exit time mismatch"
 
         # Verify reconciler called instead of direct get_orders
         mock_reconciler.handle_manual_exit_verification.assert_called_once_with(position)
@@ -926,9 +978,9 @@ class TestModifyStopLoss:
         result = execution_engine.modify_stop_loss(position, 49000.0)
 
         # Verify
-        assert result is True
-        assert position.sl_order_id == "new-sl-order-id"
-        assert position.current_stop_loss == 49000.0
+        assert result is True, "modify_stop_loss failed to return True"
+        assert position.sl_order_id == "new-sl-order-id", "SL order ID was not updated"
+        assert position.current_stop_loss == 49000.0, "current_stop_loss was not updated"
         mock_trading_client.replace_order_by_id.assert_called_once()
 
     def test_modify_stop_loss_pending_fails(self, execution_engine, mock_trading_client):
@@ -959,7 +1011,7 @@ class TestModifyStopLoss:
         result = execution_engine.modify_stop_loss(position, 49000.0)
 
         # Verify
-        assert result is False
+        assert result is False, "modify_stop_loss should fail for pending order"
         mock_trading_client.replace_order_by_id.assert_not_called()
 
 
@@ -1001,14 +1053,14 @@ class TestClosePositionEmergency:
         result = execution_engine.close_position_emergency(position)
 
         # Verify
-        assert result is True
-        assert position.status == TradeStatus.CLOSED
+        assert result is True, "close_position_emergency failed to return True"
+        assert position.status == TradeStatus.CLOSED, "Position status should be CLOSED"
 
         # Verify cancel calls for TP and SL
         cancel_calls = mock_trading_client.cancel_order_by_id.call_args_list
         canceled_ids = [call[0][0] for call in cancel_calls]
-        assert "tp-order-id" in canceled_ids
-        assert "sl-order-id" in canceled_ids
+        assert "tp-order-id" in canceled_ids, "TP order was not canceled"
+        assert "sl-order-id" in canceled_ids, "SL order was not canceled"
 
         # Verify market close order submitted
         mock_trading_client.submit_order.assert_called_once()
@@ -1047,9 +1099,11 @@ class TestScaleOutPosition:
         result = execution_engine.scale_out_position(position, scale_pct=0.5)
 
         # Verify
-        assert result is True
+        assert result is True, "scale_out_position failed to return True"
         call_args = mock_trading_client.submit_order.call_args[0][0]
-        assert call_args.qty == 0.05  # 50% of 0.10
+        assert (
+            call_args.qty == 0.05
+        ), f"Scale out qty mismatch. Expected 0.05, got {call_args.qty}"
 
     def test_scale_out_updates_remaining_qty(self, execution_engine, mock_trading_client):
         """Verify position.qty is reduced after scale-out."""
@@ -1077,7 +1131,9 @@ class TestScaleOutPosition:
         execution_engine.scale_out_position(position, scale_pct=0.5)
 
         # Verify remaining qty
-        assert position.qty == 0.05
+        assert (
+            position.qty == 0.05
+        ), f"Remaining qty mismatch. Expected 0.05, got {position.qty}"
 
     def test_scale_out_captures_original_qty_once(
         self, execution_engine, mock_trading_client
@@ -1106,11 +1162,15 @@ class TestScaleOutPosition:
 
         # First scale-out (50%): 1.0 -> 0.5
         execution_engine.scale_out_position(position, scale_pct=0.5)
-        assert position.original_qty == 1.0  # Captured before first scale
+        assert (
+            position.original_qty == 1.0
+        ), "original_qty should be captured on first scale out"
 
         # Second scale-out (50% of remaining): 0.5 -> 0.25
         execution_engine.scale_out_position(position, scale_pct=0.5)
-        assert position.original_qty == 1.0  # Still the original, NOT overwritten
+        assert (
+            position.original_qty == 1.0
+        ), "original_qty should not be overwritten on subsequent scale outs"
 
     def test_scale_out_appends_to_prices_list(
         self, execution_engine, mock_trading_client
@@ -1150,11 +1210,19 @@ class TestScaleOutPosition:
         execution_engine.scale_out_position(position, scale_pct=0.5)
 
         # Verify prices list accumulated
-        assert len(position.scaled_out_prices) == 2
-        assert position.scaled_out_prices[0]["price"] == 55000.0
-        assert position.scaled_out_prices[0]["qty"] == 0.5
-        assert position.scaled_out_prices[1]["price"] == 58000.0
-        assert position.scaled_out_prices[1]["qty"] == 0.25  # 50% of remaining 0.5
+        assert (
+            len(position.scaled_out_prices) == 2
+        ), "scaled_out_prices list length mismatch"
+        assert (
+            position.scaled_out_prices[0]["price"] == 55000.0
+        ), "First scale out price mismatch"
+        assert position.scaled_out_prices[0]["qty"] == 0.5, "First scale out qty mismatch"
+        assert (
+            position.scaled_out_prices[1]["price"] == 58000.0
+        ), "Second scale out price mismatch"
+        assert (
+            position.scaled_out_prices[1]["qty"] == 0.25
+        ), "Second scale out qty mismatch"
 
     def test_scale_out_fails_with_no_qty(self, execution_engine, mock_trading_client):
         """Verify returns False when position has no quantity."""
@@ -1176,7 +1244,7 @@ class TestScaleOutPosition:
 
         result = execution_engine.scale_out_position(position, scale_pct=0.5)
 
-        assert result is False
+        assert result is False, "scale_out_position should fail for zero qty"
         mock_trading_client.submit_order.assert_not_called()
 
     def test_scale_out_handles_order_failure(self, execution_engine, mock_trading_client):
@@ -1201,8 +1269,10 @@ class TestScaleOutPosition:
 
         result = execution_engine.scale_out_position(position, scale_pct=0.5)
 
-        assert result is False
-        assert "Scale-out failed" in position.failed_reason
+        assert result is False, "scale_out_position should fail on API exception"
+        assert (
+            "Scale-out failed" in position.failed_reason
+        ), "failed_reason not set correctly"
 
 
 class TestMoveStopToBreakeven:
@@ -1239,9 +1309,11 @@ class TestMoveStopToBreakeven:
 
         result = execution_engine.move_stop_to_breakeven(position)
 
-        assert result is True
+        assert result is True, "move_stop_to_breakeven failed to return True"
         # Entry + 0.1% buffer = 50000 * 1.001 = 50050
-        assert position.current_stop_loss == 50050.0
+        assert (
+            position.current_stop_loss == 50050.0
+        ), "Stop loss not moved to breakeven (plus buffer)"
 
     def test_breakeven_applies_buffer_for_longs(
         self, execution_engine, mock_trading_client
@@ -1275,7 +1347,9 @@ class TestMoveStopToBreakeven:
         execution_engine.move_stop_to_breakeven(position)
 
         # Long: 100 * 1.001 = 100.10, rounded to 100.1
-        assert position.current_stop_loss == 100.1
+        assert (
+            position.current_stop_loss == 100.1
+        ), "Stop loss calculation incorrect for long position"
 
     def test_breakeven_applies_buffer_for_shorts(
         self, execution_engine, mock_trading_client
@@ -1309,7 +1383,9 @@ class TestMoveStopToBreakeven:
         execution_engine.move_stop_to_breakeven(position)
 
         # Short: 100 * 0.999 = 99.90, rounded to 99.9
-        assert position.current_stop_loss == 99.9
+        assert (
+            position.current_stop_loss == 99.9
+        ), "Stop loss calculation incorrect for short position"
 
     def test_breakeven_sets_flag(self, execution_engine, mock_trading_client):
         """Verify breakeven_applied flag is set to True on success."""
@@ -1338,9 +1414,13 @@ class TestMoveStopToBreakeven:
             side=OrderSide.BUY,
         )
 
-        assert position.breakeven_applied is False
+        assert (
+            position.breakeven_applied is False
+        ), "breakeven_applied should be False initially"
         execution_engine.move_stop_to_breakeven(position)
-        assert position.breakeven_applied is True
+        assert (
+            position.breakeven_applied is True
+        ), "breakeven_applied should be True after success"
 
     def test_breakeven_fails_without_entry_price(
         self, execution_engine, mock_trading_client
@@ -1368,7 +1448,7 @@ class TestMoveStopToBreakeven:
 
         result = execution_engine.move_stop_to_breakeven(position)
 
-        assert result is False
+        assert result is False, "move_stop_to_breakeven should fail without entry price"
         mock_trading_client.replace_order_by_id.assert_not_called()
 
 
@@ -1400,9 +1480,9 @@ class TestCFEEReconciliation:
         )
 
         # Verify
-        assert result["total_fee_usd"] == 5.0  # 0.0001 * 50000
-        assert len(result["fee_details"]) == 1
-        assert result["fee_tier"] == "Tier 0: 0.25%"
+        assert result["total_fee_usd"] == 5.0, "total_fee_usd calculation mismatch"
+        assert len(result["fee_details"]) == 1, "fee_details list length mismatch"
+        assert result["fee_tier"] == "Tier 0: 0.25%", "fee_tier extraction mismatch"
 
         # Verify call
         mock_trading_client.get.assert_called()
@@ -1440,8 +1520,8 @@ class TestCFEEReconciliation:
         )
 
         # Verify aggregation: 5.0 + 5.5 = 10.5
-        assert result["total_fee_usd"] == 10.5
-        assert len(result["fee_details"]) == 2
+        assert result["total_fee_usd"] == 10.5, "total_fee_usd aggregation mismatch"
+        assert len(result["fee_details"]) == 2, "fee_details length mismatch"
 
     def test_get_crypto_fees_by_orders_api_failure(
         self, execution_engine, mock_trading_client
@@ -1459,9 +1539,9 @@ class TestCFEEReconciliation:
         )
 
         # Verify fallback to zero fees
-        assert result["total_fee_usd"] == 0.0
-        assert result["fee_details"] == []
-        assert result["fee_tier"] is None
+        assert result["total_fee_usd"] == 0.0, "Expected 0.0 total fees on API failure"
+        assert result["fee_details"] == [], "Expected empty fee_details on API failure"
+        assert result["fee_tier"] is None, "Expected None fee_tier on API failure"
 
     def test_get_crypto_fees_by_orders_invalid_qty_price(
         self, execution_engine, mock_trading_client
@@ -1487,8 +1567,12 @@ class TestCFEEReconciliation:
         )
 
         # Verify invalid record was skipped
-        assert result["total_fee_usd"] == 0.0
-        assert len(result["fee_details"]) == 0
+        assert (
+            result["total_fee_usd"] == 0.0
+        ), "Total fees should be 0.0 for invalid activity"
+        assert (
+            len(result["fee_details"]) == 0
+        ), "Fee details should be empty for invalid activity"
 
     def test_get_crypto_fees_by_orders_retry_logic(
         self, execution_engine, mock_trading_client
@@ -1508,13 +1592,19 @@ class TestCFEEReconciliation:
             )
 
         # Verify retries happened (3 attempts total)
-        assert mock_trading_client.get.call_count == 3
+        assert mock_trading_client.get.call_count == 3, "Expected 3 retry attempts"
         # Verify exponential backoff: sleep called 2 times
-        assert mock_sleep.call_count == 2
+        assert mock_sleep.call_count == 2, "Expected 2 sleep calls for backoff"
         # Verify fallback to zero fees after all retries exhausted
-        assert result["total_fee_usd"] == 0.0
-        assert result["fee_details"] == []
-        assert result["fee_tier"] is None
+        assert (
+            result["total_fee_usd"] == 0.0
+        ), "Expected 0.0 total fees after retries exhausted"
+        assert (
+            result["fee_details"] == []
+        ), "Expected empty fee_details after retries exhausted"
+        assert (
+            result["fee_tier"] is None
+        ), "Expected None fee_tier after retries exhausted"
 
     def test_get_current_fee_tier_success(self, execution_engine, mock_trading_client):
         """Verify successful retrieval of the current fee tier from Alpaca."""
@@ -1527,9 +1617,9 @@ class TestCFEEReconciliation:
         result = execution_engine.get_current_fee_tier()
 
         # Verify
-        assert result["tier_name"] == "Tier 0"
-        assert result["maker_fee_pct"] == 0.15
-        assert result["taker_fee_pct"] == 0.25
+        assert result["tier_name"] == "Tier 0", "Tier name mismatch"
+        assert result["maker_fee_pct"] == 0.15, "Maker fee mismatch"
+        assert result["taker_fee_pct"] == 0.25, "Taker fee mismatch"
 
     def test_get_current_fee_tier_api_failure(
         self, execution_engine, mock_trading_client
@@ -1542,9 +1632,9 @@ class TestCFEEReconciliation:
         result = execution_engine.get_current_fee_tier()
 
         # Verify fallback to Tier 0
-        assert result["tier_name"] == "Tier 0"
-        assert result["maker_fee_pct"] == 0.15
-        assert result["taker_fee_pct"] == 0.25
+        assert result["tier_name"] == "Tier 0", "Expected Tier 0 fallback"
+        assert result["maker_fee_pct"] == 0.15, "Expected Tier 0 maker fee fallback"
+        assert result["taker_fee_pct"] == 0.25, "Expected Tier 0 taker fee fallback"
 
 
 # =============================================================================
@@ -1646,8 +1736,8 @@ class TestMicroCapEdgeCases:
             # risk_per_share = 0.00001199
             # qty = 100 / 0.00001199 ≈ 8,340,283 (would explode!)
             # Guard caps at 1,000,000
-            assert qty > 0
-            assert qty == 1_000_000  # Guard activates and caps qty
+            assert qty > 0, "Qty should be positive"
+            assert qty == 1_000_000, "Qty should be capped at MAX_POSITION_SIZE"
 
     def test_calculate_qty_with_very_small_risk_per_share(
         self, mock_settings, mock_trading_client
@@ -1687,9 +1777,9 @@ class TestMicroCapEdgeCases:
             # risk_per_share = 0.00000001
             # qty = 100 / 0.00000001 = 10,000,000 (would explode!)
             # Should be capped at MAX_POSITION_SIZE
-            assert qty >= 0
+            assert qty >= 0, "Qty should be non-negative"
             # If capping is implemented, should not exceed reasonable limit
-            assert qty <= 10_000_000 or qty > 0  # Flexible assertion until implementation
+            assert qty <= 10_000_000 or qty > 0, "Qty is outside reasonable bounds"
 
     def test_validate_signal_with_negative_stop_loss(self):
         """Test that _validate_signal_parameters catches negative stops.
@@ -1733,8 +1823,10 @@ class TestMicroCapEdgeCases:
         rejection_reasons = signal_gen._validate_signal_parameters(params)
 
         # Should detect negative stop
-        assert len(rejection_reasons) > 0
-        assert any("Invalid Stop" in reason for reason in rejection_reasons)
+        assert len(rejection_reasons) > 0, "Expected rejection reasons, got empty list"
+        assert any(
+            "Invalid Stop" in reason for reason in rejection_reasons
+        ), f"Expected 'Invalid Stop' in rejection reasons: {rejection_reasons}"
 
     def test_validate_signal_with_safe_floor_stop_loss(self):
         """Test that safe floor stops (1e-8) pass validation.
@@ -1778,7 +1870,9 @@ class TestMicroCapEdgeCases:
         rejection_reasons = signal_gen._validate_signal_parameters(params)
 
         # Should NOT detect negative stop (stop is >= SAFE_STOP_VAL)
-        assert not any("Invalid Stop" in reason for reason in rejection_reasons)
+        assert not any(
+            "Invalid Stop" in reason for reason in rejection_reasons
+        ), f"Unexpected 'Invalid Stop' in rejection reasons: {rejection_reasons}"
 
     def test_pepe_signal_rr_ratio_with_micro_cap_prices(self):
         """Test R:R ratio calculation with micro-cap prices.
@@ -1825,7 +1919,9 @@ class TestMicroCapEdgeCases:
         # profit = 0.00001800 - 0.00001200 = 0.00000600
         # risk = 0.00001200 - 0.00000001 = 0.00001199
         # R:R = 0.00000600 / 0.00001199 ≈ 0.5 (< 1.5, so should be rejected)
-        assert any("R:R" in reason for reason in rejection_reasons)
+        assert any(
+            "R:R" in reason for reason in rejection_reasons
+        ), f"Expected 'R:R' in rejection reasons: {rejection_reasons}"
 
 
 class TestCostBasisValidation:
@@ -1852,7 +1948,7 @@ class TestCostBasisValidation:
         position = execution_engine.execute_signal(sample_signal)
 
         # Verify that the position was not created and no order was submitted.
-        assert position is None
+        assert position is None, "Position should be None when notional value is too low"
         mock_trading_client.submit_order.assert_not_called()
 
     def test_order_rejected_for_equity_below_minimum(
@@ -1881,7 +1977,9 @@ class TestCostBasisValidation:
         # qty = 1.0 / 50.0 = 0.02, notional = 0.02 * 150 = $3 < $15
         position = execution_engine.execute_signal(equity_signal)
 
-        assert position is None
+        assert (
+            position is None
+        ), "Position should be None for equity below minimum notional"
         mock_trading_client.submit_order.assert_not_called()
 
     def test_is_notional_value_sufficient_returns_true_above_minimum(
@@ -1904,7 +2002,7 @@ class TestCostBasisValidation:
 
         # notional = 1.0 * 100 = $100 > $15
         result = execution_engine._is_notional_value_sufficient(1.0, signal)
-        assert result is True
+        assert result is True, "Notional value check failed for sufficient value"
 
     def test_is_notional_value_sufficient_returns_false_below_minimum(
         self, execution_engine, mock_settings
@@ -1926,4 +2024,4 @@ class TestCostBasisValidation:
 
         # notional = 0.1 * 100 = $10 < $15
         result = execution_engine._is_notional_value_sufficient(0.1, signal)
-        assert result is False
+        assert result is False, "Notional value check passed for insufficient value"

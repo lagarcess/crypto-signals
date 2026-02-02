@@ -44,8 +44,12 @@ def test_verify_order_not_found(mock_trading_client):
     result = runner.invoke(app, ["--order-id", "non-existent-id"])
 
     # Verify
-    assert result.exit_code == 0
-    assert "404 Not Found" in result.stdout or "Order not found" in result.stdout
+    assert (
+        result.exit_code == 0
+    ), f"Command failed with exit code {result.exit_code}. Output: {result.stdout}"
+    assert (
+        "404 Not Found" in result.stdout or "Order not found" in result.stdout
+    ), "Expected 'not found' message in output"
 
 
 def test_verify_order_found(mock_trading_client):
@@ -65,12 +69,14 @@ def test_verify_order_found(mock_trading_client):
     result = runner.invoke(app, ["--order-id", "existing-id"])
 
     # Verify
-    assert result.exit_code == 0
+    assert (
+        result.exit_code == 0
+    ), f"Command failed with exit code {result.exit_code}. Output: {result.stdout}"
     # "found" is internal status, output shows the actual status from order which is "filled"
     # Rich output includes ANSI codes, so exact match might fail. Check for substring presence.
-    assert "Status" in result.stdout
-    assert "filled" in result.stdout
-    assert "BTC/USD" in result.stdout
+    assert "Status" in result.stdout, "Expected 'Status' field in output"
+    assert "filled" in result.stdout, "Expected order status 'filled' in output"
+    assert "BTC/USD" in result.stdout, "Expected symbol 'BTC/USD' in output"
 
 
 def test_verify_position_mismatch_alpaca_only(mock_trading_client, mock_position_repo):
@@ -89,13 +95,15 @@ def test_verify_position_mismatch_alpaca_only(mock_trading_client, mock_position
     result = runner.invoke(app, ["--symbol", "BTC/USD"])
 
     # Verify
-    assert result.exit_code == 0
+    assert (
+        result.exit_code == 0
+    ), f"Command failed with exit code {result.exit_code}. Output: {result.stdout}"
     # Use generic status check as colored output might vary
-    assert "DISCREPANCY" in result.stdout
-    assert "Alpaca" in result.stdout
-    assert "FOUND" in result.stdout
-    assert "Firestore" in result.stdout
-    assert "NOT FOUND" in result.stdout
+    assert "DISCREPANCY" in result.stdout, "Expected 'DISCREPANCY' alert in output"
+    assert "Alpaca" in result.stdout, "Expected 'Alpaca' section/label in output"
+    assert "FOUND" in result.stdout, "Expected 'FOUND' status in output"
+    assert "Firestore" in result.stdout, "Expected 'Firestore' section/label in output"
+    assert "NOT FOUND" in result.stdout, "Expected 'NOT FOUND' status in output"
 
 
 def test_verify_position_match(mock_trading_client, mock_position_repo):
@@ -127,14 +135,16 @@ def test_verify_position_match(mock_trading_client, mock_position_repo):
     result = runner.invoke(app, ["--symbol", "BTC/USD"])
 
     # Verify
-    assert result.exit_code == 0
+    assert (
+        result.exit_code == 0
+    ), f"Command failed with exit code {result.exit_code}. Output: {result.stdout}"
     # Use generic status check as colored output might vary
     # Rich might wrap text or add styles, so we check for key phrases
     assert (
         "MATCH" in result.stdout
         or "No discrepancies found" in result.stdout
         or "discrepancies found" not in result.stdout
-    )
+    ), "Expected success match message in output"
 
 
 def test_json_output(mock_trading_client):
@@ -146,8 +156,16 @@ def test_json_output(mock_trading_client):
     result = runner.invoke(app, ["--order-id", "non-existent-id", "--json"])
 
     # Verify
-    assert result.exit_code == 0
+    assert (
+        result.exit_code == 0
+    ), f"Command failed with exit code {result.exit_code}. Output: {result.stdout}"
     import json
 
-    data = json.loads(result.stdout)
-    assert data["order_status"] == "not_found"
+    try:
+        data = json.loads(result.stdout)
+    except json.JSONDecodeError as e:
+        pytest.fail(f"Failed to decode JSON output: {e}. Output: {result.stdout}")
+
+    assert (
+        data["order_status"] == "not_found"
+    ), f"Expected 'order_status' to be 'not_found', got {data.get('order_status')}"
