@@ -259,11 +259,11 @@ def main(
             job_metadata_repo = JobMetadataRepository()
 
             # Pipeline Services
-            trade_archival = TradeArchivalPipeline()
+            trade_archival = TradeArchivalPipeline(execution_engine=execution_engine)
             rejected_archival = RejectedSignalArchival()
             expired_archival = ExpiredSignalArchivalPipeline()
-            fee_patch = FeePatchPipeline()
-            price_patch = PricePatchPipeline()
+            fee_patch = FeePatchPipeline(execution_engine=execution_engine)
+            price_patch = PricePatchPipeline(execution_engine=execution_engine)
             account_snapshot = AccountSnapshotPipeline()
             strategy_sync = StrategySyncPipeline()
 

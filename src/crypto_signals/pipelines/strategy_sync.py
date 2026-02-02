@@ -40,8 +40,8 @@ class StrategySyncPipeline(BigQueryPipelineBase):
     def __init__(self):
         super().__init__(
             job_name="strategy_sync",
-            staging_table_id=f"{get_settings().GOOGLE_CLOUD_PROJECT}.crypto_signals.stg_strategies_import",
-            fact_table_id=f"{get_settings().GOOGLE_CLOUD_PROJECT}.crypto_signals.dim_strategies",
+            staging_table_id=f"{get_settings().GOOGLE_CLOUD_PROJECT}.crypto_analytics.stg_strategies_import",
+            fact_table_id=f"{get_settings().GOOGLE_CLOUD_PROJECT}.crypto_analytics.dim_strategies",
             id_column="strategy_id",  # Not strictly used in custom merge
             partition_column="valid_from",  # Used for partitioning if applicable
             schema_model=StagingStrategy,

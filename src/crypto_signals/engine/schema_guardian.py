@@ -149,19 +149,27 @@ class SchemaGuardian:
         self,
         table_id: str,
         model: Type[BaseModel],
+        partition_column: Optional[str] = None,
     ) -> None:
         """
         Alters the BigQuery table to add missing columns.
+        Creates the table if it doesn't exist.
 
         Args:
             table_id: Full table ID (project.dataset.table)
             model: Pydantic model class
+            partition_column: Optional column to use for TimePartitioning (Day)
         """
         try:
             table = self.client.get_table(table_id)
         except (NotFound, GoogleAPICallError) as e:
-            logger.error(f"Failed to fetch table schema for {table_id}: {e}")
-            raise
+            if isinstance(e, NotFound):
+                logger.info(f"Table {table_id} not found. Creating it...")
+                self._create_table(table_id, model, partition_column)
+                return
+            else:
+                logger.error(f"Failed to fetch table schema for {table_id}: {e}")
+                raise
 
         desired_schema = self.generate_schema(model)
         current_schema_map = {field.name: field for field in table.schema}
@@ -201,6 +209,32 @@ class SchemaGuardian:
         )
         self.client.update_table(table, ["schema"])
         logger.info(f"Schema migration successful for {table_id}.")
+
+    def _create_table(
+        self,
+        table_id: str,
+        model: Type[BaseModel],
+        partition_column: Optional[str] = None,
+    ) -> None:
+        """Helper to create a new table from Pydantic model."""
+        schema = self.generate_schema(model)
+        table = bigquery.Table(table_id, schema=schema)
+
+        if partition_column:
+            logger.info(
+                f"Configuring TimePartitioning for {table_id} on field '{partition_column}'"
+            )
+            table.time_partitioning = bigquery.TimePartitioning(
+                field=partition_column,
+                type_=bigquery.TimePartitioningType.DAY,
+            )
+
+        try:
+            self.client.create_table(table)
+            logger.info(f"Created table {table_id} successfully.")
+        except Exception as e:
+            logger.error(f"Failed to create table {table_id}: {e}")
+            raise
 
     def _validate_fields(
         self,

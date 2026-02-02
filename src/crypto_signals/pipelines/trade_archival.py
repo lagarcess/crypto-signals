@@ -40,7 +40,7 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
     Enriches Firestore data with precise execution details from Alpaca.
     """
 
-    def __init__(self):
+    def __init__(self, execution_engine: Any | None = None):
         """Initialize the pipeline with specific configuration."""
         # Configure BigQuery settings
         # Environment-aware table routing
@@ -77,10 +77,13 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
         self.market_provider = MarketDataProvider(stock_client, crypto_client)
 
         # Initialize ExecutionEngine for fee tier queries (Issue #140)
-        # Reused across all trades to avoid repeated instantiation
-        from crypto_signals.engine.execution import ExecutionEngine
+        # Use injected instance if available, else create new (backward compatibility)
+        if execution_engine:
+            self.execution_engine = execution_engine
+        else:
+            from crypto_signals.engine.execution import ExecutionEngine
 
-        self.execution_engine = ExecutionEngine()
+            self.execution_engine = ExecutionEngine()
 
     def _get_actual_fees(
         self, alpaca_order_id: str | None, symbol: str, side: str

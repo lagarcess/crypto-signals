@@ -450,7 +450,7 @@ class ExecutionEngine:
         return Position(
             position_id=signal.signal_id,
             ds=signal.ds,
-            account_id="risk_blocked",
+            account_id=self.account_id,
             symbol=signal.symbol,
             asset_class=signal.asset_class,
             signal_id=signal.signal_id,

@@ -324,6 +324,31 @@ class DiscordClient:
             )
             return str(thread_id) if thread_id else None
         except requests.RequestException as e:
+            # === Error 220001 Recovery (Issue #265) ===
+            # "Webhooks posted to forum channels must have a thread_name or thread_id"
+            # If we failed because we didn't send a thread_name to a Forum Channel,
+            # auto-generate one and retry.
+            if getattr(e, "response", None) is not None:
+                try:
+                    err_json = e.response.json()
+                    if err_json.get("code") == 220001 and not message.get("thread_name"):
+                        logger.warning(
+                            "Discord 220001 Error: Missing thread_name for Forum Channel. Retrying with generated name."
+                        )
+                        message["thread_name"] = self._generate_thread_name(signal)
+                        # Retry dispatch
+                        response = requests.post(url, json=message, timeout=5.0)
+                        response.raise_for_status()
+
+                        retry_data = response.json()
+                        thread_id = retry_data.get("id")
+                        logger.info(
+                            f"Retry successful! Sent signal (thread_id: {thread_id})."
+                        )
+                        return str(thread_id) if thread_id else None
+                except Exception as ex:
+                    logger.error(f"Failed to recover from Discord error: {ex}")
+
             if getattr(e, "response", None) is not None:
                 logger.error(f"Discord Response: {e.response.text}")
             logger.error(f"Failed to send Discord notification: {str(e)}")

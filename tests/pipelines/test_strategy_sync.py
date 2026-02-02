@@ -14,9 +14,14 @@ from crypto_signals.pipelines.strategy_sync import StrategySyncPipeline
 @pytest.fixture
 def mock_settings():
     """Mock the settings object."""
-    with patch("crypto_signals.pipelines.strategy_sync.get_settings") as mock:
-        mock.return_value.GOOGLE_CLOUD_PROJECT = "test-project"
-        yield mock
+    with (
+        patch("crypto_signals.pipelines.strategy_sync.get_settings") as mock_sync,
+        patch("crypto_signals.pipelines.base.get_settings") as mock_base,
+    ):
+        mock_sync.return_value.GOOGLE_CLOUD_PROJECT = "test-project"
+        mock_base.return_value.GOOGLE_CLOUD_PROJECT = "test-project"
+        # Return one of them (they should be identical for test purposes)
+        yield mock_sync
 
 
 @pytest.fixture
@@ -51,9 +56,9 @@ def test_init(pipeline):
     """Test pipeline initialization."""
     assert pipeline.job_name == "strategy_sync"
     assert (
-        pipeline.staging_table_id == "test-project.crypto_signals.stg_strategies_import"
+        pipeline.staging_table_id == "test-project.crypto_analytics.stg_strategies_import"
     )
-    assert pipeline.fact_table_id == "test-project.crypto_signals.dim_strategies"
+    assert pipeline.fact_table_id == "test-project.crypto_analytics.dim_strategies"
 
 
 def test_calculate_hash(pipeline):
@@ -178,10 +183,13 @@ def test_execute_merge(pipeline, mock_bq):
     update_query = update_call[0][0]
     normalized_update = " ".join(update_query.split())
 
-    assert "UPDATE `test-project.crypto_signals.dim_strategies`" in update_query
+    assert "UPDATE `test-project.crypto_analytics.dim_strategies` T" in normalized_update
     assert "SET valid_to = S.valid_from, is_current = FALSE" in normalized_update
 
     # Verify Insert Query
     insert_call = mock_bq.query.call_args_list[1]
     insert_query = insert_call[0][0]
-    assert "INSERT INTO `test-project.crypto_signals.dim_strategies`" in insert_query
+    normalized_insert = " ".join(insert_query.split())
+    assert (
+        "INSERT INTO `test-project.crypto_analytics.dim_strategies`" in normalized_insert
+    )

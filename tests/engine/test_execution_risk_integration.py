@@ -33,6 +33,7 @@ class TestExecutionRiskIntegration(unittest.TestCase):
 
         # Mock dependencies
         self.mock_client = MagicMock()
+        self.mock_client.get_account.return_value.id = "risk_blocked"
         self.mock_repo = MagicMock()
 
         # Initialize Engine with Mocks
