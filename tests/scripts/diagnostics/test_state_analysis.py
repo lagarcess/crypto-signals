@@ -28,9 +28,13 @@ def test_analyze_firestore_state_mocked():
 
         summary = analyze_firestore_state()
 
-        assert summary["environment"] == "PROD"
-        assert summary["positions"]["OPEN"] == 1
-        assert len(summary["open_positions"]) == 1
+        assert summary["environment"] == "PROD", "Environment mismatch in summary"
+        assert (
+            summary["positions"]["OPEN"] == 1
+        ), "Incorrect count of OPEN positions in summary"
+        assert (
+            len(summary["open_positions"]) == 1
+        ), "Incorrect length of open_positions list in summary"
 
 
 def test_write_report_state(tmp_path):
@@ -55,7 +59,7 @@ def test_write_report_state(tmp_path):
     output_path = tmp_path / "state_report.txt"
     write_report(summary, output_path)
 
-    assert output_path.exists()
+    assert output_path.exists(), "Report file was not created"
     content = output_path.read_text(encoding="utf-8")
-    assert "FIRESTORE STATE ANALYSIS REPORT" in content
-    assert "Environment: PROD" in content
+    assert "FIRESTORE STATE ANALYSIS REPORT" in content, "Report title missing in content"
+    assert "Environment: PROD" in content, "Environment info missing in report content"

@@ -19,8 +19,11 @@ def test_verify_alpaca_trading_success():
     ) as mock_cls:
         mock_client = mock_cls.return_value
         result = verify_alpaca_trading(mock_settings)
-        assert result is True
+        assert result is True, "verify_alpaca_trading failed to return True"
         mock_client.get_account.assert_called_once()
+        assert (
+            mock_client.get_account.call_count == 1
+        ), "Expected get_account to be called exactly once"
 
 
 def test_verify_alpaca_market_data_success():
@@ -37,7 +40,7 @@ def test_verify_alpaca_market_data_success():
             "BTC/USD": [MagicMock(close=50000.0)]
         }
         result = verify_alpaca_market_data(mock_settings)
-        assert result is True
+        assert result is True, "verify_alpaca_market_data failed to return True"
 
 
 def test_verify_firestore_success():
@@ -51,5 +54,5 @@ def test_verify_firestore_success():
         mock_client = mock_cls.return_value
         # Mocking collection().document().set()
         result = verify_firestore(mock_settings)
-        assert result is True
-        assert mock_client.collection.called
+        assert result is True, "verify_firestore failed to return True"
+        assert mock_client.collection.called, "Firestore collection was not accessed"

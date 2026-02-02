@@ -24,3 +24,6 @@ def mock_firestore_client():
 def mock_bq_client():
     with patch("google.cloud.bigquery.Client") as mock:
         yield mock
+
+
+# Expose helpers for easy access in tests
