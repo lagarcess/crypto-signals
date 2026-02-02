@@ -822,6 +822,20 @@ class TradeExecution(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
+    def handle_missing_strategy_id(cls, data: Any) -> Any:
+        """
+        Handle missing or None strategy_id by defaulting to 'UNKNOWN'.
+
+        This prevents schema panic when processing manual trades or legacy data
+        where strategy_id might be missing.
+        """
+        if isinstance(data, dict):
+            if data.get("strategy_id") is None:
+                data["strategy_id"] = "UNKNOWN"
+        return data
+
+    @model_validator(mode="before")
+    @classmethod
     def calculate_weighted_exit_price(cls, data: Any) -> Any:
         """
         Calculate weighted average exit price if scale-outs are present.
