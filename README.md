@@ -281,6 +281,7 @@ crypto-signals/
 | `ENABLE_EXECUTION`                | No       | `false` | Enable bracket order execution                                    |
 | `ENABLE_EQUITIES`                 | No       | `false` | Enable stock trading (requires Alpaca SIP data plan)              |
 | `RISK_PER_TRADE`                  | No       | `100.0` | Fixed dollar amount to risk per trade                             |
+| `GIT_SHA` / `COMMIT_SHA`          | No       | -       | Manual git hash override (Cloud Run fallback)                     |
 
 ### Portfolio Configuration
 
