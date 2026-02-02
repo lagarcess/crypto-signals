@@ -193,3 +193,55 @@ def test_get_latest_price_api_error(provider, mock_stock_client):
     # Verify
     with pytest.raises(MarketDataError, match="get_latest_price failed after"):
         provider.get_latest_price("AAPL", AssetClass.EQUITY)
+
+
+def test_get_daily_bars_none_lookback(provider, mock_crypto_client):
+    """
+    Test that lookback_days=None defaults to 365.
+    Regression test for Issue #252.
+    """
+    # Setup
+    import datetime
+    from unittest.mock import patch
+
+    mock_bars = Mock()
+    df_data = {"close": [50000.0, 51000.0]}
+    df = pd.DataFrame(df_data)
+    mock_bars.df = df
+    mock_crypto_client.get_crypto_bars.return_value = mock_bars
+
+    fake_now = datetime.datetime(2023, 10, 26, 12, 0, 0, tzinfo=datetime.timezone.utc)
+
+    # Patch 'datetime' in the module where it is imported (market.data_provider)
+    with patch("crypto_signals.market.data_provider.datetime") as mock_datetime:
+        mock_datetime.now.return_value = fake_now
+
+        # Exec
+        # Explicitly passing None to simulate the crash condition
+        result = provider.get_daily_bars(
+            "BTC/USD",
+            AssetClass.CRYPTO,
+            lookback_days=None,  # type: ignore
+        )
+
+    # Verify
+    assert result.equals(df)
+    mock_crypto_client.get_crypto_bars.assert_called_once()
+
+    # Check that start time corresponds exactly to 365 days ago
+    call_args = mock_crypto_client.get_crypto_bars.call_args[0][0]
+    assert call_args.start is not None
+
+    expected_start = fake_now - datetime.timedelta(days=365)
+
+    # Handle potential timezone stripping by Alpaca SDK
+    # If the actual value is naive but we expected aware, compare naive values
+    if call_args.start.tzinfo is None and expected_start.tzinfo is not None:
+        assert call_args.start == expected_start.replace(tzinfo=None)
+    else:
+        assert call_args.start == expected_start
+
+    if call_args.end.tzinfo is None and fake_now.tzinfo is not None:
+        assert call_args.end == fake_now.replace(tzinfo=None)
+    else:
+        assert call_args.end == fake_now

@@ -843,6 +843,10 @@ class TradeExecution(BaseModel):
         Also ensures pnl_usd and pnl_pct are consistent with the weighted price.
         """
         if isinstance(data, dict):
+            # SAFE HYDRATION: Ensure strategy_id is present and not None (Issue #253)
+            if data.get("strategy_id") is None:
+                data["strategy_id"] = "UNKNOWN"
+
             scaled_outs = data.get("scaled_out_prices", [])
             if not scaled_outs:
                 return data
