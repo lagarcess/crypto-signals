@@ -24,13 +24,12 @@ def get_git_hash() -> str:
     except Exception as e:
         logger.warning(f"Failed to get git hash from command: {e}")
         # Fallback to Environment Variables (Common in Docker/CI)
-        if git_sha := os.getenv("GIT_SHA"):
-            return git_sha
-        if commit_sha := os.getenv("COMMIT_SHA"):
-            return commit_sha
-        if revision_id := os.getenv("REVISION_ID"):
-            return revision_id
-        return "unknown"
+        return (
+            os.getenv("GIT_SHA")
+            or os.getenv("COMMIT_SHA")
+            or os.getenv("REVISION_ID")
+            or "unknown"
+        )
 
 
 def get_job_context(settings: Settings) -> Dict[str, Any]:
