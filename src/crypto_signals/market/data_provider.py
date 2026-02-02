@@ -132,6 +132,10 @@ class MarketDataProvider:
         Raises:
             MarketDataError: If data is empty or fetch fails
         """
+        # Defensive coding: Upstream callers (e.g. Strategy Config) might pass None
+        # forcing us to fallback to default (Issue #252)
+        lookback_days = lookback_days or 365
+
         settings = get_settings()
 
         # If caching is enabled, use the cached wrapper.
@@ -227,6 +231,9 @@ def _fetch_bars_core(
         crypto_client: Alpaca Crypto Client
         cache_key: Passed for compatibility with cached version, ignored here.
     """
+    # Defensive coding: Ensure lookback_days is valid (Issue #252)
+    lookback_days = lookback_days or 365
+
     try:
         end_dt = datetime.now(timezone.utc)
         start_dt = end_dt - timedelta(days=lookback_days)
