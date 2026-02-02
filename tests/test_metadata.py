@@ -23,6 +23,17 @@ def test_get_git_hash_fallback_env():
         assert result == "env_hash_123"
 
 
+def test_get_git_hash_fallback_commit_sha():
+    """Test get_git_hash uses COMMIT_SHA when GIT_SHA is missing."""
+    with (
+        patch("subprocess.run", side_effect=Exception("No git")),
+        patch.dict(os.environ, {}, clear=True),
+    ):
+        os.environ["COMMIT_SHA"] = "sha_789"
+        result = get_git_hash()
+        assert result == "sha_789"
+
+
 def test_get_git_hash_fallback_revision_id():
     """Test get_git_hash uses REVISION_ID when GIT_SHA is missing."""
     with (

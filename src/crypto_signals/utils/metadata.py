@@ -26,6 +26,8 @@ def get_git_hash() -> str:
         # Fallback to Environment Variables (Common in Docker/CI)
         if git_sha := os.getenv("GIT_SHA"):
             return git_sha
+        if commit_sha := os.getenv("COMMIT_SHA"):
+            return commit_sha
         if revision_id := os.getenv("REVISION_ID"):
             return revision_id
         return "unknown"
