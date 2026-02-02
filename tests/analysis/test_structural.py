@@ -274,7 +274,6 @@ class TestPerformance:
     """Performance tests for O(N) complexity verification."""
 
     @pytest.mark.slow
-    @pytest.mark.xfail(reason="Performance varies in CI environments")
     def test_zigzag_performance_million_points(self):
         """ZigZag should process 1M points in under 5ms (after warm-up)."""
         # Ensure JIT is warmed up
