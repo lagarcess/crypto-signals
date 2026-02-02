@@ -16,7 +16,7 @@ def test_get_git_hash_success():
 def test_get_git_hash_fallback_env():
     """Test get_git_hash uses GIT_SHA env var when git command fails."""
     with (
-        patch("subprocess.run", side_effect=Exception("No git")),
+        patch("subprocess.run", side_effect=FileNotFoundError("No git")),
         patch.dict(os.environ, {"GIT_SHA": "env_hash_123"}),
     ):
         result = get_git_hash()
@@ -26,7 +26,7 @@ def test_get_git_hash_fallback_env():
 def test_get_git_hash_fallback_commit_sha():
     """Test get_git_hash uses COMMIT_SHA when GIT_SHA is missing."""
     with (
-        patch("subprocess.run", side_effect=Exception("No git")),
+        patch("subprocess.run", side_effect=FileNotFoundError("No git")),
         patch.dict(os.environ, {"COMMIT_SHA": "sha_789"}, clear=True),
     ):
         result = get_git_hash()
@@ -36,7 +36,7 @@ def test_get_git_hash_fallback_commit_sha():
 def test_get_git_hash_fallback_revision_id():
     """Test get_git_hash uses REVISION_ID when GIT_SHA is missing."""
     with (
-        patch("subprocess.run", side_effect=Exception("No git")),
+        patch("subprocess.run", side_effect=FileNotFoundError("No git")),
         patch.dict(os.environ, {"REVISION_ID": "rev_456"}),
     ):
         # Ensure GIT_SHA is NOT set in this scope (handled by patch.dict if we clear it,
@@ -52,7 +52,7 @@ def test_get_git_hash_fallback_revision_id():
 def test_get_git_hash_unknown():
     """Test get_git_hash returns unknown when all fail."""
     with (
-        patch("subprocess.run", side_effect=Exception("No git")),
+        patch("subprocess.run", side_effect=FileNotFoundError("No git")),
         patch.dict(os.environ, {}, clear=True),
     ):
         result = get_git_hash()
