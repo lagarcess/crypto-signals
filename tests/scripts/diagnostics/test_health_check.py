@@ -21,6 +21,9 @@ def test_verify_alpaca_trading_success():
         result = verify_alpaca_trading(mock_settings)
         assert result is True, "verify_alpaca_trading failed to return True"
         mock_client.get_account.assert_called_once()
+        assert (
+            mock_client.get_account.call_count == 1
+        ), "Expected get_account to be called exactly once"
 
 
 def test_verify_alpaca_market_data_success():
