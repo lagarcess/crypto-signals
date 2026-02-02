@@ -132,11 +132,10 @@ class MarketDataProvider:
         Raises:
             MarketDataError: If data is empty or fetch fails
         """
-        # Defensive coding: Upstream callers (e.g. Strategy Config) might pass None
-        # forcing us to fallback to default (Issue #252)
-        lookback_days = lookback_days or 365
-
         settings = get_settings()
+
+        # Defensive coding: Upstream callers might pass None (Issue #252)
+        lookback_days = lookback_days or 365
 
         # If caching is enabled, use the cached wrapper.
         # Otherwise, call the core function directly.
