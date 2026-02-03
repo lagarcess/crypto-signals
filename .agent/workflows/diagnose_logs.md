@@ -10,14 +10,15 @@ Performs a "Book Balancing" audit to identify mismatches between Alpaca (Broker)
 *   **Zombies**: Positions open in DB but missing in Alpaca.
 
 ### Usage
-python -m crypto_signals.scripts.diagnostics.book_balancing [OPTIONS]
+```bash
+# General Usage
+python -m crypto_signals.scripts.diagnostics.book_balancing --help
 
-# Options:
-#   --target <ID or SYMBOL> : Inspect specific Position ID or Symbol history.
-#   --limit  <INT>          : Number of historical orders to fetch (Default: 100).
+# Audit Specific Symbol (e.g. BTC/USD)
+python -m crypto_signals.scripts.diagnostics.book_balancing --target "BTC/USD"
 
-# Example: Check for specific "missing" BTC position
-python -m crypto_signals.scripts.diagnostics.book_balancing --target BTC/USD --limit 500
+# Audit Specific Symbol with a higher limit for historical orders
+python -m crypto_signals.scripts.diagnostics.book_balancing --target "BTC/USD" --limit 500
 ```
 
 ---

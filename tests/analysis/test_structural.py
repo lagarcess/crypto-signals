@@ -275,7 +275,7 @@ class TestPerformance:
 
     @pytest.mark.slow
     def test_zigzag_performance_million_points(self):
-        """ZigZag should process 1M points in under 5ms (after warm-up)."""
+        """ZigZag should process 1M points in under 50ms (after warm-up)."""
         # Ensure JIT is warmed up
         warmup_jit()
 

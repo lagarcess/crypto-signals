@@ -100,10 +100,8 @@ class BookBalancer:
                         id=o.client_order_id,
                         symbol=o.symbol,
                         status="CLOSED",
-                        qty=float(o.filled_qty or 0) if o.filled_qty else 0.0,
-                        entry_price=float(o.filled_avg_price or 0)
-                        if o.filled_avg_price
-                        else 0.0,
+                        qty=float(o.filled_qty or 0.0),
+                        entry_price=float(o.filled_avg_price or 0.0),
                         updated_at=o.filled_at or o.submitted_at,
                         raw=o,
                     )
