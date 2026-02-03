@@ -3,7 +3,6 @@ import subprocess
 from typing import Any, Dict
 
 from crypto_signals.config import Settings
-from loguru import logger
 
 
 def get_git_hash() -> str:
@@ -11,8 +10,13 @@ def get_git_hash() -> str:
     Get the short git hash of the current revision.
     Returns 'unknown' if git command fails.
     """
+    # 1. Try Environment Variables first (Fastest / Docker friendly)
+    env_hash = os.getenv("GIT_SHA") or os.getenv("COMMIT_SHA") or os.getenv("REVISION_ID")
+    if env_hash:
+        return env_hash
+
+    # 2. Try git command (Local Development)
     try:
-        # Run git rev-parse --short HEAD
         result = subprocess.run(
             ["git", "rev-parse", "--short", "HEAD"],
             capture_output=True,
@@ -21,15 +25,9 @@ def get_git_hash() -> str:
             timeout=2,
         )
         return result.stdout.strip()
-    except Exception as e:
-        logger.warning(f"Failed to get git hash from command: {e}")
-        # Fallback to Environment Variables (Common in Docker/CI)
-        return (
-            os.getenv("GIT_SHA")
-            or os.getenv("COMMIT_SHA")
-            or os.getenv("REVISION_ID")
-            or "unknown"
-        )
+    except Exception:
+        # Suppress error in logs - likely just missing .git folder in container
+        return "unknown"
 
 
 def get_job_context(settings: Settings) -> Dict[str, Any]:

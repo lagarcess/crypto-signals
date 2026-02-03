@@ -2,7 +2,7 @@ import datetime
 import typing
 from typing import Any, List, Optional, Type
 
-from google.api_core.exceptions import GoogleAPICallError, NotFound
+from google.api_core.exceptions import Conflict, GoogleAPICallError, NotFound
 from google.cloud import bigquery
 from loguru import logger
 from pydantic import BaseModel
@@ -232,6 +232,8 @@ class SchemaGuardian:
         try:
             self.client.create_table(table)
             logger.info(f"Created table {table_id} successfully.")
+        except Conflict:
+            logger.info(f"Table {table_id} already exists (race condition).")
         except Exception as e:
             logger.error(f"Failed to create table {table_id}: {e}")
             raise
