@@ -249,13 +249,40 @@ class TestCooldownScopeConfig:
 
     def test_cooldown_respects_scope_setting_in_logic(self, signal_generator_with_mocks):
         """Verify _is_in_cooldown respects COOLDOWN_SCOPE setting."""
-        # This test documents that the method should check get_settings().COOLDOWN_SCOPE
-        # and adjust query behavior accordingly
+        # Setup: Config scope to PATTERN
+        with patch(
+            "crypto_signals.engine.signal_generator.get_settings"
+        ) as mock_settings:
+            mock_settings.return_value.COOLDOWN_SCOPE = "PATTERN"
 
-        # Skip for now - will be implemented in Green phase
-        pytest.skip(
-            "COOLDOWN_SCOPE integration not yet implemented (expected in Green phase)"
-        )
+            # Setup repo to return an exit for the specific pattern
+            recent_exit = MagicMock(spec=Signal)
+            recent_exit.status = SignalStatus.TP1_HIT
+            recent_exit.take_profit_1 = 45000.0
+            recent_exit.take_profit_2 = None
+            recent_exit.take_profit_3 = None
+            recent_exit.suggested_stop = 44000.0
+            recent_exit.timestamp = datetime.now(timezone.utc) - timedelta(hours=1)
+
+            # The mocked repo will be called. We don't need it to return anything specific
+            # for this test, we just want to verify the CALL arguments.
+            signal_generator_with_mocks.signal_repo.get_most_recent_exit.return_value = (
+                recent_exit
+            )
+
+            # Call with a pattern name
+            signal_generator_with_mocks._is_in_cooldown(
+                "BTC/USD", 45000.0, pattern_name="BULL_FLAG"
+            )
+
+            # Verify repository was called using pattern scope logic
+            # (passed pattern_name="BULL_FLAG" instead of None)
+            args, kwargs = (
+                signal_generator_with_mocks.signal_repo.get_most_recent_exit.call_args
+            )
+            assert (
+                kwargs.get("pattern_name") == "BULL_FLAG"
+            ), "Should query with pattern_name when scope is PATTERN"
 
 
 # ============================================================================

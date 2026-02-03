@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: production
+  group: ${{ github.ref == 'refs/heads/main' && 'production' || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -45,6 +45,7 @@ jobs:
       - name: Lint & Security
         run: |
           poetry run ruff check .
+          pip install --upgrade pip
           pip install pip-audit
           pip-audit --strict
 

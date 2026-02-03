@@ -549,6 +549,12 @@ class TestGetMostRecentExit:
             if len(call[0]) >= 2 and call[0][0] == "pattern_name":
                 called_with_pattern = True
                 break
+            # Check for FieldFilter
+            if "filter" in call.kwargs:
+                field_filter = call.kwargs["filter"]
+                if getattr(field_filter, "field_path", "") == "pattern_name":
+                    called_with_pattern = True
+                    break
 
         assert called_with_pattern, "Query should filter by pattern_name when provided"
 
@@ -579,5 +585,11 @@ class TestGetMostRecentExit:
             if len(call[0]) >= 2 and call[0][0] == "timestamp":
                 called_with_timestamp = True
                 break
+            # Check for FieldFilter
+            if "filter" in call.kwargs:
+                field_filter = call.kwargs["filter"]
+                if getattr(field_filter, "field_path", "") == "timestamp":
+                    called_with_timestamp = True
+                    break
 
         assert called_with_timestamp, "Query should filter by timestamp >= cutoff_time"

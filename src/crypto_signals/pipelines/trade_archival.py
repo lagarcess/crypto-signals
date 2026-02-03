@@ -19,6 +19,7 @@ from typing import Any, List
 import pandas as pd
 from alpaca.common.exceptions import APIError
 from google.cloud import firestore
+from google.cloud.firestore import FieldFilter
 from loguru import logger
 from pydantic import BaseModel
 
@@ -40,7 +41,7 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
     Enriches Firestore data with precise execution details from Alpaca.
     """
 
-    def __init__(self):
+    def __init__(self, execution_engine: Any | None = None):
         """Initialize the pipeline with specific configuration."""
         # Configure BigQuery settings
         # Environment-aware table routing
@@ -77,10 +78,13 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
         self.market_provider = MarketDataProvider(stock_client, crypto_client)
 
         # Initialize ExecutionEngine for fee tier queries (Issue #140)
-        # Reused across all trades to avoid repeated instantiation
-        from crypto_signals.engine.execution import ExecutionEngine
+        # Use injected instance if available, else create new (backward compatibility)
+        if execution_engine:
+            self.execution_engine = execution_engine
+        else:
+            from crypto_signals.engine.execution import ExecutionEngine
 
-        self.execution_engine = ExecutionEngine()
+            self.execution_engine = ExecutionEngine()
 
     def _get_actual_fees(
         self, alpaca_order_id: str | None, symbol: str, side: str
@@ -197,7 +201,7 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
         # Query CLOSED positions (deleted after successful merge via cleanup)
         docs = (
             self.firestore_client.collection(self.source_collection)
-            .where("status", "==", "CLOSED")
+            .where(filter=FieldFilter("status", "==", "CLOSED"))
             .stream()
         )
 

@@ -30,7 +30,7 @@ class PricePatchPipeline:
     # Configuration Constants
     MAX_TRADES_PER_RUN = 100  # Batch size for performance and rate limiting
 
-    def __init__(self):
+    def __init__(self, execution_engine: Any | None = None):
         """Initialize the pipeline."""
         settings = get_settings()
         self.bq_client = bigquery.Client(project=settings.GOOGLE_CLOUD_PROJECT)
@@ -41,7 +41,10 @@ class PricePatchPipeline:
             f"{settings.GOOGLE_CLOUD_PROJECT}.crypto_analytics.fact_trades{env_suffix}"
         )
 
-        self.execution_engine = ExecutionEngine(trading_client=get_trading_client())
+        if execution_engine:
+            self.execution_engine = execution_engine
+        else:
+            self.execution_engine = ExecutionEngine(trading_client=get_trading_client())
 
     def run(self) -> int:
         """

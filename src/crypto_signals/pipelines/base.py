@@ -63,7 +63,6 @@ class BigQueryPipelineBase(ABC):
         # We use the project from settings to ensure we target the right GCP env
         self.bq_client = bigquery.Client(project=get_settings().GOOGLE_CLOUD_PROJECT)
 
-        # Initialize Schema Guardian (Strict Mode by default for now)
         # Initialize Schema Guardian
         # Note: V1 enforces Strict Mode everywhere.
         settings = get_settings()
@@ -262,14 +261,20 @@ class BigQueryPipelineBase(ABC):
 
             try:
                 # The guardian will raise an exception if strict_mode is True and there's a mismatch
+                # It will also raise NotFound if table doesn't exist
                 _validate_schema()
-            except SchemaMismatchError:
+            except (SchemaMismatchError, NotFound) as e:
                 settings = get_settings()
+                logger.warning(
+                    f"[{self.job_name}] Schema issue detected: {e}. Attempting auto-migration/creation..."
+                )
                 if settings.SCHEMA_MIGRATION_AUTO:
-                    logger.warning(
-                        f"[{self.job_name}] Schema mismatch detected. Attempting auto-migration..."
+                    # migrate_schema handles both creation (if missing) and updates (if mismatched)
+                    self.guardian.migrate_schema(
+                        self.fact_table_id,
+                        self.schema_model,
+                        partition_column=self.partition_column,
                     )
-                    self.guardian.migrate_schema(self.fact_table_id, self.schema_model)
 
                     # Retry validation to ensure compliance
                     logger.info(f"[{self.job_name}] Re-validating BigQuery Schema...")
