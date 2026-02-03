@@ -45,6 +45,7 @@ jobs:
       - name: Lint & Security
         run: |
           poetry run ruff check .
+          pip install --upgrade pip
           pip install pip-audit
           pip-audit --strict
 
