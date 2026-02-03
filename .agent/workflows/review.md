@@ -17,13 +17,14 @@ description: AI Code Review (Staff Engineer Persona) to replace Github Copilot
     - Analyze the code against "Staff Engineer" standards:
         - **Readability**: Are variable names descriptive? Are magic numbers used?
         - **Complexity**: Identify nested loops > 3 levels or functions > 50 lines.
+        - **Functionality**: Check how the change works with the codebase
         - **Architecture**: Does logic leak between layers (e.g., Persistence logic in Domain)?
         - **Security**: Specific check for injections or hardcoded secrets.
     - **Constraint**: Do NOT report styling issues (handled by Ruff/Lint). Focus on Logic/Design.
 
 3.  **Report Generation**
     - Ensure directory exists: `if (!(Test-Path "temp/review")) { New-Item -ItemType Directory -Path "temp/review" -Force }`
-    - Generate a "Review Report" markdown artifact.
+    - Generate a "Review Report" markdown artifact. If there are critical issues and suggestions, then explain what must change with reasoning behind it.
     - Save to `temp/review/review-report.md` (gitignored).
     - Format:
         ```markdown

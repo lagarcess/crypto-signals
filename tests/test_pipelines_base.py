@@ -9,6 +9,8 @@ import pytest
 from crypto_signals.pipelines.base import BigQueryPipelineBase
 from pydantic import BaseModel, Field
 
+from tests.utils.sql_assertion import assert_sql_equal
+
 # --- Mocks & Fixtures ---
 
 
@@ -121,10 +123,7 @@ def test_execute_merge_constructs_correct_sql(pipeline, mock_bq_client):
             VALUES (S.ds, S.id, S.value)
     """).strip()
 
-    def normalize(s):
-        return " ".join(s.split())
-
-    assert normalize(query) == normalize(expected_query)
+    assert_sql_equal(query, expected_query)
 
 
 def test_cleanup_staging_executes_correct_sql(pipeline, mock_bq_client):
@@ -140,11 +139,7 @@ def test_cleanup_staging_executes_correct_sql(pipeline, mock_bq_client):
             WHERE ds < DATE_SUB(CURRENT_DATE(), INTERVAL {pipeline.STAGING_CLEANUP_DAYS} DAY)
         """).strip()
 
-    # Normalize whitespace to avoid indentation issues
-    def normalize(s):
-        return " ".join(s.split())
-
-    assert normalize(query) == normalize(expected_query)
+    assert_sql_equal(query, expected_query)
 
 
 def test_run_orchestrates_flow(pipeline):
