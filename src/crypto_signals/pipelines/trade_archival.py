@@ -266,7 +266,7 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                         qty_fallback = pos.get("qty", 0.0) or 0.0
                         order = SimpleNamespace(
                             id=None,
-                            filled_avg_price=pos.get("entry_fill_price", 0.0),
+                            filled_avg_price=pos.get("entry_fill_price") or 0.0,
                             filled_qty=qty_fallback,
                             side=pos.get("side", "buy").lower(),
                         )
@@ -282,8 +282,8 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                 # Note: Alpaca 'filled_avg_price' is the source of truth
                 # for execution price
                 if isinstance(order, SimpleNamespace):
-                    entry_price_val = float(order.filled_avg_price)
-                    qty = float(order.filled_qty)
+                    entry_price_val = float(order.filled_avg_price or 0.0)
+                    qty = float(order.filled_qty or 0.0)
                 else:
                     entry_price_val = (
                         float(order.filled_avg_price) if order.filled_avg_price else 0.0
@@ -296,7 +296,7 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                 target_price = float(
                     pos.get("target_entry_price")
                     if pos.get("target_entry_price") is not None
-                    else pos.get("entry_fill_price", 0.0)
+                    else (pos.get("entry_fill_price") or 0.0)
                 )
 
                 # Source of Truth: Alpaca Order Side (Entry Order)
@@ -316,8 +316,9 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                 exit_price_val = float(pos.get("exit_fill_price", 0.0))
 
                 # exit_price_val initially comes from final close
+                # exit_price_val initially comes from final close
                 # Weighted average will be calculated by the TradeExecution model validator
-                exit_price_val = float(pos.get("exit_fill_price", 0.0))
+                exit_price_val = float(pos.get("exit_fill_price") or 0.0)
 
                 # Timestamps
                 entry_time_str = pos.get("entry_time")  # Should be in doc
@@ -456,7 +457,7 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                     ds=entry_time.date(),
                     trade_id=pos.get("position_id"),
                     account_id=pos.get("account_id"),
-                    strategy_id=pos.get("strategy_id"),
+                    strategy_id=pos.get("strategy_id") or "UNKNOWN",
                     asset_class=pos.get("asset_class", "CRYPTO"),
                     symbol=pos.get("symbol"),
                     side=pos.get("side"),

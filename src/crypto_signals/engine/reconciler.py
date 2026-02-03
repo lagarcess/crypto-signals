@@ -388,7 +388,7 @@ class StateReconciler:
             request = GetOrdersRequest(
                 status=QueryOrderStatus.CLOSED,
                 symbols=[position.symbol],
-                limit=10,
+                limit=500,
                 side=close_side,
             )
             from alpaca.trading.models import Order

@@ -95,3 +95,20 @@ class TestRiskEngine:
         result = risk_engine.check_daily_drawdown()
         assert result.passed is False
         assert "Daily Drawdown Limit Hit" in result.reason
+
+    def test_check_duplicate_symbol_fail(self, risk_engine, mock_repo):
+        # Setup: Position exists for BTC/USD
+        from crypto_signals.domain.schemas import Position, Signal
+
+        pos = MagicMock(spec=Position)
+        pos.symbol = "BTC/USD"
+        pos.position_id = "pos_1"
+        mock_repo.get_open_positions.return_value = [pos]
+
+        # Test: Signal for SAME symbol
+        signal = MagicMock(spec=Signal)
+        signal.symbol = "BTC/USD"
+
+        result = risk_engine.check_duplicate_symbol(signal)
+        assert result.passed is False
+        assert "Duplicate Position" in result.reason

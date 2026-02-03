@@ -1,34 +1,33 @@
-# Workflow: Diagnose Cloud Run Logs
+# Workflow: Diagnose Logs & Book Balancing
 
-This workflow provides a streamlined process for analyzing Cloud Run logs to identify and summarize production errors.
+This workflow provides tools for analyzing production logs and reconciling the ledger between the Database and Alpaca.
+
+## Command: `/book_balance`
+
+### Description
+Performs a "Book Balancing" audit to identify mismatches between Alpaca (Broker) and Firestore (Database). It detects:
+*   **Reverse Orphans**: Positions open in Alpaca but missing in DB.
+*   **Zombies**: Positions open in DB but missing in Alpaca.
+
+### Usage
+python -m crypto_signals.scripts.diagnostics.book_balancing [OPTIONS]
+
+# Options:
+#   --target <ID or SYMBOL> : Inspect specific Position ID or Symbol history.
+#   --limit  <INT>          : Number of historical orders to fetch (Default: 100).
+
+# Example: Check for specific "missing" BTC position
+python -m crypto_signals.scripts.diagnostics.book_balancing --target BTC/USD --limit 500
+```
+
+---
 
 ## Command: `/diagnose_logs`
 
 ### Description
-
-Fetches, parses, and analyzes Google Cloud Run logs to identify critical errors and specific events like "Zombie" or "Orphan" positions. This command is a wrapper around the `workflow_log_analyzer.py` script.
+Analyzes Cloud Run logs for errors.
 
 ### Usage
-
-To run the log analysis, simply execute the following command:
-
 ```bash
-/diagnose_logs
+/diagnose_logs --hours 24
 ```
-
-### Optional Arguments
-
--   `--service <service-name>`: The name of the Cloud Run service to analyze. Defaults to `crypto-signals-v2`.
--   `--hours <number-of-hours>`: The number of hours of logs to retrieve and analyze. Defaults to `24`.
-
-### Example
-
-To analyze the logs for the `crypto-signals-v2` service over the last 48 hours, you would run:
-
-```bash
-/diagnose_logs --service crypto-signals-v2 --hours 48
-```
-
-### Implementation
-
-This command is implemented by the `src/crypto_signals/utils/workflow_log_analyzer.py` script.

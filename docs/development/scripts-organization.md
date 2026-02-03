@@ -50,6 +50,7 @@ src/crypto_signals/scripts/
 └── diagnostics/                # System diagnostic tools
     ├── __init__.py
     ├── account_status.py       # Alpaca account summary
+    ├── book_balancing.py       # Full Ledger Reconciliation (Zombies/Orphans)
     ├── forensic_analysis.py    # Order gap detection
     ├── forensic_details.py     # Detailed position inspection
     ├── health_check.py         # Connectivity verification
@@ -74,6 +75,7 @@ The `diagnostics/` module provides comprehensive system health analysis:
 | Script | Purpose | Output |
 |--------|---------|--------|
 | `account_status` | Alpaca account balance, positions, buying power | `temp/reports/account_status.txt` |
+| `book_balancing` | Deep Ledger Audit (DB vs Alpaca History) | Console output |
 | `state_analysis` | Firestore OPEN/CLOSED counts, active signals | `temp/reports/state_analysis.txt` |
 | `forensic_analysis` | Cross-reference Firestore with Alpaca orders | Console output |
 | `health_check` | Verify connectivity to all external services | Console output + Discord |
@@ -85,6 +87,9 @@ The `diagnostics/` module provides comprehensive system health analysis:
 poetry run python -m crypto_signals.scripts.diagnostics.account_status
 poetry run python -m crypto_signals.scripts.diagnostics.state_analysis
 poetry run python -m crypto_signals.scripts.diagnostics.forensic_analysis
+poetry run python -m crypto_signals.scripts.diagnostics.book_balancing
+# Check specific position ID with deep history lookback
+poetry run python -m crypto_signals.scripts.diagnostics.book_balancing --target 70150867-... --limit 500
 poetry run python -m crypto_signals.scripts.diagnostics.health_check
 
 # All reports are written to temp/reports/ (gitignored)

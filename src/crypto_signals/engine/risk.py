@@ -46,7 +46,12 @@ class RiskEngine:
         if not drawdown_check.passed:
             return drawdown_check
 
-        # 2. Sector Limits (Portfolio Balance)
+        # 2. Duplicate Symbol Check (No Pyramiding)
+        duplicate_check = self.check_duplicate_symbol(signal)
+        if not duplicate_check.passed:
+            return duplicate_check
+
+        # 3. Sector Limits (Portfolio Balance)
         sector_check = self.check_sector_limit(signal.asset_class)
         if not sector_check.passed:
             return sector_check
@@ -105,6 +110,24 @@ class RiskEngine:
             logger.error(f"Risk Check Failed (Drawdown): {e}")
             # Fail safe: If we can't verify risk, we block.
             return RiskCheckResult(passed=False, reason=f"Error checking drawdown: {e}")
+
+    def check_duplicate_symbol(self, signal: Signal) -> RiskCheckResult:
+        """
+        Gate: Prevent multiple positions for same symbol (Pyramiding).
+        """
+        try:
+            open_positions = self.repo.get_open_positions()
+            for pos in open_positions:
+                if pos.symbol == signal.symbol:
+                    reason = f"Duplicate Position: {signal.symbol} is already open ({pos.position_id})"
+                    logger.warning(reason)
+                    return RiskCheckResult(passed=False, reason=reason)
+
+            return RiskCheckResult(passed=True)
+
+        except Exception as e:
+            logger.error(f"Risk Check Failed (Duplicate): {e}")
+            return RiskCheckResult(passed=False, reason=f"Error checking duplicate: {e}")
 
     def check_sector_limit(self, asset_class: AssetClass) -> RiskCheckResult:
         """
