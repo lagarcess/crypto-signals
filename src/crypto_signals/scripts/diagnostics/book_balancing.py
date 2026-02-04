@@ -78,7 +78,7 @@ class BookBalancer:
                     status="OPEN",
                     qty=float(p.qty),
                     entry_price=float(p.avg_entry_price),
-                    updated_at=datetime.now(),
+                    updated_at=getattr(p, "updated_at", datetime.now()),
                     raw=p,
                 )
                 self.alpaca_open[p.symbol] = entry

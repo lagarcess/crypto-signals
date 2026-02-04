@@ -6,6 +6,8 @@ import pytest
 from crypto_signals.domain.schemas import StrategyConfig
 from crypto_signals.pipelines.strategy_sync import StrategySyncPipeline
 
+from tests.utils.sql_assertion import assert_sql_equal
+
 # -----------------------------------------------------------------------------
 # FIXTURES
 # -----------------------------------------------------------------------------
@@ -181,15 +183,27 @@ def test_execute_merge(pipeline, mock_bq):
     # Verify Update Query
     update_call = mock_bq.query.call_args_list[0]
     update_query = update_call[0][0]
-    normalized_update = " ".join(update_query.split())
 
-    assert "UPDATE `test-project.crypto_analytics.dim_strategies` T" in normalized_update
-    assert "SET valid_to = S.valid_from, is_current = FALSE" in normalized_update
+    expected_update = f"""
+            UPDATE `test-project.crypto_analytics.dim_strategies` T
+            SET
+                valid_to = S.valid_from,
+                is_current = FALSE
+            FROM `{pipeline.staging_table_id}` S
+            WHERE T.strategy_id = S.strategy_id
+              AND T.valid_to IS NULL
+        """
+    assert_sql_equal(update_query, expected_update, dialect="bigquery")
 
     # Verify Insert Query
     insert_call = mock_bq.query.call_args_list[1]
     insert_query = insert_call[0][0]
-    normalized_insert = " ".join(insert_query.split())
-    assert (
-        "INSERT INTO `test-project.crypto_analytics.dim_strategies`" in normalized_insert
-    )
+
+    expected_insert = f"""
+            INSERT INTO `test-project.crypto_analytics.dim_strategies`
+            (strategy_id, active, timeframe, asset_class, assets, risk_params, confluence_config, pattern_overrides, config_hash, valid_from, valid_to, is_current)
+            SELECT
+                strategy_id, active, timeframe, asset_class, assets, risk_params, confluence_config, pattern_overrides, config_hash, valid_from, valid_to, is_current
+            FROM `{pipeline.staging_table_id}`
+        """
+    assert_sql_equal(insert_query, expected_insert, dialect="bigquery")
