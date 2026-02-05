@@ -161,8 +161,8 @@ class ExecutionEngine:
                     symbol=signal.symbol,
                     amount=capital_protected,
                 )
-            except Exception as e:
-                logger.warning(f"Failed to record risk metrics: {e}")
+            except Exception:
+                logger.opt(exception=True).warning("Failed to record risk metrics")
 
             # Create "Risk Blocked" Position for Shadow Tracking
             return self._execute_risk_blocked_order(signal, risk_result.reason)
