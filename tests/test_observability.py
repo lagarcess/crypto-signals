@@ -345,6 +345,7 @@ class TestMetricsCollector:
     def test_log_summary_persists_metrics(self):
         """Test that log_summary logs risk metrics to the logger."""
         from unittest.mock import MagicMock
+
         from crypto_signals.observability import MetricsCollector
 
         collector = MetricsCollector()

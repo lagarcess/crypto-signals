@@ -2,8 +2,8 @@ from typing import Optional
 from unittest.mock import MagicMock
 
 import pytest
-from google.api_core.exceptions import Conflict
 from crypto_signals.engine.schema_guardian import SchemaGuardian, SchemaMismatchError
+from google.api_core.exceptions import Conflict
 from google.cloud import bigquery
 from pydantic import BaseModel
 

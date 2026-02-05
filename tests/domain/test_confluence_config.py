@@ -8,14 +8,10 @@ Verifies the new ConfluenceConfig model:
 - Backward compatibility
 """
 
-
 import pytest
 from crypto_signals.domain.schemas import StrategyConfig
 from pydantic import ValidationError
 
-import pytest
-from crypto_signals.domain.schemas import ConfluenceConfig, StrategyConfig
-from pydantic import ValidationError
 
 class TestConfluenceConfig:
     """Test ConfluenceConfig schema and its integration in StrategyConfig."""
@@ -39,7 +35,7 @@ class TestConfluenceConfig:
         confluence_data = {
             "rsi_period": 21,
             "adx_threshold": 30.0,
-            "custom_factor": "experimental"
+            "custom_factor": "experimental",
         }
 
         config = StrategyConfig(
@@ -48,7 +44,7 @@ class TestConfluenceConfig:
             timeframe="1D",
             asset_class="CRYPTO",
             assets=["BTC/USD"],
-            confluence_config=confluence_data
+            confluence_config=confluence_data,
         )
 
         assert config.confluence_config.rsi_period == 21
@@ -60,7 +56,7 @@ class TestConfluenceConfig:
     def test_confluence_config_validation_failure_type(self):
         """Ensure invalid types are rejected."""
         confluence_data = {
-            "rsi_period": "invalid_string", # Should be int
+            "rsi_period": "invalid_string",  # Should be int
         }
 
         with pytest.raises(ValidationError) as exc_info:
@@ -70,7 +66,7 @@ class TestConfluenceConfig:
                 timeframe="1D",
                 asset_class="CRYPTO",
                 assets=["BTC/USD"],
-                confluence_config=confluence_data
+                confluence_config=confluence_data,
             )
 
         assert "rsi_period" in str(exc_info.value)
@@ -79,7 +75,7 @@ class TestConfluenceConfig:
     def test_confluence_config_validation_failure_constraint(self):
         """Ensure value constraints are enforced (e.g. ge=2)."""
         confluence_data = {
-            "rsi_period": 1, # Should be >= 2
+            "rsi_period": 1,  # Should be >= 2
         }
 
         with pytest.raises(ValidationError) as exc_info:
@@ -89,7 +85,7 @@ class TestConfluenceConfig:
                 timeframe="1D",
                 asset_class="CRYPTO",
                 assets=["BTC/USD"],
-                confluence_config=confluence_data
+                confluence_config=confluence_data,
             )
 
         assert "rsi_period" in str(exc_info.value)
@@ -97,10 +93,7 @@ class TestConfluenceConfig:
 
     def test_extra_fields_allowed(self):
         """Ensure unknown fields are allowed (extra='allow')."""
-        confluence_data = {
-            "rsi_period": 14,
-            "new_experimental_param": 100
-        }
+        confluence_data = {"rsi_period": 14, "new_experimental_param": 100}
 
         config = StrategyConfig(
             strategy_id="test_extra",
@@ -108,7 +101,7 @@ class TestConfluenceConfig:
             timeframe="1D",
             asset_class="CRYPTO",
             assets=["BTC/USD"],
-            confluence_config=confluence_data
+            confluence_config=confluence_data,
         )
 
         # Check serialization contains the extra field
@@ -126,7 +119,7 @@ class TestConfluenceConfig:
             timeframe="1D",
             asset_class="CRYPTO",
             assets=["BTC/USD"],
-            confluence_config=confluence_data
+            confluence_config=confluence_data,
         )
 
         dump = config.model_dump(mode="python")
