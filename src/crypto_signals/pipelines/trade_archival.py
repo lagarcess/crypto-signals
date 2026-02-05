@@ -110,10 +110,10 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
             # Note: We can't filter by order_id in the API call, must filter in client.
             # Fetching last 100 CFEE activities should cover recent trades.
 
-            activities = self.alpaca._request(
-                "GET",
-                "/account/activities",
-                params={"activity_types": "CSD,CFEE"},
+            # Fetch recent account activities (CFEE = Crypto Fee)
+            # Use public .get() method which handles params correctly in most SDK versions
+            activities = self.alpaca.get(
+                "/account/activities", {"activity_types": "CSD,CFEE"}
             )
 
             # Filter for this specific order

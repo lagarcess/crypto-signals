@@ -55,9 +55,18 @@ class SignalGenerator:
             self.signal_repo = signal_repo
         else:
             # Issue #117: Initialize signal repository for cooldown checks
-            from crypto_signals.repository.firestore import SignalRepository
+            from crypto_signals.repository.firestore import (
+                PositionRepository,
+                SignalRepository,
+            )
 
             self.signal_repo = SignalRepository()
+
+        # Initialize PositionRepository for Pyramiding Protection (Double Buy Check)
+        # We use a lazy import/init pattern if not injected, similar to signal_repo
+        from crypto_signals.repository.firestore import PositionRepository
+
+        self.position_repo = PositionRepository()
 
     def _is_in_cooldown(
         self, symbol: str, current_price: float, pattern_name: str | None = None
@@ -183,6 +192,14 @@ class SignalGenerator:
         Returns:
             Signal: Validated signal object if a pattern is found, else None.
         """
+        # 0. Pyramiding Protection: Check for existing open position
+        # Prevent "Double Buys" (Stacking) if a position is already open and managed
+        if self.position_repo.get_open_position_by_symbol(symbol):
+            logger.info(
+                f"Skipping signal generation for {symbol} - Open position exists."
+            )
+            return None
+
         # 1. Fetch Data
         if dataframe is not None:
             df = dataframe
