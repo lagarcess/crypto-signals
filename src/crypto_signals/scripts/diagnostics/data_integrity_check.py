@@ -15,11 +15,14 @@ import os
 
 os.environ.setdefault("ENVIRONMENT", "PROD")
 
+from typing import Union, get_origin  # noqa: E402
+
 from google.cloud import firestore  # noqa: E402
 from rich.console import Console  # noqa: E402
 from rich.table import Table  # noqa: E402
 
 from crypto_signals.config import get_settings  # noqa: E402
+from crypto_signals.domain.schemas import Position, Signal  # noqa: E402
 
 console = Console()
 settings = get_settings()
@@ -75,6 +78,38 @@ def audit_collection(
     console.print(table)
 
 
+def get_required_fields(model_class) -> dict[str, str]:
+    """
+    Extract fields that cannot be None (Optional) from a Pydantic model.
+    Returns: dict[field_name, description]
+    """
+    fields = {}
+    for name, info in model_class.model_fields.items():
+        # Check if field accepts None.
+        # If annotation allows None (e.g. Optional[str] or Union[str, None]), it is optional.
+        annotation = info.annotation
+        origin = get_origin(annotation)
+
+        is_nullable = False
+        if origin is Union and type(None) in annotation.__args__:
+            is_nullable = True
+
+        # Also check Pydantic "default=None" just in case, though annotation is definitive
+        if info.default is None and info.default_factory is None:
+            # If default is explicit None, it's nullable (unless it's a required field with None default, which is rare)
+            # But annotation check is usually enough for Pydantic v2
+            pass
+
+        if not is_nullable:
+            description = info.description or "No description"
+            # Truncate description for display
+            fields[name] = (
+                description[:40] + "..." if len(description) > 40 else description
+            )
+
+    return fields
+
+
 def main():
     console.print("[bold]=" * 70)
     console.print("[bold cyan]FIRESTORE DATA INTEGRITY CHECK")
@@ -82,33 +117,9 @@ def main():
     console.print(f"Environment: {settings.ENVIRONMENT}")
     console.print(f"Project: {settings.GOOGLE_CLOUD_PROJECT}")
 
-    # Signal Required Fields
-    signal_fields = {
-        "signal_id": "Deterministic UUID5 hash",
-        "ds": "Date stamp",
-        "symbol": "Trading symbol",
-        "strategy_id": "Source strategy",
-        "asset_class": "CRYPTO/EQUITY",
-        "pattern_name": "Pattern detected",
-        "entry_price": "Candle close price",
-        "suggested_stop": "Stop loss price",
-        "status": "Lifecycle status",
-        "valid_until": "Expiration datetime",
-    }
-
-    # Position Required Fields
-    position_fields = {
-        "position_id": "Unique ID (= signal_id)",
-        "ds": "Date opened",
-        "account_id": "Alpaca account",
-        "symbol": "Trading symbol",
-        "signal_id": "Link to Signal",
-        "entry_fill_price": "Actual fill price",
-        "current_stop_loss": "Current SL",
-        "qty": "Position size",
-        "side": "buy/sell",
-        "status": "OPEN/CLOSED",
-    }
+    # Dynamically introspect models
+    signal_fields = get_required_fields(Signal)
+    position_fields = get_required_fields(Position)
 
     signals_collection = (
         "live_signals" if settings.ENVIRONMENT == "PROD" else "test_signals"
