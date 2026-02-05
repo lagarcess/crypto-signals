@@ -2,11 +2,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import typer
-from crypto_signals.scripts.migrate_schema import migrate_schema
+from crypto_signals.scripts.maintenance.migrate_schema import migrate_schema
 
 
-@patch("crypto_signals.scripts.migrate_schema.SchemaGuardian")
-@patch("crypto_signals.scripts.migrate_schema.bigquery.Client")
+@patch("crypto_signals.scripts.maintenance.migrate_schema.SchemaGuardian")
+@patch("crypto_signals.scripts.maintenance.migrate_schema.bigquery.Client")
 def test_migrate_schema_executes_single_alter_statement(
     mock_bq_client, mock_schema_guardian
 ):
@@ -34,8 +34,8 @@ def test_migrate_schema_executes_single_alter_statement(
     )
 
 
-@patch("crypto_signals.scripts.migrate_schema.SchemaGuardian")
-@patch("crypto_signals.scripts.migrate_schema.bigquery.Client")
+@patch("crypto_signals.scripts.maintenance.migrate_schema.SchemaGuardian")
+@patch("crypto_signals.scripts.maintenance.migrate_schema.bigquery.Client")
 def test_migrate_schema_no_missing_columns(mock_bq_client, mock_schema_guardian):
     """
     Test that migrate_schema does not execute any queries when there are no
@@ -56,8 +56,8 @@ def test_migrate_schema_no_missing_columns(mock_bq_client, mock_schema_guardian)
     mock_client_instance.query.assert_not_called()
 
 
-@patch("crypto_signals.scripts.migrate_schema.SchemaGuardian")
-@patch("crypto_signals.scripts.migrate_schema.bigquery.Client")
+@patch("crypto_signals.scripts.maintenance.migrate_schema.SchemaGuardian")
+@patch("crypto_signals.scripts.maintenance.migrate_schema.bigquery.Client")
 def test_migrate_schema_only_type_mismatches(mock_bq_client, mock_schema_guardian):
     """
     Test that migrate_schema does not execute any queries when there are only
@@ -81,8 +81,8 @@ def test_migrate_schema_only_type_mismatches(mock_bq_client, mock_schema_guardia
     mock_client_instance.query.assert_not_called()
 
 
-@patch("crypto_signals.scripts.migrate_schema.SchemaGuardian")
-@patch("crypto_signals.scripts.migrate_schema.bigquery.Client")
+@patch("crypto_signals.scripts.maintenance.migrate_schema.SchemaGuardian")
+@patch("crypto_signals.scripts.maintenance.migrate_schema.bigquery.Client")
 def test_migrate_schema_raises_on_alter_failure(mock_bq_client, mock_schema_guardian):
     """
     Test that migrate_schema raises an exception when ALTER TABLE fails.
@@ -112,7 +112,7 @@ def test_migrate_schema_raises_on_alter_failure(mock_bq_client, mock_schema_guar
 
 def test_validate_table_id_rejects_sql_injection():
     """Test that table_id with SQL injection characters is rejected."""
-    from crypto_signals.scripts.migrate_schema import _validate_table_id
+    from crypto_signals.scripts.maintenance.migrate_schema import _validate_table_id
 
     # Valid format should pass
     _validate_table_id("my_project.my_dataset.my_table")
@@ -133,7 +133,7 @@ def test_validate_table_id_rejects_sql_injection():
 
 def test_main_rejects_untrusted_model_prefix():
     """Test that model_name must start with trusted crypto_signals. prefix."""
-    from crypto_signals.scripts.migrate_schema import main
+    from crypto_signals.scripts.maintenance.migrate_schema import main
     from typer.testing import CliRunner
 
     runner = CliRunner()
@@ -151,7 +151,7 @@ def test_main_rejects_untrusted_model_prefix():
 
 def test_main_rejects_non_basemodel_class():
     """Test that imported class must be a Pydantic BaseModel subclass."""
-    from crypto_signals.scripts.migrate_schema import main
+    from crypto_signals.scripts.maintenance.migrate_schema import main
     from typer.testing import CliRunner
 
     runner = CliRunner()

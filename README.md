@@ -133,12 +133,18 @@ crypto-signals/
 │   │   ├── trade_archival.py      # Trade archival pipeline
 │   │   └── account_snapshot.py    # Account snapshot pipeline
 │   ├── scripts/
-│   │   ├── cleanup_firestore.py   # Firestore TTL cleanup
-│   │   └── diagnostics/           # System health diagnostics
-│   │       ├── account_status.py  # Alpaca account summary
-│   │       ├── forensic_analysis.py # Order gap detection
-│   │       ├── health_check.py    # Connectivity verification
-│   │       └── state_analysis.py  # Firestore state analysis
+│   │   ├── diagnostics/           # System health diagnostics
+│   │   │   ├── account_status.py  # Alpaca account summary
+│   │   │   ├── data_integrity_check.py # Firestore data integrity
+│   │   │   ├── forensic_analysis.py # Order gap detection
+│   │   │   ├── health_check.py    # Connectivity verification
+│   │   │   ├── schema_audit.py    # Pydantic schema audit
+│   │   │   └── state_analysis.py  # Firestore state analysis
+│   │   └── maintenance/           # Maintenance and cleanup utilities
+│   │       ├── cleanup_firestore.py # Firestore TTL cleanup
+│   │       ├── migrate_schema.py  # BigQuery schema migration
+│   │       ├── purge_positions.py # Purge positions (DEV/TEST only)
+│   │       └── purge_signals.py   # Purge signals (DEV/TEST only)
 │   └── domain/
 │       └── schemas.py             # Pydantic data models
 ├── scripts/                       # Standalone setup/verification scripts
@@ -494,6 +500,12 @@ poetry run python -m crypto_signals.scripts.diagnostics.state_analysis
 
 # Forensic analysis (detect order gaps between Firestore and Alpaca)
 poetry run python -m crypto_signals.scripts.diagnostics.forensic_analysis
+
+# Data integrity check (audit Firestore fields)
+poetry run python -m crypto_signals.scripts.diagnostics.data_integrity_check
+
+# Maintenance: Purge signals (Caution: Irreversible)
+poetry run python -m crypto_signals.scripts.maintenance.purge_signals
 ```
 
 Reports are written to `temp/reports/`. See [Scripts Organization](docs/development/scripts-organization.md) for details.
