@@ -116,8 +116,12 @@ def test_execute_merge_constructs_correct_sql(pipeline, mock_bq_client):
         target_table=f"`{pipeline.fact_table_id}`",
         source_table=f"`{pipeline.staging_table_id}`",
         join_keys=[pipeline.id_column, pipeline.partition_column],
-        update_columns=["value"],
-        insert_columns=["ds", "id", "value"],
+        update_columns=[
+            col
+            for col in pipeline.schema_model.model_fields.keys()
+            if col not in [pipeline.id_column, pipeline.partition_column]
+        ],
+        insert_columns=sorted(list(pipeline.schema_model.model_fields.keys())),
     )
 
 
