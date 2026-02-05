@@ -664,7 +664,7 @@ class MetricsCollector:
         # Risk Metrics
         self.risk_counts: Dict[str, int] = {}
         self.capital_protected: float = 0.0
-        self.blocked_symbols: Dict[str, int] = {}
+        self.blocked_symbols: set[str] = set()
 
     def record_risk_block(self, gate: str, symbol: str, amount: float = 0.0):
         """
@@ -794,9 +794,7 @@ class MetricsCollector:
             risk_table.add_column("Metric", style="yellow", width=25)
             risk_table.add_column("Value", justify="right", style="white", width=20)
 
-            risk_table.add_row(
-                "Total Trades Blocked", str(risk_summary["total_blocked"])
-            )
+            risk_table.add_row("Total Trades Blocked", str(risk_summary["total_blocked"]))
             risk_table.add_row(
                 "Capital Protected", f"${risk_summary['capital_protected']:.2f}"
             )
