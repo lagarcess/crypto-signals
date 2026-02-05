@@ -685,7 +685,7 @@ class MetricsCollector:
             "by_gate": self.risk_counts,
             "total_blocked": sum(self.risk_counts.values()),
             "capital_protected": self.capital_protected,
-            "blocked_symbols": self.blocked_symbols,
+            "blocked_symbols": sorted(list(self.blocked_symbols)),
         }
 
     def record_success(self, operation: str, duration: float):
