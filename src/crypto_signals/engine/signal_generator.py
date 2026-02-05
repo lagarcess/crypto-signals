@@ -55,10 +55,7 @@ class SignalGenerator:
             self.signal_repo = signal_repo
         else:
             # Issue #117: Initialize signal repository for cooldown checks
-            from crypto_signals.repository.firestore import (
-                PositionRepository,
-                SignalRepository,
-            )
+            from crypto_signals.repository.firestore import SignalRepository
 
             self.signal_repo = SignalRepository()
 
