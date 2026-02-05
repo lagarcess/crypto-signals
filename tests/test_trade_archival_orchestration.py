@@ -77,7 +77,7 @@ def test_trade_archival_orchestration_flow():
             "symbol": "BTC/USD",
         }
 
-        mock_alpaca.return_value._request.return_value = [mock_activity]
+        mock_alpaca.return_value.get.return_value = [mock_activity]
 
         # 4. Setup Execution Engine (Fees)
         mock_exec_engine.return_value.get_current_fee_tier.return_value = {
