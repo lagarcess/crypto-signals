@@ -677,7 +677,7 @@ class MetricsCollector:
         """
         self.risk_counts[gate] = self.risk_counts.get(gate, 0) + 1
         self.capital_protected += amount
-        self.blocked_symbols.append(symbol)
+        self.blocked_symbols.add(symbol)
 
     def get_risk_summary(self) -> Dict[str, Any]:
         """Get summary of risk metrics."""
