@@ -15,7 +15,6 @@ Usage:
 """
 
 import os
-import sys
 
 os.environ.setdefault("ENVIRONMENT", "PROD")
 
@@ -42,13 +41,11 @@ def purge_positions(dry_run: bool = False) -> int:
     """
     if settings.ENVIRONMENT == "PROD":
         console.print(
-            "[bold red]🚨 Purge scripts are disabled in PROD environment for safety.[/bold red]"
+            "[bold red]❌ Purge scripts are disabled in PROD environment for safety.[/bold red]"
         )
-        sys.exit(1)
+        return 0
 
-    collection_name = (
-        "live_positions" if settings.ENVIRONMENT == "PROD" else "test_positions"
-    )
+    collection_name = "test_positions"
 
     console.print(f"[bold cyan]=== PURGE {collection_name.upper()} ===[/bold cyan]")
     console.print(f"Environment: {settings.ENVIRONMENT}")
