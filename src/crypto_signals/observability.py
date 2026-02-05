@@ -664,7 +664,7 @@ class MetricsCollector:
         # Risk Metrics
         self.risk_counts: Dict[str, int] = {}
         self.capital_protected: float = 0.0
-        self.blocked_symbols: List[str] = []
+        self.blocked_symbols: Dict[str, int] = {}
 
     def record_risk_block(self, gate: str, symbol: str, amount: float = 0.0):
         """
