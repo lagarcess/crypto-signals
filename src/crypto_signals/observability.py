@@ -661,6 +661,32 @@ class MetricsCollector:
     def __init__(self):
         """Initialize metrics collector."""
         self.metrics: Dict[str, Dict[str, Any]] = {}
+        # Risk Metrics
+        self.risk_counts: Dict[str, int] = {}
+        self.capital_protected: float = 0.0
+        self.blocked_symbols: Dict[str, int] = {}
+
+    def record_risk_block(self, gate: str, symbol: str, amount: float = 0.0):
+        """
+        Record a trade blocked by risk gates.
+
+        Args:
+            gate: The name of the gate (e.g., "drawdown", "sector_cap")
+            symbol: The symbol being blocked
+            amount: The estimated capital that was protected (prevented from being risked)
+        """
+        self.risk_counts[gate] = self.risk_counts.get(gate, 0) + 1
+        self.capital_protected += amount
+        self.blocked_symbols.add(symbol)
+
+    def get_risk_summary(self) -> Dict[str, Any]:
+        """Get summary of risk metrics."""
+        return {
+            "by_gate": self.risk_counts,
+            "total_blocked": sum(self.risk_counts.values()),
+            "capital_protected": self.capital_protected,
+            "blocked_symbols": sorted(list(self.blocked_symbols)),
+        }
 
     def record_success(self, operation: str, duration: float):
         """Record successful operation."""
@@ -722,36 +748,76 @@ class MetricsCollector:
     def log_summary(self, logger_instance: Any):
         """Log metrics summary using Rich table."""
         summary = self.get_summary()
-        if not summary:
+        risk_summary = self.get_risk_summary()
+
+        if not summary and not risk_summary["total_blocked"]:
             logger_instance.info("No metrics recorded")
             return
 
-        # Create Rich table for metrics
-        table = Table(
-            title="📈 METRICS SUMMARY",
-            title_style="bold green",
-            show_header=True,
-            header_style="bold white",
-        )
-
-        table.add_column("Operation", style="cyan", width=20)
-        table.add_column("Total", justify="right", width=8)
-        table.add_column("Success", justify="right", style="green", width=8)
-        table.add_column("Failed", justify="right", style="red", width=8)
-        table.add_column("Rate", justify="right", width=10)
-        table.add_column("Avg Time", justify="right", width=10)
-
-        for operation, stats in summary.items():
-            table.add_row(
-                operation,
-                str(stats["total_operations"]),
-                str(stats["success_count"]),
-                str(stats["failure_count"]),
-                f"{stats['success_rate']:.1f}%",
-                f"{stats['avg_duration_seconds']}s",
+        # 1. Operational Metrics Table
+        if summary:
+            table = Table(
+                title="📈 METRICS SUMMARY",
+                title_style="bold green",
+                show_header=True,
+                header_style="bold white",
             )
 
-        console.print(table)
+            table.add_column("Operation", style="cyan", width=20)
+            table.add_column("Total", justify="right", width=8)
+            table.add_column("Success", justify="right", style="green", width=8)
+            table.add_column("Failed", justify="right", style="red", width=8)
+            table.add_column("Rate", justify="right", width=10)
+            table.add_column("Avg Time", justify="right", width=10)
+
+            for operation, stats in summary.items():
+                table.add_row(
+                    operation,
+                    str(stats["total_operations"]),
+                    str(stats["success_count"]),
+                    str(stats["failure_count"]),
+                    f"{stats['success_rate']:.1f}%",
+                    f"{stats['avg_duration_seconds']}s",
+                )
+
+            console.print(table)
+            console.print()  # Spacer
+
+        # 2. Risk Metrics Table (if any risk blocks)
+        if risk_summary["total_blocked"] > 0:
+            risk_table = Table(
+                title="🛡️ RISK GATES SUMMARY",
+                title_style="bold red",
+                show_header=True,
+                header_style="bold white",
+            )
+            risk_table.add_column("Metric", style="yellow", width=25)
+            risk_table.add_column("Value", justify="right", style="white", width=20)
+
+            risk_table.add_row(
+                "Total Trades Blocked", str(risk_summary["total_blocked"])
+            )
+            risk_table.add_row(
+                "Capital Protected", f"${risk_summary['capital_protected']:.2f}"
+            )
+
+            # Breakdown by gate
+            for gate, count in risk_summary["by_gate"].items():
+                risk_table.add_row(f"Blocked by {gate}", str(count))
+
+            console.print(risk_table)
+
+            # Persist to Logs (for CloudWatch/GCP Metrics)
+            logger_instance.info(
+                "Risk Metrics Summary",
+                extra={
+                    "metric_type": "risk_summary",
+                    "total_blocked": risk_summary["total_blocked"],
+                    "capital_protected": risk_summary["capital_protected"],
+                    "by_gate": risk_summary["by_gate"],
+                    "blocked_symbols": risk_summary["blocked_symbols"],
+                },
+            )
 
 
 # Global metrics collector instance

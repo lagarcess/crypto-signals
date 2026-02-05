@@ -39,7 +39,7 @@ from crypto_signals.domain.schemas import (
 )
 from crypto_signals.engine.risk import RiskEngine
 from crypto_signals.market.data_provider import MarketDataProvider
-from crypto_signals.observability import console
+from crypto_signals.observability import console, get_metrics_collector
 from crypto_signals.repository.firestore import PositionRepository
 from loguru import logger
 from rich.panel import Panel
@@ -150,6 +150,20 @@ class ExecutionEngine:
 
         if not risk_result.passed:
             logger.warning(f"RISK BLOCK: {signal.symbol} - {risk_result.reason}")
+
+            # Record Risk Metric
+            try:
+                # Calculate theoretical position size to estimate protected capital
+                qty = self._calculate_qty(signal)
+                capital_protected = qty * signal.entry_price
+                get_metrics_collector().record_risk_block(
+                    gate=risk_result.gate or "unknown",
+                    symbol=signal.symbol,
+                    amount=capital_protected,
+                )
+            except Exception:
+                logger.opt(exception=True).warning("Failed to record risk metrics")
+
             # Create "Risk Blocked" Position for Shadow Tracking
             return self._execute_risk_blocked_order(signal, risk_result.reason)
 
