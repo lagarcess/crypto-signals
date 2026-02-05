@@ -319,3 +319,48 @@ class TestConfigIntegration:
 
             settings = Settings()
             assert settings.ENABLE_GCP_LOGGING is True
+
+
+class TestMetricsCollector:
+    """Test MetricsCollector functionality."""
+
+    def test_record_risk_block(self):
+        """Test recording risk blocks."""
+        from crypto_signals.observability import MetricsCollector
+
+        collector = MetricsCollector()
+        collector.record_risk_block("drawdown", "BTC/USD", 5000.0)
+        collector.record_risk_block("sector_cap", "ETH/USD", 3000.0)
+        collector.record_risk_block("drawdown", "SOL/USD", 2000.0)
+
+        summary = collector.get_risk_summary()
+
+        assert summary["total_blocked"] == 3
+        assert summary["capital_protected"] == 10000.0
+        assert summary["by_gate"]["drawdown"] == 2
+        assert summary["by_gate"]["sector_cap"] == 1
+        assert "BTC/USD" in summary["blocked_symbols"]
+        assert "ETH/USD" in summary["blocked_symbols"]
+
+    def test_log_summary_persists_metrics(self):
+        """Test that log_summary logs risk metrics to the logger."""
+        from unittest.mock import MagicMock
+        from crypto_signals.observability import MetricsCollector
+
+        collector = MetricsCollector()
+        collector.record_risk_block("drawdown", "BTC/USD", 5000.0)
+
+        mock_logger = MagicMock()
+        collector.log_summary(mock_logger)
+
+        # Verify logger.info was called with structured data
+        mock_logger.info.assert_called_with(
+            "Risk Metrics Summary",
+            extra={
+                "metric_type": "risk_summary",
+                "total_blocked": 1,
+                "capital_protected": 5000.0,
+                "by_gate": {"drawdown": 1},
+                "blocked_symbols": ["BTC/USD"],
+            },
+        )
