@@ -305,7 +305,9 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                     alpaca_time = getattr(order, "submitted_at", None)
 
                 # Parse or default
-                def parse_dt(val, fallback_val=None):
+                position_id = pos.get("position_id")
+
+                def parse_dt(val, fallback_val=None, pid=position_id):
                     if isinstance(val, datetime):
                         return val
 
@@ -327,7 +329,7 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                     # Final resort: now()
                     # Only warn if we really have no data
                     logger.warning(
-                        f"Missing timestamps and no fallback available for {pos.get('position_id')}. Defaulting to NOW."
+                        f"Missing timestamps and no fallback available for {pid}. Defaulting to NOW."
                     )
                     return datetime.now(timezone.utc)
 
