@@ -13,9 +13,9 @@ import pytest
 from crypto_signals.domain.schemas import StrategyConfig
 from pydantic import ValidationError
 
-# We will import ConfluenceConfig inside the test or after we implement it
-# For now, we expect it to be available in schemas.py eventually.
-# But for TDD, we can check if StrategyConfig validates correctly.
+import pytest
+from crypto_signals.domain.schemas import ConfluenceConfig, StrategyConfig
+from pydantic import ValidationError
 
 class TestConfluenceConfig:
     """Test ConfluenceConfig schema and its integration in StrategyConfig."""
