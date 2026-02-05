@@ -9,7 +9,7 @@ import pytest
 from crypto_signals.pipelines.base import BigQueryPipelineBase
 from pydantic import BaseModel, Field
 
-from tests.utils.sql_assertion import assert_sql_equal
+from tests.utils.sql_assertion import assert_merge_query_structure, assert_sql_equal
 
 # --- Mocks & Fixtures ---
 
@@ -111,19 +111,18 @@ def test_execute_merge_constructs_correct_sql(pipeline, mock_bq_client):
     assert call_args is not None
     query = call_args[0][0]
 
-    # Columns are now sorted: ['ds', 'id', 'value']
-    expected_query = textwrap.dedent(f"""
-        MERGE `{pipeline.fact_table_id}` T
-        USING `{pipeline.staging_table_id}` S
-        ON T.id = S.id AND T.ds = S.ds
-        WHEN MATCHED THEN
-            UPDATE SET T.value = S.value
-        WHEN NOT MATCHED THEN
-            INSERT (ds, id, value)
-            VALUES (S.ds, S.id, S.value)
-    """).strip()
-
-    assert_sql_equal(query, expected_query)
+    assert_merge_query_structure(
+        query,
+        target_table=f"`{pipeline.fact_table_id}`",
+        source_table=f"`{pipeline.staging_table_id}`",
+        join_keys=[pipeline.id_column, pipeline.partition_column],
+        update_columns=[
+            col
+            for col in pipeline.schema_model.model_fields.keys()
+            if col not in [pipeline.id_column, pipeline.partition_column]
+        ],
+        insert_columns=sorted(list(pipeline.schema_model.model_fields.keys())),
+    )
 
 
 def test_cleanup_staging_executes_correct_sql(pipeline, mock_bq_client):
