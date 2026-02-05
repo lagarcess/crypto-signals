@@ -41,12 +41,13 @@ def audit_collection(
         console.print("[yellow]⚠️  Collection is empty[/yellow]")
         return
 
-    # Get all unique field names across all docs
-    all_fields = set()
-    for doc in docs:
-        all_fields.update(doc.to_dict().keys())
+    console.print(
+        f"[bold blue]Checking {len(docs)} documents in {collection_name}...[/bold blue]"
+    )
 
-    console.print(f"Total unique fields: {len(all_fields)}")
+    # 1. Field Presence Audit
+    # We check against a hardcoded list of "vital" fields for now.
+    # Ideally, this should come from Pydantic models (Issue #274)
 
     # Audit first document
     sample_doc = docs[0].to_dict()

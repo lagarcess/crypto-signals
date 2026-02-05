@@ -15,6 +15,7 @@ Usage:
 """
 
 import os
+import sys
 
 os.environ.setdefault("ENVIRONMENT", "PROD")
 
@@ -39,6 +40,12 @@ def purge_signals(dry_run: bool = False) -> int:
     Returns:
         Number of documents deleted (or would be deleted in dry_run).
     """
+    if settings.ENVIRONMENT == "PROD":
+        console.print(
+            "[bold red]🚨 Purge scripts are disabled in PROD environment for safety.[/bold red]"
+        )
+        sys.exit(1)  # Changed from typer.Exit to sys.exit
+
     collection_name = "live_signals" if settings.ENVIRONMENT == "PROD" else "test_signals"
 
     console.print(f"[bold cyan]=== PURGE {collection_name.upper()} ===[/bold cyan]")

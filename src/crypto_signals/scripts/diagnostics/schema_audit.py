@@ -16,7 +16,6 @@ import os
 
 os.environ.setdefault("ENVIRONMENT", "PROD")
 
-from typing import Union, get_origin  # noqa: E402
 
 from rich.console import Console  # noqa: E402
 from rich.table import Table  # noqa: E402
@@ -37,10 +36,6 @@ def audit_model(model_class, model_name: str) -> None:
     table.add_column("Description", style="dim", max_width=40)
 
     for field_name, field_info in model_class.model_fields.items():
-        annotation = field_info.annotation
-
-        # Check if Optional (Union with None)
-        (get_origin(annotation) is Union and type(None) in annotation.__args__)
         is_required = field_info.is_required()
         default = field_info.default
         description = field_info.description or "-"

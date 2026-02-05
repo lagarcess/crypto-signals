@@ -97,7 +97,6 @@ poetry run python -m crypto_signals.scripts.diagnostics.forensic_analysis
 poetry run python -m crypto_signals.scripts.diagnostics.book_balancing
 # Check specific position ID with deep history lookback
 poetry run python -m crypto_signals.scripts.diagnostics.book_balancing --target 70150867-... --limit 500
-poetry run python -m crypto_signals.scripts.diagnostics.book_balancing --target 70150867-... --limit 500
 poetry run python -m crypto_signals.scripts.diagnostics.health_check
 poetry run python -m crypto_signals.scripts.diagnostics.data_integrity_check
 poetry run python -m crypto_signals.scripts.diagnostics.schema_audit
