@@ -56,7 +56,10 @@ class SchemaGuardian:
         """
         try:
             table = self.client.get_table(table_id)
-        except (NotFound, GoogleAPICallError) as e:
+        except NotFound:
+            # Table doesn't exist. expected during first run.
+            raise
+        except GoogleAPICallError as e:
             logger.error(f"Failed to fetch table schema for {table_id}: {e}")
             raise
 

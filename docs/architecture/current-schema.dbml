@@ -147,6 +147,8 @@ Table fact_trades [headercolor: #6d9eeb] {
   fee_tier varchar [note: 'Alpaca volume tier at time of trade (e.g., Tier...']
   entry_order_id varchar [note: 'Entry order ID for CFEE attribution (from Issue...']
   fee_reconciled_at timestamp [note: 'Timestamp when fees were reconciled from CFEE. ...']
+  exit_price_finalized boolean [note: 'Whether exit price has been finalized via patch...']
+  exit_price_reconciled_at timestamp [note: 'Timestamp when exit price was finalized via pat...']
   scaled_out_prices list [note: 'History of scale-outs used for weighted average...']
   original_qty float [note: 'Original quantity before any scale-outs. Used f...']
   Note: 'Immutable Ledger of all CLOSED trades.'

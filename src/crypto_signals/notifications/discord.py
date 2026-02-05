@@ -301,7 +301,8 @@ class DiscordClient:
         message = self._format_message(signal)
 
         # FORUM CHANNEL LOGIC: Add thread_name if enabled
-        if self.settings.DISCORD_USE_FORUMS:
+        # Also auto-generate in TEST_MODE to prevent 400s if dev webhook is a Forum
+        if self.settings.DISCORD_USE_FORUMS or self.settings.TEST_MODE:
             # Auto-generate thread_name if not provided (required for Forum channels)
             if not thread_name:
                 thread_name = self._generate_thread_name(signal)

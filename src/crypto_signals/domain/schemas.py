@@ -808,6 +808,15 @@ class TradeExecution(BaseModel):
         default=None,
         description="Timestamp when fees were reconciled from CFEE. NULL if still using estimates.",
     )
+    # === Price Patch Fields (Issue #141) ===
+    exit_price_finalized: bool = Field(
+        default=False,
+        description="Whether exit price has been finalized via patch pipeline (to correct 0.0 prices).",
+    )
+    exit_price_reconciled_at: Optional[datetime] = Field(
+        default=None,
+        description="Timestamp when exit price was finalized via patch pipeline.",
+    )
     # === Intermediate Fields (Excluded from BigQuery) ===
     scaled_out_prices: List[Dict[str, Any]] = Field(
         default_factory=list,
