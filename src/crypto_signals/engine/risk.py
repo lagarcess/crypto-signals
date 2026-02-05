@@ -103,9 +103,7 @@ class RiskEngine:
             if drawdown_pct < threshold:
                 reason = f"Daily Drawdown Limit Hit: {drawdown_pct:.2%} < {threshold:.2%}"
                 logger.warning(reason)
-                return RiskCheckResult(
-                    passed=False, reason=reason, gate="drawdown"
-                )
+                return RiskCheckResult(passed=False, reason=reason, gate="drawdown")
 
             return RiskCheckResult(passed=True)
 
@@ -126,9 +124,7 @@ class RiskEngine:
                 if pos.symbol == signal.symbol:
                     reason = f"Duplicate Position: {signal.symbol} is already open ({pos.position_id})"
                     logger.warning(reason)
-                    return RiskCheckResult(
-                        passed=False, reason=reason, gate="duplicate"
-                    )
+                    return RiskCheckResult(passed=False, reason=reason, gate="duplicate")
 
             return RiskCheckResult(passed=True)
 
@@ -156,9 +152,7 @@ class RiskEngine:
                     f"Max {asset_class.value} positions reached: {current_count}/{limit}"
                 )
                 logger.warning(reason)
-                return RiskCheckResult(
-                    passed=False, reason=reason, gate="sector_cap"
-                )
+                return RiskCheckResult(passed=False, reason=reason, gate="sector_cap")
 
             return RiskCheckResult(passed=True)
 
@@ -307,7 +301,9 @@ class RiskEngine:
         except Exception as e:
             logger.error(f"Risk Check Failed (Correlation): {e}")
             return RiskCheckResult(
-                passed=False, reason=f"Error checking correlation: {e}", gate="correlation"
+                passed=False,
+                reason=f"Error checking correlation: {e}",
+                gate="correlation",
             )
 
     def check_buying_power(
@@ -340,14 +336,14 @@ class RiskEngine:
                     f"${available:.2f} < ${required_amount:.2f} (Min Req)"
                 )
                 logger.warning(reason)
-                return RiskCheckResult(
-                    passed=False, reason=reason, gate="buying_power"
-                )
+                return RiskCheckResult(passed=False, reason=reason, gate="buying_power")
 
             return RiskCheckResult(passed=True)
 
         except Exception as e:
             logger.error(f"Risk Check Failed (Buying Power): {e}")
             return RiskCheckResult(
-                passed=False, reason=f"Error checking buying power: {e}", gate="buying_power"
+                passed=False,
+                reason=f"Error checking buying power: {e}",
+                gate="buying_power",
             )
