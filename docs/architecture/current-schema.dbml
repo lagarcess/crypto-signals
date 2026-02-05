@@ -14,7 +14,7 @@ Table dim_strategies [headercolor: #ff9900] {
   asset_class enum [note: 'Asset class this strategy trades (CRYPTO or EQU...']
   assets list [note: 'List of asset symbols this strategy trades']
   risk_params json [note: 'Risk management parameters (stop_loss_pct, take...']
-  confluence_config json [note: 'Configuration for confluence factors (e.g. {rsi...']
+  confluence_config varchar [note: 'Configuration for confluence factors (e.g. {rsi...']
   pattern_overrides json [note: 'Overrides for specific patterns (e.g. {bullish_...']
   Note: 'Config table. Defines trading rules.'
 }
