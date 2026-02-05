@@ -13,6 +13,7 @@ from loguru import logger
 class RiskCheckResult(NamedTuple):
     passed: bool
     reason: Optional[str] = None
+    gate: Optional[str] = None
 
 
 class RiskEngine:
@@ -102,14 +103,16 @@ class RiskEngine:
             if drawdown_pct < threshold:
                 reason = f"Daily Drawdown Limit Hit: {drawdown_pct:.2%} < {threshold:.2%}"
                 logger.warning(reason)
-                return RiskCheckResult(passed=False, reason=reason)
+                return RiskCheckResult(passed=False, reason=reason, gate="drawdown")
 
             return RiskCheckResult(passed=True)
 
         except Exception as e:
             logger.error(f"Risk Check Failed (Drawdown): {e}")
             # Fail safe: If we can't verify risk, we block.
-            return RiskCheckResult(passed=False, reason=f"Error checking drawdown: {e}")
+            return RiskCheckResult(
+                passed=False, reason=f"Error checking drawdown: {e}", gate="drawdown"
+            )
 
     def check_duplicate_symbol(self, signal: Signal) -> RiskCheckResult:
         """
@@ -121,13 +124,15 @@ class RiskEngine:
                 if pos.symbol == signal.symbol:
                     reason = f"Duplicate Position: {signal.symbol} is already open ({pos.position_id})"
                     logger.warning(reason)
-                    return RiskCheckResult(passed=False, reason=reason)
+                    return RiskCheckResult(passed=False, reason=reason, gate="duplicate")
 
             return RiskCheckResult(passed=True)
 
         except Exception as e:
             logger.error(f"Risk Check Failed (Duplicate): {e}")
-            return RiskCheckResult(passed=False, reason=f"Error checking duplicate: {e}")
+            return RiskCheckResult(
+                passed=False, reason=f"Error checking duplicate: {e}", gate="duplicate"
+            )
 
     def check_sector_limit(self, asset_class: AssetClass) -> RiskCheckResult:
         """
@@ -147,13 +152,15 @@ class RiskEngine:
                     f"Max {asset_class.value} positions reached: {current_count}/{limit}"
                 )
                 logger.warning(reason)
-                return RiskCheckResult(passed=False, reason=reason)
+                return RiskCheckResult(passed=False, reason=reason, gate="sector_cap")
 
             return RiskCheckResult(passed=True)
 
         except Exception as e:
             logger.error(f"Risk Check Failed (Sector Cap): {e}")
-            return RiskCheckResult(passed=False, reason=f"Error checking sector cap: {e}")
+            return RiskCheckResult(
+                passed=False, reason=f"Error checking sector cap: {e}", gate="sector_cap"
+            )
 
     def check_correlation(self, signal: Signal) -> RiskCheckResult:
         """
@@ -249,6 +256,7 @@ class RiskEngine:
                 return RiskCheckResult(
                     passed=False,
                     reason=f"Market data missing for candidate {signal.symbol}",
+                    gate="correlation",
                 )
 
             candidate_series = price_series_map[signal.symbol]
@@ -262,6 +270,7 @@ class RiskEngine:
                     return RiskCheckResult(
                         passed=False,
                         reason=f"Could not verify correlation due to missing data for {pos.symbol}",
+                        gate="correlation",
                     )
 
                 pos_series = price_series_map[pos.symbol]
@@ -276,12 +285,15 @@ class RiskEngine:
                             f"correlated with existing position {pos.symbol}"
                         )
                         logger.warning(reason)
-                        return RiskCheckResult(passed=False, reason=reason)
+                        return RiskCheckResult(
+                            passed=False, reason=reason, gate="correlation"
+                        )
                 except Exception as e:
                     logger.warning(f"Correlation calc error for {pos.symbol}: {e}")
                     return RiskCheckResult(
                         passed=False,
                         reason=f"Error calculating correlation with {pos.symbol}: {e}",
+                        gate="correlation",
                     )
 
             return RiskCheckResult(passed=True)
@@ -289,7 +301,9 @@ class RiskEngine:
         except Exception as e:
             logger.error(f"Risk Check Failed (Correlation): {e}")
             return RiskCheckResult(
-                passed=False, reason=f"Error checking correlation: {e}"
+                passed=False,
+                reason=f"Error checking correlation: {e}",
+                gate="correlation",
             )
 
     def check_buying_power(
@@ -322,12 +336,14 @@ class RiskEngine:
                     f"${available:.2f} < ${required_amount:.2f} (Min Req)"
                 )
                 logger.warning(reason)
-                return RiskCheckResult(passed=False, reason=reason)
+                return RiskCheckResult(passed=False, reason=reason, gate="buying_power")
 
             return RiskCheckResult(passed=True)
 
         except Exception as e:
             logger.error(f"Risk Check Failed (Buying Power): {e}")
             return RiskCheckResult(
-                passed=False, reason=f"Error checking buying power: {e}"
+                passed=False,
+                reason=f"Error checking buying power: {e}",
+                gate="buying_power",
             )

@@ -110,10 +110,10 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
             # Note: We can't filter by order_id in the API call, must filter in client.
             # Fetching last 100 CFEE activities should cover recent trades.
 
-            activities = self.alpaca._request(
-                "GET",
-                "/account/activities",
-                params={"activity_types": "CSD,CFEE"},
+            # Fetch recent account activities (CFEE = Crypto Fee)
+            # Use public .get() method which handles params correctly in most SDK versions
+            activities = self.alpaca.get(
+                "/account/activities", {"activity_types": "CSD,CFEE"}
             )
 
             # Filter for this specific order
@@ -139,38 +139,12 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                 fee_qty = float(qty_val) if qty_val else 0.0
 
                 # Determine currency of the fee
-                # For Buy orders (e.g., Buy BTC/USD), fee is usually in BTC (the asset).
-                # For Sell orders (e.g., Sell BTC/USD), fee is usually in USD (the quote).
-                # However, Alpaca CFEE records for Buy are in Asset, for Sell are in USD?
-                # Actually, CFEE is always the "crypto fee".
-                # If side == BUY: Fee is taken from the bought asset (e.g., BTC).
-                #   Value in USD = fee_qty * fill_price
-                # If side == SELL: Fee is taken from the proceeds (USD).
-                #   Value in USD = fee_qty (already in USD) -- WAIT.
-                #   Let's check the schema. Usually, Sell orders have "FILL" activity.
-                #   CFEE specifically denotes a crypto fee.
-
-                # SAFE LOGIC:
-                # If activity.symbol == "USD", it's already USD.
-                # If activity.symbol != "USD" (e.g., "BTC"), convert using activity.price.
-                # (activity.price is typically the execution price).
-
-                # Note: 'price' in Activity might be None for some types, but for CFEE/FILL it acts as rate.
+                # Note: 'price' in Activity might be None for some types.
                 price_val = activity.get("price")
                 price = float(price_val) if price_val else 0.0
 
-                # Heuristic for Currency:
-                # If the symbol in the activity is the BASE currency (e.g. BTC), convert it.
-                # If it is USD, take it as is.
-                # Alpaca data often puts the fee amount in 'qty'.
-
-                # Case 1: Fee is in USD (e.g., Sell side or USD-based fee)
-                # How to detect? activity.symbol might help?
-                # Actually, `activity.symbol` is usually the traded pair or asset.
-
-                # Let's trust the logic requested:
-                # "For 'Buy' orders, ensure the asset-denominated fee is converted to USD using the 'price' field"
-
+                # Buy orders: Fee is in Asset (e.g., BTC). Conver to USD.
+                # Sell orders: Fee is in USD (deducted from proceeds).
                 if side.lower() == "buy":
                     # Fee is in Asset. Convert to USD.
                     # Assumption: price is the USD price of the asset at execution.
@@ -320,24 +294,60 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                 # Weighted average will be calculated by the TradeExecution model validator
                 exit_price_val = float(pos.get("exit_fill_price") or 0.0)
 
-                # Timestamps
-                entry_time_str = pos.get("entry_time")  # Should be in doc
-                exit_time_str = pos.get("exit_time")  # Should be in doc
+                # Timestamps retrieval
+                entry_time_str = pos.get("entry_time")
+                exit_time_str = pos.get("exit_time")
+
+                # Extract Alpaca timestamp for fallback (filled_at or submitted_at)
+                # Handle both SimpleNamespace (paper/fallback) and real Order objects
+                alpaca_time = getattr(order, "filled_at", None)
+                if not alpaca_time:
+                    alpaca_time = getattr(order, "submitted_at", None)
 
                 # Parse or default
-                def parse_dt(val):
+                position_id = pos.get("position_id")
+
+                def parse_dt(val, fallback_val=None, pid=position_id):
                     if isinstance(val, datetime):
                         return val
-                    try:
-                        return datetime.fromisoformat(str(val))
-                    except (ValueError, TypeError) as exc:
-                        logger.warning(
-                            f"Failed to parse datetime value '{val}'; defaulting to now. Error: {exc}"
-                        )
-                        return datetime.now(timezone.utc)
 
-                entry_time = parse_dt(entry_time_str)
-                exit_time = parse_dt(exit_time_str)
+                    if val:
+                        try:
+                            # Parse ISO string
+                            return datetime.fromisoformat(str(val))
+                        except (ValueError, TypeError) as exc:
+                            logger.warning(
+                                f"Failed to parse datetime value '{val}'; Error: {exc}"
+                            )
+
+                    # Fallback logic
+                    if fallback_val:
+                        # Log debug to track this correction
+                        # logger.debug(f"Using fallback time {fallback_val} for missing doc time.")
+                        return fallback_val
+
+                    # Final resort: now()
+                    # Only warn if we really have no data
+                    logger.warning(
+                        f"Missing timestamps and no fallback available for {pid}. Defaulting to NOW."
+                    )
+                    return datetime.now(timezone.utc)
+
+                entry_time = parse_dt(entry_time_str, fallback_val=alpaca_time)
+                # For exit, use the same alpaca_time (usually close enough for daily resolution)
+                # or updated_at if available?
+                # If it's a closed position, exit time is crucial.
+                # Usually filled_at of the order IS the entry time.
+                # But for exit_time, we might differ.
+                # However, defaulting to 'entry' time is better than 'now' for historical trades.
+                # Ideally we'd fetch the EXIT order too, but we only fetched one order (entry usually).
+                # Re-using alpaca_time (entry) is safer for "which day" than now().
+                exit_fallback = (
+                    getattr(order, "filled_at", None)
+                    or getattr(order, "updated_at", None)
+                    or alpaca_time
+                )
+                exit_time = parse_dt(exit_time_str, fallback_val=exit_fallback)
 
                 # CALCULATIONS
                 # Fees: Try to fetch ACTUAL fees from Alpaca Activities (CFEE)

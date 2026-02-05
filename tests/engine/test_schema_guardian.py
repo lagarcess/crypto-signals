@@ -3,6 +3,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from crypto_signals.engine.schema_guardian import SchemaGuardian, SchemaMismatchError
+from google.api_core.exceptions import Conflict
 from google.cloud import bigquery
 from pydantic import BaseModel
 
@@ -233,6 +234,18 @@ def test_validate_schema_clustering_mismatch(guardian, mock_bq_client):
         )
 
     assert "Clustering mismatch" in str(exc.value)
+
+
+def test_create_table_race_condition(guardian, mock_bq_client):
+    """Test that 409 Conflict (race condition) is handled gracefully."""
+    # Mock create_table to raise Conflict
+    mock_bq_client.create_table.side_effect = Conflict("Table exists")
+
+    # Should not raise exception
+    guardian._create_table("project.dataset.table", SimpleModel)
+
+    # Verify create_table was attempted
+    mock_bq_client.create_table.assert_called_once()
 
 
 def test_validate_schema_clustering_missing_on_table(guardian, mock_bq_client):

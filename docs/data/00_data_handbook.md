@@ -118,6 +118,8 @@ Optimized for aggregation, backtesting, and performance reporting.
 | `fee_tier` | `str` | Alpaca volume tier at time of trade (e.g., 'Tier 0: 0.25%'). Used for fee estimation and audit. |
 | `entry_order_id` | `str` | Entry order ID for CFEE attribution (from Issue #139). Used to match CFEE activities to trades. |
 | `fee_reconciled_at` | `datetime` | Timestamp when fees were reconciled from CFEE. NULL if still using estimates. |
+| `exit_price_finalized` | `bool` | Whether exit price has been finalized via patch pipeline (to correct 0.0 prices). |
+| `exit_price_reconciled_at` | `datetime` | Timestamp when exit price was finalized via patch pipeline. |
 | `scaled_out_prices` | `List[Dict]` | History of scale-outs used for weighted average calculation. Not persisted to BQ. |
 | `original_qty` | `float` | Original quantity before any scale-outs. Used for weighted average calculation. Not persisted to BQ. |
 <!-- END_GENERATED -->

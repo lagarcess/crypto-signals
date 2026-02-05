@@ -93,6 +93,7 @@ def test_send_signal_without_forum_mode_omits_thread_name():
     with patch("crypto_signals.notifications.discord.get_settings") as mock_settings:
         settings_instance = MagicMock()
         settings_instance.DISCORD_USE_FORUMS = False  # Forum mode OFF
+        settings_instance.TEST_MODE = False  # Ensure TEST_MODE is also off
         settings_instance.TEST_DISCORD_WEBHOOK = MagicMock()
         settings_instance.TEST_DISCORD_WEBHOOK.get_secret_value.return_value = (
             "https://discord.com/api/webhooks/test/webhook"

@@ -606,6 +606,26 @@ class PositionRepository:
 
         return None
 
+    def get_open_position_by_symbol(self, symbol: str) -> Position | None:
+        """
+        Get the current OPEN position for a symbol.
+        Used to prevent pyramiding (double buying).
+        """
+        query = (
+            self.db.collection(self.collection_name)
+            .where(filter=FieldFilter("symbol", "==", symbol))
+            .where(filter=FieldFilter("status", "==", TradeStatus.OPEN.value))
+            .limit(1)
+        )
+
+        for doc in query.stream():
+            try:
+                return Position(**doc.to_dict())
+            except ValidationError as e:
+                log_validation_error(doc.id, e)
+                return None
+        return None
+
     def update_position(self, position: Position) -> None:
         """Update an existing position in Firestore."""
         doc_ref = self.db.collection(self.collection_name).document(position.position_id)

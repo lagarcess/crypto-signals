@@ -12,6 +12,7 @@ from datetime import date, datetime, timedelta, timezone
 import pytest
 from crypto_signals.domain.schemas import (
     AssetClass,
+    ConfluenceConfig,
     ExitReason,
     OrderSide,
     Position,
@@ -594,8 +595,8 @@ class TestStrategyConfigDefaults:
             risk_params={"stop_loss_pct": 0.02},
         )
 
-        assert config.confluence_config == {}
-        assert isinstance(config.confluence_config, dict)
+        assert config.confluence_config == ConfluenceConfig()
+        assert isinstance(config.confluence_config, ConfluenceConfig)
         assert config.pattern_overrides == {}
         assert isinstance(config.pattern_overrides, dict)
 
@@ -615,7 +616,9 @@ class TestStrategyConfigDefaults:
             pattern_overrides=pattern_overrides,
         )
 
-        assert config.confluence_config == confluence_config
+        # ConfluenceConfig defaults will be applied to missing fields
+        assert config.confluence_config.rsi_period == 14
+        assert config.confluence_config.adx_threshold == 25.0
         assert config.pattern_overrides == pattern_overrides
 
     def test_strategy_config_json_serialization(self):
@@ -637,7 +640,9 @@ class TestStrategyConfigDefaults:
         serialized = config.model_dump(mode="json")
 
         assert "confluence_config" in serialized
-        assert serialized["confluence_config"] == confluence_config
+        # ConfluenceConfig defaults are included
+        assert serialized["confluence_config"]["rsi_period"] == 14
+        assert serialized["confluence_config"]["adx_threshold"] == 25.0
         assert "pattern_overrides" in serialized
         assert serialized["pattern_overrides"] == pattern_overrides
 
@@ -657,6 +662,10 @@ class TestStrategyConfigDefaults:
         # Usually defaults are included by default in model_dump unless exclude_defaults=True.
         # We want them included for BigQuery schema consistency.
         assert "confluence_config" in serialized
-        assert serialized["confluence_config"] == {}
+        # Should contain default values for ConfluenceConfig
+        assert serialized["confluence_config"] == {
+            "rsi_period": 14,
+            "adx_threshold": 25.0,
+        }
         assert "pattern_overrides" in serialized
         assert serialized["pattern_overrides"] == {}
