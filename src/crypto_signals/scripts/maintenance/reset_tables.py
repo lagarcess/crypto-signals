@@ -6,9 +6,10 @@ Usage:
 """
 
 import typer
-from crypto_signals.config import get_settings
 from google.cloud import bigquery
 from loguru import logger
+
+from crypto_signals.config import get_settings
 
 app = typer.Typer()
 

@@ -45,19 +45,26 @@ poetry run python scripts/verify_firestore_config.py
 ```
 src/crypto_signals/scripts/
 ├── __init__.py
-├── cleanup_firestore.py        # Firestore TTL cleanup
+├── cleanup_firestore.py        # Firestore TTL cleanup (Legacy root script)
 ├── test_discord_notifications.py # Discord notification testing
-└── diagnostics/                # System diagnostic tools
+├── diagnostics/                # System diagnostic tools
+│   ├── __init__.py
+│   ├── account_status.py       # Alpaca account summary
+│   ├── book_balancing.py       # Full Ledger Reconciliation
+│   ├── data_integrity_check.py # Firestore field audit
+│   ├── forensic_analysis.py    # Order gap detection
+│   ├── forensic_details.py     # Detailed position inspection
+│   ├── health_check.py         # Connectivity verification
+│   ├── schema_audit.py         # Pydantic schema audit
+│   └── state_analysis.py       # Firestore state analysis
+└── maintenance/                # Maintenance and cleanup utilities
     ├── __init__.py
-    ├── account_status.py       # Alpaca account summary
-    ├── book_balancing.py       # Full Ledger Reconciliation (Zombies/Orphans)
-    ├── forensic_analysis.py    # Order gap detection
-    ├── forensic_details.py     # Detailed position inspection
-    ├── health_check.py         # Connectivity verification
-    └── state_analysis.py       # Firestore state analysis
-├── fix_reverse_orphans.py      # Heal CLOSED_DB (Manual) -> OPEN_ALPACA
-├── resurrect_positions.py      # Batch resurrect false-manual exits
-└── cleanup_legacy_gaps.py      # Tag legacy orphans as resolved
+    ├── cleanup_legacy_gaps.py  # Tag legacy orphans as resolved
+    ├── fix_reverse_orphans.py  # Heal CLOSED_DB -> OPEN_ALPACA
+    ├── migrate_schema.py       # BigQuery schema migration
+    ├── purge_positions.py      # Purge positions (DEV/TEST only)
+    ├── purge_signals.py        # Purge signals (DEV/TEST only)
+    └── resurrect_positions.py  # Batch resurrect false-manual exits
 ```
 
 **Run these with:**
@@ -90,7 +97,10 @@ poetry run python -m crypto_signals.scripts.diagnostics.forensic_analysis
 poetry run python -m crypto_signals.scripts.diagnostics.book_balancing
 # Check specific position ID with deep history lookback
 poetry run python -m crypto_signals.scripts.diagnostics.book_balancing --target 70150867-... --limit 500
+poetry run python -m crypto_signals.scripts.diagnostics.book_balancing --target 70150867-... --limit 500
 poetry run python -m crypto_signals.scripts.diagnostics.health_check
+poetry run python -m crypto_signals.scripts.diagnostics.data_integrity_check
+poetry run python -m crypto_signals.scripts.diagnostics.schema_audit
 
 # All reports are written to temp/reports/ (gitignored)
 ```
