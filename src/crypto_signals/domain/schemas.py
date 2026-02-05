@@ -17,7 +17,7 @@ from datetime import date, datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, ClassVar, Dict, List, Optional
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # =============================================================================
 # CONSTANTS
@@ -223,6 +223,13 @@ class ReconciliationReport(BaseModel):
 # =============================================================================
 
 
+class ConfluenceConfig(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    rsi_period: Optional[int] = Field(default=14, ge=2)
+    adx_threshold: Optional[float] = Field(default=25.0)
+
+
 class StrategyConfig(BaseModel):
     """
     Strategy configuration stored in Firestore dim_strategies collection.
@@ -254,8 +261,8 @@ class StrategyConfig(BaseModel):
         default_factory=dict,
         description="Risk management parameters (stop_loss_pct, take_profit_pct, etc.)",
     )
-    confluence_config: Dict[str, Any] = Field(
-        default_factory=dict,
+    confluence_config: ConfluenceConfig = Field(
+        default_factory=ConfluenceConfig,
         description="Configuration for confluence factors (e.g. {rsi_period: 14})",
     )
     pattern_overrides: Dict[str, Any] = Field(
