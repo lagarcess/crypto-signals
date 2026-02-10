@@ -11,6 +11,7 @@ it can sell shares belonging to a newly-bought position for the same symbol.
 from datetime import date
 from unittest.mock import MagicMock
 
+from alpaca.common.exceptions import APIError
 from crypto_signals.domain.schemas import (
     AssetClass,
     ExitReason,
@@ -219,21 +220,49 @@ class TestAlpacaQtyValidation:
         assert pos.qty == 5.0
 
     def test_marks_closed_externally_when_alpaca_position_gone(self):
-        """If position doesn't exist on Alpaca, mark CLOSED_EXTERNALLY."""
+        """If position doesn't exist on Alpaca (404), mark CLOSED_EXTERNALLY."""
         pos = _make_position("pos-1", signal_id="sig-1", qty=10.0)
 
         alpaca_client = MagicMock()
-        alpaca_client.get_open_position.side_effect = Exception("position does not exist")
+        # Mock APIError with status_code 404 (via http_error)
+        mock_http_error = MagicMock()
+        mock_http_error.response.status_code = 404
+        error_404 = APIError("position not found", http_error=mock_http_error)
+        alpaca_client.get_open_position.side_effect = error_404
 
         # The guard should mark position as closed externally
         try:
             alpaca_client.get_open_position(pos.symbol)
-        except Exception:
-            pos.status = TradeStatus.CLOSED
-            pos.exit_reason = ExitReason.CLOSED_EXTERNALLY
+        except APIError as e:
+            if e.status_code == 404:
+                pos.status = TradeStatus.CLOSED
+                pos.exit_reason = ExitReason.CLOSED_EXTERNALLY
 
         assert pos.status == TradeStatus.CLOSED
         assert pos.exit_reason == ExitReason.CLOSED_EXTERNALLY
+
+    def test_skips_close_on_alpaca_api_error_not_404(self):
+        """If API returns non-404 error (e.g. 500), do NOT mark closed."""
+        pos = _make_position("pos-1", signal_id="sig-1", qty=10.0)
+
+        alpaca_client = MagicMock()
+        # Mock APIError with status_code 500
+        mock_http_error = MagicMock()
+        mock_http_error.response.status_code = 500
+        error_500 = APIError("internal server error", http_error=mock_http_error)
+        alpaca_client.get_open_position.side_effect = error_500
+
+        # The guard should NOT mark position as closed
+        try:
+            alpaca_client.get_open_position(pos.symbol)
+        except APIError as e:
+            if e.status_code == 404:
+                pos.status = TradeStatus.CLOSED
+            else:
+                pass  # Should log and continue
+
+        assert pos.status == TradeStatus.OPEN
+        assert pos.exit_reason is None
 
 
 # =============================================================================
@@ -259,7 +288,7 @@ class TestDuplicateSymbolPrevention:
             existing = alpaca_client.get_open_position(alpaca_symbol)
             if existing:
                 should_skip = True
-        except Exception:
+        except APIError:
             pass
 
         assert should_skip is True
@@ -267,7 +296,10 @@ class TestDuplicateSymbolPrevention:
     def test_proceeds_when_no_alpaca_position(self):
         """Should proceed with signal generation when no Alpaca position exists."""
         alpaca_client = MagicMock()
-        alpaca_client.get_open_position.side_effect = Exception("position does not exist")
+        mock_http_error = MagicMock()
+        mock_http_error.response.status_code = 404
+        error_404 = APIError("position does not exist", http_error=mock_http_error)
+        alpaca_client.get_open_position.side_effect = error_404
 
         symbol = "AAVE/USD"
         alpaca_symbol = symbol.replace("/", "")
@@ -276,7 +308,7 @@ class TestDuplicateSymbolPrevention:
             existing = alpaca_client.get_open_position(alpaca_symbol)
             if existing:
                 should_skip = True
-        except Exception:
+        except APIError:
             pass
 
         assert should_skip is False

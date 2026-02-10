@@ -13,6 +13,7 @@ from datetime import date, datetime, timezone
 from typing import Any, Callable, Optional, Protocol
 
 import typer
+from alpaca.common.exceptions import APIError
 from loguru import logger
 
 from crypto_signals.analysis.structural import warmup_jit
@@ -745,10 +746,11 @@ def main(
                                         },
                                     )
                                     continue
-                            except Exception as e:
-                                # Position not found or API error — safe to proceed (fail-open)
+                            except APIError as e:
+                                # Position not found (404) is expected.
+                                # Other API errors: fail-open (log & proceed) to avoid blocking trades.
                                 logger.debug(
-                                    f"ISSUE 275: Pre-execution check failed: {e}",
+                                    f"ISSUE 275: Pre-execution check passed or failed-open: {e}",
                                     extra={
                                         "symbol": trade_signal.symbol,
                                         "error": str(e),
@@ -1018,17 +1020,30 @@ def main(
                                                     f"{pos.symbol}. Adjusting.",
                                                 )
                                                 pos.qty = alpaca_qty
-                                        except Exception:
-                                            # Position gone from Alpaca
-                                            logger.warning(
-                                                f"Position {pos.position_id} not "
-                                                f"found on Alpaca, marking "
-                                                f"CLOSED_EXTERNALLY",
-                                            )
-                                            pos.status = TradeStatus.CLOSED
-                                            pos.exit_reason = ExitReason.CLOSED_EXTERNALLY
-                                            position_repo.update_position(pos)
-                                            continue
+                                        except APIError as e:
+                                            if e.status_code == 404:
+                                                # Position gone from Alpaca (confirmed)
+                                                logger.warning(
+                                                    f"Position {pos.position_id} not "
+                                                    f"found on Alpaca, marking "
+                                                    f"CLOSED_EXTERNALLY",
+                                                )
+                                                pos.status = TradeStatus.CLOSED
+                                                pos.exit_reason = (
+                                                    ExitReason.CLOSED_EXTERNALLY
+                                                )
+                                                position_repo.update_position(pos)
+                                                continue
+                                            else:
+                                                # Transient error (500, 429) -> Skip close
+                                                logger.error(
+                                                    f"ISSUE 275: Alpaca API Error during qty check: {e}",
+                                                    extra={
+                                                        "symbol": pos.symbol,
+                                                        "signal_id": pos.signal_id,
+                                                    },
+                                                )
+                                                continue  # Safe fail-closed
 
                                         if execution_engine.close_position_emergency(pos):
                                             pos.status = TradeStatus.CLOSED
