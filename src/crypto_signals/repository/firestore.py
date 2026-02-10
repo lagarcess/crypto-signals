@@ -853,11 +853,11 @@ class StrategyRepository:
         """Save a strategy configuration."""
         doc_ref = self.db.collection(self.collection_name).document(strategy.strategy_id)
 
-        # Always update updated_at before saving
-        strategy.updated_at = datetime.now(timezone.utc)
-
+        # Create a copy to avoid mutation, then set the timestamp and dump
         # Use mode="python" to preserve datetime objects for Firestore native timestamps
-        data = strategy.model_dump(mode="python")
+        strategy_to_save = strategy.model_copy(deep=True)
+        strategy_to_save.updated_at = datetime.now(timezone.utc)
+        data = strategy_to_save.model_dump(mode="python")
 
         doc_ref.set(data)
         logger.info(f"Saved strategy config: {strategy.strategy_id}")
