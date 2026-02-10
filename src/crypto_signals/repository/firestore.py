@@ -816,8 +816,48 @@ class StrategyRepository:
 
         return strategies
 
+    def get_modified_strategies(self, since: datetime) -> list[StrategyConfig]:
+        """
+        Get strategies modified since a given timestamp.
+
+        Args:
+            since: UTC timestamp for incremental fetching.
+
+        Returns:
+            List of modified StrategyConfig objects.
+        """
+        logger.info(
+            f"Fetching strategies modified since {since} from {self.collection_name}"
+        )
+        collection_ref = self.db.collection(self.collection_name)
+
+        # Firestore query with index on updated_at
+        query = collection_ref.where(filter=FieldFilter("updated_at", ">", since))
+        docs = list(query.stream())
+
+        strategies = []
+        for doc in docs:
+            data = doc.to_dict()
+            if "strategy_id" not in data:
+                data["strategy_id"] = doc.id
+
+            try:
+                strategies.append(StrategyConfig(**data))
+            except ValidationError as e:
+                log_validation_error(doc.id, e)
+                logger.warning(f"Skipping invalid strategy config: {doc.id}")
+
+        return strategies
+
     def save(self, strategy: StrategyConfig) -> None:
         """Save a strategy configuration."""
         doc_ref = self.db.collection(self.collection_name).document(strategy.strategy_id)
-        doc_ref.set(strategy.model_dump(mode="json"))
+
+        # Always update updated_at before saving
+        strategy.updated_at = datetime.now(timezone.utc)
+
+        # Use mode="python" to preserve datetime objects for Firestore native timestamps
+        data = strategy.model_dump(mode="python")
+
+        doc_ref.set(data)
         logger.info(f"Saved strategy config: {strategy.strategy_id}")

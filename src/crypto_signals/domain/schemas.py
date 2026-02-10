@@ -269,6 +269,10 @@ class StrategyConfig(BaseModel):
         default_factory=dict,
         description="Overrides for specific patterns (e.g. {bullish_engulfing: {priority: 1}})",
     )
+    updated_at: Optional[datetime] = Field(
+        default=None,
+        description="UTC timestamp when the strategy configuration was last updated",
+    )
 
 
 # =============================================================================

@@ -113,7 +113,7 @@ def test_extract_no_changes(pipeline, mock_bq, mock_repo):
         assets=["BTC/USD"],
         risk_params={"stop": 0.02},
     )
-    mock_repo.get_all_strategies.return_value = [strat_1]
+    mock_repo.get_modified_strategies.return_value = [strat_1]
 
     # Mock hash calculation to return "correct_hash"
     with patch.object(pipeline, "_calculate_hash", return_value="correct_hash"):
@@ -136,7 +136,7 @@ def test_extract_new_strategy(pipeline, mock_bq, mock_repo):
         assets=["BTC/USD"],
         risk_params={"stop": 0.02},
     )
-    mock_repo.get_all_strategies.return_value = [strat_new]
+    mock_repo.get_modified_strategies.return_value = [strat_new]
 
     result = pipeline.extract()
 
@@ -163,7 +163,7 @@ def test_extract_changed_strategy(pipeline, mock_bq, mock_repo):
         assets=["BTC/USD"],
         risk_params={"stop": 0.05},  # Changed
     )
-    mock_repo.get_all_strategies.return_value = [strat_1]
+    mock_repo.get_modified_strategies.return_value = [strat_1]
 
     # Check hash logic
     with patch.object(pipeline, "_calculate_hash", return_value="new_hash"):

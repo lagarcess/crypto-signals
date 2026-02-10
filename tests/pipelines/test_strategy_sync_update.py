@@ -45,7 +45,7 @@ class TestStrategySyncUpdate:
             confluence_config={"rsi_period": 14},  # New field value
             pattern_overrides={},
         )
-        mock_repo.get_all_strategies.return_value = [strategy]
+        mock_repo.get_modified_strategies.return_value = [strategy]
 
         # 2. Setup BigQuery State Mock (Simulate OLD state without confluence config)
         # Calculate hash of old config
@@ -122,7 +122,7 @@ class TestStrategySyncUpdate:
             confluence_config={"rsi": 14},
             pattern_overrides={"engulfing": {"p": 1}},
         )
-        mock_repo.get_all_strategies.return_value = [strategy]
+        mock_repo.get_modified_strategies.return_value = [strategy]
 
         # Simulate BQ state empty (new strategy)
         pipeline._get_bq_current_state = MagicMock(return_value={})
