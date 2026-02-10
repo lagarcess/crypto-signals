@@ -109,6 +109,7 @@ def _check_when_clauses(
     expression: exp.Merge,
     update_columns: Optional[List[str]],
     insert_columns: Optional[List[str]],
+    dialect: str = "bigquery",
 ) -> None:
     """Verify the WHEN MATCHED and WHEN NOT MATCHED clauses."""
     whens = expression.args.get("whens")
@@ -150,8 +151,9 @@ def _check_when_clauses(
                 if not isinstance(then, exp.Insert):
                     raise AssertionError("WHEN NOT MATCHED should be INSERT")
 
-                # Check inserted columns
+                # Check inserted columns and values
                 actual_inserts = []
+                actual_vals = []
                 if hasattr(then, "this") and then.this:
                     cols = then.this.expressions
                     for col in cols:
@@ -159,11 +161,28 @@ def _check_when_clauses(
                         if col_name:
                             actual_inserts.append(col_name)
 
-                actual_inserts.sort()
+                if hasattr(then, "expression") and then.expression:
+                    vals = then.expression.expressions
+                    for val in vals:
+                        actual_vals.append(val.sql(dialect=dialect))
+
+                # Verify column list
+                actual_inserts_sorted = sorted(actual_inserts)
                 expected_inserts = sorted(insert_columns)
                 assert (
-                    actual_inserts == expected_inserts
-                ), f"Insert columns mismatch. Expected {expected_inserts}, got {actual_inserts}"
+                    actual_inserts_sorted == expected_inserts
+                ), f"Insert columns mismatch. Expected {expected_inserts}, got {actual_inserts_sorted}"
+
+                # Verify that each column has a corresponding S.column value
+                # (BigQuery MERGE standard in our pipelines)
+                for col, val in zip(actual_inserts, actual_vals):
+                    expected_val = f"S.{col}"
+                    # Normalize backticks for comparison
+                    norm_val = val.replace("`", "")
+                    norm_expected = expected_val.replace("`", "")
+                    assert (
+                        norm_val == norm_expected
+                    ), f"Insert value mismatch for column {col}. Expected {expected_val}, got {val}"
 
     if update_columns and not matched_found:
         raise AssertionError("Expected WHEN MATCHED clause not found")
@@ -201,4 +220,4 @@ def assert_merge_query_structure(
     _check_target_table(expression, target_table, dialect)
     _check_source_table(expression, source_table, dialect)
     _check_on_clause(expression, join_keys)
-    _check_when_clauses(expression, update_columns, insert_columns)
+    _check_when_clauses(expression, update_columns, insert_columns, dialect=dialect)
