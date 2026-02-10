@@ -144,6 +144,15 @@ gcloud alpha logging tail "resource.type=cloud_run_job AND resource.labels.job_n
 - Signal processing messages
 - "Job completed" message
 
+### 6a. Automated Performance SLA Check
+The smoke test includes an automated latency check for Firestore sector cap queries to ensure execution reliability.
+
+**Query:** `count_open_positions_by_class`
+**Threshold:** < 100ms
+**Action:** The job will fail (exit 1) if latency exceeds this threshold or if the query fails.
+
+This check ensures that necessary composite indexes are active and performing within the SLA required by the Risk Engine.
+
 > [!TIP]
 > Press `Ctrl+C` to stop the log tail when done.
 

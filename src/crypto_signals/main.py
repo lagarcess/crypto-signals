@@ -221,8 +221,49 @@ def main(
                 # Initializing repository creates the Firestore client
                 JobLockRepository()
                 logger.info("✅ Firestore: Client Initialized")
+
+                # 1b. Performance Check: Firestore Latency (Issue #128)
+                # Enforces 100ms SLA for sector cap queries to prevent slippage
+                pos_repo = PositionRepository()
+                start_time = time.perf_counter()
+
+                # Execute a representative sector cap query
+                count = pos_repo.count_open_positions_by_class(AssetClass.CRYPTO)
+                latency_ms = (time.perf_counter() - start_time) * 1000
+
+                # Log latency as a metric for Cloud Monitoring
+                logger.info(
+                    f"⏱️  Firestore Latency: {latency_ms:.2f}ms",
+                    extra={
+                        "metric_type": "latency_check",
+                        "latency_ms": latency_ms,
+                        "query_type": "count_open_positions_by_class",
+                        "asset_class": AssetClass.CRYPTO.value,
+                    },
+                )
+
+                if count == 9999:
+                    # count_open_positions_by_class returns 9999 when it catches an internal exception
+                    raise RuntimeError("Firestore query failed (returned 9999)")
+
+                if latency_ms > 100:
+                    logger.error(
+                        f"❌ Firestore: Performance Check Failed - Latency {latency_ms:.2f}ms exceeds 100ms threshold. "
+                        "Check for missing composite indexes or degraded performance."
+                    )
+                    sys.exit(1)
+
+                logger.info("✅ Firestore: Performance Check Passed (<100ms)")
+
             except Exception as e:
-                logger.warning(f"⚠️  Firestore: Skipped (no credentials) - {e}")
+                # Distinguish between "no credentials" (expected in some CI environments)
+                # and actual query failures (which should fail the smoke test)
+                error_msg = str(e).lower()
+                if "credentials" in error_msg or "authenticated" in error_msg:
+                    logger.warning(f"⚠️  Firestore: Skipped (no credentials) - {e}")
+                else:
+                    logger.error(f"❌ Firestore: Performance Check Failed - {e}")
+                    sys.exit(1)
 
             # 2. Verify settings loaded
             if not settings.GOOGLE_CLOUD_PROJECT:
