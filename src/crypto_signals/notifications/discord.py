@@ -935,6 +935,50 @@ class DiscordClient:
             logger.debug(f"[SHADOW] Failed to send notification: {str(e)}")
             return False
 
+    def send_risk_summary(self, risk_summary: Dict[str, Any]) -> bool:
+        """
+        Send a daily summary of risk blocks to Discord.
+
+        Args:
+            risk_summary: Dictionary containing risk metrics:
+                          {
+                              "total_blocked": int,
+                              "capital_protected": float,
+                              "by_gate": Dict[str, int],
+                              "blocked_symbols": List[str]
+                          }
+
+        Returns:
+            bool: True if message sent successfully
+        """
+        if not risk_summary or risk_summary.get("total_blocked", 0) == 0:
+            return False
+
+        # Format breakdown by gate
+        breakdown_lines = []
+        for gate, count in risk_summary.get("by_gate", {}).items():
+            breakdown_lines.append(f"• {gate}: {count}")
+        breakdown_text = "\n".join(breakdown_lines)
+
+        # Truncate symbol list if too long
+        symbols = risk_summary.get("blocked_symbols", [])
+        if len(symbols) > 10:
+            symbols_text = ", ".join(symbols[:10]) + f", ... ({len(symbols)-10} more)"
+        else:
+            symbols_text = ", ".join(symbols)
+
+        content = (
+            "🛡️ **RISK GATES SUMMARY** 🛡️\n\n"
+            f"**Total Blocked:** {risk_summary['total_blocked']}\n"
+            f"**Capital Protected:** {self.format_currency(risk_summary['capital_protected'])}\n\n"
+            "**Breakdown by Gate:**\n"
+            f"{breakdown_text}\n\n"
+            f"**Blocked Symbols:** {symbols_text}"
+        )
+
+        # Route to system channel (TEST_DISCORD_WEBHOOK)
+        return self.send_message(content, asset_class=None) is True
+
     def _get_shadow_webhook_url(self) -> str | None:
         """Get the shadow signals webhook URL.
 

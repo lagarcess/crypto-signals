@@ -6,6 +6,7 @@ from alpaca.trading.models import TradeAccount
 from crypto_signals.config import get_settings
 from crypto_signals.domain.schemas import AssetClass, Signal
 from crypto_signals.market.data_provider import MarketDataProvider
+from crypto_signals.observability import get_metrics_collector
 from crypto_signals.repository.firestore import PositionRepository
 from loguru import logger
 
@@ -36,6 +37,27 @@ class RiskEngine:
         self.repo = repository
         self.market_provider = market_provider
         self.settings = get_settings()
+        self.metrics = get_metrics_collector()
+
+    def _calculate_position_size(self, signal: Signal) -> float:
+        """
+        Estimate the position size (capital at risk) for metrics.
+
+        Uses RISK_PER_TRADE and the difference between entry and stop loss
+        to calculate the intended position size in USD.
+        """
+        if not signal.entry_price or not signal.suggested_stop:
+            return 0.0
+
+        risk_diff = abs(signal.entry_price - signal.suggested_stop)
+        if risk_diff == 0:
+            return 0.0
+
+        # Position Size = Risk Amount / Risk per Share
+        qty = self.settings.RISK_PER_TRADE / risk_diff
+
+        # Total Capital = Qty * Entry Price
+        return qty * signal.entry_price
 
     def validate_signal(self, signal: Signal) -> RiskCheckResult:
         """
@@ -45,21 +67,36 @@ class RiskEngine:
         # 1. Daily Drawdown (Protect Capital First)
         drawdown_check = self.check_daily_drawdown()
         if not drawdown_check.passed:
+            self.metrics.record_risk_block(
+                "drawdown", signal.symbol, self._calculate_position_size(signal)
+            )
             return drawdown_check
 
         # 2. Duplicate Symbol Check (No Pyramiding)
         duplicate_check = self.check_duplicate_symbol(signal)
         if not duplicate_check.passed:
+            # Duplicate doesn't protect capital (it prevents overexposure),
+            # but we can track it. Amount is debatable, let's use 0 or calc size.
+            # Using calc size shows "potential exposure prevented".
+            self.metrics.record_risk_block(
+                "duplicate", signal.symbol, self._calculate_position_size(signal)
+            )
             return duplicate_check
 
         # 3. Sector Limits (Portfolio Balance)
         sector_check = self.check_sector_limit(signal.asset_class)
         if not sector_check.passed:
+            self.metrics.record_risk_block(
+                "sector_cap", signal.symbol, self._calculate_position_size(signal)
+            )
             return sector_check
 
         # 3. Correlation Risk (Portfolio Diversification) - Expensive (Data Fetch)
         correlation_check = self.check_correlation(signal)
         if not correlation_check.passed:
+            self.metrics.record_risk_block(
+                "correlation", signal.symbol, self._calculate_position_size(signal)
+            )
             return correlation_check
 
         # 4. Buying Power (Broker Constraints) - Most expensive call (API) if not cached
@@ -70,6 +107,9 @@ class RiskEngine:
             signal.asset_class, self.settings.MIN_ASSET_BP_USD
         )
         if not bp_check.passed:
+            self.metrics.record_risk_block(
+                "buying_power", signal.symbol, self._calculate_position_size(signal)
+            )
             return bp_check
 
         return RiskCheckResult(passed=True)

@@ -1246,6 +1246,16 @@ def main(
         # Log detailed metrics (also uses Rich table now)
         metrics.log_summary(logger)
 
+        # === RISK METRICS SUMMARY ===
+        # Send daily risk block summary to Discord
+        risk_summary = metrics.get_risk_summary()
+        if risk_summary["total_blocked"] > 0:
+            logger.info("Sending risk metrics summary to Discord...")
+            if discord.send_risk_summary(risk_summary):
+                logger.info("Risk summary sent successfully.")
+            else:
+                logger.warning("Failed to send risk summary.")
+
         if shutdown_requested:
             logger.info("Signal generation cycle interrupted by shutdown request.")
         else:
