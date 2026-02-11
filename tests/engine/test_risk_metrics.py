@@ -8,6 +8,7 @@ from crypto_signals.engine.risk import RiskEngine
 from crypto_signals.observability import MetricsCollector
 from crypto_signals.repository.firestore import PositionRepository
 
+
 @pytest.fixture
 def mock_settings():
     settings = MagicMock(spec=Settings)
@@ -19,9 +20,11 @@ def mock_settings():
     settings.RISK_PER_TRADE = 100.0
     return settings
 
+
 @pytest.fixture
 def mock_metrics():
     return MagicMock(spec=MetricsCollector)
+
 
 @pytest.fixture
 def mock_repo():
@@ -29,6 +32,7 @@ def mock_repo():
     # Default: 0 open positions, so sector cap passes
     repo.count_open_positions_by_class.return_value = 0
     return repo
+
 
 @pytest.fixture
 def mock_client():
@@ -43,36 +47,33 @@ def mock_client():
     client.get_account.return_value = account
     return client
 
+
 @pytest.fixture
 def risk_engine(mock_client, mock_repo, mock_settings, mock_metrics):
     with pytest.MonkeyPatch.context() as m:
         m.setattr("crypto_signals.engine.risk.get_settings", lambda: mock_settings)
-        m.setattr("crypto_signals.engine.risk.get_metrics_collector", lambda: mock_metrics)
+        m.setattr(
+            "crypto_signals.engine.risk.get_metrics_collector", lambda: mock_metrics
+        )
 
-        # We need to manually inject metrics if the RiskEngine gets it in __init__
-        # But if it gets it via global getter in __init__, the patch above should work.
-        # However, let's verify if RiskEngine.__init__ calls get_metrics_collector
         engine = RiskEngine(
             trading_client=mock_client,
             repository=mock_repo,
         )
-        # Manually attach mock if not attached by __init__ (since we haven't implemented it yet)
-        # But for TDD, we expect __init__ to attach it.
-        # If __init__ doesn't attach it yet (current state), we might fail to access self.metrics.
-        # But wait, TDD means we write the test assuming implementation.
-        # The implementation WILL attach it.
-
         return engine
 
-def test_validate_signal_drawdown_fail_records_metrics(risk_engine, mock_client, mock_metrics):
+
+def test_validate_signal_drawdown_fail_records_metrics(
+    risk_engine, mock_client, mock_metrics
+):
     # Simulate Drawdown Failure
     mock_client.get_account.return_value.equity = "9000.00"
-    mock_client.get_account.return_value.last_equity = "10000.00" # 10% drawdown
+    mock_client.get_account.return_value.last_equity = "10000.00"  # 10% drawdown
 
     signal = MagicMock(spec=Signal)
     signal.symbol = "BTC/USD"
     signal.entry_price = 50000.0
-    signal.suggested_stop = 49000.0 # 1000 diff
+    signal.suggested_stop = 49000.0  # 1000 diff
 
     result = risk_engine.validate_signal(signal)
 
@@ -80,28 +81,22 @@ def test_validate_signal_drawdown_fail_records_metrics(risk_engine, mock_client,
     assert result.gate == "drawdown"
 
     # Verify metrics called
-    # _calculate_position_size:
-    # risk_diff = 1000.0
-    # qty = 100.0 / 1000.0 = 0.1
-    # amount = 0.1 * 50000.0 = 5000.0
-    mock_metrics.record_risk_block.assert_called_once_with(
-        "drawdown", "BTC/USD", 5000.0
-    )
+    mock_metrics.record_risk_block.assert_called_once_with("drawdown", "BTC/USD", 5000.0)
 
-def test_validate_signal_buying_power_fail_records_metrics(risk_engine, mock_client, mock_metrics):
+
+def test_validate_signal_buying_power_fail_records_metrics(
+    risk_engine, mock_client, mock_metrics
+):
     # Simulate Buying Power Failure
-    mock_client.get_account.return_value.non_marginable_buying_power = "50.00" # Less than 100
+    mock_client.get_account.return_value.non_marginable_buying_power = (
+        "50.00"  # Less than 100
+    )
 
     signal = MagicMock(spec=Signal)
     signal.symbol = "ETH/USD"
     signal.asset_class = AssetClass.CRYPTO
     signal.entry_price = 3000.0
-    signal.suggested_stop = 2900.0 # 100 diff
-
-    # check_daily_drawdown passes
-    # check_duplicate_symbol passes
-    # check_sector_limit passes
-    # check_correlation passes
+    signal.suggested_stop = 2900.0  # 100 diff
 
     result = risk_engine.validate_signal(signal)
 
@@ -109,31 +104,28 @@ def test_validate_signal_buying_power_fail_records_metrics(risk_engine, mock_cli
     assert result.gate == "buying_power"
 
     # Verify metrics called
-    # risk_diff = 100.0
-    # qty = 100.0 / 100.0 = 1.0
-    # amount = 1.0 * 3000.0 = 3000.0
     mock_metrics.record_risk_block.assert_called_once_with(
         "buying_power", "ETH/USD", 3000.0
     )
 
-def test_validate_signal_sector_cap_fail_records_metrics(risk_engine, mock_repo, mock_metrics):
+
+def test_validate_signal_sector_cap_fail_records_metrics(
+    risk_engine, mock_repo, mock_metrics
+):
     # Simulate Sector Cap Failure
-    mock_repo.count_open_positions_by_class.return_value = 5 # Max
+    mock_repo.count_open_positions_by_class.return_value = 5  # Max
 
     signal = MagicMock(spec=Signal)
     signal.symbol = "BTC/USD"
     signal.asset_class = AssetClass.CRYPTO
     signal.entry_price = 100.0
-    signal.suggested_stop = 90.0 # 10 diff
+    signal.suggested_stop = 90.0  # 10 diff
 
     result = risk_engine.validate_signal(signal)
 
     assert result.passed is False
     assert result.gate == "sector_cap"
 
-    # risk_diff = 10.0
-    # qty = 100.0 / 10.0 = 10.0
-    # amount = 10.0 * 100.0 = 1000.0
     mock_metrics.record_risk_block.assert_called_once_with(
         "sector_cap", "BTC/USD", 1000.0
     )
