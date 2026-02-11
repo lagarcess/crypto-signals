@@ -2,7 +2,10 @@ from typing import NamedTuple, Optional
 
 import pandas as pd
 from alpaca.trading.client import TradingClient
+from alpaca.trading.enums import AssetClass as AlpacaAssetClass
+from alpaca.trading.enums import OrderSide, QueryOrderStatus
 from alpaca.trading.models import TradeAccount
+from alpaca.trading.requests import GetOrdersRequest
 from crypto_signals.config import get_settings
 from crypto_signals.domain.schemas import AssetClass, Signal
 from crypto_signals.market.data_provider import MarketDataProvider
@@ -137,6 +140,8 @@ class RiskEngine:
     def check_sector_limit(self, asset_class: AssetClass) -> RiskCheckResult:
         """
         Gate: Max Open Positions by Asset Class.
+        Uses Alpaca API as source of truth to avoid stale Firestore data bypass.
+        Counts both filled positions AND pending buy orders to prevent race conditions.
         """
         try:
             limit = (
@@ -145,11 +150,46 @@ class RiskEngine:
                 else self.settings.MAX_EQUITY_POSITIONS
             )
 
-            current_count = self.repo.count_open_positions_by_class(asset_class)
+            # Map domain AssetClass to Alpaca Enum explicitly
+            asset_class_map = {
+                AssetClass.CRYPTO: AlpacaAssetClass.CRYPTO,
+                AssetClass.EQUITY: AlpacaAssetClass.US_EQUITY,
+            }
+            if asset_class not in asset_class_map:
+                logger.error(f"Unknown Asset Class in Sector Check: {asset_class}")
+                return RiskCheckResult(
+                    passed=False,
+                    reason=f"Unknown Asset Class: {asset_class}",
+                    gate="sector_cap",
+                )
 
-            if current_count >= limit:
+            target_alpaca_class = asset_class_map[asset_class]
+
+            # 1. Fetch Authoritative State (Filled Positions)
+            alpaca_positions = self.alpaca.get_all_positions()
+            filled_count = sum(
+                1 for p in alpaca_positions if p.asset_class == target_alpaca_class
+            )
+
+            # 2. Fetch Pending Orders (Race Condition Protection)
+            # If we have 4 positions and 2 pending buys, effectively we have 6.
+            # Only counting BUY side.
+            orders_req = GetOrdersRequest(status=QueryOrderStatus.OPEN)
+            open_orders = self.alpaca.get_orders(filter=orders_req)
+
+            pending_buys = sum(
+                1
+                for o in open_orders
+                if o.asset_class == target_alpaca_class and o.side == OrderSide.BUY
+            )
+
+            total_exposure = filled_count + pending_buys
+
+            if total_exposure >= limit:
                 reason = (
-                    f"Max {asset_class.value} positions reached: {current_count}/{limit}"
+                    f"Max {asset_class.value} positions reached: "
+                    f"{total_exposure}/{limit} "
+                    f"({filled_count} filled + {pending_buys} pending)"
                 )
                 logger.warning(reason)
                 return RiskCheckResult(passed=False, reason=reason, gate="sector_cap")
