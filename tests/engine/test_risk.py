@@ -79,13 +79,25 @@ class TestRiskEngine:
         result = risk_engine.check_buying_power(EQUITY, 10000.0)
         assert result.passed is True
 
-    def test_check_sector_cap_crypto_fail(self, risk_engine, mock_repo):
-        # Mock repo to return MAX
-        mock_repo.count_open_positions_by_class.return_value = 5  # Match Max
+    def test_check_sector_cap_crypto_fail(self, risk_engine, mock_client):
+        # Arrange: Alpaca reports 5 CRYPTO positions (MAX=5)
+        mock_pos = MagicMock()
+        mock_pos.asset_class = "crypto"
+        mock_client.get_all_positions.return_value = [mock_pos] * 5
 
         result = risk_engine.check_sector_limit(CRYPTO)
         assert result.passed is False
         assert "Max CRYPTO positions reached" in result.reason
+        mock_client.get_all_positions.assert_called_once()
+
+    def test_check_sector_cap_crypto_pass(self, risk_engine, mock_client):
+        # Arrange: 4 CRYPTO positions (MAX=5)
+        mock_pos = MagicMock()
+        mock_pos.asset_class = "crypto"
+        mock_client.get_all_positions.return_value = [mock_pos] * 4
+
+        result = risk_engine.check_sector_limit(CRYPTO)
+        assert result.passed is True
 
     def test_daily_drawdown_fail(self, risk_engine, mock_client):
         # Equity 9000, Last 10000 -> 10% Drop. Max is 5%

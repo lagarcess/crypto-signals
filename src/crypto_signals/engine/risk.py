@@ -2,6 +2,7 @@ from typing import NamedTuple, Optional
 
 import pandas as pd
 from alpaca.trading.client import TradingClient
+from alpaca.trading.enums import AssetClass as AlpacaAssetClass
 from alpaca.trading.models import TradeAccount
 from crypto_signals.config import get_settings
 from crypto_signals.domain.schemas import AssetClass, Signal
@@ -137,6 +138,7 @@ class RiskEngine:
     def check_sector_limit(self, asset_class: AssetClass) -> RiskCheckResult:
         """
         Gate: Max Open Positions by Asset Class.
+        Uses Alpaca API as source of truth to avoid stale Firestore data bypass.
         """
         try:
             limit = (
@@ -145,7 +147,21 @@ class RiskEngine:
                 else self.settings.MAX_EQUITY_POSITIONS
             )
 
-            current_count = self.repo.count_open_positions_by_class(asset_class)
+            # Map domain AssetClass to Alpaca Enum
+            target_alpaca_class = (
+                AlpacaAssetClass.CRYPTO
+                if asset_class == AssetClass.CRYPTO
+                else AlpacaAssetClass.US_EQUITY
+            )
+
+            # Fetch authoritative state from Alpaca
+            # This adds latency but prevents position cap bypass (Issue #276)
+            alpaca_positions = self.alpaca.get_all_positions()
+
+            # Count positions matching the target asset class
+            current_count = sum(
+                1 for p in alpaca_positions if p.asset_class == target_alpaca_class
+            )
 
             if current_count >= limit:
                 reason = (
