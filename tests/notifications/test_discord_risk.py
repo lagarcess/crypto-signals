@@ -5,6 +5,7 @@ from crypto_signals.config import Settings
 from crypto_signals.notifications.discord import DiscordClient
 from pydantic import SecretStr
 
+
 @pytest.fixture
 def mock_settings():
     settings = MagicMock(spec=Settings)
@@ -13,9 +14,11 @@ def mock_settings():
     settings.DISCORD_USE_FORUMS = False
     return settings
 
+
 @pytest.fixture
 def discord_client(mock_settings):
     return DiscordClient(settings=mock_settings)
+
 
 @patch("crypto_signals.notifications.discord.requests.post")
 def test_send_risk_summary(mock_post, discord_client):
@@ -27,12 +30,8 @@ def test_send_risk_summary(mock_post, discord_client):
     risk_summary = {
         "total_blocked": 5,
         "capital_protected": 25000.0,
-        "by_gate": {
-            "drawdown": 1,
-            "sector_cap": 2,
-            "buying_power": 2
-        },
-        "blocked_symbols": ["BTC/USD", "ETH/USD"]
+        "by_gate": {"drawdown": 1, "sector_cap": 2, "buying_power": 2},
+        "blocked_symbols": ["BTC/USD", "ETH/USD"],
     }
 
     # Act
