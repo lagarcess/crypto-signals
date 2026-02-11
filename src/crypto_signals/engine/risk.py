@@ -85,46 +85,21 @@ class RiskEngine:
         Orchestrate all risk checks for a signal.
         order matters: Fail fast on cheapest checks first.
         """
-        # 1. Daily Drawdown (Protect Capital First)
-        drawdown_check = self._execute_gate(
-            lambda: self.check_daily_drawdown(), signal
-        )
-        if not drawdown_check.passed:
-            return drawdown_check
-
-        # 2. Duplicate Symbol Check (No Pyramiding)
-        duplicate_check = self._execute_gate(
-            lambda: self.check_duplicate_symbol(signal), signal
-        )
-        if not duplicate_check.passed:
-            return duplicate_check
-
-        # 3. Sector Limits (Portfolio Balance)
-        sector_check = self._execute_gate(
-            lambda: self.check_sector_limit(signal.asset_class), signal
-        )
-        if not sector_check.passed:
-            return sector_check
-
-        # 3. Correlation Risk (Portfolio Diversification) - Expensive (Data Fetch)
-        correlation_check = self._execute_gate(
-            lambda: self.check_correlation(signal), signal
-        )
-        if not correlation_check.passed:
-            return correlation_check
-
-        # 4. Buying Power (Broker Constraints) - Most expensive call (API) if not cached
-        # Note: We need an estimated cost. Using RISK_PER_TRADE is a safe floor,
-        # but ideally we use (entry * qty). Since we haven't calc'd qty yet,
-        # we check if we have at least MIN_ASSET_BP_USD available.
-        bp_check = self._execute_gate(
+        # Define checks in order of execution (Cheapest/Critical first)
+        checks = [
+            lambda: self.check_daily_drawdown(),
+            lambda: self.check_duplicate_symbol(signal),
+            lambda: self.check_sector_limit(signal.asset_class),
+            lambda: self.check_correlation(signal),
             lambda: self.check_buying_power(
                 signal.asset_class, self.settings.MIN_ASSET_BP_USD
             ),
-            signal,
-        )
-        if not bp_check.passed:
-            return bp_check
+        ]
+
+        for check_func in checks:
+            result = self._execute_gate(check_func, signal)
+            if not result.passed:
+                return result
 
         return RiskCheckResult(passed=True)
 
