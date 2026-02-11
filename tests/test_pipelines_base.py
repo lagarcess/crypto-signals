@@ -132,7 +132,11 @@ def test_execute_merge_constructs_correct_sql(pipeline, mock_bq_client):
     # 2. Verify semantic equality against a canonical expected version
     # This catches syntax errors that component check might miss.
     cols = sorted(list(pipeline.schema_model.model_fields.keys()))
-    update_list = [f"T.{c} = S.{c}" for c in cols if c not in ["id", "ds"]]
+    update_list = [
+        f"T.{c} = S.{c}"
+        for c in cols
+        if c not in [pipeline.id_column, pipeline.partition_column]
+    ]
     update_clause = ", ".join(update_list)
     insert_cols = ", ".join(cols)
     insert_vals = ", ".join([f"S.{c}" for c in cols])
@@ -140,7 +144,8 @@ def test_execute_merge_constructs_correct_sql(pipeline, mock_bq_client):
     expected_sql = f"""
         MERGE `{pipeline.fact_table_id}` T
         USING `{pipeline.staging_table_id}` S
-        ON T.id = S.id AND T.ds = S.ds
+        ON T.{pipeline.id_column} = S.{pipeline.id_column}
+        AND T.{pipeline.partition_column} = S.{pipeline.partition_column}
         WHEN MATCHED THEN
             UPDATE SET {update_clause}
         WHEN NOT MATCHED THEN

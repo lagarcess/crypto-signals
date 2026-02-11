@@ -162,7 +162,23 @@ def _check_when_clauses(
                             actual_inserts.append(col_name)
 
                 if hasattr(then, "expression") and then.expression:
-                    vals = then.expression.expressions
+                    if isinstance(then.expression, exp.Values):
+                        # Handle Values node (list of rows)
+                        if then.expression.expressions:
+                            vals = then.expression.expressions[0].expressions
+                        else:
+                            vals = []
+                    elif isinstance(then.expression, exp.Tuple):
+                        # Handle Tuple node (single row)
+                        vals = then.expression.expressions
+                    else:
+                        # Fallback for other expression types
+                        vals = (
+                            then.expression.expressions
+                            if hasattr(then.expression, "expressions")
+                            else [then.expression]
+                        )
+
                     for val in vals:
                         actual_vals.append(val.sql(dialect=dialect))
 
