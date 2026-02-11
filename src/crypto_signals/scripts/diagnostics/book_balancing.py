@@ -22,6 +22,7 @@ from rich.console import Console
 from rich.table import Table
 
 from crypto_signals.config import get_settings, get_trading_client
+from crypto_signals.domain.schemas import Position
 from crypto_signals.repository.firestore import PositionRepository
 
 console = Console()
@@ -47,10 +48,10 @@ class BookBalancer:
         self.alpaca = get_trading_client()
         self.repo = PositionRepository()
         self.console = console_client or console  # Use injected or global
-        self.alpaca_open = {}
-        self.alpaca_closed = {}
-        self.db_open = {}
-        self.db_closed = {}
+        self.alpaca_open: dict[str, LedgerEntry] = {}
+        self.alpaca_closed: dict[str, LedgerEntry] = {}
+        self.db_open: dict[str, LedgerEntry] = {}
+        self.db_closed: dict[str, LedgerEntry] = {}
 
     def fetch_ledger(self, limit: int = 100):
         """
@@ -68,18 +69,21 @@ class BookBalancer:
         try:
             # Open Positions
             positions = self.alpaca.get_all_positions()
+            positions = self.alpaca.get_all_positions()
             for p in positions:
                 # Alpaca Position doesn't always have client_order_id easily accessible
                 # without looking up the order. We rely on symbol for matching mostly.
+                # Cast to Any to avoid MyPy confusion with 'str'
+                p_obj: Any = p
                 entry = LedgerEntry(
                     source="ALPACA",
                     id="unknown",
-                    symbol=p.symbol,
+                    symbol=p_obj.symbol,
                     status="OPEN",
-                    qty=float(p.qty),
-                    entry_price=float(p.avg_entry_price),
-                    updated_at=getattr(p, "updated_at", datetime.now()),
-                    raw=p,
+                    qty=float(p_obj.qty),
+                    entry_price=float(p_obj.avg_entry_price),
+                    updated_at=getattr(p_obj, "updated_at", datetime.now()),
+                    raw=p_obj,
                 )
                 self.alpaca_open[p.symbol] = entry
 
@@ -124,31 +128,35 @@ class BookBalancer:
         try:
             # Open Positions
             open_pos = self.repo.get_open_positions()
-            for p in open_pos:
-                self.db_open[p.position_id] = LedgerEntry(
+            for pos in open_pos:
+                # Cast to ensure MyPy knows it's a Position model
+                pos_model: Position = cast(Position, pos)
+                self.db_open[pos_model.position_id] = LedgerEntry(
                     source="FIRESTORE",
-                    id=p.position_id,
-                    symbol=p.symbol,
-                    status=p.status.value,
-                    qty=p.quantity,
-                    entry_price=p.entry_fill_price or 0.0,
-                    updated_at=p.updated_at,
-                    raw=p,
+                    id=pos_model.position_id,
+                    symbol=pos_model.symbol,
+                    status=pos_model.status.value,
+                    qty=pos_model.qty,
+                    entry_price=pos_model.entry_fill_price or 0.0,
+                    updated_at=pos_model.updated_at,
+                    raw=pos_model,
                 )
             self.console.print(f"Firestore Open: [green]{len(self.db_open)}[/green]")
 
             # Closed Positions (Recent)
             closed_pos = self.repo.get_closed_positions(limit=limit)
-            for p in closed_pos:
-                self.db_closed[p.position_id] = LedgerEntry(
+            for pos in closed_pos:
+                pos_model: Position = cast(Position, pos)
+                self.db_closed[pos_model.position_id] = LedgerEntry(
                     source="FIRESTORE",
-                    id=p.position_id,
-                    symbol=p.symbol,
-                    status=p.status.value,
-                    qty=p.quantity,
-                    entry_price=p.entry_fill_price or 0.0,
-                    updated_at=p.updated_at,
-                    raw=p,
+                    id=pos_model.position_id,
+                    symbol=pos_model.symbol,
+                    status=pos_model.status.value,
+                    # Corret field from Position model is 'qty'
+                    qty=pos_model.qty,
+                    entry_price=pos_model.entry_fill_price or 0.0,
+                    updated_at=pos_model.updated_at,
+                    raw=pos_model,
                 )
             self.console.print(
                 f"Firestore Closed (History): [green]{len(closed_pos)}[/green]"
