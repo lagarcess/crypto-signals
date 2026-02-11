@@ -166,3 +166,5 @@
 
 - [2026-02-11] **BigQuery Schema**: Adding REQUIRED columns to existing tables is forbidden; must use NULLABLE. migrate_schema must check not just for missing columns but for type compatibility of existing columns to prevent data corruption.
 - [2026-02-11] **MyPy/Alpaca**: When iterating over lists of complex objects (like lpaca.trading.models.Position), extensive use of 	yping.cast() or intermediate variables with explicit type hints is often necessary to resolve Union attribute errors.
+
+- [2026-02-11] **Alpaca-py Type Hints**: get_all_positions() has a sticky return type of List[Union[Position, RawData]] even when raw data is disabled. Explicitly typing variables as List[Position] does NOT narrow the type for MyPy. The verified workaround is to use # type: ignore on the assignment or valid usage, as runtime behavior is correct.

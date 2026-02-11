@@ -69,7 +69,6 @@ class BookBalancer:
         try:
             # Open Positions
             positions = self.alpaca.get_all_positions()
-            positions = self.alpaca.get_all_positions()
             for p in positions:
                 # Alpaca Position doesn't always have client_order_id easily accessible
                 # without looking up the order. We rely on symbol for matching mostly.
