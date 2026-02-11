@@ -1,4 +1,4 @@
-from typing import NamedTuple, Optional
+from typing import Callable, NamedTuple, Optional
 
 import pandas as pd
 from alpaca.trading.client import TradingClient
@@ -59,57 +59,71 @@ class RiskEngine:
         # Total Capital = Qty * Entry Price
         return qty * signal.entry_price
 
+    def _execute_gate(
+        self, check_func: Callable[[], RiskCheckResult], signal: Signal
+    ) -> RiskCheckResult:
+        """
+        Execute a risk gate function and record metrics if it fails.
+
+        Args:
+            check_func: A callable returning RiskCheckResult (e.g. lambda)
+            signal: The signal being validated
+
+        Returns:
+            RiskCheckResult from the check_func
+        """
+        result = check_func()
+        if not result.passed:
+            gate_name = result.gate or "unknown_gate"
+            self.metrics.record_risk_block(
+                gate_name, signal.symbol, self._calculate_position_size(signal)
+            )
+        return result
+
     def validate_signal(self, signal: Signal) -> RiskCheckResult:
         """
         Orchestrate all risk checks for a signal.
         order matters: Fail fast on cheapest checks first.
         """
         # 1. Daily Drawdown (Protect Capital First)
-        drawdown_check = self.check_daily_drawdown()
+        drawdown_check = self._execute_gate(
+            lambda: self.check_daily_drawdown(), signal
+        )
         if not drawdown_check.passed:
-            self.metrics.record_risk_block(
-                "drawdown", signal.symbol, self._calculate_position_size(signal)
-            )
             return drawdown_check
 
         # 2. Duplicate Symbol Check (No Pyramiding)
-        duplicate_check = self.check_duplicate_symbol(signal)
+        duplicate_check = self._execute_gate(
+            lambda: self.check_duplicate_symbol(signal), signal
+        )
         if not duplicate_check.passed:
-            # Duplicate doesn't protect capital (it prevents overexposure),
-            # but we can track it. Amount is debatable, let's use 0 or calc size.
-            # Using calc size shows "potential exposure prevented".
-            self.metrics.record_risk_block(
-                "duplicate", signal.symbol, self._calculate_position_size(signal)
-            )
             return duplicate_check
 
         # 3. Sector Limits (Portfolio Balance)
-        sector_check = self.check_sector_limit(signal.asset_class)
+        sector_check = self._execute_gate(
+            lambda: self.check_sector_limit(signal.asset_class), signal
+        )
         if not sector_check.passed:
-            self.metrics.record_risk_block(
-                "sector_cap", signal.symbol, self._calculate_position_size(signal)
-            )
             return sector_check
 
         # 3. Correlation Risk (Portfolio Diversification) - Expensive (Data Fetch)
-        correlation_check = self.check_correlation(signal)
+        correlation_check = self._execute_gate(
+            lambda: self.check_correlation(signal), signal
+        )
         if not correlation_check.passed:
-            self.metrics.record_risk_block(
-                "correlation", signal.symbol, self._calculate_position_size(signal)
-            )
             return correlation_check
 
         # 4. Buying Power (Broker Constraints) - Most expensive call (API) if not cached
         # Note: We need an estimated cost. Using RISK_PER_TRADE is a safe floor,
         # but ideally we use (entry * qty). Since we haven't calc'd qty yet,
         # we check if we have at least MIN_ASSET_BP_USD available.
-        bp_check = self.check_buying_power(
-            signal.asset_class, self.settings.MIN_ASSET_BP_USD
+        bp_check = self._execute_gate(
+            lambda: self.check_buying_power(
+                signal.asset_class, self.settings.MIN_ASSET_BP_USD
+            ),
+            signal,
         )
         if not bp_check.passed:
-            self.metrics.record_risk_block(
-                "buying_power", signal.symbol, self._calculate_position_size(signal)
-            )
             return bp_check
 
         return RiskCheckResult(passed=True)
