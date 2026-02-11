@@ -3,7 +3,9 @@ from unittest.mock import MagicMock
 import pytest
 
 # Local imports
-from alpaca.trading.models import TradeAccount
+from alpaca.trading.enums import AssetClass as AlpacaAssetClass
+from alpaca.trading.enums import OrderSide
+from alpaca.trading.models import Order, TradeAccount
 from crypto_signals.config import Settings
 from crypto_signals.domain.schemas import AssetClass
 from crypto_signals.engine.risk import RiskEngine
@@ -80,21 +82,32 @@ class TestRiskEngine:
         assert result.passed is True
 
     def test_check_sector_cap_crypto_fail(self, risk_engine, mock_client):
-        # Arrange: Alpaca reports 5 CRYPTO positions (MAX=5)
+        # Arrange: 4 filled positions + 1 open buy order = 5 (MAX=5)
+        # Mock Positions
         mock_pos = MagicMock()
-        mock_pos.asset_class = "crypto"
-        mock_client.get_all_positions.return_value = [mock_pos] * 5
+        mock_pos.asset_class = AlpacaAssetClass.CRYPTO
+        mock_client.get_all_positions.return_value = [mock_pos] * 4
+
+        # Mock Open Orders
+        mock_order = MagicMock(spec=Order)
+        mock_order.asset_class = AlpacaAssetClass.CRYPTO
+        mock_order.side = OrderSide.BUY
+        mock_client.get_orders.return_value = [mock_order]
 
         result = risk_engine.check_sector_limit(CRYPTO)
         assert result.passed is False
         assert "Max CRYPTO positions reached" in result.reason
         mock_client.get_all_positions.assert_called_once()
+        mock_client.get_orders.assert_called_once()
 
     def test_check_sector_cap_crypto_pass(self, risk_engine, mock_client):
-        # Arrange: 4 CRYPTO positions (MAX=5)
+        # Arrange: 4 filled positions + 0 open orders = 4 (MAX=5)
         mock_pos = MagicMock()
-        mock_pos.asset_class = "crypto"
+        mock_pos.asset_class = AlpacaAssetClass.CRYPTO
         mock_client.get_all_positions.return_value = [mock_pos] * 4
+
+        # No open orders
+        mock_client.get_orders.return_value = []
 
         result = risk_engine.check_sector_limit(CRYPTO)
         assert result.passed is True
