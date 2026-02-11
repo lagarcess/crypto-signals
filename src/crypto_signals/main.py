@@ -68,6 +68,9 @@ configure_logging(level="INFO")
 # Pre-compile Numba JIT functions to avoid cold-start latency in live trading
 warmup_jit()
 
+# Performance SLA Constants
+LATENCY_SLA_MS = 100
+QUERY_ERROR_SENTINEL = 9999
 
 # Global flag for graceful shutdown
 shutdown_requested = False
@@ -242,18 +245,22 @@ def main(
                     },
                 )
 
-                if count == 9999:
-                    # count_open_positions_by_class returns 9999 when it catches an internal exception
-                    raise RuntimeError("Firestore query failed (returned 9999)")
-
-                if latency_ms > 100:
+                if count == QUERY_ERROR_SENTINEL:
+                    # count_open_positions_by_class returns sentinel when it catches an internal exception
                     logger.error(
-                        f"❌ Firestore: Performance Check Failed - Latency {latency_ms:.2f}ms exceeds 100ms threshold. "
+                        f"❌ Firestore: Performance Check Failed - Query failed (returned {QUERY_ERROR_SENTINEL})."
+                    )
+                    sys.exit(1)
+                elif latency_ms > LATENCY_SLA_MS:
+                    logger.error(
+                        f"❌ Firestore: Performance Check Failed - Latency {latency_ms:.2f}ms exceeds {LATENCY_SLA_MS}ms threshold. "
                         "Check for missing composite indexes or degraded performance."
                     )
                     sys.exit(1)
 
-                logger.info("✅ Firestore: Performance Check Passed (<100ms)")
+                logger.info(
+                    f"✅ Firestore: Performance Check Passed (<{LATENCY_SLA_MS}ms)"
+                )
 
             except Exception as e:
                 # Distinguish between "no credentials" (expected in some CI environments)
