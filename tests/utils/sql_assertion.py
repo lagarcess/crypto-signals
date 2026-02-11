@@ -161,26 +161,16 @@ def _check_when_clauses(
                         if col_name:
                             actual_inserts.append(col_name)
 
-                if hasattr(then, "expression") and then.expression:
-                    if isinstance(then.expression, exp.Values):
-                        # Handle Values node (list of rows)
-                        if then.expression.expressions:
-                            vals = then.expression.expressions[0].expressions
-                        else:
-                            vals = []
-                    elif isinstance(then.expression, exp.Tuple):
-                        # Handle Tuple node (single row)
-                        vals = then.expression.expressions
-                    else:
-                        # Fallback for other expression types
-                        vals = (
-                            then.expression.expressions
-                            if hasattr(then.expression, "expressions")
-                            else [then.expression]
-                        )
-
-                    for val in vals:
-                        actual_vals.append(val.sql(dialect=dialect))
+                if (
+                    hasattr(then, "expression")
+                    and then.expression
+                    and isinstance(then.expression, exp.Values)
+                ):
+                    if then.expression.expressions:
+                        # `then.expression.expressions` is a list of tuples (rows). Get the first row's values.
+                        vals = then.expression.expressions[0].expressions
+                        for val in vals:
+                            actual_vals.append(val.sql(dialect=dialect))
 
                 # Verify column list
                 actual_inserts_sorted = sorted(actual_inserts)
