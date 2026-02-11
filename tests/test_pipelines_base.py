@@ -79,8 +79,12 @@ def test_truncate_staging_executes_query(pipeline, mock_bq_client):
     """Test that _truncate_staging runs the correct SQL."""
     pipeline._truncate_staging()
 
+    call_args = mock_bq_client.query.call_args
+    assert call_args is not None
+    query = call_args[0][0]
+
     expected_sql = "TRUNCATE TABLE `test-project.dataset.stg_test`"
-    mock_bq_client.query.assert_called_with(expected_sql)
+    assert_sql_equal(query, expected_sql)
 
 
 def test_load_to_staging_inserts_rows(pipeline, mock_bq_client):
@@ -111,6 +115,7 @@ def test_execute_merge_constructs_correct_sql(pipeline, mock_bq_client):
     assert call_args is not None
     query = call_args[0][0]
 
+    # 1. Verify specific components (robust against order/whitespace)
     assert_merge_query_structure(
         query,
         target_table=f"`{pipeline.fact_table_id}`",
@@ -123,6 +128,31 @@ def test_execute_merge_constructs_correct_sql(pipeline, mock_bq_client):
         ],
         insert_columns=sorted(list(pipeline.schema_model.model_fields.keys())),
     )
+
+    # 2. Verify semantic equality against a canonical expected version
+    # This catches syntax errors that component check might miss.
+    cols = sorted(list(pipeline.schema_model.model_fields.keys()))
+    update_list = [
+        f"T.{c} = S.{c}"
+        for c in cols
+        if c not in [pipeline.id_column, pipeline.partition_column]
+    ]
+    update_clause = ", ".join(update_list)
+    insert_cols = ", ".join(cols)
+    insert_vals = ", ".join([f"S.{c}" for c in cols])
+
+    expected_sql = f"""
+        MERGE `{pipeline.fact_table_id}` T
+        USING `{pipeline.staging_table_id}` S
+        ON T.{pipeline.id_column} = S.{pipeline.id_column}
+        AND T.{pipeline.partition_column} = S.{pipeline.partition_column}
+        WHEN MATCHED THEN
+            UPDATE SET {update_clause}
+        WHEN NOT MATCHED THEN
+            INSERT ({insert_cols})
+            VALUES ({insert_vals})
+    """
+    assert_sql_equal(query, expected_sql)
 
 
 def test_cleanup_staging_executes_correct_sql(pipeline, mock_bq_client):
