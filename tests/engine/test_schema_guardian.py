@@ -265,3 +265,25 @@ def test_validate_schema_clustering_missing_on_table(guardian, mock_bq_client):
         )
 
     assert "Clustering mismatch" in str(exc.value)
+
+
+def test_migrate_schema_detects_type_mismatch(guardian, mock_bq_client):
+    """Test that migrate_schema raises SchemaMismatchError on type conflict (Issue #266)."""
+    # 1. Setup Table with incompatible column
+    mock_table = MagicMock()
+    mock_table.schema = [
+        bigquery.SchemaField("name", "STRING"),
+        # Mismatch: Model expects INTEGER (SimpleModel.age), DB has STRING
+        bigquery.SchemaField("age", "STRING"),
+        bigquery.SchemaField("score", "FLOAT"),
+        bigquery.SchemaField("is_active", "BOOLEAN"),
+    ]
+    mock_bq_client.get_table.return_value = mock_table
+
+    # 2. Run migrate_schema
+    # Should raise SchemaMismatchError because strict_mode=True
+    with pytest.raises(SchemaMismatchError) as exc:
+        guardian.migrate_schema("project.dataset.table", SimpleModel)
+
+    assert "Type mismatch for column 'age'" in str(exc.value)
+    assert "Expected INTEGER, Found STRING" in str(exc.value)

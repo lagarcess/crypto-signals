@@ -163,3 +163,8 @@
 - [2026-02-05] **Refactoring & Testing**: When moving modules (e.g., `scripts/foo.py` -> `scripts/bar/foo.py`), `unittest.mock.patch` paths in tests must be updated manually. IDE refactoring often misses string-based patch targets, leading to `AttributeError` or `ImportError` runtime failures. grep is your friend.
 - [2026-02-05] **Pytest Cache**: Significant refactoring (file moves/renames) can leave stale bytecode in `__pycache__`, causing pytest to load "ghost" modules. Always run `find . -name "__pycache__" -type d -exec rm -rf {} +` (or equivalent) after structural changes if strange import errors persist.
 - [2026-02-05] **Maintenance Scripts**: Dangerous maintenance scripts (like `purge_signals.py`) should be consistently gated by `ENVIRONMENT != "PROD"` checks AND explicit user confirmation prompts (`Confirm.ask`) to prevent accidental data loss in production.
+
+- [2026-02-11] **BigQuery Schema**: Adding REQUIRED columns to existing tables is forbidden; must use NULLABLE. migrate_schema must check not just for missing columns but for type compatibility of existing columns to prevent data corruption.
+- [2026-02-11] **MyPy/Alpaca**: When iterating over lists of complex objects (like lpaca.trading.models.Position), extensive use of 	yping.cast() or intermediate variables with explicit type hints is often necessary to resolve Union attribute errors.
+
+- [2026-02-11] **Alpaca-py Type Hints**: `get_all_positions()` has a return type of `List[Union[Position, RawData]]` which confuses strict type checkers. Explicitly typing variables as `List[Position]` does not narrow the type. The verified workaround is to use `# type: ignore` on valid usages where runtime behavior is known to be correct.
