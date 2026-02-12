@@ -117,7 +117,7 @@ class RiskEngine:
             return RiskCheckResult(passed=True)
 
         except Exception as e:
-            logger.error(f"Risk Check Failed (Drawdown): {e}")
+            logger.error("Risk Check Failed (Drawdown).", extra={"error": str(e)})
             # Fail safe: If we can't verify risk, we block.
             return RiskCheckResult(
                 passed=False, reason=f"Error checking drawdown: {e}", gate="drawdown"
@@ -138,7 +138,7 @@ class RiskEngine:
             return RiskCheckResult(passed=True)
 
         except Exception as e:
-            logger.error(f"Risk Check Failed (Duplicate): {e}")
+            logger.error("Risk Check Failed (Duplicate).", extra={"error": str(e)})
             return RiskCheckResult(
                 passed=False, reason=f"Error checking duplicate: {e}", gate="duplicate"
             )
@@ -199,7 +199,7 @@ class RiskEngine:
             return RiskCheckResult(passed=True)
 
         except Exception as e:
-            logger.error(f"Risk Check Failed (Sector Cap): {e}")
+            logger.error("Risk Check Failed (Sector Cap).", extra={"error": str(e)})
             return RiskCheckResult(
                 passed=False, reason=f"Error checking sector cap: {e}", gate="sector_cap"
             )
@@ -288,7 +288,10 @@ class RiskEngine:
                                 price_series_map[symbol_list[0]] = bars_df["close"]
 
                 except Exception as e:
-                    logger.warning(f"Failed to fetch batch data for {asset_class}: {e}")
+                    logger.warning(
+                        f"Failed to fetch batch data for {asset_class.value}.",
+                        extra={"asset_class": asset_class.value, "error": str(e)},
+                    )
                     # If we fail to get data for the CANDIDATE, we must fail.
                     # If we fail to get data for a position, we normally block access.
                     # Let's inspect what's missing later.
@@ -331,7 +334,10 @@ class RiskEngine:
                             passed=False, reason=reason, gate="correlation"
                         )
                 except Exception as e:
-                    logger.warning(f"Correlation calc error for {pos.symbol}: {e}")
+                    logger.warning(
+                        f"Correlation calc error for {pos.symbol}.",
+                        extra={"symbol": pos.symbol, "error": str(e)},
+                    )
                     return RiskCheckResult(
                         passed=False,
                         reason=f"Error calculating correlation with {pos.symbol}: {e}",
@@ -341,7 +347,7 @@ class RiskEngine:
             return RiskCheckResult(passed=True)
 
         except Exception as e:
-            logger.error(f"Risk Check Failed (Correlation): {e}")
+            logger.error("Risk Check Failed (Correlation).", extra={"error": str(e)})
             return RiskCheckResult(
                 passed=False,
                 reason=f"Error checking correlation: {e}",
@@ -383,7 +389,7 @@ class RiskEngine:
             return RiskCheckResult(passed=True)
 
         except Exception as e:
-            logger.error(f"Risk Check Failed (Buying Power): {e}")
+            logger.error("Risk Check Failed (Buying Power).", extra={"error": str(e)})
             return RiskCheckResult(
                 passed=False,
                 reason=f"Error checking buying power: {e}",

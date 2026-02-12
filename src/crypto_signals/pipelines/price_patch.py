@@ -186,5 +186,8 @@ class PricePatchPipeline:
             return (True, pnl_usd)  # Return PnL impact as restored value
 
         except Exception as e:
-            logger.error(f"[price_patch] Failed to patch {trade['trade_id']}: {e}")
+            logger.error(
+                f"[price_patch] Failed to patch {trade['trade_id']}.",
+                extra={"trade_id": trade["trade_id"], "error": str(e)},
+            )
             return (False, 0.0)

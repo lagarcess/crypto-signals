@@ -81,7 +81,10 @@ class DailyStrategyAggregation(BigQueryPipelineBase):
             self.bq_client.create_table(table)
             logger.info(f"[{self.job_name}] Created table {table_id}.")
         except Exception as e:
-            logger.error(f"[{self.job_name}] Failed to create table {table_id}: {e}")
+            logger.error(
+                f"[{self.job_name}] Failed to create table {table_id}.",
+                extra={"table_id": table_id, "error": str(e)},
+            )
             raise
 
     def run(self) -> int:
@@ -127,11 +130,17 @@ class DailyStrategyAggregation(BigQueryPipelineBase):
             return rows
 
         except (GoogleCloudError, GoogleAPICallError) as e:
-            logger.error(f"[{self.job_name}] Failed to extract data: {e}")
+            logger.error(
+                f"[{self.job_name}] Failed to extract data.",
+                extra={"error": str(e)},
+            )
             raise
         except Exception as e:
             # Catch-all for other unforeseen errors to ensure logging
-            logger.error(f"[{self.job_name}] Unexpected error during extraction: {e}")
+            logger.error(
+                f"[{self.job_name}] Unexpected error during extraction.",
+                extra={"error": str(e)},
+            )
             raise
 
     def cleanup(self, data: List[BaseModel]) -> None:

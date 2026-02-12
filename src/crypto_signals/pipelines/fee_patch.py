@@ -195,5 +195,8 @@ class FeePatchPipeline:
             return True
 
         except Exception as e:
-            logger.error(f"[fee_patch] Failed to patch {trade['trade_id']}: {e}")
+            logger.error(
+                f"[fee_patch] Failed to patch {trade['trade_id']}.",
+                extra={"trade_id": trade["trade_id"], "error": str(e)},
+            )
             return False

@@ -76,7 +76,10 @@ class StrategySyncPipeline(BigQueryPipelineBase):
             results = self.bq_client.query(query).result()
             return {row.strategy_id: row.config_hash for row in results}
         except Exception as e:
-            logger.warning(f"Failed to fetch BQ state: {e}. Assuming empty state.")
+            logger.warning(
+                "Failed to fetch BQ state. Assuming empty state.",
+                extra={"error": str(e)},
+            )
             return {}
 
     def extract(self) -> List[Dict[str, Any]]:
@@ -145,7 +148,10 @@ class StrategySyncPipeline(BigQueryPipelineBase):
                     logger.debug(f"No change for {strategy_id}")
 
             except Exception as e:
-                logger.error(f"Error processing strategy {strategy.strategy_id}: {e}")
+                logger.error(
+                    f"Error processing strategy {strategy.strategy_id}.",
+                    extra={"strategy_id": strategy.strategy_id, "error": str(e)},
+                )
                 continue
 
         logger.info(f"Found {len(new_versions)} strategy updates.")
