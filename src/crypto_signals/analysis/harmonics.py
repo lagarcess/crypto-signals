@@ -356,15 +356,20 @@ class HarmonicAnalyzer:
     def detect_elliott_wave_135(self) -> Optional[HarmonicPattern]:
         """Detect Elliott Wave impulse pattern (waves 1-3-5).
 
-        Pattern:
-        - Wave 3 longer than Wave 1
-        - Wave 4 must not retrace into Wave 1 price territory
+        Strict implementation with Fibonacci requirements:
+        - Wave 2 must not retrace > 100% of Wave 1
+        - Wave 3 must be at least 1.618x Wave 1 (high conviction)
+        - Wave 4 must retrace at least 23.6% of Wave 3
+        - Wave 4 must not retrace into Wave 1 territory
 
         Returns:
-            HarmonicPattern if detected, None otherwise
+            HarmonicPattern if detected, None otherwise.
+            Returns the most recent pattern in the lookback window.
         """
         if len(self.pivots) < 5:
             return None
+
+        detected_pattern = None
 
         # Scan for Elliott Wave (5 consecutive pivots)
         # Expected structure: Valley(0), Peak(1), Valley(2), Peak(3), Valley(4)
@@ -383,29 +388,45 @@ class HarmonicAnalyzer:
 
             # For bullish impulse: p0=valley, p1=peak, p2=valley, p3=peak, p4=valley
             if p0.pivot_type == "VALLEY":
-                wave1_len = abs(p1.price - p0.price)
-                wave3_len = abs(p3.price - p2.price)
-
-                # Wave 3 must be longer than Wave 1
-                if wave3_len <= wave1_len:
+                # Rule 1: Wave 2 must not retrace > 100% of Wave 1
+                if p2.price <= p0.price:
                     continue
 
-                # Wave 4 (p4) must not retrace into Wave 1 territory
-                # p4 should be above p1 (peak of wave 1)
+                wave1_len = p1.price - p0.price
+                wave3_len = p3.price - p2.price
+                wave4_retrace_len = p3.price - p4.price
+
+                # Rule 2: Wave 3 must be at least 1.618x Wave 1 (Tightened from 1.0x)
+                if wave3_len < (1.618 * wave1_len):
+                    continue
+
+                # Rule 3: Wave 4 must retrace at least 23.6% of Wave 3
+                if wave4_retrace_len < (0.236 * wave3_len):
+                    continue
+
+                # Rule 4: Wave 4 (p4) must not retrace into Wave 1 territory
                 if p4.price <= p1.price:
                     continue
 
             # For bearish impulse: p0=peak, p1=valley, p2=peak, p3=valley, p4=peak
             elif p0.pivot_type == "PEAK":
-                wave1_len = abs(p0.price - p1.price)
-                wave3_len = abs(p2.price - p3.price)
-
-                # Wave 3 must be longer than Wave 1
-                if wave3_len <= wave1_len:
+                # Rule 1: Wave 2 must not retrace > 100% of Wave 1
+                if p2.price >= p0.price:
                     continue
 
-                # Wave 4 (p4) must not retrace into Wave 1 territory
-                # p4 should be below p1 (valley of wave 1)
+                wave1_len = p0.price - p1.price
+                wave3_len = p2.price - p3.price
+                wave4_retrace_len = p4.price - p3.price
+
+                # Rule 2: Wave 3 must be at least 1.618x Wave 1
+                if wave3_len < (1.618 * wave1_len):
+                    continue
+
+                # Rule 3: Wave 4 must retrace at least 23.6% of Wave 3
+                if wave4_retrace_len < (0.236 * wave3_len):
+                    continue
+
+                # Rule 4: Wave 4 (p4) must not retrace into Wave 1 territory
                 if p4.price >= p1.price:
                     continue
 
@@ -418,16 +439,20 @@ class HarmonicAnalyzer:
 
             wave3_to_wave1_ratio = wave3_len / wave1_len if wave1_len > 0 else 0
 
-            return HarmonicPattern(
+            # Update detected_pattern (loop continues to find the most recent one)
+            detected_pattern = HarmonicPattern(
                 pattern_type="ELLIOTT_WAVE_135",
                 pivots=[p0, p1, p2, p3, p4],
                 ratios={
-                    "wave3_to_wave1_ratio": wave3_to_wave1_ratio,
+                    "wave3_to_wave1_ratio": round(wave3_to_wave1_ratio, 3),
+                    "wave4_retrace_ratio": round(
+                        wave4_retrace_len / wave3_len if wave3_len > 0 else 0, 3
+                    ),
                 },
                 is_macro=is_macro,
             )
 
-        return None
+        return detected_pattern
 
     def scan_all_patterns(self) -> List[HarmonicPattern]:
         """Scan for all harmonic patterns.

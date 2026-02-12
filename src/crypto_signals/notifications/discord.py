@@ -664,6 +664,12 @@ class DiscordClient:
         if signal.pattern_classification == MACRO_PATTERN:
             macro_label = "[MACRO SETUP] "
 
+        # SATURATION WARNING OVERRIDE
+        if getattr(signal, "_saturation_warning", False):
+            saturation_count = getattr(signal, "_saturation_count", "?")
+            macro_label = f"[SATURATION: {saturation_count} SYMBOLS] "
+            emoji = "⚠️"
+
         # RISK BLOCK OVERRIDE
         if getattr(signal, "trade_type", None) == TradeType.RISK_BLOCKED.value:
             emoji = "⚠️"
