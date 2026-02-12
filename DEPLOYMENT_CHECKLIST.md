@@ -84,10 +84,10 @@ Use this checklist before deploying Crypto Sentinel to production.
 ## ✅ BigQuery Setup
 
 - [ ] Dataset `crypto_sentinel` created
-- [ ] Tables created (if using BigQuery pipelines):
-  - [ ] stg_trades_import
-  - [ ] fact_trades
-  - [ ] snapshot_accounts
+- [x] Tables created (Managed by Pipeline Engine):
+  - [x] stg_trades_import (Auto-created on run)
+  - [x] fact_trades (Auto-created on run)
+  - [x] snapshot_accounts (Auto-created on run)
   - [ ] summary_strategy_performance
 - [ ] Service account has BigQuery permissions
 

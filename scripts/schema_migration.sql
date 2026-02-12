@@ -3,6 +3,18 @@
 
 -- 1. Apply Schema Changes to Fact Table (Critical Data)
 -- We use IF NOT EXISTS to make this idempotent.
+
+-- Ensure snapshot_accounts exists with core schema
+CREATE TABLE IF NOT EXISTS `{{PROJECT_ID}}.crypto_analytics.snapshot_accounts` (
+    ds DATE,
+    account_id STRING,
+    equity FLOAT64,
+    cash FLOAT64,
+    calmar_ratio FLOAT64,
+    drawdown_pct FLOAT64
+)
+PARTITION BY ds;
+
 ALTER TABLE `{{PROJECT_ID}}.crypto_analytics.snapshot_accounts`
 ADD COLUMN IF NOT EXISTS buying_power FLOAT64,
 ADD COLUMN IF NOT EXISTS regt_buying_power FLOAT64,
@@ -34,6 +46,35 @@ LIKE `{{PROJECT_ID}}.crypto_analytics.snapshot_accounts`;
 
 -- 3. Add exit_order_id to fact_trades (Exit Order Tracking)
 -- Links BigQuery trade records back to Alpaca exit orders for reconciliation
+
+-- Ensure fact_trades exists with core schema
+CREATE TABLE IF NOT EXISTS `{{PROJECT_ID}}.crypto_analytics.fact_trades` (
+    ds DATE,
+    trade_id STRING,
+    account_id STRING,
+    strategy_id STRING,
+    asset_class STRING,
+    symbol STRING,
+    side STRING,
+    qty FLOAT64,
+    entry_price FLOAT64,
+    exit_price FLOAT64,
+    entry_time TIMESTAMP,
+    exit_time TIMESTAMP,
+    exit_reason STRING,
+    max_favorable_excursion FLOAT64,
+    pnl_pct FLOAT64,
+    pnl_usd FLOAT64,
+    fees_usd FLOAT64,
+    slippage_pct FLOAT64,
+    trade_duration INT64,
+    discord_thread_id STRING,
+    trailing_stop_final FLOAT64,
+    target_entry_price FLOAT64,
+    alpaca_order_id STRING
+)
+PARTITION BY ds;
+
 ALTER TABLE `{{PROJECT_ID}}.crypto_analytics.fact_trades`
 ADD COLUMN IF NOT EXISTS exit_order_id STRING;
 
@@ -75,8 +116,6 @@ LIKE `{{PROJECT_ID}}.crypto_analytics.fact_trades`;
 -- The test table will inherit all new columns (exit_order_id, exit_price, etc).
 
 DROP TABLE IF EXISTS `{{PROJECT_ID}}.crypto_analytics.stg_trades_import_test`;
-CREATE TABLE `{{PROJECT_ID}}.crypto_analytics.stg_trades_import_test`
-LIKE `{{PROJECT_ID}}.crypto_analytics.fact_trades_test`;
 CREATE TABLE `{{PROJECT_ID}}.crypto_analytics.stg_trades_import_test`
 LIKE `{{PROJECT_ID}}.crypto_analytics.fact_trades_test`;
 
