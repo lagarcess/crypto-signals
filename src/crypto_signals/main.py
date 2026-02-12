@@ -10,7 +10,7 @@ import signal
 import sys
 import time
 from datetime import date, datetime, timezone
-from typing import Any, Callable, Optional, Protocol, cast
+from typing import Any, Callable, Optional, Protocol
 
 import typer
 from alpaca.common.exceptions import APIError
@@ -114,10 +114,7 @@ def _run_pipeline(
         success_log_fn(result)
         metrics.record_success(name, time.time() - start_time)
     except Exception as e:
-        logger.error(
-            f"{name} Pipeline failed.",
-            extra={"pipeline": name, "error": str(e)},
-        )
+        logger.error(f"{name} Pipeline failed: {e}")
         metrics.record_failure(name, time.time() - start_time)
 
 
@@ -278,15 +275,9 @@ def main(
                 )
 
             except (DefaultCredentialsError, Unauthenticated, PermissionDenied) as e:
-                logger.warning(
-                    "⚠️  Firestore: Skipped (auth/permission issue).",
-                    extra={"error": str(e)},
-                )
+                logger.warning(f"⚠️  Firestore: Skipped (auth/permission issue) - {e}")
             except Exception as e:
-                logger.error(
-                    "❌ Firestore: Performance Check Failed.",
-                    extra={"error": str(e)},
-                )
+                logger.error(f"❌ Firestore: Performance Check Failed - {e}")
                 sys.exit(1)
 
             # 2. Verify settings loaded
@@ -537,8 +528,8 @@ def main(
         # Rate limiting (Alpaca: 200 req/min = 0.3s minimum, use 0.5s for safety)
         rate_limit_delay = getattr(settings, "RATE_LIMIT_DELAY", 0.5)
 
-        # Execution Loop with Rich Progress Bar
-        signals_found = 0
+        # Phase 1: Signal Discovery & Active Trade Validation
+        candidate_signals = []  # To be processed in Phase 2 (Saturation Filter)
         symbols_processed = 0
 
         with create_portfolio_progress(len(portfolio_items)) as (progress, task):
@@ -572,10 +563,7 @@ def main(
                             symbol, asset_class, lookback_days=365
                         )
                     except Exception as e:
-                        logger.error(
-                            "Failed to fetch data for {symbol}.",
-                            extra={"symbol": symbol, "error": str(e)},
-                        )
+                        logger.error(f"Failed to fetch data for {symbol}: {e}")
                         continue
 
                     if df.empty:
@@ -592,312 +580,9 @@ def main(
                     symbols_processed += 1
 
                     if trade_signal:
-                        # Handle Shadow Signals (rejected by quality gates)
-                        if trade_signal.status == SignalStatus.REJECTED_BY_FILTER:
-                            # DEDUPLICATION: Skip shadow if active signal exists (avoid noise)
-                            active_signals = repo.get_active_signals(symbol)
-                            if active_signals:
-                                logger.debug(
-                                    f"[SHADOW] Skipping {symbol} shadow signal - active signal exists",
-                                    extra={"symbol": symbol},
-                                )
-                                continue
-
-                            # Persist to rejected_signals collection for audit/analysis
-                            try:
-                                rejected_repo.save(trade_signal)
-                                # Send to shadow Discord channel (if configured)
-                                discord.send_shadow_signal(trade_signal)
-                                logger.info(
-                                    f"[SHADOW] {trade_signal.symbol} {trade_signal.pattern_name}: "
-                                    f"{trade_signal.rejection_reason}",
-                                    extra={
-                                        "symbol": trade_signal.symbol,
-                                        "pattern": trade_signal.pattern_name,
-                                        "rejection_reason": trade_signal.rejection_reason,
-                                        "pattern_duration_days": trade_signal.pattern_duration_days,
-                                        "pattern_classification": trade_signal.pattern_classification,
-                                    },
-                                )
-                            except Exception as e:
-                                logger.warning(
-                                    f"Failed to persist shadow signal: {e}",
-                                    extra={"symbol": trade_signal.symbol},
-                                )
-                            # Shadow signals don't trigger live trading - continue to next symbol
-                            continue
-
-                        # Standard signal handling (WAITING status)
-                        signals_found += 1
-                        logger.info(
-                            f"SIGNAL FOUND: {trade_signal.pattern_name} "
-                            f"on {trade_signal.symbol}",
-                            extra={
-                                "symbol": trade_signal.symbol,
-                                "pattern": trade_signal.pattern_name,
-                                "stop_loss": trade_signal.suggested_stop,
-                                "pattern_duration_days": trade_signal.pattern_duration_days,
-                                "pattern_classification": trade_signal.pattern_classification,
-                            },
+                        candidate_signals.append(
+                            (trade_signal, asset_class, symbol_duration)
                         )
-
-                        # ============================================================
-                        # IDEMPOTENCY GATE: Prevent redundant Discord alerts
-                        # ============================================================
-                        existing_signal = repo.get_by_id(trade_signal.signal_id)
-                        if existing_signal:
-                            # Skip if signal exists in WAITING status with discord_thread_id
-                            if (
-                                existing_signal.status == SignalStatus.WAITING
-                                and existing_signal.discord_thread_id
-                            ):
-                                logger.info(
-                                    f"[IDEMPOTENCY] Skip notified signal {trade_signal.signal_id}",
-                                    extra={
-                                        "signal_id": trade_signal.signal_id,
-                                        "symbol": trade_signal.symbol,
-                                        "thread_id": existing_signal.discord_thread_id,
-                                    },
-                                )
-                                continue
-
-                            # Self-heal: If exists but discord_thread_id is null, proceed to notification
-                            if not existing_signal.discord_thread_id:
-                                logger.info(
-                                    f"[IDEMPOTENCY] Self-healing signal {trade_signal.signal_id} - "
-                                    "missing discord_thread_id",
-                                    extra={
-                                        "signal_id": trade_signal.signal_id,
-                                        "symbol": trade_signal.symbol,
-                                    },
-                                )
-                                # Continue to notification phase to fix the missing thread_id
-
-                        # ============================================================
-                        # TWO-PHASE COMMIT: Prevents "Zombie Signals"
-                        # (notifications sent without database tracking)
-                        # ============================================================
-
-                        # PHASE 1: Persist with CREATED status (establishes tracking)
-                        trade_signal.status = SignalStatus.CREATED
-                        persistence_start = time.time()
-                        try:
-                            repo.save(trade_signal)
-                            persistence_duration = time.time() - persistence_start
-                            logger.info(
-                                f"Signal {trade_signal.signal_id} created in Firestore",
-                                extra={
-                                    "signal_id": trade_signal.signal_id,
-                                    "symbol": trade_signal.symbol,
-                                    "status": "CREATED",
-                                    "duration_seconds": round(persistence_duration, 3),
-                                },
-                            )
-                            metrics.record_success(
-                                "signal_persistence", persistence_duration
-                            )
-                        except Exception as e:
-                            persistence_duration = time.time() - persistence_start
-                            logger.error(
-                                f"Failed to persist signal {trade_signal.signal_id} - "
-                                "skipping notification to prevent zombie signal",
-                                extra={
-                                    "signal_id": trade_signal.signal_id,
-                                    "symbol": trade_signal.symbol,
-                                    "error": str(e),
-                                },
-                            )
-                            metrics.record_failure(
-                                "signal_persistence", persistence_duration
-                            )
-                            # Skip notification - can't notify without tracking
-                            continue
-
-                        # PHASE 2: Notify Discord
-                        thread_id = None
-
-                        # Self-healing: Check for existing thread (if missing in memory/DB)
-                        if not trade_signal.discord_thread_id:
-                            try:
-                                thread_id = discord.find_thread_by_signal_id(
-                                    trade_signal.signal_id,
-                                    trade_signal.symbol,
-                                    asset_class,
-                                )
-                            except Exception as e:
-                                logger.warning(
-                                    "Thread recovery check failed for {symbol}.",
-                                    extra={
-                                        "symbol": trade_signal.symbol,
-                                        "error": str(e),
-                                    },
-                                )
-
-                        if thread_id:
-                            logger.info(
-                                f"Self-healing: Recovered Discord thread {thread_id} "
-                                f"for signal {trade_signal.signal_id}"
-                            )
-                        else:
-                            # Standard execution: Create new thread
-                            thread_id = discord.send_signal(trade_signal)
-
-                        # PHASE 3: Update with thread_id and final status
-                        if thread_id:
-                            updates = {
-                                "discord_thread_id": thread_id,
-                                "status": SignalStatus.WAITING.value,
-                            }
-                            if repo.update_signal_atomic(trade_signal.signal_id, updates):
-                                trade_signal.discord_thread_id = thread_id
-                                trade_signal.status = SignalStatus.WAITING
-                                logger.info(
-                                    "Signal activated with Discord thread",
-                                    extra={
-                                        "signal_id": trade_signal.signal_id,
-                                        "symbol": trade_signal.symbol,
-                                        "thread_id": thread_id,
-                                        "status": "WAITING",
-                                    },
-                                )
-                            else:
-                                logger.error(
-                                    f"Failed to atomic update signal {trade_signal.signal_id} after Discord notification"
-                                )
-                        else:
-                            # Compensation: Mark as invalidated if notification failed
-                            logger.warning(
-                                f"Discord notification failed for {trade_signal.symbol} "
-                                "- marking signal as invalidated",
-                                extra={"symbol": trade_signal.symbol},
-                            )
-                            trade_signal.status = SignalStatus.INVALIDATED
-                            trade_signal.exit_reason = ExitReason.NOTIFICATION_FAILED
-                            try:
-                                repo.update_signal_atomic(
-                                    trade_signal.signal_id,
-                                    {
-                                        "status": SignalStatus.INVALIDATED.value,
-                                        "exit_reason": ExitReason.NOTIFICATION_FAILED.value,
-                                    },
-                                )
-                            except Exception as e:
-                                logger.error(
-                                    f"Failed to invalidate signal: {e}",
-                                    extra={
-                                        "signal_id": trade_signal.signal_id,
-                                        "error": str(e),
-                                    },
-                                )
-
-                        # Execute trade if execution is enabled
-                        # Safety: ExecutionEngine has built-in guards for:
-                        #   1. ALPACA_PAPER_TRADING must be True
-                        #   2. ENABLE_EXECUTION must be True
-                        if settings.ENABLE_EXECUTION:
-                            # === ISSUE 275 FIX: Duplicate Symbol Guard ===
-                            # Alpaca holds one aggregate position per symbol.
-                            # If we already have an open position, skip to
-                            # prevent the TP automation race condition.
-                            try:
-                                alpaca_symbol = trade_signal.symbol.replace("/", "")
-                                existing_alpaca_pos = (
-                                    execution_engine.alpaca.get_open_position(
-                                        alpaca_symbol
-                                    )
-                                )
-                                if existing_alpaca_pos:
-                                    logger.warning(
-                                        f"ISSUE 275: Skipping execution for "
-                                        f"{trade_signal.symbol} — Alpaca already "
-                                        f"has open position (qty="
-                                        f"{cast(Any, existing_alpaca_pos).qty})",
-                                        extra={
-                                            "symbol": trade_signal.symbol,
-                                            "signal_id": trade_signal.signal_id,
-                                            "existing_qty": str(
-                                                cast(Any, existing_alpaca_pos).qty
-                                            ),
-                                        },
-                                    )
-                                    continue
-                            except APIError as e:
-                                # Position not found (404) is the expected "green path" for this check.
-                                if getattr(e, "status_code", None) == 404:
-                                    logger.debug(
-                                        f"Pre-execution check passed for {trade_signal.symbol}: No existing position found."
-                                    )
-                                else:
-                                    # Other API errors: fail-open (log & proceed) to avoid blocking trades.
-                                    logger.warning(
-                                        f"ISSUE 275: Pre-execution check failed-open for {trade_signal.symbol} due to API error: {e}",
-                                        extra={
-                                            "symbol": trade_signal.symbol,
-                                            "error": str(e),
-                                            "status_code": getattr(
-                                                e, "status_code", "unknown"
-                                            ),
-                                        },
-                                    )
-
-                            execution_start = time.time()
-                            try:
-                                position = execution_engine.execute_signal(trade_signal)
-                                execution_duration = time.time() - execution_start
-                                if position:
-                                    # CRITICAL: Persist position to Firestore for
-                                    # Position Sync Loop and TP Automation to work
-                                    position_repo.save(position)
-
-                                    # Log differentiation for Risk Blocked vs Executed
-                                    if position.trade_type == "RISK_BLOCKED":
-                                        logger.info(
-                                            f"LIFECYCLE PERSISTED: {trade_signal.symbol} (Type: {position.trade_type})",
-                                            extra={
-                                                "signal_id": trade_signal.signal_id,
-                                                "symbol": trade_signal.symbol,
-                                                "position_id": position.position_id,
-                                                "trade_type": position.trade_type,
-                                                "qty": position.qty,
-                                            },
-                                        )
-                                    else:
-                                        logger.info(
-                                            f"ORDER EXECUTED: {trade_signal.symbol}",
-                                            extra={
-                                                "signal_id": trade_signal.signal_id,
-                                                "symbol": trade_signal.symbol,
-                                                "position_id": position.position_id,
-                                                "qty": position.qty,
-                                                "duration_seconds": round(
-                                                    execution_duration, 3
-                                                ),
-                                            },
-                                        )
-                                    metrics.record_success(
-                                        "order_execution", execution_duration
-                                    )
-                                else:
-                                    # Execution was blocked by safety guards
-                                    logger.debug(
-                                        f"Execution skipped for {trade_signal.symbol} "
-                                        "(blocked by safety guards or validation)"
-                                    )
-                            except Exception as e:
-                                execution_duration = time.time() - execution_start
-                                logger.error(
-                                    f"Failed to execute order for {trade_signal.symbol}: {e}",
-                                    extra={
-                                        "signal_id": trade_signal.signal_id,
-                                        "symbol": trade_signal.symbol,
-                                        "error": str(e),
-                                    },
-                                )
-                                metrics.record_failure(
-                                    "order_execution", execution_duration
-                                )
-
-                        metrics.record_success("signal_generation", symbol_duration)
                     else:
                         logger.debug(f"No signal for {symbol}.")
                         metrics.record_success("signal_generation", symbol_duration)
@@ -1094,7 +779,7 @@ def main(
                                                     alpaca_sym
                                                 )
                                             )
-                                            alpaca_qty = float(cast(Any, alpaca_pos).qty)
+                                            alpaca_qty = float(alpaca_pos.qty)
                                             if alpaca_qty < pos.qty:
                                                 logger.warning(
                                                     f"ISSUE 275: Alpaca qty "
@@ -1259,6 +944,330 @@ def main(
                     # Advance progress bar after each symbol
                     progress.advance(task)
 
+        # Phase 2: Signal Saturation Filtering
+        # Prevents macro-level noise from spamming notifications if >50% of symbols trigger the same pattern.
+        pattern_counts = {}
+        for sig, _, _ in candidate_signals:
+            if sig.status != SignalStatus.REJECTED_BY_FILTER:
+                pattern_counts[sig.pattern_name] = (
+                    pattern_counts.get(sig.pattern_name, 0) + 1
+                )
+
+        saturation_threshold = (
+            len(portfolio_items) * settings.SIGNAL_SATURATION_THRESHOLD_PCT
+        )
+        signals_found = 0
+
+        # Phase 3: Signal Processing (Persistence, Notification, Execution)
+        for trade_signal, asset_class, symbol_duration in candidate_signals:
+            symbol = trade_signal.symbol
+            pattern_name = trade_signal.pattern_name
+
+            # Check for saturation
+            is_saturated = pattern_counts.get(pattern_name, 0) > saturation_threshold
+            if is_saturated and trade_signal.status != SignalStatus.REJECTED_BY_FILTER:
+                logger.warning(
+                    f"SIGNAL SATURATION: Pattern {pattern_name} triggered on "
+                    f"{pattern_counts[pattern_name]} symbols. Flagging as suspicious.",
+                    extra={
+                        "pattern": pattern_name,
+                        "count": pattern_counts[pattern_name],
+                        "threshold": saturation_threshold,
+                    },
+                )
+
+            # Build Notification Payload (explicit wrapper instead of dynamic attributes)
+            notification_payload = NotificationPayload(
+                signal=trade_signal,
+                is_saturated=is_saturated,
+                saturation_count=pattern_counts.get(pattern_name, 0),
+            )
+
+            # --- Handle Shadow Signals (rejected by quality gates) ---
+            if trade_signal.status == SignalStatus.REJECTED_BY_FILTER:
+                # DEDUPLICATION: Skip shadow if active signal exists (avoid noise)
+                active_signals = repo.get_active_signals(symbol)
+                if active_signals:
+                    logger.debug(
+                        f"[SHADOW] Skipping {symbol} shadow signal - active signal exists",
+                        extra={"symbol": symbol},
+                    )
+                    continue
+
+                # Persist to rejected_signals collection for audit/analysis
+                try:
+                    rejected_repo.save(trade_signal)
+                    # Send to shadow Discord channel (if configured)
+                    discord.send_shadow_signal(trade_signal)
+                    logger.info(
+                        f"[SHADOW] {trade_signal.symbol} {trade_signal.pattern_name}: "
+                        f"{trade_signal.rejection_reason}",
+                        extra={
+                            "symbol": trade_signal.symbol,
+                            "pattern": trade_signal.pattern_name,
+                            "rejection_reason": trade_signal.rejection_reason,
+                            "pattern_duration_days": trade_signal.pattern_duration_days,
+                            "pattern_classification": trade_signal.pattern_classification,
+                        },
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to persist shadow signal: {e}",
+                        extra={"symbol": trade_signal.symbol},
+                    )
+                # Shadow signals don't trigger live trading - continue to next symbol
+                continue
+
+            # --- Standard signal handling (WAITING status) ---
+            signals_found += 1
+            logger.info(
+                f"SIGNAL FOUND: {trade_signal.pattern_name} on {trade_signal.symbol}",
+                extra={
+                    "symbol": trade_signal.symbol,
+                    "pattern": trade_signal.pattern_name,
+                    "stop_loss": trade_signal.suggested_stop,
+                    "pattern_duration_days": trade_signal.pattern_duration_days,
+                    "pattern_classification": trade_signal.pattern_classification,
+                    "is_saturated": is_saturated,
+                },
+            )
+
+            # ============================================================
+            # IDEMPOTENCY GATE: Prevent redundant Discord alerts
+            # ============================================================
+            existing_signal = repo.get_by_id(trade_signal.signal_id)
+            if existing_signal:
+                # Skip if signal exists in WAITING status with discord_thread_id
+                if (
+                    existing_signal.status == SignalStatus.WAITING
+                    and existing_signal.discord_thread_id
+                ):
+                    logger.info(
+                        f"[IDEMPOTENCY] Skip notified signal {trade_signal.signal_id}",
+                        extra={
+                            "signal_id": trade_signal.signal_id,
+                            "symbol": trade_signal.symbol,
+                            "thread_id": existing_signal.discord_thread_id,
+                        },
+                    )
+                    continue
+
+                # Self-heal: If exists but discord_thread_id is null, proceed to notification
+                if not existing_signal.discord_thread_id:
+                    logger.info(
+                        f"[IDEMPOTENCY] Self-healing signal {trade_signal.signal_id} - "
+                        "missing discord_thread_id",
+                        extra={
+                            "signal_id": trade_signal.signal_id,
+                            "symbol": trade_signal.symbol,
+                        },
+                    )
+                    # Continue to notification phase to fix the missing thread_id
+
+            # ============================================================
+            # TWO-PHASE COMMIT: Prevents "Zombie Signals"
+            # (notifications sent without database tracking)
+            # ============================================================
+
+            # PHASE 1: Persist with CREATED status (establishes tracking)
+            trade_signal.status = SignalStatus.CREATED
+            persistence_start = time.time()
+            try:
+                repo.save(trade_signal)
+                persistence_duration = time.time() - persistence_start
+                logger.info(
+                    f"Signal {trade_signal.signal_id} created in Firestore",
+                    extra={
+                        "signal_id": trade_signal.signal_id,
+                        "symbol": trade_signal.symbol,
+                        "status": "CREATED",
+                        "duration_seconds": round(persistence_duration, 3),
+                    },
+                )
+                metrics.record_success("signal_persistence", persistence_duration)
+            except Exception as e:
+                persistence_duration = time.time() - persistence_start
+                logger.error(
+                    f"Failed to persist signal {trade_signal.signal_id} - "
+                    "skipping notification to prevent zombie signal",
+                    extra={
+                        "signal_id": trade_signal.signal_id,
+                        "symbol": trade_signal.symbol,
+                        "error": str(e),
+                    },
+                )
+                metrics.record_failure("signal_persistence", persistence_duration)
+                # Skip notification - can't notify without tracking
+                continue
+
+            # PHASE 2: Notify Discord
+            thread_id = None
+
+            # Self-healing: Check for existing thread (if missing in memory/DB)
+            if not trade_signal.discord_thread_id:
+                try:
+                    thread_id = discord.find_thread_by_signal_id(
+                        trade_signal.signal_id,
+                        trade_signal.symbol,
+                        asset_class,
+                    )
+                except Exception as e:
+                    logger.warning(f"Thread recovery check failed: {e}")
+
+            if thread_id:
+                logger.info(
+                    f"Self-healing: Recovered Discord thread {thread_id} "
+                    f"for signal {trade_signal.signal_id}"
+                )
+            else:
+                    # Standard execution: Create new thread (passing payload with saturation info)
+                    thread_id = discord.send_signal(notification_payload)
+
+            # PHASE 3: Update with thread_id and final status
+            if thread_id:
+                updates = {
+                    "discord_thread_id": thread_id,
+                    "status": SignalStatus.WAITING.value,
+                }
+                if repo.update_signal_atomic(trade_signal.signal_id, updates):
+                    trade_signal.discord_thread_id = thread_id
+                    trade_signal.status = SignalStatus.WAITING
+                    logger.info(
+                        "Signal activated with Discord thread",
+                        extra={
+                            "signal_id": trade_signal.signal_id,
+                            "symbol": trade_signal.symbol,
+                            "thread_id": thread_id,
+                            "status": "WAITING",
+                        },
+                    )
+                else:
+                    logger.error(
+                        f"Failed to atomic update signal {trade_signal.signal_id} after Discord notification"
+                    )
+            else:
+                # Compensation: Mark as invalidated if notification failed
+                logger.warning(
+                    f"Discord notification failed for {trade_signal.symbol} "
+                    "- marking signal as invalidated",
+                    extra={"symbol": trade_signal.symbol},
+                )
+                trade_signal.status = SignalStatus.INVALIDATED
+                trade_signal.exit_reason = ExitReason.NOTIFICATION_FAILED
+                try:
+                    repo.update_signal_atomic(
+                        trade_signal.signal_id,
+                        {
+                            "status": SignalStatus.INVALIDATED.value,
+                            "exit_reason": ExitReason.NOTIFICATION_FAILED.value,
+                        },
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Failed to invalidate signal: {e}",
+                        extra={
+                            "signal_id": trade_signal.signal_id,
+                            "error": str(e),
+                        },
+                    )
+
+            # Execute trade if execution is enabled
+            # Safety: ExecutionEngine has built-in guards for:
+            #   1. ALPACA_PAPER_TRADING must be True
+            #   2. ENABLE_EXECUTION must be True
+            if settings.ENABLE_EXECUTION:
+                # === ISSUE 275 FIX: Duplicate Symbol Guard ===
+                # Alpaca holds one aggregate position per symbol.
+                # If we already have an open position, skip to
+                # prevent the TP automation race condition.
+                try:
+                    alpaca_symbol = trade_signal.symbol.replace("/", "")
+                    existing_alpaca_pos = execution_engine.alpaca.get_open_position(
+                        alpaca_symbol
+                    )
+                    if existing_alpaca_pos:
+                        logger.warning(
+                            f"ISSUE 275: Skipping execution for "
+                            f"{trade_signal.symbol} — Alpaca already "
+                            f"has open position (qty="
+                            f"{existing_alpaca_pos.qty})",
+                            extra={
+                                "symbol": trade_signal.symbol,
+                                "signal_id": trade_signal.signal_id,
+                                "existing_qty": str(existing_alpaca_pos.qty),
+                            },
+                        )
+                        continue
+                except APIError as e:
+                    # Position not found (404) is the expected "green path" for this check.
+                    if getattr(e, "status_code", None) == 404:
+                        logger.debug(
+                            f"Pre-execution check passed for {trade_signal.symbol}: No existing position found."
+                        )
+                    else:
+                        # Other API errors: fail-open (log & proceed) to avoid blocking trades.
+                        logger.warning(
+                            f"ISSUE 275: Pre-execution check failed-open for {trade_signal.symbol} due to API error: {e}",
+                            extra={
+                                "symbol": trade_signal.symbol,
+                                "error": str(e),
+                                "status_code": getattr(e, "status_code", "unknown"),
+                            },
+                        )
+
+                execution_start = time.time()
+                try:
+                    position = execution_engine.execute_signal(trade_signal)
+                    execution_duration = time.time() - execution_start
+                    if position:
+                        # CRITICAL: Persist position to Firestore for
+                        # Position Sync Loop and TP Automation to work
+                        position_repo.save(position)
+
+                        # Log differentiation for Risk Blocked vs Executed
+                        if position.trade_type == "RISK_BLOCKED":
+                            logger.info(
+                                f"LIFECYCLE PERSISTED: {trade_signal.symbol} (Type: {position.trade_type})",
+                                extra={
+                                    "signal_id": trade_signal.signal_id,
+                                    "symbol": trade_signal.symbol,
+                                    "position_id": position.position_id,
+                                    "trade_type": position.trade_type,
+                                    "qty": position.qty,
+                                },
+                            )
+                        else:
+                            logger.info(
+                                f"ORDER EXECUTED: {trade_signal.symbol}",
+                                extra={
+                                    "signal_id": trade_signal.signal_id,
+                                    "symbol": trade_signal.symbol,
+                                    "position_id": position.position_id,
+                                    "qty": position.qty,
+                                    "duration_seconds": round(execution_duration, 3),
+                                },
+                            )
+                        metrics.record_success("order_execution", execution_duration)
+                    else:
+                        # Execution was blocked by safety guards
+                        logger.debug(
+                            f"Execution skipped for {trade_signal.symbol} "
+                            "(blocked by safety guards or validation)"
+                        )
+                except Exception as e:
+                    execution_duration = time.time() - execution_start
+                    logger.error(
+                        f"Failed to execute order for {trade_signal.symbol}: {e}",
+                        extra={
+                            "signal_id": trade_signal.signal_id,
+                            "symbol": trade_signal.symbol,
+                            "error": str(e),
+                        },
+                    )
+                    metrics.record_failure("order_execution", execution_duration)
+
+            metrics.record_success("signal_processing", symbol_duration)
+
         # =========================================================================
         # POSITION SYNC LOOP
         # Synchronize open positions with Alpaca broker state.
@@ -1404,9 +1413,7 @@ def main(
                     },
                 )
             except Exception as e:
-                logger.error(
-                    "Position sync failed.", exc_info=True, extra={"error": str(e)}
-                )
+                logger.error(f"Position sync failed: {e}", exc_info=True)
                 metrics.record_failure("position_sync", time.time() - sync_start)
 
         # Display Rich execution summary table
@@ -1451,11 +1458,7 @@ def main(
         )
 
     except Exception as e:
-        logger.critical(
-            "Fatal error in main application loop.",
-            exc_info=True,
-            extra={"error": str(e)},
-        )
+        logger.critical(f"Fatal error in main application loop: {e}", exc_info=True)
         sys.exit(1)
 
 

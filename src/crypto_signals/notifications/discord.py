@@ -10,7 +10,13 @@ from typing import Any, Dict, Optional
 import requests  # type: ignore
 from crypto_signals.analysis.patterns import MACRO_PATTERN
 from crypto_signals.config import Settings, get_settings
-from crypto_signals.domain.schemas import AssetClass, Position, Signal, TradeType
+from crypto_signals.domain.schemas import (
+    AssetClass,
+    NotificationPayload,
+    Position,
+    Signal,
+    TradeType,
+)
 from loguru import logger
 
 # =============================================================================
@@ -271,7 +277,9 @@ class DiscordClient:
             return None
 
     def send_signal(
-        self, signal: Signal, thread_name: Optional[str] = None
+        self,
+        payload_or_signal: Signal | NotificationPayload,
+        thread_name: Optional[str] = None,
     ) -> Optional[str]:
         """
         Send a formatted signal alert to Discord and return the thread ID.
@@ -283,13 +291,22 @@ class DiscordClient:
         Automatically generates thread_name for Forum channels if not provided.
 
         Args:
-            signal: The signal to broadcast.
+            payload_or_signal: The signal (or wrapper with metadata) to broadcast.
             thread_name: Optional thread name override for Forum Channels.
                         If not provided, auto-generates from signal pattern/symbol.
 
         Returns:
             Optional[str]: The thread_id (message ID) if successful, None otherwise.
         """
+        if isinstance(payload_or_signal, NotificationPayload):
+            signal = payload_or_signal.signal
+            is_saturated = payload_or_signal.is_saturated
+            saturation_count = payload_or_signal.saturation_count
+        else:
+            signal = payload_or_signal
+            is_saturated = False
+            saturation_count = 0
+
         webhook_url = self._get_webhook_url(signal.asset_class)
         if not webhook_url:
             logger.critical(
@@ -298,7 +315,7 @@ class DiscordClient:
             )
             return None
 
-        message = self._format_message(signal)
+        message = self._format_message(signal, is_saturated, saturation_count)
 
         # FORUM CHANNEL LOGIC: Add thread_name if enabled
         # Also auto-generate in TEST_MODE to prevent 400s if dev webhook is a Forum
@@ -638,7 +655,9 @@ class DiscordClient:
             logger.error(f"Failed to send trade close notification: {e}")
             return False
 
-    def _format_message(self, signal: Signal) -> Dict[str, Any]:
+    def _format_message(
+        self, signal: Signal, is_saturated: bool = False, saturation_count: int = 0
+    ) -> Dict[str, Any]:
         """
         Format the signal into a Discord payload.
 
@@ -649,6 +668,8 @@ class DiscordClient:
 
         Args:
             signal: The signal object.
+            is_saturated: Whether macro-level saturation was detected.
+            saturation_count: Number of symbols triggering the same pattern.
 
         Returns:
             Dict[str, Any]: JSON payload for Discord.
@@ -664,9 +685,8 @@ class DiscordClient:
         if signal.pattern_classification == MACRO_PATTERN:
             macro_label = "[MACRO SETUP] "
 
-        # SATURATION WARNING OVERRIDE
-        if getattr(signal, "_saturation_warning", False):
-            saturation_count = getattr(signal, "_saturation_count", "?")
+        # SATURATION WARNING OVERRIDE (Explicit via Payload)
+        if is_saturated:
             macro_label = f"[SATURATION: {saturation_count} SYMBOLS] "
             emoji = "⚠️"
 
