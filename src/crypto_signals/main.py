@@ -953,7 +953,9 @@ def main(
                     pattern_counts.get(sig.pattern_name, 0) + 1
                 )
 
-        saturation_threshold = len(portfolio_items) * 0.5
+        saturation_threshold = (
+            len(portfolio_items) * settings.SIGNAL_SATURATION_THRESHOLD_PCT
+        )
         signals_found = 0
 
         # Phase 3: Signal Processing (Persistence, Notification, Execution)
@@ -973,11 +975,13 @@ def main(
                         "threshold": saturation_threshold,
                     },
                 )
-                # Attach warning to signal for Discord
-                object.__setattr__(trade_signal, "_saturation_warning", True)
-                object.__setattr__(
-                    trade_signal, "_saturation_count", pattern_counts[pattern_name]
-                )
+
+            # Build Notification Payload (explicit wrapper instead of dynamic attributes)
+            notification_payload = NotificationPayload(
+                signal=trade_signal,
+                is_saturated=is_saturated,
+                saturation_count=pattern_counts.get(pattern_name, 0),
+            )
 
             # --- Handle Shadow Signals (rejected by quality gates) ---
             if trade_signal.status == SignalStatus.REJECTED_BY_FILTER:
@@ -1116,8 +1120,8 @@ def main(
                     f"for signal {trade_signal.signal_id}"
                 )
             else:
-                # Standard execution: Create new thread
-                thread_id = discord.send_signal(trade_signal)
+                    # Standard execution: Create new thread (passing payload with saturation info)
+                    thread_id = discord.send_signal(notification_payload)
 
             # PHASE 3: Update with thread_id and final status
             if thread_id:
@@ -1262,7 +1266,7 @@ def main(
                     )
                     metrics.record_failure("order_execution", execution_duration)
 
-            metrics.record_success("signal_generation", symbol_duration)
+            metrics.record_success("signal_processing", symbol_duration)
 
         # =========================================================================
         # POSITION SYNC LOOP
