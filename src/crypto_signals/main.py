@@ -14,6 +14,8 @@ from typing import Any, Callable, Optional, Protocol
 
 import typer
 from alpaca.common.exceptions import APIError
+from google.api_core.exceptions import PermissionDenied, Unauthenticated
+from google.auth.exceptions import DefaultCredentialsError
 from loguru import logger
 
 from crypto_signals.analysis.structural import warmup_jit
@@ -263,15 +265,11 @@ def main(
                     f"✅ Firestore: Performance Check Passed (<{LATENCY_SLA_MS}ms)"
                 )
 
+            except (DefaultCredentialsError, Unauthenticated, PermissionDenied) as e:
+                logger.warning(f"⚠️  Firestore: Skipped (auth/permission issue) - {e}")
             except Exception as e:
-                # Distinguish between "no credentials" (expected in some CI environments)
-                # and actual query failures (which should fail the smoke test)
-                error_msg = str(e).lower()
-                if "credentials" in error_msg or "authenticated" in error_msg:
-                    logger.warning(f"⚠️  Firestore: Skipped (no credentials) - {e}")
-                else:
-                    logger.error(f"❌ Firestore: Performance Check Failed - {e}")
-                    sys.exit(1)
+                logger.error(f"❌ Firestore: Performance Check Failed - {e}")
+                sys.exit(1)
 
             # 2. Verify settings loaded
             if not settings.GOOGLE_CLOUD_PROJECT:
