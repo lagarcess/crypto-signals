@@ -74,6 +74,7 @@ def test_pipeline_validates_schema_before_running(pipeline):
     pipeline.mock_guardian_instance.validate_schema.assert_any_call(
         table_id="proj.ds.stg",
         model=MockModel,
+        require_partitioning=True,
     )
 
 
@@ -119,9 +120,14 @@ def test_pipeline_validates_clustering(pipeline):
     pipeline.run()
 
     instance = pipeline.mock_guardian_instance
-    instance.validate_schema.assert_called_with(
+    instance.validate_schema.assert_any_call(
         table_id="proj.ds.fact",
         model=MockModel,
         require_partitioning=True,
         clustering_fields=["id"],
+    )
+    instance.validate_schema.assert_any_call(
+        table_id="proj.ds.stg",
+        model=MockModel,
+        require_partitioning=True,
     )

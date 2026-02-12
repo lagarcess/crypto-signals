@@ -291,6 +291,7 @@ class BigQueryPipelineBase(ABC):
                     self.guardian.validate_schema(
                         table_id=self.staging_table_id,
                         model=self.schema_model,
+                        require_partitioning=True,
                     )
                 except (SchemaMismatchError, NotFound) as e:
                     logger.warning(
