@@ -748,7 +748,7 @@ def main(
                                     continue
                             except APIError as e:
                                 # Position not found (404) is the expected "green path" for this check.
-                                if hasattr(e, "status_code") and e.status_code == 404:
+                                if getattr(e, "status_code", None) == 404:
                                     logger.debug(
                                         f"Pre-execution check passed for {trade_signal.symbol}: No existing position found."
                                     )
@@ -1029,7 +1029,7 @@ def main(
                                                 )
                                                 pos.qty = alpaca_qty
                                         except APIError as e:
-                                            if e.status_code == 404:
+                                            if getattr(e, "status_code", None) == 404:
                                                 # Position gone from Alpaca (confirmed)
                                                 logger.warning(
                                                     f"Position {pos.position_id} not "
