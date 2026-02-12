@@ -72,7 +72,7 @@ configure_logging(level="INFO")
 warmup_jit()
 
 # Performance SLA Constants
-LATENCY_SLA_MS = 100
+LATENCY_SLA_MS = 2000  # 2 seconds (relaxed for Cloud Run cold starts)
 QUERY_ERROR_SENTINEL = 9999
 
 # Global flag for graceful shutdown
