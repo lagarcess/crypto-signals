@@ -67,7 +67,19 @@ gcloud alpha monitoring policies create --policy-from-file="docs/gcp-alerts/job-
 
 ---
 
-### 1.3 Execution Time Alert (Future)
+### 1.3 Firestore Latency SLA (Automated)
+
+**Purpose:** Ensure Risk Engine queries (sector caps) perform under 100ms to prevent execution slippage.
+
+**Configuration:**
+- **Mechanism:** Integrated into `--smoke-test`.
+- **Threshold:** 100ms.
+- **Metric:** `latency_ms` (Logged as structured metadata).
+- **Alerting:** Smoke test failure triggers the standard **Job Failure Alert**.
+
+**Why 100ms:** Firestore queries without appropriate composite indexes fallback to full table scans. As the database grows, this latency increases, potentially causing timeouts during the critical trade execution window.
+
+### 1.4 Execution Time Alert (Future)
 
 > [!NOTE]
 > This alert was not created due to CLI limitations. Consider adding manually via Cloud Console when needed.

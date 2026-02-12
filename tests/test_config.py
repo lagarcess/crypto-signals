@@ -20,7 +20,11 @@ def base_env():
 def test_settings_ttl_days_position(base_env):
     """Verify TTL_DAYS_POSITION exists and defaults to 90."""
     with patch.dict(os.environ, base_env):
-        settings = Settings()
+        try:
+            settings = Settings(_env_file=None)
+        except Exception as e:
+            print(f"\n\nSETTINGS INSTANTIATION FAILED: {e}\n\n")
+            raise e
         assert hasattr(settings, "TTL_DAYS_POSITION")
         assert settings.TTL_DAYS_POSITION == 90
 
@@ -28,7 +32,7 @@ def test_settings_ttl_days_position(base_env):
 def test_settings_cooldown_scope_defaults_to_symbol(base_env):
     """Verify COOLDOWN_SCOPE defaults to SYMBOL (conservative mode)."""
     with patch.dict(os.environ, base_env):
-        settings = Settings()
+        settings = Settings(_env_file=None)
         assert hasattr(settings, "COOLDOWN_SCOPE")
         assert settings.COOLDOWN_SCOPE == "SYMBOL"
 
@@ -38,7 +42,7 @@ def test_settings_cooldown_scope_can_be_set_to_pattern(base_env):
     env = base_env.copy()
     env["COOLDOWN_SCOPE"] = "PATTERN"
     with patch.dict(os.environ, env):
-        settings = Settings()
+        settings = Settings(_env_file=None)
         assert settings.COOLDOWN_SCOPE == "PATTERN"
 
 
@@ -49,7 +53,7 @@ def test_validate_credentials_if_execution_enabled(base_env):
     env["ALPACA_API_KEY"] = ""
     with patch.dict(os.environ, env):
         with pytest.raises(ValidationError):
-            Settings()
+            Settings(_env_file=None)
 
 
 def test_validate_credentials_if_execution_disabled(base_env):
@@ -58,7 +62,7 @@ def test_validate_credentials_if_execution_disabled(base_env):
     env["ENABLE_EXECUTION"] = "False"
     env["ALPACA_API_KEY"] = ""
     with patch.dict(os.environ, env):
-        Settings()
+        Settings(_env_file=None)
 
 
 def test_parse_list_from_str(base_env):
@@ -66,7 +70,7 @@ def test_parse_list_from_str(base_env):
     env = base_env.copy()
     env["CRYPTO_SYMBOLS"] = "BTC/USD, ETH/USD ,  XRP/USD"
     with patch.dict(os.environ, env):
-        settings = Settings()
+        settings = Settings(_env_file=None)
         assert settings.CRYPTO_SYMBOLS == ["BTC/USD", "ETH/USD", "XRP/USD"]
 
 

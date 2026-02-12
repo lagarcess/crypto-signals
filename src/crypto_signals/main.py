@@ -14,6 +14,8 @@ from typing import Any, Callable, Optional, Protocol
 
 import typer
 from alpaca.common.exceptions import APIError
+from google.api_core.exceptions import PermissionDenied, Unauthenticated
+from google.auth.exceptions import DefaultCredentialsError
 from loguru import logger
 
 from crypto_signals.analysis.structural import warmup_jit
@@ -69,6 +71,9 @@ configure_logging(level="INFO")
 # Pre-compile Numba JIT functions to avoid cold-start latency in live trading
 warmup_jit()
 
+# Performance SLA Constants
+LATENCY_SLA_MS = 100
+QUERY_ERROR_SENTINEL = 9999
 
 # Global flag for graceful shutdown
 shutdown_requested = False
@@ -222,8 +227,49 @@ def main(
                 # Initializing repository creates the Firestore client
                 JobLockRepository()
                 logger.info("✅ Firestore: Client Initialized")
+
+                # 1b. Performance Check: Firestore Latency (Issue #128)
+                # Enforces 100ms SLA for sector cap queries to prevent slippage
+                pos_repo = PositionRepository()
+                start_time = time.perf_counter()
+
+                # Execute a representative sector cap query
+                count = pos_repo.count_open_positions_by_class(AssetClass.CRYPTO)
+                latency_ms = (time.perf_counter() - start_time) * 1000
+
+                # Log latency as a metric for Cloud Monitoring
+                logger.info(
+                    f"⏱️  Firestore Latency: {latency_ms:.2f}ms",
+                    extra={
+                        "metric_type": "latency_check",
+                        "latency_ms": latency_ms,
+                        "query_type": "count_open_positions_by_class",
+                        "asset_class": AssetClass.CRYPTO.value,
+                    },
+                )
+
+                if count == QUERY_ERROR_SENTINEL:
+                    # count_open_positions_by_class returns sentinel when it catches an internal exception
+                    logger.error(
+                        f"❌ Firestore: Performance Check Failed - Query failed (returned {QUERY_ERROR_SENTINEL})."
+                    )
+                    sys.exit(1)
+                elif latency_ms > LATENCY_SLA_MS:
+                    logger.error(
+                        f"❌ Firestore: Performance Check Failed - Latency {latency_ms:.2f}ms exceeds {LATENCY_SLA_MS}ms threshold. "
+                        "Check for missing composite indexes or degraded performance."
+                    )
+                    sys.exit(1)
+
+                logger.info(
+                    f"✅ Firestore: Performance Check Passed (<{LATENCY_SLA_MS}ms)"
+                )
+
+            except (DefaultCredentialsError, Unauthenticated, PermissionDenied) as e:
+                logger.warning(f"⚠️  Firestore: Skipped (auth/permission issue) - {e}")
             except Exception as e:
-                logger.warning(f"⚠️  Firestore: Skipped (no credentials) - {e}")
+                logger.error(f"❌ Firestore: Performance Check Failed - {e}")
+                sys.exit(1)
 
             # 2. Verify settings loaded
             if not settings.GOOGLE_CLOUD_PROJECT:
