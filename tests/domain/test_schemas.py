@@ -665,7 +665,11 @@ class TestStrategyConfigDefaults:
         # Should contain default values for ConfluenceConfig
         assert serialized["confluence_config"] == {
             "rsi_period": 14,
+            "rsi_threshold": 70.0,
+            "adx_period": 14,
             "adx_threshold": 25.0,
+            "volume_threshold": 1.5,
+            "sma_period": 200,
         }
         assert "pattern_overrides" in serialized
         assert serialized["pattern_overrides"] == {}

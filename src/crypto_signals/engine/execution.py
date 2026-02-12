@@ -105,14 +105,12 @@ class ExecutionEngine:
             self.account_id = str(self.alpaca.get_account().id)
         except APIError as e:
             logger.warning(
-                "Failed to fetch Alpaca account ID: {}. Defaulting to 'unknown'.",
-                str(e),
+                "Failed to fetch Alpaca account ID. Defaulting to 'unknown'.",
                 extra={"error": str(e)},
             )
         except Exception as e:
             logger.error(
-                "An unexpected error occurred while fetching Alpaca account ID: {}. Defaulting to 'unknown'.",
-                str(e),
+                "An unexpected error occurred while fetching Alpaca account ID. Defaulting to 'unknown'.",
                 extra={"error": str(e)},
             )
 

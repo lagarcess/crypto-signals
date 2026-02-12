@@ -74,8 +74,12 @@ class TestStrategySyncUpdate:
         assert "confluence_config" in record
         # ConfluenceConfig model includes defaults on serialization
         assert json.loads(record["confluence_config"]) == {
-            "adx_threshold": 25.0,
             "rsi_period": 14,
+            "rsi_threshold": 70.0,
+            "adx_period": 14,
+            "adx_threshold": 25.0,
+            "volume_threshold": 1.5,
+            "sma_period": 200,
         }
 
         assert "pattern_overrides" in record
@@ -139,8 +143,12 @@ class TestStrategySyncUpdate:
         # Input was {"rsi": 14} but ConfluenceConfig has rsi_period and adx_threshold
         # Since "rsi" is not a known field, it's stored via extra="allow"
         assert json.loads(record["confluence_config"]) == {
-            "adx_threshold": 25.0,
-            "rsi": 14,
             "rsi_period": 14,
+            "rsi_threshold": 70.0,
+            "adx_period": 14,
+            "adx_threshold": 25.0,
+            "volume_threshold": 1.5,
+            "sma_period": 200,
+            "rsi": 14,
         }
         assert record["pattern_overrides"] == '{"engulfing": {"p": 1}}'
