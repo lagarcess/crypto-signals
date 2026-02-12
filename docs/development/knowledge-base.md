@@ -165,6 +165,12 @@
 - [2026-02-05] **Maintenance Scripts**: Dangerous maintenance scripts (like `purge_signals.py`) should be consistently gated by `ENVIRONMENT != "PROD"` checks AND explicit user confirmation prompts (`Confirm.ask`) to prevent accidental data loss in production.
 
 - [2026-02-11] **BigQuery Schema**: Adding REQUIRED columns to existing tables is forbidden; must use NULLABLE. migrate_schema must check not just for missing columns but for type compatibility of existing columns to prevent data corruption.
-- [2026-02-11] **MyPy/Alpaca**: When iterating over lists of complex objects (like lpaca.trading.models.Position), extensive use of 	yping.cast() or intermediate variables with explicit type hints is often necessary to resolve Union attribute errors.
-
+- [2026-02-11] **MyPy/Alpaca**: When iterating over lists of complex objects (like `alpaca.trading.models.Position`), extensive use of `typing.cast()` or intermediate variables with explicit type hints is often necessary to resolve Union attribute errors.
 - [2026-02-11] **Alpaca-py Type Hints**: `get_all_positions()` has a return type of `List[Union[Position, RawData]]` which confuses strict type checkers. Explicitly typing variables as `List[Position]` does not narrow the type. The verified workaround is to use `# type: ignore` on valid usages where runtime behavior is known to be correct.
+
+### Execution & Risk
+- [2026-02-10] **Impedance Mismatch**: Alpaca uses an *aggregate* position model (one per symbol), while Firestore uses a *discrete* model (one per signal). This requires strict application-level guards (validating `signal_id` on close) to prevent "phantom sells" where an old signal's exit logic inadvertently closes a newly opened position for the same symbol.
+- [2026-02-10] **API Exception Patterns**: `alpaca.get_open_position(symbol)` raises an exception (404) if no position exists, instead of returning `None`. Code must wrap this in `try-except` to interpret "Not Found" correctly as "Zero Quantity" rather than a system error.
+- [2026-02-10] **Fail-Open Strategy**: For high-frequency pre-execution guards (like "Check Duplicate Symbol"), a "Fail-Open" pattern (log exception but proceed) is often safer than "Fail-Closed". It prevents transient API flakiness (e.g. rate limits) from paralyzing the entire trading engine, accepting a marginal risk of duplication during outages.
+- [2026-02-10] **SDK Exceptions**: `alpaca-py`'s `APIError` embeds the status code in the underlying `http_error.response`. Mocks must replicate this structure (`mock_http_error.response.status_code = 404`) rather than setting `.status_code` on the exception instance directly, which is read-only.
+- [2026-02-10] **Critical Error Handling**: Never use bare `except Exception` in financial logic. It masks `AttributeError` (bugs) and conflates transient failures (500) with state confirmations (404). Always check specific error codes before performing destructive actions (like closing positions).
