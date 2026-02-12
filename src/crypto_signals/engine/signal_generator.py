@@ -54,13 +54,12 @@ class SignalGenerator:
         if signal_repo:
             self.signal_repo = signal_repo
         else:
-            # Issue #117: Initialize signal repository for cooldown checks
+            # Issue #117: Initialize for cooldown checks
             from crypto_signals.repository.firestore import SignalRepository
 
             self.signal_repo = SignalRepository()
 
-        # Initialize PositionRepository for Pyramiding Protection (Double Buy Check)
-        # We use a lazy import/init pattern if not injected, similar to signal_repo
+        # Lazy init PositionRepository for Pyramiding Protection
         from crypto_signals.repository.firestore import PositionRepository
 
         self.position_repo = PositionRepository()
@@ -82,27 +81,14 @@ class SignalGenerator:
             True if in cooldown (block trade), False if allowed or no recent exit
 
         Algorithm:
-            1. Query for most recent exit (TP1_HIT/TP2_HIT/TP3_HIT/INVALIDATED) within 48h
-            2. If no recent exit → Allow trade (return False)
-            3. If recent exit exists:
-               a. Get actual exit level from signal status:
-                  - TP1_HIT → use take_profit_1
-                  - TP2_HIT → use take_profit_2
-                  - TP3_HIT → use take_profit_3
-                  - INVALIDATED → use suggested_stop (revenge trading prevention)
-               b. Calculate price change % from exit level (FIX #1)
-               c. If ≥10% move → Allow trade (escape valve)
-               d. If <10% move → Block trade (cooldown active)
-
-        Config:
-            COOLDOWN_SCOPE (from config.py):
-            - "SYMBOL": Block all patterns (conservative, default)
-            - "PATTERN": Block only same pattern (flexible)
+            1. Query for recent exit (TP/INVALIDATED) within 48h.
+            2. If recent exit found, check price movement from exit level.
+            3. If move < 10%, block trade.
         """
         COOLDOWN_HOURS = 48
         PRICE_THRESHOLD_PCT = 10.0
 
-        # Strategic Feedback: Use COOLDOWN_SCOPE config to determine blocking behavior
+        # Use COOLDOWN_SCOPE config to determine blocking behavior
         settings = get_settings()
         cooldown_scope = getattr(settings, "COOLDOWN_SCOPE", "SYMBOL")
 
@@ -118,9 +104,8 @@ class SignalGenerator:
         if not recent_exit:
             return False  # No recent exit, allow trade
 
-        # FIX #1: Determine actual exit level based on signal status
-        # (not entry_price - this prevents TP3@120, price@121.5 = 21% bug)
-        # Strategic Feedback: Include INVALIDATED (stop-loss) to prevent revenge trading
+        # Determine actual exit level based on signal status
+        # Include INVALIDATED to prevent revenge trading
         exit_level_map = {
             SignalStatus.TP1_HIT: recent_exit.take_profit_1,
             SignalStatus.TP2_HIT: recent_exit.take_profit_2,
@@ -189,8 +174,7 @@ class SignalGenerator:
         Returns:
             Signal: Validated signal object if a pattern is found, else None.
         """
-        # 0. Pyramiding Protection: Check for existing open position
-        # Prevent "Double Buys" (Stacking) if a position is already open and managed
+        # 0. Check for existing open position (Pyramiding Protection)
         if self.position_repo.get_open_position_by_symbol(symbol):
             logger.info(
                 f"Skipping signal generation for {symbol} - Open position exists."

@@ -53,30 +53,28 @@ class RiskEngine:
         Orchestrate all risk checks for a signal.
         order matters: Fail fast on cheapest checks first.
         """
-        # 1. Daily Drawdown (Protect Capital First)
+        # 1. Daily Drawdown
         drawdown_check = self.check_daily_drawdown()
         if not drawdown_check.passed:
             return drawdown_check
 
-        # 2. Duplicate Symbol Check (No Pyramiding)
+        # 2. Duplicate Symbol Check
         duplicate_check = self.check_duplicate_symbol(signal)
         if not duplicate_check.passed:
             return duplicate_check
 
-        # 3. Sector Limits (Portfolio Balance)
+        # 3. Sector Limits
         sector_check = self.check_sector_limit(signal.asset_class)
         if not sector_check.passed:
             return sector_check
 
-        # 3. Correlation Risk (Portfolio Diversification) - Expensive (Data Fetch)
+        # 4. Correlation Risk
         correlation_check = self.check_correlation(signal)
         if not correlation_check.passed:
             return correlation_check
 
-        # 4. Buying Power (Broker Constraints) - Most expensive call (API) if not cached
-        # Note: We need an estimated cost. Using RISK_PER_TRADE is a safe floor,
-        # but ideally we use (entry * qty). Since we haven't calc'd qty yet,
-        # we check if we have at least MIN_ASSET_BP_USD available.
+        # 5. Buying Power
+        # Note: Using RISK_PER_TRADE as cost estimate since qty not yet calculated.
         bp_check = self.check_buying_power(
             signal.asset_class, self.settings.MIN_ASSET_BP_USD
         )
