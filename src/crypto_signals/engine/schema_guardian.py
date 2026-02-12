@@ -112,6 +112,10 @@ class SchemaGuardian:
         """
         schema = []
         for name, field_info in model.model_fields.items():
+            # Skip excluded fields (Issue #149: scaled_out_prices, etc.)
+            if field_info.exclude:
+                continue
+
             # 1. Resolve Type
             python_type = field_info.annotation
 

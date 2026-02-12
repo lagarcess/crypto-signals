@@ -197,7 +197,8 @@ def test_run_calls_schema_guardian(pipeline, mock_firestore, sample_fact_rejecte
     pipeline.run()
 
     # Assert that SchemaGuardian.validate_schema was called
-    pipeline.guardian.validate_schema.assert_called_once()
+    # Now called twice (fact and staging)
+    assert pipeline.guardian.validate_schema.call_count == 2
 
 
 def test_extract_cutoff_date(pipeline, mock_firestore):

@@ -59,15 +59,17 @@ class BigQueryPipelineBase(ABC):
         self.schema_model = schema_model
         self.clustering_fields = clustering_fields
 
+        # Load settings once to ensure consistency and support patching in tests
+        self.settings = get_settings()
+
         # Initialize BigQuery Client
         # We use the project from settings to ensure we target the right GCP env
-        self.bq_client = bigquery.Client(project=get_settings().GOOGLE_CLOUD_PROJECT)
+        self.bq_client = bigquery.Client(project=self.settings.GOOGLE_CLOUD_PROJECT)
 
         # Initialize Schema Guardian
         # Note: V1 enforces Strict Mode everywhere.
-        settings = get_settings()
         self.guardian = SchemaGuardian(
-            self.bq_client, strict_mode=settings.SCHEMA_GUARDIAN_STRICT_MODE
+            self.bq_client, strict_mode=self.settings.SCHEMA_GUARDIAN_STRICT_MODE
         )
 
     @abstractmethod
@@ -264,11 +266,12 @@ class BigQueryPipelineBase(ABC):
                 # It will also raise NotFound if table doesn't exist
                 _validate_schema()
             except (SchemaMismatchError, NotFound) as e:
-                settings = get_settings()
                 logger.warning(
-                    f"[{self.job_name}] Schema issue detected: {e}. Attempting auto-migration/creation..."
+                    "[{}] Schema issue detected on fact table: {}. Attempting auto-migration/creation...",
+                    self.job_name,
+                    str(e),
                 )
-                if settings.SCHEMA_MIGRATION_AUTO:
+                if self.settings.SCHEMA_MIGRATION_AUTO:
                     # migrate_schema handles both creation (if missing) and updates (if mismatched)
                     self.guardian.migrate_schema(
                         self.fact_table_id,
@@ -277,10 +280,30 @@ class BigQueryPipelineBase(ABC):
                     )
 
                     # Retry validation to ensure compliance
-                    logger.info(f"[{self.job_name}] Re-validating BigQuery Schema...")
+                    logger.info(f"[{self.job_name}] Re-validating Fact Table Schema...")
                     _validate_schema()
                 else:
                     raise
+
+            # 0b. Pre-flight Check: Ensure Staging Table exists
+            if self.settings.SCHEMA_MIGRATION_AUTO:
+                try:
+                    self.guardian.validate_schema(
+                        table_id=self.staging_table_id,
+                        model=self.schema_model,
+                        require_partitioning=True,
+                    )
+                except (SchemaMismatchError, NotFound) as e:
+                    logger.warning(
+                        "[{}] Schema issue detected on staging table: {}. Attempting auto-migration/creation...",
+                        self.job_name,
+                        str(e),
+                    )
+                    self.guardian.migrate_schema(
+                        self.staging_table_id,
+                        self.schema_model,
+                        partition_column=self.partition_column,
+                    )
 
             # 1. Extract
             raw_data = self.extract()
@@ -314,6 +337,7 @@ class BigQueryPipelineBase(ABC):
             return len(transformed_data)
 
         except Exception as e:
-            logger.error(f"[{self.job_name}] Pipeline FAILED: {str(e)}", exc_info=True)
+            # Use structured logging to avoid f-string formatting issues with Loguru (Issue #149)
+            logger.opt(exception=True).error("[{}] Pipeline FAILED: {}", self.job_name, str(e))
             # CRITICAL: Re-raise to ensure job failure is reported to Cloud Run
             raise

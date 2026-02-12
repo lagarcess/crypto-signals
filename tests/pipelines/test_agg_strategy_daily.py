@@ -136,7 +136,8 @@ def test_run_flow(pipeline):
     assert pipeline._create_table_if_not_exists.call_count == 2  # Fact and Staging
 
     # Check base flow
-    pipeline.guardian.validate_schema.assert_called_once()
+    # Now called twice (fact and staging)
+    assert pipeline.guardian.validate_schema.call_count == 2
     pipeline.extract.assert_called_once()
     pipeline._truncate_staging.assert_called_once()
     pipeline._load_to_staging.assert_called_once()

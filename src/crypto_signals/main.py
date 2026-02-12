@@ -10,7 +10,7 @@ import signal
 import sys
 import time
 from datetime import date, datetime, timezone
-from typing import Any, Callable, Optional, Protocol
+from typing import Any, Callable, Optional, Protocol, cast
 
 import typer
 from alpaca.common.exceptions import APIError
@@ -793,11 +793,13 @@ def main(
                                         f"ISSUE 275: Skipping execution for "
                                         f"{trade_signal.symbol} — Alpaca already "
                                         f"has open position (qty="
-                                        f"{existing_alpaca_pos.qty})",
+                                        f"{cast(Any, existing_alpaca_pos).qty})",
                                         extra={
                                             "symbol": trade_signal.symbol,
                                             "signal_id": trade_signal.signal_id,
-                                            "existing_qty": str(existing_alpaca_pos.qty),
+                                            "existing_qty": str(
+                                                cast(Any, existing_alpaca_pos).qty
+                                            ),
                                         },
                                     )
                                     continue
@@ -1074,7 +1076,7 @@ def main(
                                                     alpaca_sym
                                                 )
                                             )
-                                            alpaca_qty = float(alpaca_pos.qty)
+                                            alpaca_qty = float(cast(Any, alpaca_pos).qty)
                                             if alpaca_qty < pos.qty:
                                                 logger.warning(
                                                     f"ISSUE 275: Alpaca qty "

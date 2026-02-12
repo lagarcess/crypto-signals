@@ -210,3 +210,35 @@ def test_run_skips_if_extract_empty(pipeline):
         with patch.object(pipeline, "_truncate_staging") as mock_trunc:
             pipeline.run()
             mock_trunc.assert_not_called()
+
+
+def test_run_ensures_both_tables_exist(pipeline, mock_bq_client):
+    """Test that run ensures both fact and staging tables exist."""
+    from google.api_core.exceptions import NotFound
+    with (
+        patch.object(pipeline, "extract", return_value=[]),
+        patch("crypto_signals.pipelines.base.get_settings") as mock_settings,
+    ):
+        mock_settings.return_value.SCHEMA_MIGRATION_AUTO = True
+        mock_settings.return_value.SCHEMA_GUARDIAN_STRICT_MODE = True
+
+        # Force NotFound for both tables to trigger migrate_schema
+        # 1. Fact Table (first try) -> NotFound
+        # 2. Fact Table (retry) -> Success
+        # 3. Staging Table -> NotFound
+        pipeline.guardian.validate_schema.side_effect = [NotFound("Not Found"), None, NotFound("Not Found")]
+
+        pipeline.run()
+
+        # Should be called for both fact and staging
+        # migrate_schema is called via guardian
+        pipeline.guardian.migrate_schema.assert_any_call(
+            pipeline.fact_table_id,
+            pipeline.schema_model,
+            partition_column=pipeline.partition_column,
+        )
+        pipeline.guardian.migrate_schema.assert_any_call(
+            pipeline.staging_table_id,
+            pipeline.schema_model,
+            partition_column=pipeline.partition_column,
+        )

@@ -287,3 +287,19 @@ def test_migrate_schema_detects_type_mismatch(guardian, mock_bq_client):
 
     assert "Type mismatch for column 'age'" in str(exc.value)
     assert "Expected INTEGER, Found STRING" in str(exc.value)
+
+
+def test_generate_schema_respects_exclude_flag(guardian):
+    """Test that generate_schema skips fields marked as exclude=True."""
+    from pydantic import Field
+
+    class ExcludeModel(BaseModel):
+        included: str
+        excluded: str = Field(..., exclude=True)
+
+    schema = guardian.generate_schema(ExcludeModel)
+
+    # Should only have one field
+    assert len(schema) == 1
+    assert schema[0].name == "included"
+    assert "excluded" not in [f.name for f in schema]
