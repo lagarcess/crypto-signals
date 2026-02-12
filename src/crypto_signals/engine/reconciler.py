@@ -9,11 +9,7 @@ Example:
     >>> from crypto_signals.repository.firestore import PositionRepository
     >>> from crypto_signals.notifications.discord import DiscordClient
     >>>
-    >>> reconciler = StateReconciler(
-    ...     alpaca_client=get_trading_client(),
-    ...     position_repo=PositionRepository(),
-    ...     discord_client=DiscordClient(),
-    ... )
+    >>> reconciler = StateReconciler(get_trading_client(), PositionRepository(), DiscordClient())
     >>> report = reconciler.reconcile()
     >>> if report.critical_issues:
     ...     print(f"Issues detected: {report.critical_issues}")
@@ -41,16 +37,7 @@ from loguru import logger
 class StateReconciler:
     """
     Detects and resolves synchronization gaps between Alpaca and Firestore.
-
-    **Zombie Positions**: Firestore shows OPEN, but Alpaca shows closed
-    (user closed manually, stop-loss filled, or partial fill).
-    Resolution: Mark CLOSED_EXTERNALLY in Firestore.
-
-    **Orphan Positions**: Alpaca shows OPEN, but Firestore has no record
-    (manual trade placed, gap in system, or trade from another source).
-    Resolution: Send critical Discord alert.
-
-    Runs automatically at application startup before the main portfolio loop.
+    Handles Zombie Positions (Firestore OPEN, Alpaca CLOSED) and Orphans (Alpaca OPEN, Firestore MISSING).
     """
 
     def __init__(
@@ -87,16 +74,13 @@ class StateReconciler:
         Execute full reconciliation between Alpaca and Firestore.
 
         Process:
-        1. Fetch all open positions from Alpaca (broker state)
-        2. Fetch all open positions from Firestore (database state)
-        3. Detect zombies: Firestore OPEN but Alpaca closed
-        4. Detect orphans: Alpaca OPEN but Firestore missing
-        5. Heal zombies: Mark CLOSED_EXTERNALLY in Firestore
-        6. Alert orphans: Send critical Discord notification
-        7. Return reconciliation report
+        1. Fetch open positions from Alpaca and Firestore.
+        2. Detect discrepancies (Zombies and Orphans).
+        3. Heal zombies (verify exit then close in DB).
+        4. Alert on orphans.
 
         Args:
-            min_age_minutes: Minimum age of position to be considered for zombie healing (race condition protection).
+            min_age_minutes: Min age to consider for zombie healing (race condition guard).
 
         Returns:
             ReconciliationReport: Summary of reconciliation results
@@ -144,8 +128,8 @@ class StateReconciler:
             try:
                 firestore_positions = self.position_repo.get_open_positions()
 
-                # Filter out THEORETICAL trades (simulated state, not in Alpaca)
-                # These would otherwise be detected as Zombies (Open in DB, Missing in Broker)
+                # Filter out THEORETICAL trades (simulated state)
+                # These would otherwise be detected as Zombies
                 firestore_positions = [
                     p
                     for p in firestore_positions
@@ -184,8 +168,7 @@ class StateReconciler:
                     if not pos:
                         continue
 
-                    # ISSUE 244 FIX: Race Condition Protection
-                    # Skip positions created recently (< min_age_minutes) as Alpaca might be syncing
+                    # Race Condition Protection: Skip recent positions (< min_age_minutes)
                     if pos.created_at:
                         age = datetime.now(timezone.utc) - pos.created_at
                         if age < timedelta(minutes=min_age_minutes):
@@ -199,7 +182,6 @@ class StateReconciler:
                             )
                             continue
 
-                    # ISSUE 244 FIX: Unused Verification Logic
                     # Verify exit via manual order history before closing
                     if self.handle_manual_exit_verification(pos):
                         # Verification successful - save the updated position
@@ -272,9 +254,7 @@ class StateReconciler:
                 critical_issues.append(f"ORPHAN: {symbol}")
 
             # =====================================================================
-            # ISSUE 139 FIX: Detect Reverse Orphans
-            # Positions marked CLOSED in Firestore but still OPEN in Alpaca
-            # This catches cases where exit orders were not properly submitted
+            # Detect Reverse Orphans (CLOSED in DB, OPEN in Alpaca)
             # =====================================================================
             logger.info("Checking for reverse orphans (CLOSED in DB, OPEN in Alpaca)...")
             try:

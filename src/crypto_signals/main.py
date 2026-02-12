@@ -13,6 +13,7 @@ from datetime import date, datetime, timezone
 from typing import Any, Callable, Optional, Protocol
 
 import typer
+from alpaca.common.exceptions import APIError
 from loguru import logger
 
 from crypto_signals.analysis.structural import warmup_jit
@@ -769,6 +770,49 @@ def main(
                         #   1. ALPACA_PAPER_TRADING must be True
                         #   2. ENABLE_EXECUTION must be True
                         if settings.ENABLE_EXECUTION:
+                            # === ISSUE 275 FIX: Duplicate Symbol Guard ===
+                            # Alpaca holds one aggregate position per symbol.
+                            # If we already have an open position, skip to
+                            # prevent the TP automation race condition.
+                            try:
+                                alpaca_symbol = trade_signal.symbol.replace("/", "")
+                                existing_alpaca_pos = (
+                                    execution_engine.alpaca.get_open_position(
+                                        alpaca_symbol
+                                    )
+                                )
+                                if existing_alpaca_pos:
+                                    logger.warning(
+                                        f"ISSUE 275: Skipping execution for "
+                                        f"{trade_signal.symbol} — Alpaca already "
+                                        f"has open position (qty="
+                                        f"{existing_alpaca_pos.qty})",
+                                        extra={
+                                            "symbol": trade_signal.symbol,
+                                            "signal_id": trade_signal.signal_id,
+                                            "existing_qty": str(existing_alpaca_pos.qty),
+                                        },
+                                    )
+                                    continue
+                            except APIError as e:
+                                # Position not found (404) is the expected "green path" for this check.
+                                if getattr(e, "status_code", None) == 404:
+                                    logger.debug(
+                                        f"Pre-execution check passed for {trade_signal.symbol}: No existing position found."
+                                    )
+                                else:
+                                    # Other API errors: fail-open (log & proceed) to avoid blocking trades.
+                                    logger.warning(
+                                        f"ISSUE 275: Pre-execution check failed-open for {trade_signal.symbol} due to API error: {e}",
+                                        extra={
+                                            "symbol": trade_signal.symbol,
+                                            "error": str(e),
+                                            "status_code": getattr(
+                                                e, "status_code", "unknown"
+                                            ),
+                                        },
+                                    )
+
                             execution_start = time.time()
                             try:
                                 position = execution_engine.execute_signal(trade_signal)
@@ -998,12 +1042,65 @@ def main(
                                 pos = position_repo.get_position_by_signal(
                                     exited.signal_id
                                 )
-                                if pos and pos.status == TradeStatus.OPEN:
+                                # === ISSUE 275 FIX: signal_id Guard ===
+                                # Verify the position actually belongs to this
+                                # signal. Prevents closing a newly-bought
+                                # position when an old signal for the same
+                                # symbol triggers TP3/INVALIDATED.
+                                if (
+                                    pos
+                                    and pos.status == TradeStatus.OPEN
+                                    and pos.signal_id == exited.signal_id
+                                ):
                                     # Handle Terminal States (Close All) first
                                     if exited.status in (
                                         SignalStatus.TP3_HIT,
                                         SignalStatus.INVALIDATED,
                                     ):
+                                        # === ISSUE 275 FIX: Alpaca Qty Check ===
+                                        # Verify position still exists on Alpaca
+                                        # before attempting emergency close.
+                                        try:
+                                            alpaca_sym = pos.symbol.replace("/", "")
+                                            alpaca_pos = (
+                                                execution_engine.alpaca.get_open_position(
+                                                    alpaca_sym
+                                                )
+                                            )
+                                            alpaca_qty = float(alpaca_pos.qty)
+                                            if alpaca_qty < pos.qty:
+                                                logger.warning(
+                                                    f"ISSUE 275: Alpaca qty "
+                                                    f"({alpaca_qty}) < Firestore "
+                                                    f"qty ({pos.qty}) for "
+                                                    f"{pos.symbol}. Adjusting.",
+                                                )
+                                                pos.qty = alpaca_qty
+                                        except APIError as e:
+                                            if getattr(e, "status_code", None) == 404:
+                                                # Position gone from Alpaca (confirmed)
+                                                logger.warning(
+                                                    f"Position {pos.position_id} not "
+                                                    f"found on Alpaca, marking "
+                                                    f"CLOSED_EXTERNALLY",
+                                                )
+                                                pos.status = TradeStatus.CLOSED
+                                                pos.exit_reason = (
+                                                    ExitReason.CLOSED_EXTERNALLY
+                                                )
+                                                position_repo.update_position(pos)
+                                                continue
+                                            else:
+                                                # Transient error (500, 429) -> Skip close
+                                                logger.error(
+                                                    f"ISSUE 275: Alpaca API Error during qty check: {e}",
+                                                    extra={
+                                                        "symbol": pos.symbol,
+                                                        "signal_id": pos.signal_id,
+                                                    },
+                                                )
+                                                continue  # Safe fail-closed
+
                                         if execution_engine.close_position_emergency(pos):
                                             pos.status = TradeStatus.CLOSED
                                             reason = (
@@ -1075,6 +1172,17 @@ def main(
 
                                         # Persist position updates
                                         position_repo.update_position(pos)
+                                elif (
+                                    pos
+                                    and pos.status == TradeStatus.OPEN
+                                    and pos.signal_id != exited.signal_id
+                                ):
+                                    logger.warning(
+                                        f"ISSUE 275: signal_id mismatch — "
+                                        f"exited signal {exited.signal_id} vs "
+                                        f"position {pos.signal_id}. Skipping "
+                                        f"emergency close for {pos.symbol}.",
+                                    )
 
                             # Remove exited signals from expiration checking
                             if exited in active_signals:

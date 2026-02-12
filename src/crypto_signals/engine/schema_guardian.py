@@ -197,6 +197,18 @@ class SchemaGuardian:
                 logger.info(
                     f"Detected new field: {field.name} ({field.field_type}, mode={safe_mode})"
                 )
+            else:
+                # Field exists - check for type mismatch (Issue #266)
+                existing_field = current_schema_map[field.name]
+                if not self._is_compatible(field.field_type, existing_field.field_type):
+                    error_msg = (
+                        f"Schema Migration Failed: Type mismatch for column '{field.name}'. "
+                        f"Expected {field.field_type}, Found {existing_field.field_type}. "
+                        "Manual intervention required (drop table or fix model)."
+                    )
+                    logger.critical(error_msg)
+                    if self.strict_mode:
+                        raise SchemaMismatchError(error_msg)
 
         if not new_fields:
             logger.info(f"No new fields to add to {table_id}.")
@@ -236,7 +248,9 @@ class SchemaGuardian:
             self.client.create_table(table)
             logger.info(f"Created table {table_id} successfully.")
         except Conflict:
-            logger.info(f"Table {table_id} already exists (race condition).")
+            logger.info(
+                f"Table {table_id} already exists (race condition) - treating as success."
+            )
         except Exception as e:
             logger.error(f"Failed to create table {table_id}: {e}")
             raise
