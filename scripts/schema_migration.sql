@@ -1,53 +1,47 @@
--- Migration Script for Issue 116 (Expanded Account Snapshot)
+-- Migration Script for Issue 116 (Expanded Account Snapshot) & Issue #262 (Full Schema Reconciliation)
 -- To be run via scripts/run_migration.py (handles substitutions)
 
--- 1. Apply Schema Changes to Fact Table (Critical Data)
--- We use IF NOT EXISTS to make this idempotent.
-
--- Ensure snapshot_accounts exists with core schema
+-- =========================================================================================
+-- 1. Snapshot Accounts (Daily Account Health)
+-- =========================================================================================
 CREATE TABLE IF NOT EXISTS `{{PROJECT_ID}}.crypto_analytics.snapshot_accounts` (
     ds DATE,
     account_id STRING,
     equity FLOAT64,
     cash FLOAT64,
     calmar_ratio FLOAT64,
-    drawdown_pct FLOAT64
+    drawdown_pct FLOAT64,
+    buying_power FLOAT64,
+    regt_buying_power FLOAT64,
+    daytrading_buying_power FLOAT64,
+    crypto_buying_power FLOAT64,
+    initial_margin FLOAT64,
+    maintenance_margin FLOAT64,
+    last_equity FLOAT64,
+    long_market_value FLOAT64,
+    short_market_value FLOAT64,
+    currency STRING,
+    status STRING,
+    pattern_day_trader BOOL,
+    daytrade_count INT64,
+    account_blocked BOOL,
+    trade_suspended_by_user BOOL,
+    trading_blocked BOOL,
+    transfers_blocked BOOL,
+    multiplier FLOAT64,
+    sma FLOAT64
 )
 PARTITION BY ds;
 
-ALTER TABLE `{{PROJECT_ID}}.crypto_analytics.snapshot_accounts`
-ADD COLUMN IF NOT EXISTS buying_power FLOAT64,
-ADD COLUMN IF NOT EXISTS regt_buying_power FLOAT64,
-ADD COLUMN IF NOT EXISTS daytrading_buying_power FLOAT64,
-ADD COLUMN IF NOT EXISTS crypto_buying_power FLOAT64,
-ADD COLUMN IF NOT EXISTS initial_margin FLOAT64,
-ADD COLUMN IF NOT EXISTS maintenance_margin FLOAT64,
-ADD COLUMN IF NOT EXISTS last_equity FLOAT64,
-ADD COLUMN IF NOT EXISTS long_market_value FLOAT64,
-ADD COLUMN IF NOT EXISTS short_market_value FLOAT64,
-ADD COLUMN IF NOT EXISTS currency STRING,
-ADD COLUMN IF NOT EXISTS status STRING,
-ADD COLUMN IF NOT EXISTS pattern_day_trader BOOL,
-ADD COLUMN IF NOT EXISTS daytrade_count INT64,
-ADD COLUMN IF NOT EXISTS account_blocked BOOL,
-ADD COLUMN IF NOT EXISTS trade_suspended_by_user BOOL,
-ADD COLUMN IF NOT EXISTS trading_blocked BOOL,
-ADD COLUMN IF NOT EXISTS transfers_blocked BOOL,
-ADD COLUMN IF NOT EXISTS multiplier FLOAT64,
-ADD COLUMN IF NOT EXISTS sma FLOAT64;
-
--- 2. Reset Staging Table (Transient Data)
--- Dropping and recreating LIKE the fact table guarantees strictly identical schemas.
--- This prevents any "missing column" errors during insert_rows_json.
+-- Staging for Snapshots
 DROP TABLE IF EXISTS `{{PROJECT_ID}}.crypto_analytics.stg_accounts_import`;
-
 CREATE TABLE `{{PROJECT_ID}}.crypto_analytics.stg_accounts_import`
 LIKE `{{PROJECT_ID}}.crypto_analytics.snapshot_accounts`;
 
--- 3. Add exit_order_id to fact_trades (Exit Order Tracking)
--- Links BigQuery trade records back to Alpaca exit orders for reconciliation
 
--- Ensure fact_trades exists with core schema
+-- =========================================================================================
+-- 2. Fact Trades (Trade Execution Ledger)
+-- =========================================================================================
 CREATE TABLE IF NOT EXISTS `{{PROJECT_ID}}.crypto_analytics.fact_trades` (
     ds DATE,
     trade_id STRING,
@@ -71,66 +65,96 @@ CREATE TABLE IF NOT EXISTS `{{PROJECT_ID}}.crypto_analytics.fact_trades` (
     discord_thread_id STRING,
     trailing_stop_final FLOAT64,
     target_entry_price FLOAT64,
-    alpaca_order_id STRING
+    alpaca_order_id STRING,
+    exit_order_id STRING,
+    fee_finalized BOOL,
+    actual_fee_usd FLOAT64,
+    fee_calculation_type STRING,
+    fee_tier STRING,
+    entry_order_id STRING,
+    fee_reconciled_at TIMESTAMP,
+    exit_price_finalized BOOL,
+    exit_price_reconciled_at TIMESTAMP
 )
 PARTITION BY ds;
 
-ALTER TABLE `{{PROJECT_ID}}.crypto_analytics.fact_trades`
-ADD COLUMN IF NOT EXISTS exit_order_id STRING;
-
--- 4. Add CFEE Reconciliation Fields (Issue #140)
--- Tracks fee settlement status for T+1 reconciliation with Alpaca Activities API
-ALTER TABLE `{{PROJECT_ID}}.crypto_analytics.fact_trades`
-ADD COLUMN IF NOT EXISTS fee_finalized BOOL,
-ADD COLUMN IF NOT EXISTS actual_fee_usd FLOAT64,
-ADD COLUMN IF NOT EXISTS fee_calculation_type STRING,
-ADD COLUMN IF NOT EXISTS fee_tier STRING,
-ADD COLUMN IF NOT EXISTS entry_order_id STRING,
-ADD COLUMN IF NOT EXISTS fee_reconciled_at TIMESTAMP;
-
--- 5. Add Exit Price Reconciliation Fields (Issue #141)
--- Tracks exit price settlement status (mirrors fee_finalized pattern)
-ALTER TABLE `{{PROJECT_ID}}.crypto_analytics.fact_trades`
-ADD COLUMN IF NOT EXISTS exit_price_finalized BOOL,
-ADD COLUMN IF NOT EXISTS exit_price_reconciled_at TIMESTAMP,
-ADD COLUMN IF NOT EXISTS exit_price FLOAT64;
-
--- 5. Reset Staging Table for TRADES
--- Dropping and recreating LIKE the fact table guarantees identical schemas.
+-- Staging for Trades
 DROP TABLE IF EXISTS `{{PROJECT_ID}}.crypto_analytics.stg_trades_import`;
-
 CREATE TABLE `{{PROJECT_ID}}.crypto_analytics.stg_trades_import`
 LIKE `{{PROJECT_ID}}.crypto_analytics.fact_trades`;
 
--- ==========================================
--- TEST ENVIRONMENT (Schema Mirroring)
--- ==========================================
 
--- 6. Trades (Test) - Mirror CFEE fields
-DROP TABLE IF EXISTS `{{PROJECT_ID}}.crypto_analytics.fact_trades_test`;
+-- =========================================================================================
+-- 3. Dim Strategies (SCD Type 2 Configuration)
+-- =========================================================================================
+CREATE TABLE IF NOT EXISTS `{{PROJECT_ID}}.crypto_analytics.dim_strategies` (
+    strategy_id STRING,
+    active BOOL,
+    timeframe STRING,
+    asset_class STRING,
+    assets ARRAY<STRING>,
+    risk_params STRING,
+    confluence_config STRING,
+    pattern_overrides STRING,
+    config_hash STRING,
+    valid_from TIMESTAMP,
+    valid_to TIMESTAMP,
+    is_current BOOL
+);
 
-CREATE TABLE `{{PROJECT_ID}}.crypto_analytics.fact_trades_test`
-LIKE `{{PROJECT_ID}}.crypto_analytics.fact_trades`;
+-- Staging for Strategies
+DROP TABLE IF EXISTS `{{PROJECT_ID}}.crypto_analytics.stg_strategies_import`;
+CREATE TABLE `{{PROJECT_ID}}.crypto_analytics.stg_strategies_import`
+LIKE `{{PROJECT_ID}}.crypto_analytics.dim_strategies`;
 
--- Note: Since we recreate LIKE the altered fact_trades, we don't need manual ALTERs here.
--- The test table will inherit all new columns (exit_order_id, exit_price, etc).
 
-DROP TABLE IF EXISTS `{{PROJECT_ID}}.crypto_analytics.stg_trades_import_test`;
-CREATE TABLE `{{PROJECT_ID}}.crypto_analytics.stg_trades_import_test`
-LIKE `{{PROJECT_ID}}.crypto_analytics.fact_trades_test`;
+-- =========================================================================================
+-- 4. Strategy Performance (Daily Aggregations)
+-- =========================================================================================
+CREATE TABLE IF NOT EXISTS `{{PROJECT_ID}}.crypto_analytics.summary_strategy_performance` (
+    ds DATE,
+    strategy_id STRING,
+    total_trades INT64,
+    win_rate FLOAT64,
+    profit_factor FLOAT64,
+    sharpe_ratio FLOAT64,
+    sortino_ratio FLOAT64,
+    max_drawdown_pct FLOAT64,
+    alpha FLOAT64,
+    beta FLOAT64
+)
+PARTITION BY ds;
 
--- 7. Account Snapshots (Test)
-CREATE TABLE IF NOT EXISTS `{{PROJECT_ID}}.crypto_analytics.snapshot_accounts_test`
-LIKE `{{PROJECT_ID}}.crypto_analytics.snapshot_accounts`;
+-- Staging for Performance
+DROP TABLE IF EXISTS `{{PROJECT_ID}}.crypto_analytics.stg_performance_import`;
+CREATE TABLE `{{PROJECT_ID}}.crypto_analytics.stg_performance_import`
+LIKE `{{PROJECT_ID}}.crypto_analytics.summary_strategy_performance`;
 
-DROP TABLE IF EXISTS `{{PROJECT_ID}}.crypto_analytics.stg_accounts_import_test`;
-CREATE TABLE `{{PROJECT_ID}}.crypto_analytics.stg_accounts_import_test`
-LIKE `{{PROJECT_ID}}.crypto_analytics.snapshot_accounts_test`;
 
--- 6. Rejected Signals (Test & Prod)
--- Ensure PROD exists (was missing in migration)
-CREATE TABLE IF NOT EXISTS `{{PROJECT_ID}}.crypto_analytics.fact_rejected_signals`
-(
+-- =========================================================================================
+-- 5. Agg Strategy Daily (Fast Dashboard View)
+-- =========================================================================================
+CREATE TABLE IF NOT EXISTS `{{PROJECT_ID}}.crypto_analytics.agg_strategy_daily` (
+    ds DATE,
+    agg_id STRING,
+    strategy_id STRING,
+    symbol STRING,
+    total_pnl FLOAT64,
+    win_rate FLOAT64,
+    trade_count INT64
+)
+PARTITION BY ds;
+
+-- Staging for Agg Daily
+DROP TABLE IF EXISTS `{{PROJECT_ID}}.crypto_analytics.stg_agg_strategy_daily`;
+CREATE TABLE `{{PROJECT_ID}}.crypto_analytics.stg_agg_strategy_daily`
+LIKE `{{PROJECT_ID}}.crypto_analytics.agg_strategy_daily`;
+
+
+-- =========================================================================================
+-- 6. Fact Rejected Signals (Quality Gate Shadow)
+-- =========================================================================================
+CREATE TABLE IF NOT EXISTS `{{PROJECT_ID}}.crypto_analytics.fact_rejected_signals` (
     ds DATE,
     signal_id STRING,
     rejection_reason STRING,
@@ -141,14 +165,13 @@ CREATE TABLE IF NOT EXISTS `{{PROJECT_ID}}.crypto_analytics.fact_rejected_signal
 )
 PARTITION BY ds;
 
+-- Staging for Rejected Signals
 DROP TABLE IF EXISTS `{{PROJECT_ID}}.crypto_analytics.stg_rejected_signals`;
 CREATE TABLE `{{PROJECT_ID}}.crypto_analytics.stg_rejected_signals`
 LIKE `{{PROJECT_ID}}.crypto_analytics.fact_rejected_signals`;
 
--- Test
-CREATE TABLE IF NOT EXISTS `{{PROJECT_ID}}.crypto_analytics.fact_rejected_signals_test`
-LIKE `{{PROJECT_ID}}.crypto_analytics.fact_rejected_signals`;
 
-DROP TABLE IF EXISTS `{{PROJECT_ID}}.crypto_analytics.stg_rejected_signals_test`;
-CREATE TABLE `{{PROJECT_ID}}.crypto_analytics.stg_rejected_signals_test`
-LIKE `{{PROJECT_ID}}.crypto_analytics.fact_rejected_signals_test`;
+-- =========================================================================================
+-- TEST ENVIRONMENT (Schema Mirroring)
+-- =========================================================================================
+-- (Optional: Can be derived from above, strictly focusing on PROD for now)
