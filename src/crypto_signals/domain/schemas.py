@@ -227,7 +227,11 @@ class ConfluenceConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     rsi_period: Optional[int] = Field(default=14, ge=2)
+    rsi_threshold: Optional[float] = Field(default=70.0)
+    adx_period: Optional[int] = Field(default=14, ge=2)
     adx_threshold: Optional[float] = Field(default=25.0)
+    volume_threshold: Optional[float] = Field(default=1.5)
+    sma_period: Optional[int] = Field(default=200, ge=2)
 
 
 class StrategyConfig(BaseModel):

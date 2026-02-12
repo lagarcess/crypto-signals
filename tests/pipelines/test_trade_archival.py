@@ -45,8 +45,13 @@ def pipeline(mock_alpaca, mock_firestore, mock_market_provider):
         mock_get_settings.return_value.GOOGLE_CLOUD_PROJECT = "test-project"
         mock_get_settings.return_value.ENVIRONMENT = "PROD"  # Set default environment
 
-        # Instantiate pipeline
-        pipe = TradeArchivalPipeline()
+        # Instantiate pipeline with mocked execution engine
+        mock_exec = MagicMock()
+        mock_exec.get_current_fee_tier.return_value = {
+            "taker_fee_pct": 0.25,
+            "tier_name": "Tier 0",
+        }
+        pipe = TradeArchivalPipeline(execution_engine=mock_exec)
         # Inject mocks again to be sure (since __init__ creates them)
         pipe.alpaca = mock_alpaca
         pipe.firestore_client = mock_firestore
