@@ -72,7 +72,7 @@ configure_logging(level="INFO")
 warmup_jit()
 
 # Performance SLA Constants
-LATENCY_SLA_MS = 2000  # 2 seconds (relaxed for Cloud Run cold starts)
+LATENCY_SLA_MS = 200  # 200ms (Strict check after warmup)
 QUERY_ERROR_SENTINEL = 9999
 
 # Global flag for graceful shutdown
@@ -231,6 +231,15 @@ def main(
                 # 1b. Performance Check: Firestore Latency (Issue #128)
                 # Enforces 100ms SLA for sector cap queries to prevent slippage
                 pos_repo = PositionRepository()
+
+                # Warm-up query to handle Cloud Run cold starts (SSL/Connection overhead)
+                try:
+                    logger.info("Running Firestore warm-up query...")
+                    pos_repo.count_open_positions_by_class(AssetClass.CRYPTO)
+                except Exception:
+                    # Ignore warmup failures, real check is below
+                    pass
+
                 start_time = time.perf_counter()
 
                 # Execute a representative sector cap query
