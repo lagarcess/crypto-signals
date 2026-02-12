@@ -18,6 +18,9 @@ class RiskCheckResult(NamedTuple):
     reason: Optional[str] = None
     gate: Optional[str] = None
 
+    def __bool__(self) -> bool:
+        return self.passed
+
 
 class RiskEngine:
     """
@@ -39,6 +42,11 @@ class RiskEngine:
         self.repo = repository
         self.market_provider = market_provider
         self.settings = get_settings()
+
+    ASSET_CLASS_MAP = {
+        AssetClass.CRYPTO: AlpacaAssetClass.CRYPTO,
+        AssetClass.EQUITY: AlpacaAssetClass.US_EQUITY,
+    }
 
     def validate_signal(self, signal: Signal) -> RiskCheckResult:
         """
@@ -151,11 +159,7 @@ class RiskEngine:
             )
 
             # Map domain AssetClass to Alpaca Enum explicitly
-            asset_class_map = {
-                AssetClass.CRYPTO: AlpacaAssetClass.CRYPTO,
-                AssetClass.EQUITY: AlpacaAssetClass.US_EQUITY,
-            }
-            if asset_class not in asset_class_map:
+            if asset_class not in self.ASSET_CLASS_MAP:
                 logger.error(f"Unknown Asset Class in Sector Check: {asset_class}")
                 return RiskCheckResult(
                     passed=False,
@@ -163,7 +167,7 @@ class RiskEngine:
                     gate="sector_cap",
                 )
 
-            target_alpaca_class = asset_class_map[asset_class]
+            target_alpaca_class = self.ASSET_CLASS_MAP[asset_class]
 
             # 1. Fetch Authoritative State (Filled Positions)
             alpaca_positions = self.alpaca.get_all_positions()

@@ -747,15 +747,23 @@ def main(
                                     )
                                     continue
                             except APIError as e:
-                                # Position not found (404) is expected.
-                                # Other API errors: fail-open (log & proceed) to avoid blocking trades.
-                                logger.debug(
-                                    f"ISSUE 275: Pre-execution check passed or failed-open: {e}",
-                                    extra={
-                                        "symbol": trade_signal.symbol,
-                                        "error": str(e),
-                                    },
-                                )
+                                # Position not found (404) is the expected "green path" for this check.
+                                if hasattr(e, "status_code") and e.status_code == 404:
+                                    logger.debug(
+                                        f"Pre-execution check passed for {trade_signal.symbol}: No existing position found."
+                                    )
+                                else:
+                                    # Other API errors: fail-open (log & proceed) to avoid blocking trades.
+                                    logger.warning(
+                                        f"ISSUE 275: Pre-execution check failed-open for {trade_signal.symbol} due to API error: {e}",
+                                        extra={
+                                            "symbol": trade_signal.symbol,
+                                            "error": str(e),
+                                            "status_code": getattr(
+                                                e, "status_code", "unknown"
+                                            ),
+                                        },
+                                    )
 
                             execution_start = time.time()
                             try:
