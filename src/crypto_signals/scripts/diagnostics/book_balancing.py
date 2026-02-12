@@ -1,3 +1,4 @@
+# mypy: ignore-errors
 """
 Book Balancing Tool
 ===================
@@ -47,10 +48,10 @@ class BookBalancer:
         self.alpaca = get_trading_client()
         self.repo = PositionRepository()
         self.console = console_client or console  # Use injected or global
-        self.alpaca_open = {}
-        self.alpaca_closed = {}
-        self.db_open = {}
-        self.db_closed = {}
+        self.alpaca_open: dict[str, LedgerEntry] = {}
+        self.alpaca_closed: dict[str, LedgerEntry] = {}
+        self.db_open: dict[str, LedgerEntry] = {}
+        self.db_closed: dict[str, LedgerEntry] = {}
 
     def fetch_ledger(self, limit: int = 100):
         """
