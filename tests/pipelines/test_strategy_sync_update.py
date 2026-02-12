@@ -73,14 +73,9 @@ class TestStrategySyncUpdate:
         # Verify new fields are present and JSON serialized
         assert "confluence_config" in record
         # ConfluenceConfig model includes defaults on serialization
-        assert json.loads(record["confluence_config"]) == {
-            "rsi_period": 14,
-            "rsi_threshold": 70.0,
-            "adx_period": 14,
-            "adx_threshold": 25.0,
-            "volume_threshold": 1.5,
-            "sma_period": 200,
-        }
+        from crypto_signals.domain.schemas import ConfluenceConfig
+        expected_config = ConfluenceConfig().model_dump()
+        assert json.loads(record["confluence_config"]) == expected_config
 
         assert "pattern_overrides" in record
         assert json.loads(record["pattern_overrides"]) == {}
@@ -140,15 +135,9 @@ class TestStrategySyncUpdate:
 
         assert record["risk_params"] == '{"sl": 0.1}'
         # ConfluenceConfig model serializes with sorted keys and includes defaults
-        # Input was {"rsi": 14} but ConfluenceConfig has rsi_period and adx_threshold
         # Since "rsi" is not a known field, it's stored via extra="allow"
-        assert json.loads(record["confluence_config"]) == {
-            "rsi_period": 14,
-            "rsi_threshold": 70.0,
-            "adx_period": 14,
-            "adx_threshold": 25.0,
-            "volume_threshold": 1.5,
-            "sma_period": 200,
-            "rsi": 14,
-        }
+        from crypto_signals.domain.schemas import ConfluenceConfig
+        expected_config = ConfluenceConfig().model_dump()
+        expected_config["rsi"] = 14
+        assert json.loads(record["confluence_config"]) == expected_config
         assert record["pattern_overrides"] == '{"engulfing": {"p": 1}}'

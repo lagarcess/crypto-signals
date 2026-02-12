@@ -605,7 +605,7 @@ class ExecutionEngine:
         console.print(panel)
 
         logger.error(
-            f"Order execution failed for {signal.symbol}: {error}",
+            f"Order execution failed for {signal.symbol}.",
             extra={
                 "symbol": signal.symbol,
                 "signal_id": signal.signal_id,
@@ -739,7 +739,7 @@ class ExecutionEngine:
                     # Exponential backoff: 1s, 2s, 4s
                     delay = RETRY_DELAY_BASE * (2 ** (attempt - 1))
                     logger.warning(
-                        f"CFEE API call failed (attempt {attempt}/{MAX_RETRIES}), retrying in {delay}s: {e}",
+                        f"CFEE API call failed (attempt {attempt}/{MAX_RETRIES}), retrying.",
                         extra={
                             "symbol": symbol,
                             "attempt": attempt,
@@ -752,7 +752,7 @@ class ExecutionEngine:
                 else:
                     # Final attempt failed
                     logger.warning(
-                        f"Failed to fetch CFEE for {symbol} after {MAX_RETRIES} attempts: {e}",
+                        f"Failed to fetch CFEE for {symbol} after multiple attempts.",
                         extra={
                             "symbol": symbol,
                             "max_retries": MAX_RETRIES,
@@ -786,7 +786,10 @@ class ExecutionEngine:
                 "taker_fee_pct": 0.25,
             }
         except Exception as e:
-            logger.warning(f"Failed to fetch fee tier: {e}")
+            logger.warning(
+                "Failed to fetch fee tier.",
+                extra={"error": str(e)},
+            )
             return {
                 "tier_name": "Tier 0 (default)",
                 "maker_fee_pct": 0.15,
@@ -822,7 +825,10 @@ class ExecutionEngine:
             if "not found" in error_str or "404" in error_str:
                 logger.warning(f"Order {order_id} not found in Alpaca")
                 return None
-            logger.error(f"Failed to retrieve order {order_id}: {e}")
+            logger.error(
+                f"Failed to retrieve order {order_id}.",
+                extra={"order_id": order_id, "error": str(e)},
+            )
             return None
 
     def _retry_fill_price_capture(
@@ -873,7 +879,12 @@ class ExecutionEngine:
                     )
             except Exception as poll_err:
                 logger.warning(
-                    f"[RETRY {attempt}] Poll failed for {position_id}: {poll_err}"
+                    f"[RETRY {attempt}] Poll failed for {position_id}.",
+                    extra={
+                        "attempt": attempt,
+                        "position_id": position_id,
+                        "error": str(poll_err),
+                    },
                 )
 
         return None
@@ -940,7 +951,8 @@ class ExecutionEngine:
                     position.awaiting_backfill = False
             except Exception as e:
                 logger.warning(
-                    f"Exit price backfill failed for {position.position_id}: {e}"
+                    f"Exit price backfill failed for {position.position_id}.",
+                    extra={"position_id": position.position_id, "error": str(e)},
                 )
 
         try:
@@ -1085,7 +1097,10 @@ class ExecutionEngine:
                             )
 
         except Exception as e:
-            logger.error(f"Failed to sync position {position.position_id}: {e}")
+            logger.error(
+                f"Failed to sync position {position.position_id}.",
+                extra={"position_id": position.position_id, "error": str(e)},
+            )
             position.failed_reason = f"Sync error: {str(e)}"
 
         return position
@@ -1183,7 +1198,10 @@ class ExecutionEngine:
             return True
 
         except Exception as e:
-            logger.error(f"Failed to modify stop for {position.position_id}: {e}")
+            logger.error(
+                f"Failed to modify stop for {position.position_id}.",
+                extra={"position_id": position.position_id, "error": str(e)},
+            )
             return False
 
     def scale_out_position(self, position: Position, scale_pct: float = 0.5) -> bool:
@@ -1339,7 +1357,10 @@ class ExecutionEngine:
             return True
 
         except Exception as e:
-            logger.error(f"Scale-out failed for {position.position_id}: {e}")
+            logger.error(
+                f"Scale-out failed for {position.position_id}.",
+                extra={"position_id": position.position_id, "error": str(e)},
+            )
             position.failed_reason = f"Scale-out failed: {str(e)}"
             return False
 
@@ -1483,7 +1504,10 @@ class ExecutionEngine:
                 logger.info(f"Canceled TP order {position.tp_order_id}")
             except Exception as e:
                 # Not an error - order may already be filled or canceled
-                logger.debug(f"Could not cancel TP order (may be filled): {e}")
+                logger.debug(
+                    f"Could not cancel TP order {position.tp_order_id} (may be filled).",
+                    extra={"order_id": position.tp_order_id, "error": str(e)},
+                )
 
         # 2. Cancel SL order (best effort - may already be filled/canceled)
         if position.sl_order_id:
@@ -1492,7 +1516,10 @@ class ExecutionEngine:
                 logger.info(f"Canceled SL order {position.sl_order_id}")
             except Exception as e:
                 # Not an error - order may already be filled or canceled
-                logger.debug(f"Could not cancel SL order (may be filled): {e}")
+                logger.debug(
+                    f"Could not cancel SL order {position.sl_order_id} (may be filled).",
+                    extra={"order_id": position.sl_order_id, "error": str(e)},
+                )
 
         # 3. Submit market order to close position
         try:
@@ -1568,6 +1595,9 @@ class ExecutionEngine:
             return True
 
         except Exception as e:
-            logger.error(f"Emergency close failed for {position.position_id}: {e}")
+            logger.error(
+                f"Emergency close failed for {position.position_id}.",
+                extra={"position_id": position.position_id, "error": str(e)},
+            )
             position.failed_reason = f"Emergency close failed: {str(e)}"
             return False

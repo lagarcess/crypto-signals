@@ -27,12 +27,16 @@ class TestConfluenceConfig:
             # confluence_config not provided, should use default factory
         )
 
-        assert config.confluence_config.rsi_period == 14
-        assert config.confluence_config.rsi_threshold == 70.0
-        assert config.confluence_config.adx_period == 14
-        assert config.confluence_config.adx_threshold == 25.0
-        assert config.confluence_config.volume_threshold == 1.5
-        assert config.confluence_config.sma_period == 200
+        dump = config.model_dump(mode="python")
+        expected_confluence_config = {
+            "adx_period": 14,
+            "adx_threshold": 25.0,
+            "rsi_period": 14,
+            "rsi_threshold": 70.0,
+            "sma_period": 200,
+            "volume_threshold": 1.5,
+        }
+        assert dump["confluence_config"] == expected_confluence_config
 
     def test_confluence_config_validation_success(self):
         """Ensure valid parameters are accepted."""
@@ -55,15 +59,18 @@ class TestConfluenceConfig:
             confluence_config=confluence_data,
         )
 
-        assert config.confluence_config.rsi_period == 21
-        assert config.confluence_config.rsi_threshold == 65.0
-        assert config.confluence_config.adx_period == 21
-        assert config.confluence_config.adx_threshold == 30.0
-        assert config.confluence_config.volume_threshold == 2.0
-        assert config.confluence_config.sma_period == 100
-        # Accessing extra fields depends on Pydantic config, but accessing via model_dump is safe
+        # Accessing via model_dump covers all fields including extra ones
         dump = config.model_dump(mode="python")
-        assert dump["confluence_config"]["custom_factor"] == "experimental"
+        expected_confluence_config = {
+            "adx_period": 21,
+            "adx_threshold": 30.0,
+            "rsi_period": 21,
+            "rsi_threshold": 65.0,
+            "sma_period": 100,
+            "volume_threshold": 2.0,
+            "custom_factor": "experimental",
+        }
+        assert dump["confluence_config"] == expected_confluence_config
 
     def test_confluence_config_validation_failure_type(self):
         """Ensure invalid types are rejected."""
@@ -135,9 +142,12 @@ class TestConfluenceConfig:
         )
 
         dump = config.model_dump(mode="python")
-        assert dump["confluence_config"]["rsi_period"] == 14
-        assert dump["confluence_config"]["rsi_threshold"] == 70.0
-        assert dump["confluence_config"]["adx_period"] == 14
-        assert dump["confluence_config"]["adx_threshold"] == 25.0
-        assert dump["confluence_config"]["volume_threshold"] == 1.5
-        assert dump["confluence_config"]["sma_period"] == 200
+        expected_confluence_config = {
+            "adx_period": 14,
+            "adx_threshold": 25.0,
+            "rsi_period": 14,
+            "rsi_threshold": 70.0,
+            "sma_period": 200,
+            "volume_threshold": 1.5,
+        }
+        assert dump["confluence_config"] == expected_confluence_config

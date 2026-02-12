@@ -65,7 +65,10 @@ class SecretManager:
                 self._client = secretmanager.SecretManagerServiceClient()
                 logger.info("Initialized Secret Manager client")
             except Exception as e:
-                logger.error(f"Failed to load Secret Manager client: {e}")
+                logger.error(
+                    "Failed to load Secret Manager client.",
+                    extra={"error": str(e)},
+                )
                 raise RuntimeError(
                     "Failed to load Secret Manager. Ensure google-cloud-secret-manager"
                     "is installed and credentials are configured."
@@ -122,7 +125,10 @@ class SecretManager:
             return secret_value
 
         except Exception as e:
-            logger.warning(f"Failed to load {secret_name} from Secret Manager: {e}")
+            logger.warning(
+                f"Failed to load {secret_name} from Secret Manager.",
+                extra={"secret_name": secret_name, "error": str(e)},
+            )
             if default is not None:
                 logger.info(f"Using default value for {secret_name}")
                 return default
@@ -211,5 +217,9 @@ def init_secrets() -> bool:
         return True
 
     except Exception as e:
-        logger.error(f"Secret initialization failed: {e}", exc_info=True)
+        logger.error(
+            "Secret initialization failed.",
+            exc_info=True,
+            extra={"error": str(e)},
+        )
         return False

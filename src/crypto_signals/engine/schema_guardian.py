@@ -60,7 +60,10 @@ class SchemaGuardian:
             # Table doesn't exist. expected during first run.
             raise
         except GoogleAPICallError as e:
-            logger.error(f"Failed to fetch table schema for {table_id}: {e}")
+            logger.error(
+                f"Failed to fetch table schema for {table_id}.",
+                extra={"table_id": table_id, "error": str(e)},
+            )
             raise
 
         missing_columns, type_mismatches = self._validate_fields(
@@ -171,7 +174,10 @@ class SchemaGuardian:
                 self._create_table(table_id, model, partition_column)
                 return
             else:
-                logger.error(f"Failed to fetch table schema for {table_id}: {e}")
+                logger.error(
+                    f"Failed to fetch table schema for {table_id}.",
+                    extra={"table_id": table_id, "error": str(e)},
+                )
                 raise
 
         desired_schema = self.generate_schema(model)
@@ -252,7 +258,10 @@ class SchemaGuardian:
                 f"Table {table_id} already exists (race condition) - treating as success."
             )
         except Exception as e:
-            logger.error(f"Failed to create table {table_id}: {e}")
+            logger.error(
+                f"Failed to create table {table_id}.",
+                extra={"table_id": table_id, "error": str(e)},
+            )
             raise
 
     def _validate_fields(
