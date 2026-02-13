@@ -9,7 +9,7 @@ Verifies the new ConfluenceConfig model:
 """
 
 import pytest
-from crypto_signals.domain.schemas import StrategyConfig
+from crypto_signals.domain.schemas import ConfluenceConfig, StrategyConfig
 from pydantic import ValidationError
 
 
@@ -28,7 +28,6 @@ class TestConfluenceConfig:
         )
 
         dump = config.model_dump(mode="python")
-        from crypto_signals.domain.schemas import ConfluenceConfig
 
         expected_confluence_config = ConfluenceConfig().model_dump()
         assert dump["confluence_config"] == expected_confluence_config
