@@ -74,7 +74,10 @@ class JobLockRepository:
         try:
             return cast(bool, _acquire_in_transaction(self.db.transaction()))
         except Exception as e:
-            logger.error(f"Failed to acquire lock for {job_id}: {e}")
+            logger.error(
+                "Failed to acquire lock for {job_id}.",
+                extra={"job_id": job_id, "error": str(e)},
+            )
             return False
 
     def release_lock(self, job_id: str) -> None:
@@ -83,7 +86,10 @@ class JobLockRepository:
             self.db.collection(self.collection_name).document(job_id).delete()
             logger.info(f"Released lock for {job_id}")
         except Exception as e:
-            logger.error(f"Failed to release lock for {job_id}: {e}")
+            logger.error(
+                "Failed to release lock for {job_id}.",
+                extra={"job_id": job_id, "error": str(e)},
+            )
 
 
 class SignalRepository:
@@ -209,7 +215,10 @@ class SignalRepository:
         try:
             return cast(bool, update_in_transaction(self.db.transaction()))
         except Exception as e:
-            logger.error(f"Atomic update failed for {signal_id}: {e}")
+            logger.error(
+                f"Atomic update failed for {signal_id}.",
+                extra={"signal_id": signal_id, "error": str(e)},
+            )
             return False
 
     def cleanup_expired(self, retention_days: int = 7) -> int:
@@ -569,7 +578,10 @@ class PositionRepository:
             return int(results[0][0].value)
 
         except Exception as e:
-            logger.error(f"Error counting open positions for {asset_class}: {e}")
+            logger.error(
+                f"Error counting open positions for {asset_class}.",
+                extra={"asset_class": asset_class, "error": str(e)},
+            )
             # Safety first -> block trading on DB error.
             return 9999
 

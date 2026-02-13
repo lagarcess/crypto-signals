@@ -226,8 +226,12 @@ class ReconciliationReport(BaseModel):
 class ConfluenceConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
 
-    rsi_period: Optional[int] = Field(default=14, ge=2)
+    adx_period: Optional[int] = Field(default=14, ge=2)
     adx_threshold: Optional[float] = Field(default=25.0)
+    rsi_period: Optional[int] = Field(default=14, ge=2)
+    rsi_threshold: Optional[float] = Field(default=70.0)
+    sma_period: Optional[int] = Field(default=200, ge=2)
+    volume_threshold: Optional[float] = Field(default=1.5)
 
 
 class StrategyConfig(BaseModel):

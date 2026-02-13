@@ -663,9 +663,8 @@ class TestStrategyConfigDefaults:
         # We want them included for BigQuery schema consistency.
         assert "confluence_config" in serialized
         # Should contain default values for ConfluenceConfig
-        assert serialized["confluence_config"] == {
-            "rsi_period": 14,
-            "adx_threshold": 25.0,
-        }
+        assert serialized["confluence_config"] == ConfluenceConfig().model_dump(
+            mode="json"
+        )
         assert "pattern_overrides" in serialized
         assert serialized["pattern_overrides"] == {}

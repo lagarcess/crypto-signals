@@ -77,7 +77,10 @@ class AccountSnapshotPipeline(BigQueryPipelineBase):
             return [raw_data]
 
         except APIError as e:
-            logger.error(f"[{self.job_name}] Alpaca API Error: {e}")
+            logger.error(
+                f"[{self.job_name}] Alpaca API Error.",
+                extra={"error": str(e)},
+            )
             raise
 
     def transform(self, raw_data: List[Any]) -> List[dict]:

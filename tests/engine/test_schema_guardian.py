@@ -5,7 +5,7 @@ import pytest
 from crypto_signals.engine.schema_guardian import SchemaGuardian, SchemaMismatchError
 from google.api_core.exceptions import Conflict
 from google.cloud import bigquery
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 # --- Mocks & Fixtures ---
 
@@ -291,7 +291,6 @@ def test_migrate_schema_detects_type_mismatch(guardian, mock_bq_client):
 
 def test_generate_schema_respects_exclude_flag(guardian):
     """Test that generate_schema skips fields marked as exclude=True."""
-    from pydantic import Field
 
     class ExcludeModel(BaseModel):
         included: str

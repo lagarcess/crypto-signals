@@ -114,7 +114,10 @@ def _run_pipeline(
         success_log_fn(result)
         metrics.record_success(name, time.time() - start_time)
     except Exception as e:
-        logger.error(f"{name} Pipeline failed: {e}")
+        logger.error(
+            f"{name} Pipeline failed.",
+            extra={"pipeline": name, "error": str(e)},
+        )
         metrics.record_failure(name, time.time() - start_time)
 
 
@@ -275,9 +278,15 @@ def main(
                 )
 
             except (DefaultCredentialsError, Unauthenticated, PermissionDenied) as e:
-                logger.warning(f"⚠️  Firestore: Skipped (auth/permission issue) - {e}")
+                logger.warning(
+                    "⚠️  Firestore: Skipped (auth/permission issue).",
+                    extra={"error": str(e)},
+                )
             except Exception as e:
-                logger.error(f"❌ Firestore: Performance Check Failed - {e}")
+                logger.error(
+                    "❌ Firestore: Performance Check Failed.",
+                    extra={"error": str(e)},
+                )
                 sys.exit(1)
 
             # 2. Verify settings loaded
@@ -563,7 +572,10 @@ def main(
                             symbol, asset_class, lookback_days=365
                         )
                     except Exception as e:
-                        logger.error(f"Failed to fetch data for {symbol}: {e}")
+                        logger.error(
+                            "Failed to fetch data for {symbol}.",
+                            extra={"symbol": symbol, "error": str(e)},
+                        )
                         continue
 
                     if df.empty:
@@ -713,7 +725,13 @@ def main(
                                     asset_class,
                                 )
                             except Exception as e:
-                                logger.warning(f"Thread recovery check failed: {e}")
+                                logger.warning(
+                                    "Thread recovery check failed for {symbol}.",
+                                    extra={
+                                        "symbol": trade_signal.symbol,
+                                        "error": str(e),
+                                    },
+                                )
 
                         if thread_id:
                             logger.info(
@@ -1386,7 +1404,9 @@ def main(
                     },
                 )
             except Exception as e:
-                logger.error(f"Position sync failed: {e}", exc_info=True)
+                logger.error(
+                    "Position sync failed.", exc_info=True, extra={"error": str(e)}
+                )
                 metrics.record_failure("position_sync", time.time() - sync_start)
 
         # Display Rich execution summary table
@@ -1431,7 +1451,11 @@ def main(
         )
 
     except Exception as e:
-        logger.critical(f"Fatal error in main application loop: {e}", exc_info=True)
+        logger.critical(
+            "Fatal error in main application loop.",
+            exc_info=True,
+            extra={"error": str(e)},
+        )
         sys.exit(1)
 
 

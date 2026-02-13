@@ -249,7 +249,10 @@ class StateReconciler:
                         f"**Action Required**: Manual investigation and position management."
                     )
                 except Exception as e:
-                    logger.warning(f"Failed to send orphan alert for {symbol}: {e}")
+                    logger.warning(
+                        f"Failed to send orphan alert for {symbol}.",
+                        extra={"symbol": symbol, "error": str(e)},
+                    )
 
                 critical_issues.append(f"ORPHAN: {symbol}")
 
@@ -305,7 +308,10 @@ class StateReconciler:
                     )
 
             except Exception as e:
-                logger.warning(f"Reverse orphan detection failed: {e}")
+                logger.warning(
+                    "Reverse orphan detection failed.",
+                    extra={"error": str(e)},
+                )
 
         except Exception as e:
             error_msg = f"Reconciliation execution failed: {e}"

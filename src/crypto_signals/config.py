@@ -432,6 +432,9 @@ def load_config_from_firestore() -> dict[str, list[str]]:
         return result
 
     except Exception as e:
-        logger.error(f"Failed to load configuration from Firestore: {e}")
+        logger.error(
+            "Failed to load configuration from Firestore.",
+            extra={"error": str(e)},
+        )
         # Return empty to trigger fallback or empty state
         return {}
