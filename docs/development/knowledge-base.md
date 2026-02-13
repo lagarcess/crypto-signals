@@ -178,3 +178,12 @@
 - [2026-02-11] **Concurrency Testing**: When fixing race conditions (e.g., TP/Entry synchronization), verify the resolution with a dedicated stress test (`test_tp_automation_race.py`) that simulates parallel execution. Standard unit tests often miss timing-dependent failures.
 - [2026-02-12] **Structured Logging**: Always use the `extra` dictionary for variable data in logs (e.g., `logger.error("Msg", extra={"id": ...})`). Embedding variables directly in f-strings (`f"Msg {id}"`) causes `KeyError` in log formatting middleware if the string contains braces, and makes searching by field impossible in Cloud Logging.
 - [2026-02-12] **Pydantic Testing**: When asserting against `model_dump()`, use `model_dump(mode='python')` to get native types (like `Decimal`) instead of JSON primitives. Also, remember that `model_dump()` includes all default values, so your expected dict must be complete.
+
+### Pydantic & Typing
+- [2026-02-13] **Pydantic V2 & Mocks**: `arbitrary_types_allowed=True` does NOT bypass validation for fields typed as `BaseModel` subclasses. Pydantic v2 attempts to validate the schema of the subclass even if a Mock is passed. To support `MagicMock` in tests for these fields, use `typing.Any` with a type comment (e.g., `signal: Any  # type: Signal`) instead of the strict type hint.
+
+### Observability & Metrics
+- [2026-02-13] **Metric Timing**: Do not reuse timer variables (like `start_time`) across multi-phase pipelines. Latency metrics must measure *exclusive* phase duration. Always initialize a fresh `processing_start = time.time()` at the beginning of the phase block to avoid polluting metrics with upstream latency.
+
+### Linting & Quality
+- [2026-02-13] **Unused Variables**: Ruff rule `B007` flags unused loop control variables. If a variable from an unpacked tuple is not needed, prefix it with an underscore (e.g., `for sig, _, _ in items:`) to explicitly indicate intent and silence the linter.
