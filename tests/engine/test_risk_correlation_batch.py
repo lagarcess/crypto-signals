@@ -1,6 +1,7 @@
 from datetime import datetime
 from unittest.mock import MagicMock
 
+import numpy as np
 import pandas as pd
 import pytest
 from alpaca.trading.client import TradingClient
@@ -84,18 +85,14 @@ class TestRiskCorrelationBatching:
         iterables = [["BTC/USD", "ETH/USD"], dates]
         index = pd.MultiIndex.from_product(iterables, names=["symbol", "timestamp"])
 
-        # Random data
-        df = pd.DataFrame({"close": [100] * 180}, index=index)
+        # Use different patterns for each symbol to avoid constant-data warnings
+        data = np.concatenate([np.linspace(100, 110, 90), np.linspace(110, 100, 90)])
+        df = pd.DataFrame({"close": data}, index=index)
         mock_market.get_daily_bars.return_value = df
 
         result = risk_engine.check_correlation(signal)
 
-        assert (
-            result.passed is True
-        )  # Correlation of constant is NaN or 0? 100 vs 100 is 1.0 or NaN?
-        # Standard deviation is 0, so correlation is NaN. Code checks > 0.8. NaN > 0.8 is False.
-        # Actually if we pass constants, std dev is 0. Corr is undefined.
-        # Let's verify the CALL first.
+        assert result.passed is True
 
         mock_market.get_daily_bars.assert_called_once()
         args, kwargs = mock_market.get_daily_bars.call_args
@@ -131,13 +128,13 @@ class TestRiskCorrelationBatching:
                 idx = pd.MultiIndex.from_product(
                     [["ETH/USD"], pd.date_range("2023-01-01", periods=90)]
                 )
-                return pd.DataFrame({"close": [10] * 90}, index=idx)
+                return pd.DataFrame({"close": np.linspace(10, 12, 90)}, index=idx)
             else:
                 # AAPL
                 idx = pd.MultiIndex.from_product(
                     [["AAPL"], pd.date_range("2023-01-01", periods=90)]
                 )
-                return pd.DataFrame({"close": [150] * 90}, index=idx)
+                return pd.DataFrame({"close": np.linspace(150, 160, 90)}, index=idx)
 
         mock_market.get_daily_bars.side_effect = side_effect
 

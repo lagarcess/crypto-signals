@@ -187,3 +187,8 @@
 
 ### Linting & Quality
 - [2026-02-13] **Unused Variables**: Ruff rule `B007` flags unused loop control variables. If a variable from an unpacked tuple is not needed, prefix it with an underscore (e.g., `for sig, _, _ in items:`) to explicitly indicate intent and silence the linter.
+
+### Test Suite Hygiene
+- [2026-02-13] **Pytest Collection Warnings**: Classes named `Test*` (e.g., `TestModel`, `TestPipeline`) in test files are collected by pytest as test classes, triggering `PytestCollectionWarning` when they lack test methods. Rename helper/fixture classes to `Mock*` or `Stub*` to avoid collision with pytest's default `python_classes = Test*` collection pattern.
+- [2026-02-13] **Mock Spec for Alpaca Models**: Using `MagicMock()` without `spec=` for Alpaca SDK models (e.g., `Position`, `Order`) causes XFAIL-worthy failures when production code accesses specific model attributes or uses `isinstance` checks. Always use `MagicMock(spec=ModelClass)` and explicitly set required attributes to match the SDK's attribute contract.
+- [2026-02-13] **Performance Test Thresholds**: Numba JIT-compiled functions achieve 2-5ms locally but can take 50-200ms in CI due to shared runners, cold caches, and CPU throttling. Set thresholds at 4× the expected CI worst case (e.g., 200ms for a 50ms-expected operation) rather than 20× (1s), which masks genuine algorithmic regressions.
