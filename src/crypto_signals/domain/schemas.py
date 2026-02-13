@@ -288,7 +288,7 @@ class NotificationPayload(BaseModel):
     without modifying the core Signal persistence model.
     """
 
-    signal: Any
+    signal: Any  # Typed as Signal at runtime; Any avoids Pydantic validation in tests
     is_saturated: bool = False
     saturation_count: int = 0
 

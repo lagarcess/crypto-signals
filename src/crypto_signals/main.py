@@ -10,7 +10,7 @@ import signal
 import sys
 import time
 from datetime import date, datetime, timezone
-from typing import Any, Callable, Optional, Protocol
+from typing import Any, Callable, Optional, Protocol, cast
 
 import typer
 from alpaca.common.exceptions import APIError
@@ -780,7 +780,7 @@ def main(
                                                     alpaca_sym
                                                 )
                                             )
-                                            alpaca_qty = float(alpaca_pos.qty)
+                                            alpaca_qty = float(cast(Any, alpaca_pos).qty)
                                             if alpaca_qty < pos.qty:
                                                 logger.warning(
                                                     f"ISSUE 275: Alpaca qty "
@@ -947,7 +947,7 @@ def main(
 
         # Phase 2: Signal Saturation Filtering
         # Prevents macro-level noise from spamming notifications if >50% of symbols trigger the same pattern.
-        pattern_counts = {}
+        pattern_counts: dict[str, int] = {}
         for sig, _, _ in candidate_signals:
             if sig.status != SignalStatus.REJECTED_BY_FILTER:
                 pattern_counts[sig.pattern_name] = (
@@ -960,7 +960,8 @@ def main(
         signals_found = 0
 
         # Phase 3: Signal Processing (Persistence, Notification, Execution)
-        for trade_signal, asset_class, symbol_duration in candidate_signals:
+        for trade_signal, asset_class, _symbol_duration in candidate_signals:
+            processing_start = time.time()
             symbol = trade_signal.symbol
             pattern_name = trade_signal.pattern_name
 
@@ -976,13 +977,6 @@ def main(
                         "threshold": saturation_threshold,
                     },
                 )
-
-            # Build Notification Payload (explicit wrapper instead of dynamic attributes)
-            notification_payload = NotificationPayload(
-                signal=trade_signal,
-                is_saturated=is_saturated,
-                saturation_count=pattern_counts.get(pattern_name, 0),
-            )
 
             # --- Handle Shadow Signals (rejected by quality gates) ---
             if trade_signal.status == SignalStatus.REJECTED_BY_FILTER:
@@ -1018,6 +1012,13 @@ def main(
                     )
                 # Shadow signals don't trigger live trading - continue to next symbol
                 continue
+
+            # Build Notification Payload (deferred past shadow check for efficiency)
+            notification_payload = NotificationPayload(
+                signal=trade_signal,
+                is_saturated=is_saturated,
+                saturation_count=pattern_counts.get(pattern_name, 0),
+            )
 
             # --- Standard signal handling (WAITING status) ---
             signals_found += 1
@@ -1191,11 +1192,11 @@ def main(
                             f"ISSUE 275: Skipping execution for "
                             f"{trade_signal.symbol} — Alpaca already "
                             f"has open position (qty="
-                            f"{existing_alpaca_pos.qty})",
+                            f"{cast(Any, existing_alpaca_pos).qty})",
                             extra={
                                 "symbol": trade_signal.symbol,
                                 "signal_id": trade_signal.signal_id,
-                                "existing_qty": str(existing_alpaca_pos.qty),
+                                "existing_qty": str(cast(Any, existing_alpaca_pos).qty),
                             },
                         )
                         continue
@@ -1267,7 +1268,7 @@ def main(
                     )
                     metrics.record_failure("order_execution", execution_duration)
 
-            metrics.record_success("signal_processing", symbol_duration)
+            metrics.record_success("signal_processing", time.time() - processing_start)
 
         # =========================================================================
         # POSITION SYNC LOOP
