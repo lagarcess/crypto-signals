@@ -1,12 +1,12 @@
 from unittest.mock import MagicMock, patch
 
-import pytest
+from alpaca.trading.enums import OrderSide
+from alpaca.trading.models import Order
 from crypto_signals.scripts.diagnostics.forensic_analysis import analyze_exit_gap
 
 
 def test_analyze_exit_gap_no_gaps():
     """Test analyze_exit_gap detection logic."""
-    from alpaca.trading.models import Order
     mock_console = MagicMock()
     mock_settings = MagicMock()
     mock_settings.GOOGLE_CLOUD_PROJECT = "test-project"
@@ -29,7 +29,6 @@ def test_analyze_exit_gap_no_gaps():
     # Mock Alpaca Orders
     mock_order = MagicMock(spec=Order)
     mock_order.symbol = "BTC/USD"
-    from alpaca.trading.enums import OrderSide
 
     mock_order.side = OrderSide.SELL
     mock_order.status = "filled"

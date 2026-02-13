@@ -39,7 +39,7 @@ All patterns use **vectorized pandas operations** for high performance processin
 
 A reversal pattern that forms at the bottom of a downtrend, signaling potential buying pressure.
 
-![Hammer](images/patterns/hammer.png)
+![Hammer](../images/patterns/hammer.png)
 
 **Detection Logic:**
 - Lower wick ≥ 2× body size
@@ -59,7 +59,7 @@ A reversal pattern that forms at the bottom of a downtrend, signaling potential 
 
 A bullish reversal pattern with a long upper shadow, indicating failed selling pressure.
 
-![Inverted Hammer](images/patterns/inverted_hammer.png)
+![Inverted Hammer](../images/patterns/inverted_hammer.png)
 
 **Detection Logic:**
 - Upper wick ≥ 2× body size
@@ -78,7 +78,7 @@ A bullish reversal pattern with a long upper shadow, indicating failed selling p
 
 A powerful single-bar reversal where price opens and closes near the high.
 
-![Dragonfly Doji](images/patterns/dragonfly_doji.png)
+![Dragonfly Doji](../images/patterns/dragonfly_doji.png)
 
 **Detection Logic:**
 - Body < 10% of total range
@@ -98,7 +98,7 @@ A powerful single-bar reversal where price opens and closes near the high.
 
 A strong reversal candle that opens at its low and closes near its high.
 
-![Bullish Belt Hold](images/patterns/belt_hold.png)
+![Bullish Belt Hold](../images/patterns/belt_hold.png)
 
 **Detection Logic:**
 - Open = Low (within 0.1%)
@@ -117,7 +117,7 @@ A strong reversal candle that opens at its low and closes near its high.
 
 A full-bodied bullish candle with minimal shadows, showing strong conviction.
 
-![Bullish Marubozu](images/patterns/marubozu.png)
+![Bullish Marubozu](../images/patterns/marubozu.png)
 
 **Detection Logic:**
 - Body > 80% of total range
@@ -138,7 +138,7 @@ A full-bodied bullish candle with minimal shadows, showing strong conviction.
 
 A reversal pattern where a bullish candle completely engulfs the previous bearish candle.
 
-![Bullish Engulfing](images/patterns/bullish_engulfing.png)
+![Bullish Engulfing](../images/patterns/bullish_engulfing.png)
 
 **Detection Logic:**
 - Day 1: Bearish candle
@@ -156,7 +156,7 @@ A reversal pattern where a bullish candle completely engulfs the previous bearis
 
 An inside bar pattern where a small bullish candle forms within a large bearish candle.
 
-![Bullish Harami](images/patterns/bullish_harami.png)
+![Bullish Harami](../images/patterns/bullish_harami.png)
 
 **Detection Logic:**
 - Day 1: Large bearish candle
@@ -176,7 +176,7 @@ An inside bar pattern where a small bullish candle forms within a large bearish 
 
 A powerful gap reversal pattern with extreme conviction.
 
-![Bullish Kicker](images/patterns/bullish_kicker.png)
+![Bullish Kicker](../images/patterns/bullish_kicker.png)
 
 **Detection Logic:**
 - Day 1: Bearish candle
@@ -195,7 +195,7 @@ A powerful gap reversal pattern with extreme conviction.
 
 A two-bar reversal where the bullish candle closes above the midpoint of the previous bearish candle.
 
-![Piercing Line](images/patterns/piercing_line.png)
+![Piercing Line](../images/patterns/piercing_line.png)
 
 **Detection Logic:**
 - Day 1: Large bearish candle (body > 60% range)
@@ -214,7 +214,7 @@ A two-bar reversal where the bullish candle closes above the midpoint of the pre
 
 Two consecutive candles with matching lows, indicating strong support.
 
-![Tweezer Bottoms](images/patterns/tweezer_bottoms.png)
+![Tweezer Bottoms](../images/patterns/tweezer_bottoms.png)
 
 **Detection Logic:**
 - Matching lows (within 0.1% variance)
@@ -237,7 +237,7 @@ Two consecutive candles with matching lows, indicating strong support.
 
 A powerful three-bar reversal pattern with a small "star" candle in the middle.
 
-![Morning Star](images/patterns/morning_star.png)
+![Morning Star](../images/patterns/morning_star.png)
 
 **Detection Logic:**
 - Day 1: Large bearish candle (body > ATR)
@@ -265,7 +265,7 @@ A powerful three-bar reversal pattern with a small "star" candle in the middle.
 
 Three consecutive large bullish candles, each opening within the previous body.
 
-![Three White Soldiers](images/patterns/three_white_soldiers.png)
+![Three White Soldiers](../images/patterns/three_white_soldiers.png)
 
 **Detection Logic:**
 - Three consecutive bullish candles
@@ -284,7 +284,7 @@ Three consecutive large bullish candles, each opening within the previous body.
 
 A three-bar pattern: bearish, inside bullish (harami), confirmation.
 
-![Three Inside Up](images/patterns/three_inside_up.png)
+![Three Inside Up](../images/patterns/three_inside_up.png)
 
 **Detection Logic:**
 - Day 1: Large bearish candle
@@ -303,7 +303,7 @@ A three-bar pattern: bearish, inside bullish (harami), confirmation.
 
 A five-bar continuation pattern with three small consolidation candles.
 
-![Rising Three Methods](images/patterns/rising_three_methods.png)
+![Rising Three Methods](../images/patterns/rising_three_methods.png)
 
 **Detection Logic:**
 - Day 1: Large bullish candle (trend candle)
@@ -333,7 +333,7 @@ A five-bar continuation pattern with three small consolidation candles.
 
 A continuation pattern with a strong uptrend followed by consolidation.
 
-![Bull Flag](images/patterns/bull_flag.png)
+![Bull Flag](../images/patterns/bull_flag.png)
 
 **Detection Logic (Pivot-Based):**
 - Pole Valley → Peak: ≥15% price rise
@@ -355,7 +355,7 @@ A continuation pattern with a strong uptrend followed by consolidation.
 
 A reversal pattern with two similar lows and a middle peak (neckline).
 
-![Double Bottom](images/patterns/double_bottom.png)
+![Double Bottom](../images/patterns/double_bottom.png)
 
 **Detection Logic (Pivot-Based):**
 - Two valley pivots (V1, V2) within 1.5% price variance
@@ -374,7 +374,7 @@ A reversal pattern with two similar lows and a middle peak (neckline).
 
 A bullish continuation pattern resembling a teacup with a handle.
 
-![Cup and Handle](images/patterns/cup_and_handle.png)
+![Cup and Handle](../images/patterns/cup_and_handle.png)
 
 **Detection Logic:**
 - Cup: U-shaped bottom (not V-shaped)
@@ -396,7 +396,7 @@ A bullish continuation pattern resembling a teacup with a handle.
 
 A continuation pattern with flat resistance and rising support.
 
-![Ascending Triangle](images/patterns/ascending_triangle.png)
+![Ascending Triangle](../images/patterns/ascending_triangle.png)
 
 **Detection Logic (Pivot-Based):**
 - Flat Resistance: 2-3 peaks within 2% price variance
@@ -416,7 +416,7 @@ A continuation pattern with flat resistance and rising support.
 
 A bullish pattern with converging, downward-sloping trendlines.
 
-![Falling Wedge](images/patterns/falling_wedge.png)
+![Falling Wedge](../images/patterns/falling_wedge.png)
 
 **Detection Logic (Pivot-Based):**
 - Lower Highs: Sequential peaks descending in price
@@ -436,7 +436,7 @@ A bullish pattern with converging, downward-sloping trendlines.
 
 A powerful reversal pattern with three troughs.
 
-![Inverse Head and Shoulders](images/patterns/inverse_head_shoulders.png)
+![Inverse Head and Shoulders](../images/patterns/inverse_head_shoulders.png)
 
 **Detection Logic (Pivot-Based):**
 - 5-pivot structure: V1 (L-Shoulder), P1 (Neckline), V2 (Head), P2 (Neckline), V3 (R-Shoulder)
@@ -470,7 +470,7 @@ A powerful reversal pattern with three troughs.
 
 A price symmetry pattern where the CD leg mirrors the AB leg in both price and time.
 
-![ABCD](images/patterns/abcd.png)
+![ABCD](../images/patterns/abcd.png)
 
 **Detection Logic:**
 - Price symmetry: |AB| ≈ |CD| within ±0.1%
@@ -488,7 +488,7 @@ A price symmetry pattern where the CD leg mirrors the AB leg in both price and t
 
 The original harmonic pattern with specific Fibonacci retracement ratios.
 
-![Gartley](images/patterns/gartley.png)
+![Gartley](../images/patterns/gartley.png)
 
 **Detection Logic:**
 - B point: 0.618 retracement of XA leg
@@ -508,7 +508,7 @@ The original harmonic pattern with specific Fibonacci retracement ratios.
 
 A precise harmonic pattern with deep D-point retracement.
 
-![Bat](images/patterns/bat.png)
+![Bat](../images/patterns/bat.png)
 
 **Detection Logic:**
 - B point: 0.382-0.500 retracement of XA leg
@@ -528,7 +528,7 @@ A precise harmonic pattern with deep D-point retracement.
 
 An extension pattern that completes beyond the initial XA leg.
 
-![Butterfly](images/patterns/butterfly.png)
+![Butterfly](../images/patterns/butterfly.png)
 
 **Detection Logic:**
 - B point: 0.786 retracement of XA leg
@@ -548,7 +548,7 @@ An extension pattern that completes beyond the initial XA leg.
 
 The most extreme harmonic pattern with maximum extension.
 
-![Crab](images/patterns/crab.png)
+![Crab](../images/patterns/crab.png)
 
 **Detection Logic:**
 - B point: 0.382-0.618 retracement of XA leg
@@ -568,7 +568,7 @@ The most extreme harmonic pattern with maximum extension.
 
 Impulse wave structure detection based on Elliott Wave theory.
 
-![Elliott Wave](images/patterns/elliott_wave.png)
+![Elliott Wave](../images/patterns/elliott_wave.png)
 
 **Detection Logic:**
 - Wave 3 must be longer than Wave 1 (strict requirement)

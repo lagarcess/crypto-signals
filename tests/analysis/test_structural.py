@@ -274,7 +274,6 @@ class TestPerformance:
     """Performance tests for O(N) complexity verification."""
 
     @pytest.mark.slow
-
     def test_zigzag_performance_million_points(self):
         """ZigZag should process 1M points in under 50ms (after warm-up)."""
         # Ensure JIT is warmed up
@@ -297,9 +296,9 @@ class TestPerformance:
         result = _zigzag_core(highs.astype(np.float64), lows.astype(np.float64), 0.05)
         elapsed = time.perf_counter() - start
 
-        # Should complete in under 1s (relaxed for CI environment variance)
+        # Should complete in under 200ms (relaxed from 50ms for CI variance)
         # In local high-perf environments, Numba typically achieves 2-5ms
-        assert elapsed < 1.0, f"ZigZag 1M points took {elapsed * 1000:.2f}ms"
+        assert elapsed < 0.2, f"ZigZag 1M points took {elapsed * 1000:.2f}ms"
         assert len(result) > 0, "Should detect some pivots"
 
     def test_linear_time_complexity(self, large_random_df):

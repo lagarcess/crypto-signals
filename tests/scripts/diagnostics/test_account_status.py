@@ -1,16 +1,14 @@
 from unittest.mock import MagicMock, patch
 
-import pytest
+from alpaca.trading.models import Position
 from crypto_signals.scripts.diagnostics.account_status import (
     get_account_summary,
     write_report,
 )
 
 
-
 def test_get_account_summary_mocked():
     """Test get_account_summary with mocked Alpaca client."""
-    from alpaca.trading.models import Position
     mock_settings = MagicMock()
     mock_settings.ALPACA_API_KEY = "test_key"
     mock_settings.ALPACA_SECRET_KEY = "test_secret"
