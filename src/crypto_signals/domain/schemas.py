@@ -288,7 +288,7 @@ class NotificationPayload(BaseModel):
     without modifying the core Signal persistence model.
     """
 
-    signal: "Signal"
+    signal: Any
     is_saturated: bool = False
     saturation_count: int = 0
 

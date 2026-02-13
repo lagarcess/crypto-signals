@@ -96,6 +96,10 @@ def mock_dependencies():
         mock_settings.return_value.EQUITY_SYMBOLS = []
         mock_settings.return_value.RATE_LIMIT_DELAY = 0.0  # Disable delay for tests
         mock_settings.return_value.ENABLE_GCP_LOGGING = False
+        mock_settings.return_value.ENABLE_EXECUTION = (
+            False  # Disable execution by default
+        )
+        mock_settings.return_value.SIGNAL_SATURATION_THRESHOLD_PCT = 0.5  # 50% threshold
         mock_settings.return_value.DISCORD_BOT_TOKEN = "test_token"
         mock_settings.return_value.DISCORD_CHANNEL_ID_CRYPTO = "123"
         mock_settings.return_value.DISCORD_CHANNEL_ID_STOCK = "456"
@@ -257,7 +261,11 @@ def test_main_execution_flow(mock_dependencies):
     # Verify Signal Handling (Save FIRST with CREATED, then Discord, then Update to WAITING)
     # Should be called once for BTC/USD
     mock_repo_instance.save.assert_called_once_with(mock_signal)
-    mock_discord_instance.send_signal.assert_called_once_with(mock_signal)
+    mock_discord_instance.send_signal.assert_called_once()
+    # Verify the NotificationPayload wrapper contains the expected signal
+    actual_payload = mock_discord_instance.send_signal.call_args[0][0]
+    assert actual_payload.signal is mock_signal
+    assert actual_payload.is_saturated is False
     mock_repo_instance.update_signal_atomic.assert_called()
 
     # Verify thread_id was attached to signal after Discord notification

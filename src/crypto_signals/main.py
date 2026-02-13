@@ -29,6 +29,7 @@ from crypto_signals.config import (
 from crypto_signals.domain.schemas import (
     AssetClass,
     ExitReason,
+    NotificationPayload,
     SignalStatus,
     TradeStatus,
 )
@@ -1120,8 +1121,8 @@ def main(
                     f"for signal {trade_signal.signal_id}"
                 )
             else:
-                    # Standard execution: Create new thread (passing payload with saturation info)
-                    thread_id = discord.send_signal(notification_payload)
+                # Standard execution: Create new thread (passing payload with saturation info)
+                thread_id = discord.send_signal(notification_payload)
 
             # PHASE 3: Update with thread_id and final status
             if thread_id:
