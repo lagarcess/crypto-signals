@@ -276,6 +276,24 @@ class StrategyConfig(BaseModel):
 
 
 # =============================================================================
+# NOTIFICATION DOMAIN
+# =============================================================================
+
+
+class NotificationPayload(BaseModel):
+    """
+    Wrapper for trade signals with additional metadata for notifications.
+
+    Enables explicit data flow for temporary context like macro saturation
+    without modifying the core Signal persistence model.
+    """
+
+    signal: Any  # Typed as Signal at runtime; Any avoids Pydantic validation in tests
+    is_saturated: bool = False
+    saturation_count: int = 0
+
+
+# =============================================================================
 # FIRESTORE: OPERATIONAL DOMAIN (Collections: live_signals, live_positions)
 # =============================================================================
 

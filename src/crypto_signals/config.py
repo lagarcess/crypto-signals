@@ -214,6 +214,14 @@ class Settings(BaseSettings):
         description="Automatically add missing columns to BigQuery tables.",
     )
 
+    # === Saturation Filtering (Issue #290) ===
+    SIGNAL_SATURATION_THRESHOLD_PCT: float = Field(
+        default=0.5,
+        description="Percentage of portfolio triggering same pattern to flag saturation.",
+        ge=0.1,
+        le=1.0,
+    )
+
     # === Cooldown Configuration (Issue #117 Strategic Feedback) ===
     COOLDOWN_SCOPE: str = Field(
         default="SYMBOL",

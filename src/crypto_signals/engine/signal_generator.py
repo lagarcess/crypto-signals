@@ -302,12 +302,16 @@ class SignalGenerator:
             "BULL_FLAG",
             "DOUBLE_BOTTOM",
             "BULLISH_MARUBOZU",
+            "ELLIOTT_WAVE_135",
+            "ELLIOTT_IMPULSE_WAVE",
         )
         trend_following_patterns = (
             "BULL_FLAG",
             "ASCENDING_TRIANGLE",
             "RISING_THREE_METHODS",
             "THREE_WHITE_SOLDIERS",
+            "ELLIOTT_WAVE_135",
+            "ELLIOTT_IMPULSE_WAVE",
         )
 
         # 1. VOLUME CONFIRMATION FILTER (Breakout patterns only)
