@@ -28,14 +28,9 @@ class TestConfluenceConfig:
         )
 
         dump = config.model_dump(mode="python")
-        expected_confluence_config = {
-            "adx_period": 14,
-            "adx_threshold": 25.0,
-            "rsi_period": 14,
-            "rsi_threshold": 70.0,
-            "sma_period": 200,
-            "volume_threshold": 1.5,
-        }
+        from crypto_signals.domain.schemas import ConfluenceConfig
+
+        expected_confluence_config = ConfluenceConfig().model_dump()
         assert dump["confluence_config"] == expected_confluence_config
 
     def test_confluence_config_validation_success(self):

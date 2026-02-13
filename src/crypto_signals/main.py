@@ -727,7 +727,10 @@ def main(
                             except Exception as e:
                                 logger.warning(
                                     "Thread recovery check failed for {symbol}.",
-                                    extra={"symbol": trade_signal.symbol, "error": str(e)},
+                                    extra={
+                                        "symbol": trade_signal.symbol,
+                                        "error": str(e),
+                                    },
                                 )
 
                         if thread_id:
@@ -1401,7 +1404,9 @@ def main(
                     },
                 )
             except Exception as e:
-                logger.error("Position sync failed.", exc_info=True, extra={"error": str(e)})
+                logger.error(
+                    "Position sync failed.", exc_info=True, extra={"error": str(e)}
+                )
                 metrics.record_failure("position_sync", time.time() - sync_start)
 
         # Display Rich execution summary table

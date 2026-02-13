@@ -215,6 +215,7 @@ def test_run_skips_if_extract_empty(pipeline):
 def test_run_ensures_both_tables_exist(pipeline, mock_bq_client):
     """Test that run ensures both fact and staging tables exist."""
     from google.api_core.exceptions import NotFound
+
     with (
         patch.object(pipeline, "extract", return_value=[]),
         patch("crypto_signals.pipelines.base.get_settings") as mock_settings,
@@ -226,7 +227,11 @@ def test_run_ensures_both_tables_exist(pipeline, mock_bq_client):
         # 1. Fact Table (first try) -> NotFound
         # 2. Fact Table (retry) -> Success
         # 3. Staging Table -> NotFound
-        pipeline.guardian.validate_schema.side_effect = [NotFound("Not Found"), None, NotFound("Not Found")]
+        pipeline.guardian.validate_schema.side_effect = [
+            NotFound("Not Found"),
+            None,
+            NotFound("Not Found"),
+        ]
 
         pipeline.run()
 

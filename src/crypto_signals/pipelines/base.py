@@ -338,6 +338,8 @@ class BigQueryPipelineBase(ABC):
 
         except Exception as e:
             # Use structured logging to avoid f-string formatting issues with Loguru (Issue #149)
-            logger.opt(exception=True).error("[{}] Pipeline FAILED: {}", self.job_name, str(e))
+            logger.opt(exception=True).error(
+                "[{}] Pipeline FAILED: {}", self.job_name, str(e)
+            )
             # CRITICAL: Re-raise to ensure job failure is reported to Cloud Run
             raise

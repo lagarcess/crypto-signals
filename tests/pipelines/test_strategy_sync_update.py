@@ -74,6 +74,7 @@ class TestStrategySyncUpdate:
         assert "confluence_config" in record
         # ConfluenceConfig model includes defaults on serialization
         from crypto_signals.domain.schemas import ConfluenceConfig
+
         expected_config = ConfluenceConfig().model_dump()
         assert json.loads(record["confluence_config"]) == expected_config
 
@@ -137,6 +138,7 @@ class TestStrategySyncUpdate:
         # ConfluenceConfig model serializes with sorted keys and includes defaults
         # Since "rsi" is not a known field, it's stored via extra="allow"
         from crypto_signals.domain.schemas import ConfluenceConfig
+
         expected_config = ConfluenceConfig().model_dump()
         expected_config["rsi"] = 14
         assert json.loads(record["confluence_config"]) == expected_config
