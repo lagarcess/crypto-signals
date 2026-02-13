@@ -7,9 +7,10 @@ from crypto_signals.scripts.diagnostics.account_status import (
 )
 
 
-@pytest.mark.xfail(reason="Tracked in Issue #159: Mock mismatch in account summary test")
+
 def test_get_account_summary_mocked():
     """Test get_account_summary with mocked Alpaca client."""
+    from alpaca.trading.models import Position
     mock_settings = MagicMock()
     mock_settings.ALPACA_API_KEY = "test_key"
     mock_settings.ALPACA_SECRET_KEY = "test_secret"
@@ -23,7 +24,7 @@ def test_get_account_summary_mocked():
     mock_account.buying_power = "20000.0"
     mock_account.last_equity = "14000.0"
 
-    mock_pos = MagicMock()
+    mock_pos = MagicMock(spec=Position)
     mock_pos.symbol = "BTC/USD"
     mock_pos.qty = "1.0"
     mock_pos.avg_entry_price = "50000.0"

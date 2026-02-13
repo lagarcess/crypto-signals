@@ -85,7 +85,11 @@ class TestRiskCorrelationBatching:
         index = pd.MultiIndex.from_product(iterables, names=["symbol", "timestamp"])
 
         # Random data
-        df = pd.DataFrame({"close": [100] * 180}, index=index)
+        import numpy as np
+        # Use different patterns for each symbol to avoid perfect correlation
+        # BTC/USD goes up, ETH/USD goes down -> Negative correlation
+        data = np.concatenate([np.linspace(100, 110, 90), np.linspace(110, 100, 90)])
+        df = pd.DataFrame({"close": data}, index=index)
         mock_market.get_daily_bars.return_value = df
 
         result = risk_engine.check_correlation(signal)
@@ -125,19 +129,20 @@ class TestRiskCorrelationBatching:
         # Logic iterates symbols_by_class.
 
         # Mock returns
+        import numpy as np
         def side_effect(symbols, asset_class, lookback_days=90):
             if asset_class == AssetClass.CRYPTO:
                 # ETH
                 idx = pd.MultiIndex.from_product(
                     [["ETH/USD"], pd.date_range("2023-01-01", periods=90)]
                 )
-                return pd.DataFrame({"close": [10] * 90}, index=idx)
+                return pd.DataFrame({"close": np.linspace(10, 12, 90)}, index=idx)
             else:
                 # AAPL
                 idx = pd.MultiIndex.from_product(
                     [["AAPL"], pd.date_range("2023-01-01", periods=90)]
                 )
-                return pd.DataFrame({"close": [150] * 90}, index=idx)
+                return pd.DataFrame({"close": np.linspace(150, 160, 90)}, index=idx)
 
         mock_market.get_daily_bars.side_effect = side_effect
 

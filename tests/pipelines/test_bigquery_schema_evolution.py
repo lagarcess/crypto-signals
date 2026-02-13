@@ -7,13 +7,13 @@ from google.cloud import bigquery
 from pydantic import BaseModel
 
 
-class TestModel(BaseModel):
+class MockModel(BaseModel):
     id: str
     value: int
     new_field: str  # This field is missing in BQ
 
 
-class TestPipeline(BigQueryPipelineBase):
+class MockPipeline(BigQueryPipelineBase):
     def extract(self):
         return [{"id": "1", "value": 10, "new_field": "data"}]
 
@@ -50,13 +50,13 @@ def test_pipeline_fails_strict_validation(mock_bq_client, mock_settings):
     mock_bq_client.get_table.return_value = mock_table
 
     with patch("google.cloud.bigquery.Client", return_value=mock_bq_client):
-        pipeline = TestPipeline(
+        pipeline = MockPipeline(
             job_name="test_job",
             staging_table_id="project.dataset.staging",
             fact_table_id="project.dataset.fact",
             id_column="id",
             partition_column="date",
-            schema_model=TestModel,
+            schema_model=MockModel,
         )
 
         with pytest.raises(SchemaMismatchError) as excinfo:
@@ -89,13 +89,13 @@ def test_pipeline_migrates_schema_and_succeeds(mock_bq_client, mock_settings):
     mock_bq_client.insert_rows_json.return_value = []  # Success
 
     with patch("google.cloud.bigquery.Client", return_value=mock_bq_client):
-        pipeline = TestPipeline(
+        pipeline = MockPipeline(
             job_name="test_job",
             staging_table_id="project.dataset.staging",
             fact_table_id="project.dataset.fact",
             id_column="id",
             partition_column="date",
-            schema_model=TestModel,
+            schema_model=MockModel,
         )
 
         # Run pipeline

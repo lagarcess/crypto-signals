@@ -4,11 +4,9 @@ import pytest
 from crypto_signals.scripts.diagnostics.forensic_analysis import analyze_exit_gap
 
 
-@pytest.mark.xfail(
-    reason="Tracked in Issue #159: Mock assertion failure in forensic analysis"
-)
 def test_analyze_exit_gap_no_gaps():
     """Test analyze_exit_gap detection logic."""
+    from alpaca.trading.models import Order
     mock_console = MagicMock()
     mock_settings = MagicMock()
     mock_settings.GOOGLE_CLOUD_PROJECT = "test-project"
@@ -29,14 +27,17 @@ def test_analyze_exit_gap_no_gaps():
     mock_pos.id = "pos1"
 
     # Mock Alpaca Orders
-    mock_order = MagicMock()
+    mock_order = MagicMock(spec=Order)
     mock_order.symbol = "BTC/USD"
-    mock_order.side.value = "sell"
-    mock_order.side.__str__.return_value = "sell"  # Simple mock
     from alpaca.trading.enums import OrderSide
 
     mock_order.side = OrderSide.SELL
     mock_order.status = "filled"
+    mock_order.id = "order1"
+    mock_order.order_type = "market"
+    mock_order.qty = 1.0
+    mock_order.filled_qty = 1.0
+    mock_order.client_order_id = "client1"
 
     with (
         patch(
