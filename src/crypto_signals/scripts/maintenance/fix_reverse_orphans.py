@@ -75,8 +75,9 @@ def heal_reverse_orphans():
             try:
                 # Check Alpaca
                 from alpaca.trading.models import Position
+                from crypto_signals.utils.symbols import normalize_alpaca_symbol
 
-                pos = alpaca.get_open_position(symbol)
+                pos = alpaca.get_open_position(normalize_alpaca_symbol(symbol))
 
                 # If we get here, it's OPEN in Alpaca
                 if isinstance(pos, Position):
@@ -141,9 +142,13 @@ def heal_reverse_orphans():
             # Assuming Long Exits for safety (selling).
 
             from alpaca.trading.models import Order
+            from crypto_signals.utils.symbols import normalize_alpaca_symbol
 
             req = MarketOrderRequest(
-                symbol=symbol, qty=qty, side=OrderSide.SELL, time_in_force=TimeInForce.GTC
+                symbol=normalize_alpaca_symbol(symbol),
+                qty=qty,
+                side=OrderSide.SELL,
+                time_in_force=TimeInForce.GTC,
             )
 
             order = alpaca.submit_order(req)
