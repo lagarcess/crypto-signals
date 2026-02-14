@@ -15,7 +15,9 @@ import os
 
 from alpaca.trading.client import TradingClient
 from alpaca.trading.enums import OrderSide, TimeInForce
+from alpaca.trading.models import Order, Position
 from alpaca.trading.requests import MarketOrderRequest
+from crypto_signals.utils.symbols import normalize_alpaca_symbol
 from google.cloud import firestore
 from rich.console import Console
 from rich.prompt import Confirm
@@ -74,9 +76,6 @@ def heal_reverse_orphans():
 
             try:
                 # Check Alpaca
-                from alpaca.trading.models import Position
-                from crypto_signals.utils.symbols import normalize_alpaca_symbol
-
                 pos = alpaca.get_open_position(normalize_alpaca_symbol(symbol))
 
                 # If we get here, it's OPEN in Alpaca
@@ -140,9 +139,6 @@ def heal_reverse_orphans():
             # Determine side (always sell for long exit, assuming long only for now)
             # Todo: Check position side if we support shorts.
             # Assuming Long Exits for safety (selling).
-
-            from alpaca.trading.models import Order
-            from crypto_signals.utils.symbols import normalize_alpaca_symbol
 
             req = MarketOrderRequest(
                 symbol=normalize_alpaca_symbol(symbol),
