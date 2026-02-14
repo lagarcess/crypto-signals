@@ -38,6 +38,7 @@ def mock_settings():
     mock = MagicMock()
     mock.ENVIRONMENT = "PROD"
     mock.TTL_DAYS_POSITION = 90
+    mock.CRYPTO_SYMBOLS = ["BTC/USD", "ETH/USD"]
     return mock
 
 
@@ -64,7 +65,8 @@ def sample_open_position():
 def sample_alpaca_position():
     """Create a sample Alpaca position object."""
     mock_pos = MagicMock()
-    mock_pos.symbol = "BTC/USD"
+    # Alpaca uses symbols without slashes for crypto (e.g., BTCUSD)
+    mock_pos.symbol = "BTCUSD"
     mock_pos.qty = 0.01
     mock_pos.side = "long"
     return mock_pos
@@ -205,10 +207,10 @@ class TestDetectOrphans:
     ):
         """Reconciliation handles multiple orphans."""
         pos1 = MagicMock()
-        pos1.symbol = "BTC/USD"
+        pos1.symbol = "BTCUSD"
 
         pos2 = MagicMock()
-        pos2.symbol = "ETH/USD"
+        pos2.symbol = "ETHUSD"
 
         mock_trading_client.get_all_positions.return_value = [pos1, pos2]
         mock_position_repo.get_open_positions.return_value = []
@@ -624,7 +626,7 @@ class TestReconcilerEdgeCases:
     ):
         """Reconciliation detects no issues when symbols match."""
         alpaca_pos = MagicMock()
-        alpaca_pos.symbol = "BTC/USD"
+        alpaca_pos.symbol = "BTCUSD"
 
         # Use sample_open_position which has all required attributes
         sample_open_position.status = TradeStatus.OPEN

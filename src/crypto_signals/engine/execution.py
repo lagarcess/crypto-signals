@@ -39,6 +39,7 @@ from crypto_signals.domain.schemas import (
 )
 from crypto_signals.engine.risk import RiskEngine
 from crypto_signals.market.data_provider import MarketDataProvider
+from crypto_signals.utils.symbols import normalize_alpaca_symbol
 from crypto_signals.observability import console, get_metrics_collector
 from crypto_signals.repository.firestore import PositionRepository
 from loguru import logger
@@ -671,8 +672,8 @@ class ExecutionEngine:
 
                 for activity in activities:
                     # Match by symbol (Alpaca uses 'BTCUSD' format, we use 'BTC/USD')
-                    activity_symbol = str(activity.symbol).replace("/", "")
-                    query_symbol = symbol.replace("/", "")
+                    activity_symbol = normalize_alpaca_symbol(str(activity.symbol))
+                    query_symbol = normalize_alpaca_symbol(symbol)
 
                     if activity_symbol != query_symbol:
                         continue
@@ -1084,10 +1085,35 @@ class ExecutionEngine:
                 try:
                     # Check actual open position on Alpaca
                     # get_open_position raises 404 if no position exists
-                    self.alpaca.get_open_position(position.symbol)
+                    alpaca_pos = self.alpaca.get_open_position(
+                        normalize_alpaca_symbol(position.symbol)
+                    )
+
+                    # Authoritative Reconciliation: Sync current qty and avg entry price
+                    # from broker live state to ensure Firestore matches reality.
+                    if alpaca_pos:
+                        position.qty = float(alpaca_pos.qty)
+                        position.entry_fill_price = float(alpaca_pos.avg_entry_price)
+
                 except Exception as e:
                     # 404 means no position -> BEFORE marking CLOSED, verify if a closing order exists
                     if "not found" in str(e).lower() or "404" in str(e):
+                        # Race Condition Protection: Skip manual exit verification for young positions (< 5 minutes)
+                        # This prevents false closures if sync runs immediately after opening.
+                        min_age_minutes = 5
+                        if position.created_at:
+                            age = datetime.now(timezone.utc) - position.created_at
+                            if age < timedelta(minutes=min_age_minutes):
+                                logger.warning(
+                                    f"Skipping manual exit verification for young position {position.symbol}",
+                                    extra={
+                                        "symbol": position.symbol,
+                                        "age_seconds": age.total_seconds(),
+                                        "min_age_minutes": min_age_minutes,
+                                    },
+                                )
+                                return position
+
                         if self.reconciler:
                             self.reconciler.handle_manual_exit_verification(position)
                         else:
