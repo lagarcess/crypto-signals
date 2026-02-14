@@ -8,7 +8,6 @@ import pytest
 from crypto_signals.domain.schemas import AggStrategyDaily
 from crypto_signals.pipelines.agg_strategy_daily import DailyStrategyAggregation
 from google.api_core.exceptions import NotFound
-from google.cloud import bigquery
 
 
 @pytest.fixture
@@ -77,33 +76,9 @@ def test_extract_generates_correct_query(pipeline):
     assert "win_rate" in query
 
 
-def test_create_table_if_not_exists(pipeline):
-    """Test table creation logic."""
-    # Scenario 1: Table exists
-    pipeline.bq_client.get_table.return_value = MagicMock()
-    pipeline._create_table_if_not_exists("test_table")
-    pipeline.bq_client.create_table.assert_not_called()
-
-    # Scenario 2: Table not found (Exception raised by get_table)
-    pipeline.bq_client.get_table.side_effect = NotFound("Not Found")
-    pipeline._create_table_if_not_exists("project.dataset.test_table")
-
-    # Verify create_table called
-    pipeline.bq_client.create_table.assert_called_once()
-    args, _ = pipeline.bq_client.create_table.call_args
-    table_arg = args[0]
-    assert isinstance(table_arg, bigquery.Table)
-    # bigquery.Table parses the full ID
-    assert table_arg.table_id == "test_table"
-    assert table_arg.dataset_id == "dataset"
-    assert table_arg.project == "project"
-    assert len(table_arg.schema) > 0
-
-
 def test_run_flow(pipeline):
     """Test full pipeline execution flow (mocked)."""
     # Mock internal methods to isolate logic
-    pipeline._create_table_if_not_exists = MagicMock()
     pipeline.guardian = MagicMock()  # Mock guardian to pass validation
 
     # Mock extract
@@ -132,13 +107,49 @@ def test_run_flow(pipeline):
 
     # Verify flow
     assert processed_count == 1
-    # Check table creation hooks
-    assert pipeline._create_table_if_not_exists.call_count == 2  # Fact and Staging
 
     # Check base flow
-    # Now called twice (fact and staging)
+    # Now called twice (fact and staging) via BigQueryPipelineBase.run()
     assert pipeline.guardian.validate_schema.call_count == 2
     pipeline.extract.assert_called_once()
     pipeline._truncate_staging.assert_called_once()
     pipeline._load_to_staging.assert_called_once()
     pipeline._execute_merge.assert_called_once()
+
+
+def test_run_with_auto_creation(pipeline):
+    """Test that run() triggers migrate_schema (creation) if tables are missing."""
+    # Ensure auto-migration is enabled
+    pipeline.settings.SCHEMA_MIGRATION_AUTO = True
+    # Mock guardian
+    pipeline.guardian = MagicMock()
+    # Setup: validate_schema raises NotFound on first call, success on second
+    # (to simulate table creation then successful re-validation)
+    pipeline.guardian.validate_schema.side_effect = [
+        NotFound("Table not found"),  # Fact Table Validation 1
+        None,  # Fact Table Re-validation
+        NotFound("Table not found"),  # Staging Table Validation
+    ]
+
+    # Mock extract to return empty to stop after pre-flight
+    pipeline.extract = MagicMock(return_value=[])
+
+    # We expect it to continue until it hits some other missing mock or finishes
+    try:
+        pipeline.run()
+    except Exception:
+        pass
+
+    # Check that migrate_schema was called for both fact and staging
+    # And verify it passed the correct partition_column="ds"
+    assert pipeline.guardian.migrate_schema.call_count == 2
+
+    # Verify first call (fact table)
+    args, kwargs = pipeline.guardian.migrate_schema.call_args_list[0]
+    assert args[0] == pipeline.fact_table_id
+    assert kwargs["partition_column"] == "ds"
+
+    # Verify second call (staging table)
+    args, kwargs = pipeline.guardian.migrate_schema.call_args_list[1]
+    assert args[0] == pipeline.staging_table_id
+    assert kwargs["partition_column"] == "ds"
