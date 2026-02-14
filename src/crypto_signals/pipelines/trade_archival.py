@@ -177,6 +177,9 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
         for doc in docs:
             data = doc.to_dict()
             if data:
+                # Capture the actual Firestore Document ID to ensure safe deletion
+                # during the transform phase if errors occur (Issue: Security Audit)
+                data["_doc_id"] = doc.id
                 raw_data.append(data)
 
         logger.info(f"[{self.job_name}] extracted {len(raw_data)} closed positions.")
@@ -540,28 +543,31 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                 # Record failure in metrics for dashboard visibility
                 metrics.record_failure("trade_transform", duration)
 
-                position_id = pos.get("position_id")
+                # Use _doc_id from the extract phase for safe logging and deletion
+                # (prevents path traversal via untrusted position_id field)
+                doc_id = pos.get("_doc_id") or pos.get("position_id", "UNKNOWN")
+
                 # Log error but don't stop the whole batch?
                 # For now, log and skip specific bad records to avoid blocking
                 # the pipeline.
                 logger.error(
                     f"[{self.job_name}] Failed to transform position "
-                    f"{position_id}: {e}"
+                    f"{doc_id}: {e}"
                 )
 
                 # Auto-purge broken records if enabled to prevent blocking the pipeline
                 # on every subsequent run (Issue: 31 Stale Records)
-                if self.settings.CLEANUP_ON_FAILURE:
+                if self.settings.CLEANUP_ON_FAILURE and doc_id != "UNKNOWN":
                     try:
                         logger.warning(
-                            f"[{self.job_name}] Auto-purging broken record: {position_id}"
+                            f"[{self.job_name}] Auto-purging broken record: {doc_id}"
                         )
                         self.firestore_client.collection(self.source_collection).document(
-                            position_id
+                            doc_id
                         ).delete()
                     except Exception as delete_err:
                         logger.error(
-                            f"[{self.job_name}] Failed to purge record {position_id}: {delete_err}"
+                            f"[{self.job_name}] Failed to purge record {doc_id}: {delete_err}"
                         )
 
                 continue

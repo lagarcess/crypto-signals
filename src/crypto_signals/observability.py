@@ -53,15 +53,19 @@ SENTINEL_THEME = Theme(
 # Global console instance for UI elements
 # Detect if we are in a TTY or Cloud Run (which usually doesn't have a TTY)
 # Widen to 200 for Cloud Run to prevent truncation of position_id and exceptions
+is_tty = sys.stdout.isatty()
 console = Console(
     theme=SENTINEL_THEME,
-    width=200 if not sys.stdout.isatty() else None,
-    force_terminal=False if not sys.stdout.isatty() else None,
+    width=200 if not is_tty else None,
+    force_terminal=False if not is_tty else None,
 )
 
-# Install rich tracebacks globally (show_locals=True for debugging "God Mode")
+# Install rich tracebacks globally (show_locals=False for production safety)
+# Prevents sensitive environment variables/secrets from leaking into logs
 rich_traceback.install(
-    console=console, show_locals=True, width=200 if not sys.stdout.isatty() else 120
+    console=console,
+    show_locals=False,
+    width=200 if not is_tty else 120,
 )
 
 
