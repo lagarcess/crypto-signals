@@ -15,6 +15,7 @@ Key Features:
 import time
 from contextlib import contextmanager
 from functools import wraps
+import sys
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
 from loguru import logger
@@ -50,10 +51,18 @@ SENTINEL_THEME = Theme(
 )
 
 # Global console instance for UI elements
-console = Console(theme=SENTINEL_THEME)
+# Detect if we are in a TTY or Cloud Run (which usually doesn't have a TTY)
+# Widen to 200 for Cloud Run to prevent truncation of position_id and exceptions
+console = Console(
+    theme=SENTINEL_THEME,
+    width=200 if not sys.stdout.isatty() else None,
+    force_terminal=False if not sys.stdout.isatty() else None,
+)
 
 # Install rich tracebacks globally (show_locals=True for debugging "God Mode")
-rich_traceback.install(console=console, show_locals=True, width=120)
+rich_traceback.install(
+    console=console, show_locals=True, width=200 if not sys.stdout.isatty() else 120
+)
 
 
 def configure_logging(level: str = "INFO", testing: bool = False) -> None:

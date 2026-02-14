@@ -31,6 +31,7 @@ from crypto_signals.config import (
 )
 from crypto_signals.domain.schemas import ExitReason, OrderSide, TradeExecution
 from crypto_signals.market.data_provider import MarketDataProvider
+from crypto_signals.observability import get_metrics_collector
 from crypto_signals.pipelines.base import BigQueryPipelineBase
 
 
@@ -87,35 +88,28 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
             self.execution_engine = ExecutionEngine()
 
     def _get_actual_fees(
-        self, alpaca_order_id: str | None, symbol: str, side: str
+        self,
+        alpaca_order_id: str | None,
+        symbol: str,
+        side: str,
+        activities: List[dict],
     ) -> float | None:
         """
-        Fetch actual fees (CFEE) from Alpaca Activities API.
+        Find actual fees (CFEE) for a specific order in pre-fetched activities.
 
         Args:
             alpaca_order_id: The Alpaca Order ID (UUID).
             symbol: Trading pair symbol (e.g., "BTC/USD").
             side: Order side ("buy" or "sell").
+            activities: List of Alpaca activity dictionaries.
 
         Returns:
-            float: Total fees in USD, or None if no activities found.
+            float: Total fees in USD, or None if no activities found for this order.
         """
-        if not alpaca_order_id:
+        if not alpaca_order_id or not activities:
             return None
 
         try:
-            # Fetch recent account activities (CFEE = Crypto Fee)
-            # Filter by date/type/direction via API parameters to optimize?
-            # alpaca-py `get_account_activities` supports `activity_types`.
-            # Note: We can't filter by order_id in the API call, must filter in client.
-            # Fetching last 100 CFEE activities should cover recent trades.
-
-            # Fetch recent account activities (CFEE = Crypto Fee)
-            # Use public .get() method which handles params correctly in most SDK versions
-            activities = self.alpaca.get(
-                "/account/activities", {"activity_types": "CSD,CFEE"}
-            )
-
             # Filter for this specific order
             # CFEE activities link to order_id (sometimes in 'id' or separate field depending on SDK version)
             # Inspecting common pattern: activity.order_id should match.
@@ -202,7 +196,31 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
             f"[{self.job_name}] Enriching {len(raw_data)} trades with Alpaca data..."
         )
 
+        metrics = get_metrics_collector()
         transformed = []
+
+        # Pre-fetch Alpaca activities once per batch to avoid redundant API calls
+        # and rate limiting (Issue: Systematic CFEE Failures)
+        alpaca_activities = []
+        has_crypto = any(pos.get("asset_class") == "CRYPTO" for pos in raw_data)
+        if has_crypto:
+            try:
+                logger.info(f"[{self.job_name}] Pre-fetching Alpaca crypto activities...")
+                alpaca_activities = self.alpaca.get(
+                    "/account/activities", {"activity_types": "CSD,CFEE"}
+                )
+                if not isinstance(alpaca_activities, list):
+                    logger.warning(
+                        f"[{self.job_name}] Unexpected activities response type: "
+                        f"{type(alpaca_activities)}. Expected list."
+                    )
+                    alpaca_activities = []
+                else:
+                    logger.info(
+                        f"[{self.job_name}] Fetched {len(alpaca_activities)} activities."
+                    )
+            except Exception as e:
+                logger.error(f"[{self.job_name}] Failed to pre-fetch activities: {e}")
 
         # Symbol-based cache to prevent redundant API calls
         # Key: f"{symbol}_{asset_class}", Value: DataFrame of daily bars
@@ -214,6 +232,7 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
             if idx > 0:
                 time.sleep(0.1)
 
+            start_time = time.time()
             try:
                 # 1. Fetch Order Details from Alpaca to get Fees and Exact Times
                 # The position_id in Firestore IS the Client Order ID from Alpaca
@@ -359,9 +378,12 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                 is_crypto = pos.get("asset_class") == "CRYPTO"
 
                 if is_crypto:
-                    # 1. Try Actual CFEE Lookup
+                    # 1. Try Actual CFEE Lookup (using pre-fetched activities)
                     actual_fee_usd = self._get_actual_fees(
-                        alpaca_order_id, pos.get("symbol"), order_side_str
+                        alpaca_order_id,
+                        pos.get("symbol"),
+                        order_side_str,
+                        alpaca_activities,
                     )
 
                     if actual_fee_usd is not None:
@@ -514,13 +536,34 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                 transformed.append(trade.model_dump(mode="json"))
 
             except Exception as e:
+                duration = time.time() - start_time
+                # Record failure in metrics for dashboard visibility
+                metrics.record_failure("trade_transform", duration)
+
+                position_id = pos.get("position_id")
                 # Log error but don't stop the whole batch?
                 # For now, log and skip specific bad records to avoid blocking
                 # the pipeline.
                 logger.error(
                     f"[{self.job_name}] Failed to transform position "
-                    f"{pos.get('position_id')}: {e}"
+                    f"{position_id}: {e}"
                 )
+
+                # Auto-purge broken records if enabled to prevent blocking the pipeline
+                # on every subsequent run (Issue: 31 Stale Records)
+                if self.settings.CLEANUP_ON_FAILURE:
+                    try:
+                        logger.warning(
+                            f"[{self.job_name}] Auto-purging broken record: {position_id}"
+                        )
+                        self.firestore_client.collection(self.source_collection).document(
+                            position_id
+                        ).delete()
+                    except Exception as delete_err:
+                        logger.error(
+                            f"[{self.job_name}] Failed to purge record {position_id}: {delete_err}"
+                        )
+
                 continue
 
         return transformed
