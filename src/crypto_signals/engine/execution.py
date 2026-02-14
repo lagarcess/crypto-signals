@@ -58,6 +58,10 @@ class _ActivityWrapper:
         self.description = data.get("description")
 
 
+# Age guard for manual exit verification to prevent race conditions on newly opened positions
+_MANUAL_EXIT_VERIFICATION_MIN_AGE_MINUTES = 5
+
+
 class ExecutionEngine:
     """
     Manages the complete order lifecycle from Signal to Alpaca trade.
@@ -1098,9 +1102,9 @@ class ExecutionEngine:
                 except Exception as e:
                     # 404 means no position -> BEFORE marking CLOSED, verify if a closing order exists
                     if "not found" in str(e).lower() or "404" in str(e):
-                        # Race Condition Protection: Skip manual exit verification for young positions (< 5 minutes)
+                        # Race Condition Protection: Skip manual exit verification for young positions
                         # This prevents false closures if sync runs immediately after opening.
-                        min_age_minutes = 5
+                        min_age_minutes = _MANUAL_EXIT_VERIFICATION_MIN_AGE_MINUTES
                         if position.created_at:
                             age = datetime.now(timezone.utc) - position.created_at
                             if age < timedelta(minutes=min_age_minutes):
