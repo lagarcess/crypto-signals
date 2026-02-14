@@ -23,6 +23,7 @@ from crypto_signals.domain.schemas import (
     TradeExecution,
 )
 from crypto_signals.engine.schema_guardian import SchemaGuardian
+from google.api_core.exceptions import NotFound
 from google.cloud import bigquery
 from loguru import logger
 from pydantic import BaseModel
@@ -112,11 +113,10 @@ def migrate_descriptions():
             bq_client.update_table(table, ["description", "schema"])
             logger.info(f"Successfully updated descriptions for {table_id}")
 
+        except NotFound:
+            logger.debug(f"Table {table_id} not found, skipping.")
         except Exception as e:
-            if "Not found" in str(e) or "404" in str(e):
-                logger.debug(f"Table {table_id} not found, skipping.")
-            else:
-                logger.error(f"Failed to migrate {table_id}: {e}")
+            logger.error(f"Failed to migrate {table_id}: {e}")
 
 
 if __name__ == "__main__":
