@@ -12,10 +12,10 @@ Key Features:
 - Structured tables for execution summaries
 """
 
+import sys
 import time
 from contextlib import contextmanager
 from functools import wraps
-import sys
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
 from loguru import logger
