@@ -10,6 +10,7 @@ from crypto_signals.domain.schemas import (
     Signal,
     SignalStatus,
 )
+from alpaca.trading.requests import ClosePositionRequest
 from crypto_signals.engine.execution import ExecutionEngine
 
 
@@ -1027,7 +1028,7 @@ class TestClosePositionEmergency:
         # Setup
         mock_close_order = MagicMock()
         mock_close_order.id = "close-order-id"
-        mock_trading_client.submit_order.return_value = mock_close_order
+        mock_trading_client.close_position.return_value = mock_close_order
 
         mock_parent_order = MagicMock()
         mock_parent_order.symbol = "BTC/USD"
@@ -1063,7 +1064,7 @@ class TestClosePositionEmergency:
         assert "sl-order-id" in canceled_ids, "SL order was not canceled"
 
         # Verify market close order submitted
-        mock_trading_client.submit_order.assert_called_once()
+        mock_trading_client.close_position.assert_called_once()
 
 
 class TestScaleOutPosition:
@@ -1072,14 +1073,15 @@ class TestScaleOutPosition:
     def test_scale_out_calculates_correct_qty(
         self, execution_engine, mock_trading_client
     ):
-        """Verify 50% scale-out calculates the correct quantity."""
+        """Verify 50% scale-out uses the correct percentage."""
         from crypto_signals.domain.schemas import Position, TradeStatus
 
         # Setup
         mock_close_order = MagicMock()
         mock_close_order.id = "scale-order-123"
         mock_close_order.filled_avg_price = "55000.0"
-        mock_trading_client.submit_order.return_value = mock_close_order
+        mock_close_order.filled_at = None
+        mock_trading_client.close_position.return_value = mock_close_order
 
         position = Position(
             position_id="test-scale-1",
@@ -1100,10 +1102,11 @@ class TestScaleOutPosition:
 
         # Verify
         assert result is True, "scale_out_position failed to return True"
-        call_args = mock_trading_client.submit_order.call_args[0][0]
+        _, kwargs = mock_trading_client.close_position.call_args
+        call_args = kwargs.get("close_options")
         assert (
-            call_args.qty == 0.05
-        ), f"Scale out qty mismatch. Expected 0.05, got {call_args.qty}"
+            call_args.percentage == "50"
+        ), f"Scale out percentage mismatch. Expected 50, got {call_args.percentage}"
 
     def test_scale_out_updates_remaining_qty(self, execution_engine, mock_trading_client):
         """Verify position.qty is reduced after scale-out."""
@@ -1112,7 +1115,7 @@ class TestScaleOutPosition:
         mock_close_order = MagicMock()
         mock_close_order.id = "scale-order-123"
         mock_close_order.filled_avg_price = "55000.0"
-        mock_trading_client.submit_order.return_value = mock_close_order
+        mock_trading_client.close_position.return_value = mock_close_order
 
         position = Position(
             position_id="test-scale-2",
@@ -1144,7 +1147,7 @@ class TestScaleOutPosition:
         mock_close_order = MagicMock()
         mock_close_order.id = "scale-order-123"
         mock_close_order.filled_avg_price = "55000.0"
-        mock_trading_client.submit_order.return_value = mock_close_order
+        mock_trading_client.close_position.return_value = mock_close_order
 
         position = Position(
             position_id="test-scale-orig",
@@ -1188,7 +1191,7 @@ class TestScaleOutPosition:
         mock_order_2.id = "scale-order-2"
         mock_order_2.filled_avg_price = "58000.0"
 
-        mock_trading_client.submit_order.side_effect = [mock_order_1, mock_order_2]
+        mock_trading_client.close_position.side_effect = [mock_order_1, mock_order_2]
 
         position = Position(
             position_id="test-scale-prices",
@@ -1245,13 +1248,13 @@ class TestScaleOutPosition:
         result = execution_engine.scale_out_position(position, scale_pct=0.5)
 
         assert result is False, "scale_out_position should fail for zero qty"
-        mock_trading_client.submit_order.assert_not_called()
+        mock_trading_client.close_position.assert_not_called()
 
     def test_scale_out_handles_order_failure(self, execution_engine, mock_trading_client):
         """Verify failed_reason is set when order submission fails."""
         from crypto_signals.domain.schemas import Position, TradeStatus
 
-        mock_trading_client.submit_order.side_effect = Exception("Insufficient funds")
+        mock_trading_client.close_position.side_effect = Exception("Insufficient funds")
 
         position = Position(
             position_id="test-scale-fail",
