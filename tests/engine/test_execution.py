@@ -1083,6 +1083,10 @@ class TestScaleOutPosition:
         mock_close_order.filled_at = None
         mock_trading_client.close_position.return_value = mock_close_order
 
+        mock_broker_pos = MagicMock()
+        mock_broker_pos.qty = "0.10"
+        mock_trading_client.get_open_position.return_value = mock_broker_pos
+
         position = Position(
             position_id="test-scale-1",
             ds=date(2025, 1, 15),
@@ -1105,8 +1109,8 @@ class TestScaleOutPosition:
         _, kwargs = mock_trading_client.close_position.call_args
         call_args = kwargs.get("close_options")
         assert (
-            call_args.percentage == "50"
-        ), f"Scale out percentage mismatch. Expected 50, got {call_args.percentage}"
+            call_args.percentage == "50.0"
+        ), f"Scale out percentage mismatch. Expected 50.0, got {call_args.percentage}"
 
     def test_scale_out_updates_remaining_qty(self, execution_engine, mock_trading_client):
         """Verify position.qty is reduced after scale-out."""
