@@ -24,6 +24,7 @@ from alpaca.trading.requests import (
     MarketOrderRequest,
     StopLossRequest,
     TakeProfitRequest,
+    ClosePositionRequest,
 )
 from crypto_signals.config import get_settings, get_trading_client
 from crypto_signals.domain.schemas import (
@@ -1280,20 +1281,17 @@ class ExecutionEngine:
                 logger.warning(f"Scale-out qty too small for {position.position_id}")
                 return False
 
-            # Determine close side (opposite of entry)
-            close_side = (
-                OrderSide.SELL if position.side == DomainOrderSide.BUY else OrderSide.BUY
+            # Submit close order for partial liquidation via Alpaca's DELETE /v2/positions/{symbol}
+            # This is more robust than a new market sell as it uses Alpaca's actual qty (Issue #301)
+            close_order = cast(
+                Order,
+                self.alpaca.close_position(
+                    symbol_or_asset_id=position.symbol,
+                    close_options=ClosePositionRequest(
+                        percentage=str(int(scale_pct * 100))
+                    ),
+                ),
             )
-
-            # Submit market order for partial close
-            close_request = MarketOrderRequest(
-                symbol=position.symbol,
-                qty=scale_qty,
-                side=close_side,
-                time_in_force=TimeInForce.GTC,
-            )
-
-            close_order = cast(Order, self.alpaca.submit_order(close_request))
 
             # === ISSUE #141: Capture fill price with retry budget ===
             # Track exit order ID for this scale-out
@@ -1551,22 +1549,21 @@ class ExecutionEngine:
                     extra={"order_id": position.sl_order_id, "error": str(e)},
                 )
 
-        # 3. Submit market order to close position
+        # 3. Liquidate position via Alpaca's DELETE /v2/positions/{symbol} (Issue #301)
+        # This is robust against quantity drift as it closes 100% of the broker's position.
         try:
-            # Determine close side (opposite of entry)
+            # Determine close side (opposite of entry) for logging
             close_side = (
                 OrderSide.SELL if position.side == DomainOrderSide.BUY else OrderSide.BUY
             )
 
-            # Use position.symbol directly (added to Position model for this purpose)
-            close_request = MarketOrderRequest(
-                symbol=position.symbol,
-                qty=position.qty,
-                side=close_side,
-                time_in_force=TimeInForce.GTC,
+            close_order = cast(
+                Order,
+                self.alpaca.close_position(
+                    symbol_or_asset_id=position.symbol,
+                    close_options=ClosePositionRequest(percentage="100"),
+                ),
             )
-
-            close_order = cast(Order, self.alpaca.submit_order(close_request))
 
             # === ISSUE 139 FIX: Capture exit order details ===
             # Store exit order ID for reconciliation and backfill

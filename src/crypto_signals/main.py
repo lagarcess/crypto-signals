@@ -30,6 +30,7 @@ from crypto_signals.domain.schemas import (
     AssetClass,
     ExitReason,
     NotificationPayload,
+    OrderSide,
     SignalStatus,
     TradeStatus,
 )
@@ -596,6 +597,60 @@ def main(
                         logger.info(
                             f"Checking active signals for {symbol} ({len(active_signals)})..."
                         )
+
+                        # 0. Defensive Stop-Loss Check (Issue #301)
+                        # Check if price has breached current_stop_loss from Position
+                        latest_bar = df.iloc[-1]
+                        current_close = float(latest_bar["close"])
+
+                        for sig in active_signals[:]:  # Use copy to allow removal
+                            pos = position_repo.get_position_by_signal(sig.signal_id)
+                            if (
+                                pos
+                                and pos.status == TradeStatus.OPEN
+                                and pos.current_stop_loss
+                            ):
+                                is_long = pos.side == OrderSide.BUY
+                                stop_hit = (
+                                    is_long and current_close < pos.current_stop_loss
+                                ) or (
+                                    not is_long and current_close > pos.current_stop_loss
+                                )
+
+                                if stop_hit:
+                                    logger.warning(
+                                        f"STOP HIT: {symbol} @ {current_close} "
+                                        f"(Stop: {pos.current_stop_loss})",
+                                        extra={
+                                            "symbol": symbol,
+                                            "current_price": current_close,
+                                            "stop_loss": pos.current_stop_loss,
+                                            "signal_id": sig.signal_id,
+                                        },
+                                    )
+                                    if execution_engine.close_position_emergency(pos):
+                                        pos.status = TradeStatus.CLOSED
+                                        pos.exit_reason = ExitReason.STOP_LOSS
+                                        position_repo.update_position(pos)
+
+                                        # Update signal status for Discord notification
+                                        sig.status = SignalStatus.INVALIDATED
+                                        sig.exit_reason = ExitReason.STOP_LOSS
+                                        repo.update_signal_atomic(
+                                            sig.signal_id,
+                                            {
+                                                "status": SignalStatus.INVALIDATED.value,
+                                                "exit_reason": ExitReason.STOP_LOSS.value,
+                                            },
+                                        )
+
+                                        # Remove from active_signals to avoid double processing
+                                        active_signals.remove(sig)
+
+                                        # Send Discord notification
+                                        discord.send_signal_update(
+                                            sig, asset_class=asset_class
+                                        )
 
                         # 1. Run Expiration Check (24h Rule)
                         now_utc = datetime.now(timezone.utc)
