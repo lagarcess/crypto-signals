@@ -12,7 +12,7 @@ Pattern: "Enrich-Extract-Load"
 """
 
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from typing import Any, List
 
@@ -110,6 +110,9 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
             return None
 
         try:
+            logger.error(
+                f"DEBUG: _get_actual_fees. OrderID: {alpaca_order_id}. Activities count: {len(activities)}"
+            )
             # Filter for this specific order
             # CFEE activities link to order_id (sometimes in 'id' or separate field depending on SDK version)
             # Inspecting common pattern: activity.order_id should match.
@@ -120,6 +123,9 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
             ]
 
             if not related_activities:
+                raise RuntimeError(
+                    f"NO RELATED ACTIVITIES. AlpacaOrderID: {alpaca_order_id}. First Activity: {activities[0] if activities else 'None'}"
+                )
                 return None
 
             total_fee_usd = 0.0
@@ -148,7 +154,6 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                     fee_value = fee_qty
 
                 total_fee_usd += fee_value
-
             return total_fee_usd
 
         except Exception as e:
@@ -182,7 +187,7 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                 data["_doc_id"] = doc.id
                 raw_data.append(data)
 
-        logger.info(f"[{self.job_name}] extracted {len(raw_data)} closed positions.")
+        logger.info(f"[{self.job_name}] Extracted {len(raw_data)} closed positions.")
         return raw_data
 
     def transform(self, raw_data: List[Any]) -> List[dict]:
@@ -198,30 +203,83 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
         logger.info(
             f"[{self.job_name}] Enriching {len(raw_data)} trades with Alpaca data..."
         )
-
         metrics = get_metrics_collector()
         transformed = []
 
-        # Pre-fetch Alpaca activities once per batch to avoid redundant API calls
-        # and rate limiting (Issue: Systematic CFEE Failures)
         alpaca_activities = []
         has_crypto = any(pos.get("asset_class") == "CRYPTO" for pos in raw_data)
+
         if has_crypto:
             try:
-                logger.info(f"[{self.job_name}] Pre-fetching Alpaca crypto activities...")
-                alpaca_activities = self.alpaca.get(
-                    "/account/activities", {"activity_types": "CSD,CFEE"}
+                # 1. Determine time range of the batch
+                min_entry_time = None
+                for pos in raw_data:
+                    et = pos.get("entry_time")
+                    if et:
+                        try:
+                            # Robust cleaning of ISO string
+                            et_clean = str(et).replace("Z", "+00:00")
+                            dt = datetime.fromisoformat(et_clean)
+                            if min_entry_time is None or dt < min_entry_time:
+                                min_entry_time = dt
+                        except (ValueError, TypeError):
+                            pass
+
+                # Default to 7 days if no valid times found (or all None)
+                if not min_entry_time:
+                    min_entry_time = datetime.now(timezone.utc) - timedelta(days=7)
+
+                # Buffer: go back 1 extra day to be safe with timezones
+                fetch_limit_time = min_entry_time - timedelta(days=1)
+
+                logger.info(
+                    f"[{self.job_name}] Pre-fetching crypto activities back to {fetch_limit_time.date()}..."
                 )
-                if not isinstance(alpaca_activities, list):
-                    logger.warning(
-                        f"[{self.job_name}] Unexpected activities response type: "
-                        f"{type(alpaca_activities)}. Expected list."
-                    )
-                    alpaca_activities = []
-                else:
-                    logger.info(
-                        f"[{self.job_name}] Fetched {len(alpaca_activities)} activities."
-                    )
+
+                # 2. Iterative Fetch Loop
+                page_token = None
+                max_pages = 50  # Safety break (~5000 activities)
+
+                for _ in range(max_pages):
+                    params = {
+                        "activity_types": "CSD,CFEE",
+                        "page_size": 100,
+                        "direction": "desc",
+                    }
+                    if page_token:
+                        params["page_token"] = page_token
+
+                    batch = self.alpaca.get("/account/activities", params)
+                    alpaca_activities.extend(batch)
+
+                    if len(batch) < 100:
+                        break
+
+                    # Check the last item's time to see if we've gone far enough
+                    last_item = batch[-1]
+                    last_id = last_item.get("id")
+
+                    # Alpaca activity_time is usually "2022-01-01T12:00:00.000Z"
+                    last_time_str = last_item.get("activity_time")
+
+                    if last_time_str:
+                        try:
+                            lt_clean = str(last_time_str).replace("Z", "+00:00")
+                            last_dt = datetime.fromisoformat(lt_clean)
+                            # Compare with timezone awareness
+                            if last_dt < fetch_limit_time:
+                                # We have covered the required range
+                                break
+                        except Exception:
+                            pass
+
+                    # Prepare next page
+                    page_token = last_id
+
+                logger.info(
+                    f"[{self.job_name}] Fetched {len(alpaca_activities)} activities."
+                )
+
             except Exception as e:
                 logger.error(f"[{self.job_name}] Failed to pre-fetch activities: {e}")
 
@@ -551,8 +609,7 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                 # For now, log and skip specific bad records to avoid blocking
                 # the pipeline.
                 logger.error(
-                    f"[{self.job_name}] Failed to transform position "
-                    f"{doc_id}: {e}"
+                    f"[{self.job_name}] Failed to transform position " f"{doc_id}: {e}"
                 )
 
                 # Auto-purge broken records if enabled to prevent blocking the pipeline
