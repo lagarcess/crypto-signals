@@ -201,3 +201,11 @@
 ### Debugging & Environment
 - [2026-02-14] **Pytest Source Resolution**: In Poetry environments, `pytest` may inadvertently test the *installed* package in `.venv` rather than the local `src/` code. If changes aren't reflecting, print `module.__file__` or raise an intentional exception to confirm the execution path.
 - [2026-02-14] **Error Swallowing**: Broad `try/except` blocks inside loops can hide critical logic errors (like `UnboundLocalError` due to missing variable initialization). During development, log exceptions with full tracebacks or re-raise them to surface hidden bugs early.
+
+### Testing & Quality
+- [2026-02-16] **Mock Completeness**: When a method under test accesses an attribute (like `position.created_at`), the mock object MUST explicitly define it. `MagicMock(spec=Model)` does verify access against the spec, but it does NOT populate optional fields with defaults. Missing attributes cause `AttributeError` in tests even if the field is optional in the Pydantic model.
+- [2026-02-16] **Fuzzy Assertions**: Avoid exact string matching for error messages (`assert msg == "Error X"`). Error strings change frequently (punctuation, detailed context). Use substring matching (`assert "Error X" in msg`) or `any()` for list checks (`any("Error X" in i for i in issues)`) to reduce test brittleness.
+
+### Reconciliation & State
+- [2026-02-16] **Grace Periods**: In distributed systems (Broker vs DB), "Instant" consistency is a myth. Reconcilers must implement a "Grace Period" (e.g. `created_at < now - 5min`) before declaring a "Zombie" (exists in DB, missing in Broker) to avoid race conditions where the Broker API lags behind the DB write.
+- [2026-02-16] **Schema Alignment**: Renaming fields in Pydantic models (e.g., `execution_time` -> `duration_seconds`) requires a comprehensive grep of the codebase. IDE refactoring tools often miss usage in `kwargs` unpacking or dictionary construction. Always verify instantiation sites manually.
