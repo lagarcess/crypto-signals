@@ -1,6 +1,6 @@
 """Unit tests for the StateReconciler module."""
 
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -9,6 +9,7 @@ from crypto_signals.domain.schemas import (
     OrderSide,
     Position,
     TradeStatus,
+    TradeType,
 )
 from crypto_signals.engine.reconciler import StateReconciler
 from crypto_signals.repository.firestore import PositionRepository
@@ -58,6 +59,7 @@ def sample_open_position():
         qty=0.01,
         side=OrderSide.BUY,
         target_entry_price=50000.0,
+        created_at=datetime.now(timezone.utc) - timedelta(hours=1),
     )
 
 
@@ -143,12 +145,14 @@ class TestDetectZombies:
         pos1.status = TradeStatus.OPEN
         pos1.position_id = "signal-1"
         pos1.trade_type = "EXECUTED"
+        pos1.created_at = datetime.now(timezone.utc) - timedelta(hours=1)
 
         pos2 = MagicMock(spec=Position)
         pos2.symbol = "ETH/USD"
         pos2.status = TradeStatus.OPEN
         pos2.position_id = "signal-2"
         pos2.trade_type = "EXECUTED"
+        pos2.created_at = datetime.now(timezone.utc) - timedelta(hours=1)
 
         mock_trading_client.get_all_positions.return_value = []
         mock_position_repo.get_open_positions.return_value = [pos1, pos2]
@@ -559,7 +563,11 @@ class TestReconcilerEdgeCases:
         report = reconciler.reconcile()
 
         assert len(report.orphans) > 0  # Orphan still detected
-        assert "ORPHAN: BTC/USD" in report.critical_issues
+
+        # Check for substring match instead of exact string
+        assert any(
+            "ORPHAN_POSITION: BTC/USD" in issue for issue in report.critical_issues
+        )
 
     def test_reconcile_report_timestamp_is_set(
         self,
@@ -778,7 +786,191 @@ class TestSafetyMechanisms:
 
         # Should log critical issue
         assert len(report.critical_issues) > 0
-        assert any("CRITICAL SYNC ISSUE" in i for i in report.critical_issues)
+        assert any("ZOMBIE_EXIT_GAP" in i for i in report.critical_issues)
 
         # Should alert Discord
         assert mock_discord_client.send_message.called
+
+
+class TestReconcilerRaceConditions:
+    """Test race condition fixes (Issue #244)."""
+
+    def test_race_condition_zombie_kill(
+        self,
+        mock_trading_client,
+        mock_position_repo,
+        mock_discord_client,
+        mock_settings,
+        sample_open_position,
+    ):
+        """
+        Verify that a 'zombie' which is just a few seconds old is NOT killed/closed.
+        This simulates the race condition where `main.py` creates a position,
+        saves to DB, submits to Alpaca, but Alpaca hasn't indexed it yet
+        when Reconciler runs.
+        """
+        # 1. Setup: Zombie Position (Open in DB, Missing in Alpaca)
+        mock_trading_client.get_all_positions.return_value = []
+
+        # 2. Make it "Young" (created 1 minute ago)
+        # Using a fixed time for stability
+        now = datetime.now(timezone.utc)
+        sample_open_position.created_at = now - timedelta(minutes=1)
+        mock_position_repo.get_open_positions.return_value = [sample_open_position]
+
+        reconciler = StateReconciler(
+            alpaca_client=mock_trading_client,
+            position_repo=mock_position_repo,
+            discord_client=mock_discord_client,
+            settings=mock_settings,
+        )
+
+        # 3. Execute with default 5 min grace period
+        report = reconciler.reconcile(min_age_minutes=5)
+
+        # 4. Assertions
+        # Should NOT be healed/closed
+        mock_position_repo.update_position.assert_not_called()
+
+        # Should NOT be in critical issues (it's skipped intentionally)
+        assert len(report.critical_issues) == 0
+
+        # Should be in zombies list but skipped
+        assert "BTC/USD" in report.zombies
+
+    def test_manual_exit_verification_used(
+        self,
+        mock_trading_client,
+        mock_position_repo,
+        mock_discord_client,
+        mock_settings,
+        sample_open_position,
+    ):
+        """
+        Verify that before closing a zombie, the reconciler calls
+        handle_manual_exit_verification.
+        """
+        # 1. Setup: Old Zombie (valid age)
+        mock_trading_client.get_all_positions.return_value = []
+        sample_open_position.created_at = datetime.now(timezone.utc) - timedelta(hours=1)
+        mock_position_repo.get_open_positions.return_value = [sample_open_position]
+
+        reconciler = StateReconciler(
+            alpaca_client=mock_trading_client,
+            position_repo=mock_position_repo,
+            discord_client=mock_discord_client,
+            settings=mock_settings,
+        )
+
+        # 2. Mock verification (return True to allow close)
+        with patch.object(
+            reconciler, "handle_manual_exit_verification", return_value=True
+        ) as mock_verify:
+            reconciler.reconcile()
+
+            # 3. Verify it was called
+            mock_verify.assert_called_once()
+            # And position was updated (closed)
+            mock_position_repo.update_position.assert_called()
+
+
+class TestTheoreticalPositions:
+    """Test handling of theoretical positions."""
+
+    @pytest.fixture
+    def theoretical_position(self):
+        return Position(
+            position_id="theo-123",
+            ds=date(2025, 1, 15),
+            account_id="theoretical",
+            symbol="BTC/USD",
+            signal_id="sig-123",
+            alpaca_order_id="theo-order-1",
+            status=TradeStatus.OPEN,
+            entry_fill_price=50000.0,
+            current_stop_loss=48000.0,
+            qty=0.01,
+            side=OrderSide.BUY,
+            trade_type=TradeType.THEORETICAL.value,  # Key field
+        )
+
+    def test_reconcile_ignores_theoretical_positions(
+        self,
+        mock_trading_client,
+        mock_position_repo,
+        mock_discord_client,
+        mock_settings,
+        theoretical_position,
+    ):
+        """Verify that OPEN theoretical positions are NOT flagged as zombies when missing from Alpaca."""
+        # Alpaca has NO positions (empty)
+        mock_trading_client.get_all_positions.return_value = []
+
+        # Firestore has one OPEN theoretical position
+        mock_position_repo.get_open_positions.return_value = [theoretical_position]
+
+        reconciler = StateReconciler(
+            alpaca_client=mock_trading_client,
+            position_repo=mock_position_repo,
+            discord_client=mock_discord_client,
+            settings=mock_settings,
+        )
+
+        report = reconciler.reconcile()
+
+        # Should be NO zombies because theoretical trades are filtered out
+        assert len(report.zombies) == 0
+        assert "BTC/USD" not in report.zombies
+
+        # Should be NO orphans
+        assert len(report.orphans) == 0
+
+    def test_reconcile_detects_normal_zombies(
+        self,
+        mock_trading_client,
+        mock_position_repo,
+        mock_discord_client,
+        mock_settings,
+        theoretical_position,
+    ):
+        """Verify that normal OPEN positions ARE flagged as zombies, even if mixed with theoreticals."""
+        # Create a normal executed position
+        normal_position = Position(
+            position_id="real-123",
+            ds=date(2025, 1, 15),
+            account_id="paper",
+            symbol="ETH/USD",
+            signal_id="sig-456",
+            alpaca_order_id="alpaca-order-1",
+            status=TradeStatus.OPEN,
+            entry_fill_price=2000.0,
+            current_stop_loss=1900.0,
+            qty=1.0,
+            side=OrderSide.BUY,
+            trade_type=TradeType.EXECUTED.value,  # Normal trade
+        )
+
+        # Alpaca has NO positions
+        mock_trading_client.get_all_positions.return_value = []
+
+        # Firestore has one THEORETICAL and one NORMAL position
+        mock_position_repo.get_open_positions.return_value = [
+            theoretical_position,
+            normal_position,
+        ]
+
+        reconciler = StateReconciler(
+            alpaca_client=mock_trading_client,
+            position_repo=mock_position_repo,
+            discord_client=mock_discord_client,
+            settings=mock_settings,
+        )
+
+        report = reconciler.reconcile()
+
+        # The normal position should be a zombie
+        assert len(report.zombies) == 1
+        assert "ETH/USD" in report.zombies
+
+        # The theoretical position (BTC/USD) should be ignored
+        assert "BTC/USD" not in report.zombies
