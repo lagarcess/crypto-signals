@@ -151,15 +151,7 @@ class SchemaGuardian:
                 # Recursive generation for nested models
                 fields = tuple(self.generate_schema(python_type))
 
-            schema.append(
-                bigquery.SchemaField(
-                    name,
-                    bq_type,
-                    mode=mode,
-                    fields=fields,
-                    description=field_info.description or "",
-                )
-            )
+            schema.append(bigquery.SchemaField(name, bq_type, mode=mode, fields=fields))
 
         return schema
 
@@ -252,7 +244,6 @@ class SchemaGuardian:
         """Helper to create a new table from Pydantic model."""
         schema = self.generate_schema(model)
         table = bigquery.Table(table_id, schema=schema)
-        table.description = (model.__doc__ or "").strip()
 
         if partition_column:
             logger.info(

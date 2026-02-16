@@ -12,7 +12,6 @@ Key Features:
 - Structured tables for execution summaries
 """
 
-import sys
 import time
 from contextlib import contextmanager
 from functools import wraps
@@ -51,22 +50,10 @@ SENTINEL_THEME = Theme(
 )
 
 # Global console instance for UI elements
-# Detect if we are in a TTY or Cloud Run (which usually doesn't have a TTY)
-# Widen to 200 for Cloud Run to prevent truncation of position_id and exceptions
-is_tty = sys.stdout.isatty()
-console = Console(
-    theme=SENTINEL_THEME,
-    width=200 if not is_tty else None,
-    force_terminal=False if not is_tty else None,
-)
+console = Console(theme=SENTINEL_THEME)
 
-# Install rich tracebacks globally (show_locals=False for production safety)
-# Prevents sensitive environment variables/secrets from leaking into logs
-rich_traceback.install(
-    console=console,
-    show_locals=False,
-    width=200 if not is_tty else 120,
-)
+# Install rich tracebacks globally (show_locals=True for debugging "God Mode")
+rich_traceback.install(console=console, show_locals=True, width=120)
 
 
 def configure_logging(level: str = "INFO", testing: bool = False) -> None:

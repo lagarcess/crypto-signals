@@ -20,8 +20,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from alpaca.trading.client import TradingClient
-from alpaca.trading.enums import OrderSide as AlpacaOrderSide
-from alpaca.trading.enums import QueryOrderStatus
 from alpaca.trading.models import Position as AlpacaPosition
 from alpaca.trading.requests import GetOrdersRequest
 from crypto_signals.config import Settings, get_settings
@@ -30,9 +28,6 @@ from crypto_signals.domain.schemas import (
     ReconciliationReport,
     TradeStatus,
     TradeType,
-)
-from crypto_signals.domain.schemas import (
-    OrderSide as DomainOrderSide,
 )
 from crypto_signals.notifications.discord import DiscordClient
 from crypto_signals.repository.firestore import PositionRepository
@@ -104,13 +99,16 @@ class StateReconciler:
                 ]
             )
 
+        zombies = []
+        orphans = []
+        reconciled_count = 0
         critical_issues = []
-        healed_zombies = []
-        detected_orphans = []
 
         try:
             # 1. Fetch Alpaca positions
+            logger.info("Fetching positions from Alpaca...")
             try:
+                # alpaca-py uses get_all_positions() to fetch all open positions
                 raw_alpaca_positions = self.alpaca.get_all_positions()
                 alpaca_positions_list: list[AlpacaPosition] = (
                     raw_alpaca_positions if isinstance(raw_alpaca_positions, list) else []
@@ -130,11 +128,12 @@ class StateReconciler:
                 alpaca_symbols = set()
 
             # 2. Fetch Firestore positions
+            logger.info("Fetching positions from Firestore...")
             try:
-                # Get all positions with status OPEN
                 firestore_positions = self.position_repo.get_open_positions()
 
-                # Filter out THEORETICAL trades (simulations) as they don't exist in Alpaca
+                # Filter out THEORETICAL trades (simulated state)
+                # These would otherwise be detected as Zombies
                 firestore_positions = [
                     p
                     for p in firestore_positions
@@ -192,74 +191,109 @@ class StateReconciler:
                 },
             )
 
-            # 4. Process Zombies (Heal Firestore)
+            # 4. Heal zombies
             for symbol in zombies:
-                position = symbol_to_position.get(symbol)
-                if not position:
-                    continue
-
-                # Race Condition Protection: Skip healing for young positions.
-                # If a position was opened < X min ago, it might not be visible in
-                # Alpaca's get_all_positions() yet due to eventual consistency.
-                if position.created_at:
-                    age = datetime.now(timezone.utc) - position.created_at
-                    if age < timedelta(minutes=min_age_minutes):
-                        logger.warning(
-                            f"Skipping zombie healing for young position {symbol}",
-                            extra={
-                                "age_seconds": age.total_seconds(),
-                                "min_age_minutes": min_age_minutes,
-                            },
-                        )
+                try:
+                    pos = symbol_to_position.get(symbol)
+                    if not pos:
                         continue
 
-                # Positive Verification Strategy:
-                # Before closing in DB, try to find the matching manual exit order.
-                if self.handle_manual_exit_verification(position):
-                    self.position_repo.update_position(position)
-                    healed_zombies.append(symbol)
-                else:
-                    # Verification failed: No exit order found.
-                    # This is a critical gap (DB thinks OPEN, Broker has 0 qty, but NO exit order)
-                    error_msg = (
-                        f"ZOMBIE_EXIT_GAP: {symbol} has 0 qty on Alpaca, but NO closing order was found. "
-                        "Manual investigation required."
-                    )
-                    critical_issues.append(error_msg)
-                    try:
-                        self.discord.send_message(f"🚨 **{error_msg}**")
-                    except Exception as e:
-                        logger.error(f"Failed to send zombie alert to Discord: {e}")
+                    # Race Condition Protection: Skip recent positions (< min_age_minutes)
+                    if pos.created_at:
+                        age = datetime.now(timezone.utc) - pos.created_at
+                        if age < timedelta(minutes=min_age_minutes):
+                            logger.warning(
+                                f"Skipping young zombie candidate {symbol}",
+                                extra={
+                                    "symbol": symbol,
+                                    "age_seconds": age.total_seconds(),
+                                    "min_age_minutes": min_age_minutes,
+                                },
+                            )
+                            continue
 
-            # 5. Process Orphans (Alert Only)
-            for symbol in orphans:
-                # Orphans (Open in Alpaca, Missing in Firestore) require manual investigation.
-                # Auto-creating them in Firestore is too risky as we don't have signal metadata.
-                detected_orphans.append(symbol)
-                error_msg = f"ORPHAN_POSITION: {symbol} is OPEN in Alpaca but missing from Firestore OPEN list."
-                logger.error(error_msg)
-                critical_issues.append(error_msg)
-                try:
-                    self.discord.send_message(f"🚨 **{error_msg}**")
+                    # Verify exit via manual order history before closing
+                    if self.handle_manual_exit_verification(pos):
+                        # Verification successful - save the updated position
+                        # pos.status/exit_reason already updated by handle_manual_exit_verification
+                        self.position_repo.update_position(pos)
+                        reconciled_count += 1
+
+                        logger.warning(
+                            f"Zombie healed: {symbol}",
+                            extra={
+                                "symbol": symbol,
+                                "position_id": pos.position_id,
+                                "status": pos.status,
+                                "exit_reason": pos.exit_reason,
+                            },
+                        )
+                        # Notification is sent by handle_manual_exit_verification
+                    else:
+                        # Verification failed - Critical Sync Issue
+                        error_msg = (
+                            f"CRITICAL SYNC ISSUE: {symbol} is OPEN in DB but MISSING in Alpaca. "
+                            "No matching exit order found."
+                        )
+                        logger.critical(
+                            error_msg,
+                            extra={
+                                "symbol": symbol,
+                                "position_id": pos.position_id,
+                            },
+                        )
+                        critical_issues.append(error_msg)
+
+                        # Send critical alert for unverified zombie
+                        try:
+                            self.discord.send_message(
+                                f"🛑 **CRITICAL SYNC FAILURE**: {symbol}\n"
+                                f"Position is missing from Alpaca but **NO EXIT ORDER FOUND**.\n"
+                                f"System will NOT close it automatically.\n"
+                                f"**Action Required**: Investigate immediately."
+                            )
+                        except Exception as e:
+                            logger.warning(
+                                f"Failed to send sync failure alert for {symbol}: {e}"
+                            )
+
                 except Exception as e:
-                    logger.error(f"Failed to send orphan alert to Discord: {e}")
+                    error_msg = f"Failed to heal zombie {symbol}: {e}"
+                    logger.error(error_msg)
+                    critical_issues.append(error_msg)
 
-        except Exception as e:
-            critical_issues.append(f"Reconciliation loop crashed: {e}")
-            logger.exception("Reconciliation crash")
+            # 5. Alert orphans
+            for symbol in orphans:
+                logger.critical(
+                    f"ORPHAN POSITION DETECTED: {symbol}",
+                    extra={
+                        "symbol": symbol,
+                        "impact": "Position open in Alpaca but missing from DB",
+                    },
+                )
 
-        # 6. Check for Reverse Orphans (CLOSED in DB but OPEN in Alpaca)
-        # This catch-all ensures that even if we closed something erroneously, we find it.
-        try:
-            # Re-fetch Firestore positions that were closed in the last 24 hours
-            # This is a safety check.
-            from crypto_signals.domain.schemas import TradeStatus
+                try:
+                    self.discord.send_message(
+                        f"⚠️  **CRITICAL ORPHAN**: {symbol}\n"
+                        f"Position is open in Alpaca but has no Firestore record.\n"
+                        f"**Action Required**: Manual investigation and position management."
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to send orphan alert for {symbol}.",
+                        extra={"symbol": symbol, "error": str(e)},
+                    )
 
-            closed_positions = self.position_repo.get_positions_by_status_and_time(
-                status=TradeStatus.CLOSED, hours_lookback=24
-            )
-            reverse_orphans = []
-            if closed_positions:
+                critical_issues.append(f"ORPHAN: {symbol}")
+
+            # =====================================================================
+            # Detect Reverse Orphans (CLOSED in DB, OPEN in Alpaca)
+            # =====================================================================
+            logger.info("Checking for reverse orphans (CLOSED in DB, OPEN in Alpaca)...")
+            try:
+                closed_positions = self.position_repo.get_closed_positions(limit=50)
+                reverse_orphans = []
+
                 for closed_pos in closed_positions:
                     try:
                         # Check if this position is still open in Alpaca
@@ -269,37 +303,73 @@ class StateReconciler:
                         if alpaca_pos:
                             # REVERSE ORPHAN DETECTED
                             reverse_orphans.append(closed_pos.symbol)
-                            msg = f"REVERSE_ORPHAN: {closed_pos.symbol} is CLOSED in DB but still OPEN in Alpaca!"
-                            logger.error(msg)
-                            critical_issues.append(msg)
-                    except Exception as e:
-                        if "not found" in str(e).lower() or "404" in str(e):
-                            continue
-                        else:
-                            logger.warning(
-                                f"Error checking reverse orphan for {closed_pos.symbol}: {e}"
+                            logger.critical(
+                                f"REVERSE ORPHAN DETECTED: {closed_pos.symbol}",
+                                extra={
+                                    "symbol": closed_pos.symbol,
+                                    "position_id": closed_pos.position_id,
+                                    "impact": "Position closed in DB but STILL OPEN in Alpaca!",
+                                },
                             )
 
-        except Exception as e:
-            logger.warning(f"Reverse orphan check failed: {e}")
+                            try:
+                                self.discord.send_message(
+                                    f"🚨 **CRITICAL REVERSE ORPHAN**: {closed_pos.symbol}\n"
+                                    f"Position is CLOSED in Firestore but STILL OPEN in Alpaca!\n"
+                                    f"**Position ID**: {closed_pos.position_id}\n"
+                                    f"**Action Required**: Manual close in Alpaca dashboard."
+                                )
+                            except Exception as e:
+                                logger.warning(
+                                    f"Failed to send reverse orphan alert for {closed_pos.symbol}: {e}"
+                                )
 
-        # Summary
-        duration = time.time() - start_time
+                            critical_issues.append(f"REVERSE_ORPHAN: {closed_pos.symbol}")
+
+                    except Exception as e:
+                        # 404/not found = position is correctly closed in Alpaca
+                        if "not found" not in str(e).lower() and "404" not in str(e):
+                            logger.warning(
+                                f"Error checking closed position {closed_pos.symbol}: {e}"
+                            )
+
+                if reverse_orphans:
+                    logger.warning(
+                        f"Found {len(reverse_orphans)} reverse orphans",
+                        extra={"symbols": reverse_orphans},
+                    )
+
+            except Exception as e:
+                logger.warning(
+                    "Reverse orphan detection failed.",
+                    extra={"error": str(e)},
+                )
+
+        except Exception as e:
+            error_msg = f"Reconciliation execution failed: {e}"
+            logger.error(error_msg)
+            critical_issues.append(error_msg)
+
+        # 6. Build report
+        duration_seconds = time.time() - start_time
+
         report = ReconciliationReport(
-            critical_issues=critical_issues,
             zombies=zombies,
             orphans=orphans,
-            reconciled_count=len(healed_zombies),
-            duration_seconds=round(duration, 2),
+            reconciled_count=reconciled_count,
+            duration_seconds=duration_seconds,
+            critical_issues=critical_issues,
         )
 
+        # Log summary
         logger.info(
-            "Reconciliation finished",
+            "Reconciliation complete",
             extra={
-                "duration": report.duration_seconds,
-                "healed": len(healed_zombies),
-                "orphans": len(orphans),
-                "errors": len(critical_issues),
+                "zombies": len(report.zombies),
+                "orphans": len(report.orphans),
+                "reconciled": report.reconciled_count,
+                "duration_seconds": round(report.duration_seconds, 3),
+                "critical_issues": len(report.critical_issues),
             },
         )
 
@@ -319,6 +389,10 @@ class StateReconciler:
 
         try:
             # 1. Determine the expected exit side
+            # Using specific check for Alpaca OrderSide enum to avoid domain mismatch
+            from alpaca.trading.enums import OrderSide as AlpacaOrderSide
+            from crypto_signals.domain.schemas import OrderSide as DomainOrderSide
+
             close_side = (
                 AlpacaOrderSide.SELL
                 if position.side == DomainOrderSide.BUY
@@ -326,12 +400,16 @@ class StateReconciler:
             )
 
             # 2. Search recent filled orders for this symbol
+
+            from alpaca.trading.enums import QueryOrderStatus
+
             request = GetOrdersRequest(
                 status=QueryOrderStatus.CLOSED,
-                symbols=[normalize_alpaca_symbol(position.symbol)],
+                symbols=[position.symbol],
                 limit=500,
                 side=close_side,
             )
+            from alpaca.trading.models import Order
 
             recent_orders_result = self.alpaca.get_orders(filter=request)
             recent_orders = (
@@ -348,19 +426,16 @@ class StateReconciler:
             }
 
             for o in recent_orders:
-                # Duck-typing check to handle both SDK objects and mocks in tests
-                o_id = str(getattr(o, "id", None))
-                client_id = (
-                    str(getattr(o, "client_order_id", None))
-                    if getattr(o, "client_order_id", None)
-                    else None
-                )
+                if isinstance(o, Order):
+                    # Check both Alpaca UUID and Client Order ID to prevent false MANUAL_EXIT
+                    order_id = str(o.id)
+                    client_id = str(o.client_order_id) if o.client_order_id else None
 
-                if o_id in ignored_ids or (client_id and client_id in ignored_ids):
-                    continue
+                    if order_id in ignored_ids or (client_id and client_id in ignored_ids):
+                        continue
 
-                closing_order = o
-                break
+                    closing_order = o
+                    break
 
             # 4. If closing order found, heal the position state
             if closing_order:
@@ -385,7 +460,7 @@ class StateReconciler:
                 try:
                     self.discord.send_message(
                         f"☝️  **MANUAL EXIT DETECTED**: {position.symbol}\n"
-                        f"Position was found closed on Alpaca but open in DB.\\n"
+                        f"Position was found closed on Alpaca but open in DB.\n"
                         f"Verified via manually placed order: `{closing_order.id}`."
                     )
                 except Exception as notify_err:

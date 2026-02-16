@@ -17,13 +17,13 @@ from alpaca.trading.client import TradingClient
 from alpaca.trading.enums import OrderSide, TimeInForce
 from alpaca.trading.models import Order, Position
 from alpaca.trading.requests import MarketOrderRequest
+from crypto_signals.utils.symbols import normalize_alpaca_symbol
 from google.cloud import firestore
 from rich.console import Console
 from rich.prompt import Confirm
 from rich.table import Table
 
 from crypto_signals.config import get_settings
-from crypto_signals.utils.symbols import normalize_alpaca_symbol
 
 
 def heal_reverse_orphans():
