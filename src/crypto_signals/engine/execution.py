@@ -21,6 +21,7 @@ from alpaca.trading.client import TradingClient
 from alpaca.trading.enums import OrderClass, OrderSide, TimeInForce
 from alpaca.trading.models import Order
 from alpaca.trading.requests import (
+    ClosePositionRequest,
     MarketOrderRequest,
     StopLossRequest,
     TakeProfitRequest,
@@ -41,7 +42,6 @@ from crypto_signals.engine.risk import RiskEngine
 from crypto_signals.market.data_provider import MarketDataProvider
 from crypto_signals.observability import console, get_metrics_collector
 from crypto_signals.repository.firestore import PositionRepository
-from crypto_signals.utils.symbols import normalize_alpaca_symbol
 from loguru import logger
 from rich.panel import Panel
 
@@ -56,10 +56,6 @@ class _ActivityWrapper:
         self.price = data.get("price")
         self.date = data.get("date")
         self.description = data.get("description")
-
-
-# Age guard for manual exit verification to prevent race conditions on newly opened positions
-_MANUAL_EXIT_VERIFICATION_MIN_AGE_MINUTES = 5
 
 
 class ExecutionEngine:
@@ -676,8 +672,8 @@ class ExecutionEngine:
 
                 for activity in activities:
                     # Match by symbol (Alpaca uses 'BTCUSD' format, we use 'BTC/USD')
-                    activity_symbol = normalize_alpaca_symbol(str(activity.symbol))
-                    query_symbol = normalize_alpaca_symbol(symbol)
+                    activity_symbol = str(activity.symbol).replace("/", "")
+                    query_symbol = symbol.replace("/", "")
 
                     if activity_symbol != query_symbol:
                         continue
@@ -1089,35 +1085,10 @@ class ExecutionEngine:
                 try:
                     # Check actual open position on Alpaca
                     # get_open_position raises 404 if no position exists
-                    alpaca_pos = self.alpaca.get_open_position(
-                        normalize_alpaca_symbol(position.symbol)
-                    )
-
-                    # Authoritative Reconciliation: Sync current qty and avg entry price
-                    # from broker live state to ensure Firestore matches reality.
-                    if alpaca_pos:
-                        position.qty = float(alpaca_pos.qty)
-                        position.entry_fill_price = float(alpaca_pos.avg_entry_price)
-
+                    self.alpaca.get_open_position(position.symbol)
                 except Exception as e:
                     # 404 means no position -> BEFORE marking CLOSED, verify if a closing order exists
                     if "not found" in str(e).lower() or "404" in str(e):
-                        # Race Condition Protection: Skip manual exit verification for young positions
-                        # This prevents false closures if sync runs immediately after opening.
-                        min_age_minutes = _MANUAL_EXIT_VERIFICATION_MIN_AGE_MINUTES
-                        if position.created_at:
-                            age = datetime.now(timezone.utc) - position.created_at
-                            if age < timedelta(minutes=min_age_minutes):
-                                logger.warning(
-                                    f"Skipping manual exit verification for young position {position.symbol}",
-                                    extra={
-                                        "symbol": position.symbol,
-                                        "age_seconds": age.total_seconds(),
-                                        "min_age_minutes": min_age_minutes,
-                                    },
-                                )
-                                return position
-
                         if self.reconciler:
                             self.reconciler.handle_manual_exit_verification(position)
                         else:
@@ -1234,6 +1205,61 @@ class ExecutionEngine:
             )
             return False
 
+    def _get_reconciled_close_options(
+        self, position: Position, percentage: float
+    ) -> ClosePositionRequest:
+        """
+        Determines the safest close options (qty or percentage) based on broker state.
+
+        If the broker's position quantity is within 1% of our Firestore quantity,
+        it's safe to use percentage liquidation (robust against drift).
+        Otherwise, we use specific quantity liquidation (Least Privilege).
+
+        Args:
+            position: The Position object to reconcile.
+            percentage: Target percentage of the position to close (0-100).
+
+        Returns:
+            ClosePositionRequest: Configured with either qty or percentage.
+        """
+        try:
+            # Reconcile against live broker state
+            alpaca_pos = self.alpaca.get_open_position(position.symbol)
+            broker_qty = abs(float(cast(Any, alpaca_pos).qty))
+
+            # Tolerance check (1%) to detect external account activity
+            diff_pct = (
+                abs(broker_qty - position.qty) / position.qty if position.qty > 0 else 0
+            )
+
+            if diff_pct < 0.01:
+                # Safe: use percentage (User request: handles drift/rounding)
+                # Format to 2 decimal places to avoid int truncation (Issue #301)
+                return ClosePositionRequest(percentage=f"{round(percentage, 2)}")
+            else:
+                # Unsafe: Use specific qty (Reviewer request: Least Privilege)
+                target_qty = position.qty * (percentage / 100.0)
+                safe_qty = min(target_qty, broker_qty)
+
+                logger.warning(
+                    f"Isolation Guard: Qty discrepancy for {position.symbol}: "
+                    f"Broker={broker_qty}, DB={position.qty}. "
+                    f"Using specific qty={safe_qty} to avoid liquidating external assets.",
+                    extra={
+                        "symbol": position.symbol,
+                        "broker_qty": broker_qty,
+                        "db_qty": position.qty,
+                        "diff_pct": diff_pct,
+                    },
+                )
+                return ClosePositionRequest(qty=f"{safe_qty}")
+
+        except Exception as e:
+            # Fallback for 404 or other API errors
+            logger.debug(f"Broker position check skipped: {e}")
+            target_qty = position.qty * (percentage / 100.0)
+            return ClosePositionRequest(qty=f"{target_qty}")
+
     def scale_out_position(self, position: Position, scale_pct: float = 0.5) -> bool:
         """
         Partial close: Sell scale_pct of position at market.
@@ -1280,20 +1306,17 @@ class ExecutionEngine:
                 logger.warning(f"Scale-out qty too small for {position.position_id}")
                 return False
 
-            # Determine close side (opposite of entry)
-            close_side = (
-                OrderSide.SELL if position.side == DomainOrderSide.BUY else OrderSide.BUY
+            # Submit close order for partial liquidation via Alpaca's DELETE /v2/positions/{symbol}
+            # Reconciles against broker state to balance drift protection vs isolation (Issue #301)
+            close_order = cast(
+                Order,
+                self.alpaca.close_position(
+                    symbol_or_asset_id=position.symbol,
+                    close_options=self._get_reconciled_close_options(
+                        position, scale_pct * 100
+                    ),
+                ),
             )
-
-            # Submit market order for partial close
-            close_request = MarketOrderRequest(
-                symbol=position.symbol,
-                qty=scale_qty,
-                side=close_side,
-                time_in_force=TimeInForce.GTC,
-            )
-
-            close_order = cast(Order, self.alpaca.submit_order(close_request))
 
             # === ISSUE #141: Capture fill price with retry budget ===
             # Track exit order ID for this scale-out
@@ -1551,22 +1574,21 @@ class ExecutionEngine:
                     extra={"order_id": position.sl_order_id, "error": str(e)},
                 )
 
-        # 3. Submit market order to close position
+        # 3. Liquidate position via Alpaca's DELETE /v2/positions/{symbol} (Issue #301)
+        # This is robust against quantity drift as it closes 100% of the broker's position.
         try:
-            # Determine close side (opposite of entry)
+            # Determine close side (opposite of entry) for logging
             close_side = (
                 OrderSide.SELL if position.side == DomainOrderSide.BUY else OrderSide.BUY
             )
 
-            # Use position.symbol directly (added to Position model for this purpose)
-            close_request = MarketOrderRequest(
-                symbol=position.symbol,
-                qty=position.qty,
-                side=close_side,
-                time_in_force=TimeInForce.GTC,
+            close_order = cast(
+                Order,
+                self.alpaca.close_position(
+                    symbol_or_asset_id=position.symbol,
+                    close_options=self._get_reconciled_close_options(position, 100.0),
+                ),
             )
-
-            close_order = cast(Order, self.alpaca.submit_order(close_request))
 
             # === ISSUE 139 FIX: Capture exit order details ===
             # Store exit order ID for reconciliation and backfill

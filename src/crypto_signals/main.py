@@ -30,6 +30,7 @@ from crypto_signals.domain.schemas import (
     AssetClass,
     ExitReason,
     NotificationPayload,
+    OrderSide,
     SignalStatus,
     TradeStatus,
 )
@@ -65,7 +66,6 @@ from crypto_signals.repository.firestore import (
 )
 from crypto_signals.secrets_manager import init_secrets
 from crypto_signals.utils.metadata import get_git_hash, get_job_context
-from crypto_signals.utils.symbols import normalize_alpaca_symbol
 
 # Configure logging with Rich integration
 configure_logging(level="INFO")
@@ -597,6 +597,60 @@ def main(
                             f"Checking active signals for {symbol} ({len(active_signals)})..."
                         )
 
+                        # 0. Defensive Stop-Loss Check (Issue #301)
+                        # Check if price has breached current_stop_loss from Position
+                        latest_bar = df.iloc[-1]
+                        current_close = float(latest_bar["close"])
+
+                        for sig in active_signals[:]:  # Use copy to allow removal
+                            pos = position_repo.get_position_by_signal(sig.signal_id)
+                            if (
+                                pos
+                                and pos.status == TradeStatus.OPEN
+                                and pos.current_stop_loss
+                            ):
+                                is_long = pos.side == OrderSide.BUY
+                                stop_hit = (
+                                    is_long and current_close < pos.current_stop_loss
+                                ) or (
+                                    not is_long and current_close > pos.current_stop_loss
+                                )
+
+                                if stop_hit:
+                                    logger.warning(
+                                        f"STOP HIT: {symbol} @ {current_close} "
+                                        f"(Stop: {pos.current_stop_loss})",
+                                        extra={
+                                            "symbol": symbol,
+                                            "current_price": current_close,
+                                            "stop_loss": pos.current_stop_loss,
+                                            "signal_id": sig.signal_id,
+                                        },
+                                    )
+                                    if execution_engine.close_position_emergency(pos):
+                                        pos.status = TradeStatus.CLOSED
+                                        pos.exit_reason = ExitReason.STOP_LOSS
+                                        position_repo.update_position(pos)
+
+                                        # Update signal status for Discord notification
+                                        sig.status = SignalStatus.INVALIDATED
+                                        sig.exit_reason = ExitReason.STOP_LOSS
+                                        repo.update_signal_atomic(
+                                            sig.signal_id,
+                                            {
+                                                "status": SignalStatus.INVALIDATED.value,
+                                                "exit_reason": ExitReason.STOP_LOSS.value,
+                                            },
+                                        )
+
+                                        # Remove from active_signals to avoid double processing
+                                        active_signals.remove(sig)
+
+                                        # Send Discord notification
+                                        discord.send_signal_update(
+                                            sig, asset_class=asset_class
+                                        )
+
                         # 1. Run Expiration Check (24h Rule)
                         now_utc = datetime.now(timezone.utc)
 
@@ -775,9 +829,7 @@ def main(
                                         # Verify position still exists on Alpaca
                                         # before attempting emergency close.
                                         try:
-                                            alpaca_sym = normalize_alpaca_symbol(
-                                                pos.symbol
-                                            )
+                                            alpaca_sym = pos.symbol.replace("/", "")
                                             alpaca_pos = (
                                                 execution_engine.alpaca.get_open_position(
                                                     alpaca_sym
@@ -1186,7 +1238,7 @@ def main(
                 # If we already have an open position, skip to
                 # prevent the TP automation race condition.
                 try:
-                    alpaca_symbol = normalize_alpaca_symbol(trade_signal.symbol)
+                    alpaca_symbol = trade_signal.symbol.replace("/", "")
                     existing_alpaca_pos = execution_engine.alpaca.get_open_position(
                         alpaca_symbol
                     )
@@ -1301,14 +1353,11 @@ def main(
                             break
 
                     try:
-                        # Capture original state for change detection
-                        # Position is a Pydantic model; model_copy() allows detecting
-                        # in-place modifications made by sync_position_status()
-                        original_pos = pos.model_copy(deep=True)
+                        original_status = pos.status
                         updated_pos = execution_engine.sync_position_status(pos)
 
                         # Check if position was closed externally (TP/SL hit)
-                        if updated_pos.status != original_pos.status:
+                        if updated_pos.status != original_status:
                             position_repo.update_position(updated_pos)
                             closed_count += 1
                             logger.info(
@@ -1357,8 +1406,8 @@ def main(
                                         duration_str=duration_str,
                                         exit_reason=exit_reason,
                                     )
-                        elif updated_pos != original_pos:
-                            # Any field changed (leg IDs, qty, entry_fill_price, etc.)
+                        elif updated_pos != pos:
+                            # Any field changed (leg IDs, filled_at, entry_fill_price, etc.)
                             position_repo.update_position(updated_pos)
                             synced_count += 1
 
