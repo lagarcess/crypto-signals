@@ -17,7 +17,7 @@ from datetime import date, datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, ClassVar, Dict, List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, conlist, model_validator
 
 # =============================================================================
 # CONSTANTS
@@ -192,11 +192,11 @@ class ReconciliationReport(BaseModel):
     positions (open in Alpaca, missing from DB).
     """
 
-    zombies: List[str] = Field(
+    zombies: conlist(str) = Field(  # type: ignore[valid-type]
         default_factory=list,
         description="Symbols closed in Alpaca but marked OPEN in Firestore",
     )
-    orphans: List[str] = Field(
+    orphans: conlist(str) = Field(  # type: ignore[valid-type]
         default_factory=list,
         description="Symbols with open positions in Alpaca but no Firestore record",
     )
@@ -212,7 +212,7 @@ class ReconciliationReport(BaseModel):
         default=0.0,
         description="Time taken to run reconciliation (seconds)",
     )
-    critical_issues: List[str] = Field(
+    critical_issues: conlist(str) = Field(  # type: ignore[valid-type]
         default_factory=list,
         description="Critical alerts (e.g., orphan positions)",
     )

@@ -8,8 +8,13 @@ Example:
     >>> from crypto_signals.market.data_provider import get_trading_client
     >>> from crypto_signals.repository.firestore import PositionRepository
     >>> from crypto_signals.notifications.discord import DiscordClient
+    >>> from crypto_signals.engine.reconciler_notifications import ReconcilerNotificationService
     >>>
-    >>> reconciler = StateReconciler(get_trading_client(), PositionRepository(), DiscordClient())
+    >>> reconciler = StateReconciler(
+    ...     get_trading_client(),
+    ...     PositionRepository(),
+    ...     ReconcilerNotificationService(DiscordClient())
+    ... )
     >>> report = reconciler.reconcile()
     >>> if report.critical_issues:
     ...     print(f"Issues detected: {report.critical_issues}")
@@ -23,13 +28,15 @@ from alpaca.trading.client import TradingClient
 from alpaca.trading.models import Position as AlpacaPosition
 from alpaca.trading.requests import GetOrdersRequest
 from crypto_signals.config import Settings, get_settings
+from crypto_signals.domain.enums import ReconciliationErrors
 from crypto_signals.domain.schemas import (
     ExitReason,
+    Position,
     ReconciliationReport,
     TradeStatus,
     TradeType,
 )
-from crypto_signals.notifications.discord import DiscordClient
+from crypto_signals.engine.reconciler_notifications import ReconcilerNotificationService
 from crypto_signals.repository.firestore import PositionRepository
 from crypto_signals.utils.symbols import normalize_alpaca_symbol
 from loguru import logger
@@ -45,7 +52,7 @@ class StateReconciler:
         self,
         alpaca_client: TradingClient,
         position_repo: PositionRepository,
-        discord_client: DiscordClient,
+        notification_service: ReconcilerNotificationService,
         settings: Optional[Settings] = None,
     ):
         """
@@ -54,12 +61,12 @@ class StateReconciler:
         Args:
             alpaca_client: TradingClient for fetching broker positions.
             position_repo: PositionRepository for database operations.
-            discord_client: DiscordClient for notifications.
+            notification_service: ReconcilerNotificationService for alerts.
             settings: Settings object (defaults to get_settings()).
         """
         self.alpaca = alpaca_client
         self.position_repo = position_repo
-        self.discord = discord_client
+        self.notifications = notification_service
         self.settings: Settings = settings or get_settings()
 
         logger.info(
@@ -99,10 +106,10 @@ class StateReconciler:
                 ]
             )
 
-        zombies = []
-        orphans = []
-        reconciled_count = 0
-        critical_issues = []
+        zombies: list[str] = []
+        orphans: list[str] = []
+        reconciled_count: int = 0
+        critical_issues: list[str] = []
 
         try:
             # 1. Fetch Alpaca positions
@@ -231,9 +238,8 @@ class StateReconciler:
                         # Notification is sent by handle_manual_exit_verification
                     else:
                         # Verification failed - Critical Sync Issue
-                        error_msg = (
-                            f"CRITICAL SYNC ISSUE: {symbol} is OPEN in DB but MISSING in Alpaca. "
-                            "No matching exit order found."
+                        error_msg = ReconciliationErrors.ZOMBIE_EXIT_GAP.format(
+                            symbol=symbol
                         )
                         logger.critical(
                             error_msg,
@@ -246,16 +252,9 @@ class StateReconciler:
 
                         # Send critical alert for unverified zombie
                         try:
-                            self.discord.send_message(
-                                f"🛑 **CRITICAL SYNC FAILURE**: {symbol}\n"
-                                f"Position is missing from Alpaca but **NO EXIT ORDER FOUND**.\n"
-                                f"System will NOT close it automatically.\n"
-                                f"**Action Required**: Investigate immediately."
-                            )
+                            self.notifications.notify_critical_sync_failure(symbol)
                         except Exception as e:
-                            logger.warning(
-                                f"Failed to send sync failure alert for {symbol}: {e}"
-                            )
+                            logger.warning(f"Critical sync failure notification failed: {e}")
 
                 except Exception as e:
                     error_msg = f"Failed to heal zombie {symbol}: {e}"
@@ -273,18 +272,13 @@ class StateReconciler:
                 )
 
                 try:
-                    self.discord.send_message(
-                        f"⚠️  **CRITICAL ORPHAN**: {symbol}\n"
-                        f"Position is open in Alpaca but has no Firestore record.\n"
-                        f"**Action Required**: Manual investigation and position management."
-                    )
+                    self.notifications.notify_orphan(symbol)
                 except Exception as e:
-                    logger.warning(
-                        f"Failed to send orphan alert for {symbol}.",
-                        extra={"symbol": symbol, "error": str(e)},
-                    )
+                    logger.warning(f"Orphan notification failed: {e}")
 
-                critical_issues.append(f"ORPHAN: {symbol}")
+                critical_issues.append(
+                    ReconciliationErrors.ORPHAN_POSITION.format(symbol=symbol)
+                )
 
             # =====================================================================
             # Detect Reverse Orphans (CLOSED in DB, OPEN in Alpaca)
@@ -313,18 +307,17 @@ class StateReconciler:
                             )
 
                             try:
-                                self.discord.send_message(
-                                    f"🚨 **CRITICAL REVERSE ORPHAN**: {closed_pos.symbol}\n"
-                                    f"Position is CLOSED in Firestore but STILL OPEN in Alpaca!\n"
-                                    f"**Position ID**: {closed_pos.position_id}\n"
-                                    f"**Action Required**: Manual close in Alpaca dashboard."
+                                self.notifications.notify_reverse_orphan(
+                                    closed_pos.symbol, closed_pos.position_id
                                 )
                             except Exception as e:
-                                logger.warning(
-                                    f"Failed to send reverse orphan alert for {closed_pos.symbol}: {e}"
-                                )
+                                logger.warning(f"Reverse orphan notification failed: {e}")
 
-                            critical_issues.append(f"REVERSE_ORPHAN: {closed_pos.symbol}")
+                            critical_issues.append(
+                                ReconciliationErrors.REVERSE_ORPHAN.format(
+                                    symbol=closed_pos.symbol
+                                )
+                            )
 
                     except Exception as e:
                         # 404/not found = position is correctly closed in Alpaca
@@ -375,7 +368,7 @@ class StateReconciler:
 
         return report
 
-    def handle_manual_exit_verification(self, position) -> bool:
+    def handle_manual_exit_verification(self, position: Position) -> bool:
         """
         Verify if a position that is missing from Alpaca has a corresponding manual exit order.
         If verified, it updates the position object and returns True.
@@ -462,15 +455,11 @@ class StateReconciler:
 
                 # Notify Discord of the manual exit detected during sync
                 try:
-                    self.discord.send_message(
-                        f"☝️  **MANUAL EXIT DETECTED**: {position.symbol}\n"
-                        f"Position was found closed on Alpaca but open in DB.\n"
-                        f"Verified via manually placed order: `{closing_order.id}`."
+                    self.notifications.notify_manual_exit(
+                        position.symbol, str(closing_order.id)
                     )
-                except Exception as notify_err:
-                    logger.warning(
-                        f"Failed to notify manual exit for {position.symbol}: {notify_err}"
-                    )
+                except Exception as e:
+                    logger.warning(f"Manual exit notification failed: {e}")
 
                 return True
 
