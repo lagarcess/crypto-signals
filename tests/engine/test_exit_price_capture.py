@@ -1,4 +1,3 @@
-from alpaca.trading.requests import ClosePositionRequest
 """
 Unit tests for exit price capture functionality (Issue #141).
 
