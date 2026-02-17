@@ -676,39 +676,6 @@ class PositionRepository:
 
         return results
 
-    def get_positions_by_status_and_time(
-        self, status: TradeStatus, hours_lookback: int = 24
-    ) -> list[Position]:
-        """
-        Get positions with a specific status updated within the last N hours.
-
-        Args:
-            status: The status to filter by (e.g., TradeStatus.CLOSED).
-            hours_lookback: Number of hours to look back.
-
-        Returns:
-            List of matching Position objects.
-        """
-        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours_lookback)
-
-        query = (
-            self.db.collection(self.collection_name)
-            .where(filter=FieldFilter("status", "==", status.value))
-            .where(filter=FieldFilter("updated_at", ">=", cutoff_time))
-            .order_by("updated_at", direction=firestore.Query.DESCENDING)
-        )
-
-        results = []
-        for doc in query.stream():
-            try:
-                # Use Position model validation
-                results.append(Position(**doc.to_dict()))
-            except ValidationError as e:
-                log_validation_error(doc.id, e)
-                logger.warning(f"Skipped invalid position: {doc.id}")
-
-        return results
-
     def cleanup_expired(self, retention_days: int = 30) -> int:
         """Delete positions past their TTL. Returns count deleted."""
         cutoff_date = datetime.now(timezone.utc) - timedelta(days=retention_days)
