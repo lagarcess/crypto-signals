@@ -21,10 +21,10 @@ from alpaca.trading.client import TradingClient
 from alpaca.trading.enums import OrderClass, OrderSide, TimeInForce
 from alpaca.trading.models import Order
 from alpaca.trading.requests import (
+    ClosePositionRequest,
     MarketOrderRequest,
     StopLossRequest,
     TakeProfitRequest,
-    ClosePositionRequest,
 )
 from crypto_signals.config import get_settings, get_trading_client
 from crypto_signals.domain.schemas import (
@@ -1254,7 +1254,7 @@ class ExecutionEngine:
         """
         try:
             # Reconcile against live broker state
-            alpaca_pos = self.alpaca.get_open_position(position.symbol)
+            alpaca_pos: Any = self.alpaca.get_open_position(position.symbol)
             broker_qty = abs(float(cast(Any, alpaca_pos).qty))
 
             # Tolerance check (1%) to detect external account activity

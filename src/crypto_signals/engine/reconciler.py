@@ -99,8 +99,8 @@ class StateReconciler:
                 ]
             )
 
-        zombies = []
-        orphans = []
+        zombies: list[str] = []
+        orphans: list[str] = []
         reconciled_count = 0
         critical_issues = []
 
@@ -292,7 +292,7 @@ class StateReconciler:
             logger.info("Checking for reverse orphans (CLOSED in DB, OPEN in Alpaca)...")
             try:
                 closed_positions = self.position_repo.get_closed_positions(limit=50)
-                reverse_orphans = []
+                reverse_orphans: list[str] = []
 
                 for closed_pos in closed_positions:
                     try:
