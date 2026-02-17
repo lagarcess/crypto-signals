@@ -61,6 +61,7 @@ src/crypto_signals/scripts/
     ├── __init__.py
     ├── cleanup_legacy_gaps.py  # Tag legacy orphans as resolved
     ├── fix_reverse_orphans.py  # Heal CLOSED_DB -> OPEN_ALPACA
+    ├── migrate_bq_descriptions.py # BigQuery description migration
     ├── migrate_schema.py       # BigQuery schema migration
     ├── purge_positions.py      # Purge positions (DEV/TEST only)
     ├── purge_signals.py        # Purge signals (DEV/TEST only)
