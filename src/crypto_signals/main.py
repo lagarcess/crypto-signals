@@ -35,6 +35,7 @@ from crypto_signals.domain.schemas import (
 )
 from crypto_signals.engine.execution import ExecutionEngine
 from crypto_signals.engine.reconciler import StateReconciler
+from crypto_signals.engine.reconciler_notifications import ReconcilerNotificationService
 from crypto_signals.engine.signal_generator import SignalGenerator
 from crypto_signals.market.asset_service import AssetValidationService
 from crypto_signals.market.data_provider import MarketDataProvider
@@ -312,7 +313,7 @@ def main(
             reconciler = StateReconciler(
                 alpaca_client=get_trading_client(),
                 position_repo=position_repo,
-                discord_client=discord,
+                notification_service=ReconcilerNotificationService(discord),
                 settings=settings,
             )
             execution_engine = ExecutionEngine(
