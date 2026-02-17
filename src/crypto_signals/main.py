@@ -51,7 +51,9 @@ from crypto_signals.observability import (
     setup_gcp_logging,
 )
 from crypto_signals.pipelines.account_snapshot import AccountSnapshotPipeline
+from crypto_signals.pipelines.agg_strategy_daily import DailyStrategyAggregation
 from crypto_signals.pipelines.expired_signal_archival import ExpiredSignalArchivalPipeline
+from crypto_signals.pipelines.performance import PerformancePipeline
 from crypto_signals.pipelines.fee_patch import FeePatchPipeline
 from crypto_signals.pipelines.price_patch import PricePatchPipeline
 from crypto_signals.pipelines.rejected_signal_archival import RejectedSignalArchival
@@ -324,6 +326,8 @@ def main(
             price_patch = PricePatchPipeline(execution_engine=execution_engine)
             account_snapshot = AccountSnapshotPipeline()
             strategy_sync = StrategySyncPipeline()
+            strategy_aggregation = DailyStrategyAggregation()
+            performance_pipeline = PerformancePipeline()
 
         # Job Locking
         job_id = "signal_generator_cron"
@@ -492,6 +496,40 @@ def main(
         else:
             logger.warning(
                 "⚠️ Skipping exit price reconciliation due to reconciliation failure."
+            )
+
+        # === DAILY STRATEGY AGGREGATION ===
+        # Aggregates fact_trades into agg_strategy_daily for dashboard performance.
+        # Must run AFTER archival and patches to ensure fresh data.
+        if not reconciliation_failed:
+            _run_pipeline(
+                strategy_aggregation,
+                "strategy_aggregation",
+                lambda count: logger.info(
+                    f"✅ Strategy aggregation complete: {count} records aggregated"
+                    if count > 0
+                    else "✅ Strategy aggregation complete: No new data to aggregate"
+                ),
+                metrics_collector=metrics,
+            )
+
+            # === PERFORMANCE PIPELINE ===
+            # Calculates summary metrics (Sharpe, etc.) from aggregated daily data.
+            # Must run AFTER strategy aggregation.
+            _run_pipeline(
+                performance_pipeline,
+                "performance_pipeline",
+                lambda count: logger.info(
+                    f"✅ Performance metrics complete: {count} records updated"
+                    if count > 0
+                    else "✅ Performance metrics complete: No new data to process"
+                ),
+                metrics_collector=metrics,
+            )
+
+        else:
+            logger.warning(
+                "⚠️ Skipping post-processing pipelines due to reconciliation failure."
             )
 
         # Define Portfolio

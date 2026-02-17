@@ -74,6 +74,12 @@ def mock_dependencies():
         )
         fee_patch = stack.enter_context(patch("crypto_signals.main.FeePatchPipeline"))
         price_patch = stack.enter_context(patch("crypto_signals.main.PricePatchPipeline"))
+        strategy_aggregation = stack.enter_context(
+            patch("crypto_signals.main.DailyStrategyAggregation")
+        )
+        performance_pipeline = stack.enter_context(
+            patch("crypto_signals.main.PerformancePipeline")
+        )
         reconciler = stack.enter_context(patch("crypto_signals.main.StateReconciler"))
         job_metadata_repo = stack.enter_context(
             patch("crypto_signals.main.JobMetadataRepository")
@@ -139,6 +145,8 @@ def mock_dependencies():
         trade_archival.return_value.run.return_value = 0
         fee_patch.return_value.run.return_value = 0
         price_patch.return_value.run.return_value = 0
+        strategy_aggregation.return_value.run.return_value = 0
+        performance_pipeline.return_value.run.return_value = 0
         rejected_archival.return_value.run.return_value = 0
         expired_archival.return_value.run.return_value = 0
 
@@ -161,6 +169,8 @@ def mock_dependencies():
             "trade_archival": trade_archival,
             "fee_patch": fee_patch,
             "price_patch": price_patch,
+            "strategy_aggregation": strategy_aggregation,
+            "performance_pipeline": performance_pipeline,
             "reconciler": reconciler,
             "rejected_archival": rejected_archival,
             "expired_archival": expired_archival,
@@ -214,6 +224,8 @@ def test_main_execution_flow(mock_dependencies):
     # Configure pipeline return values to prevent logging interaction (str/repr calls)
     mock_dependencies["trade_archival"].return_value.run.return_value = 5
     mock_dependencies["fee_patch"].return_value.run.return_value = 2
+    mock_dependencies["strategy_aggregation"].return_value.run.return_value = 6
+    mock_dependencies["performance_pipeline"].return_value.run.return_value = 7
     mock_dependencies["rejected_archival"].return_value.run.return_value = 3
     mock_dependencies["expired_archival"].return_value.run.return_value = 4
 
@@ -233,6 +245,15 @@ def test_main_execution_flow(mock_dependencies):
     )
     pipeline_manager.attach_mock(
         mock_dependencies["fee_patch"].return_value.run, "fee_patch"
+    )
+    pipeline_manager.attach_mock(
+        mock_dependencies["price_patch"].return_value.run, "price_patch"
+    )
+    pipeline_manager.attach_mock(
+        mock_dependencies["strategy_aggregation"].return_value.run, "aggregation"
+    )
+    pipeline_manager.attach_mock(
+        mock_dependencies["performance_pipeline"].return_value.run, "performance"
     )
 
     # Execute
@@ -295,6 +316,9 @@ def test_main_execution_flow(mock_dependencies):
         "reconcile",
         "archive",
         "fee_patch",
+        "price_patch",
+        "aggregation",
+        "performance",
     ], f"Actual calls mismatch: {actual_calls}"
 
 
