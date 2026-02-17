@@ -65,6 +65,7 @@ from crypto_signals.repository.firestore import (
 )
 from crypto_signals.secrets_manager import init_secrets
 from crypto_signals.utils.metadata import get_git_hash, get_job_context
+from crypto_signals.utils.symbols import normalize_alpaca_symbol
 
 # Configure logging with Rich integration
 configure_logging(level="INFO")
@@ -774,7 +775,9 @@ def main(
                                         # Verify position still exists on Alpaca
                                         # before attempting emergency close.
                                         try:
-                                            alpaca_sym = pos.symbol.replace("/", "")
+                                            alpaca_sym = normalize_alpaca_symbol(
+                                                pos.symbol
+                                            )
                                             alpaca_pos = (
                                                 execution_engine.alpaca.get_open_position(
                                                     alpaca_sym
@@ -1183,7 +1186,7 @@ def main(
                 # If we already have an open position, skip to
                 # prevent the TP automation race condition.
                 try:
-                    alpaca_symbol = trade_signal.symbol.replace("/", "")
+                    alpaca_symbol = normalize_alpaca_symbol(trade_signal.symbol)
                     existing_alpaca_pos = execution_engine.alpaca.get_open_position(
                         alpaca_symbol
                     )
@@ -1298,11 +1301,14 @@ def main(
                             break
 
                     try:
-                        original_status = pos.status
+                        # Capture original state for change detection
+                        # Position is a Pydantic model; model_copy() allows detecting
+                        # in-place modifications made by sync_position_status()
+                        original_pos = pos.model_copy(deep=True)
                         updated_pos = execution_engine.sync_position_status(pos)
 
                         # Check if position was closed externally (TP/SL hit)
-                        if updated_pos.status != original_status:
+                        if updated_pos.status != original_pos.status:
                             position_repo.update_position(updated_pos)
                             closed_count += 1
                             logger.info(
@@ -1351,8 +1357,8 @@ def main(
                                         duration_str=duration_str,
                                         exit_reason=exit_reason,
                                     )
-                        elif updated_pos != pos:
-                            # Any field changed (leg IDs, filled_at, entry_fill_price, etc.)
+                        elif updated_pos != original_pos:
+                            # Any field changed (leg IDs, qty, entry_fill_price, etc.)
                             position_repo.update_position(updated_pos)
                             synced_count += 1
 

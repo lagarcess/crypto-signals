@@ -44,14 +44,18 @@ def test_get_actual_fees_uses_public_api(
         "symbol": "BTC/USD",
     }
 
-    activities = [mock_activity_dict]
+    # Mock public .get()
+    mock_alpaca.get.return_value = [mock_activity_dict]
 
     # Trigger method - should pass now
-    # In V2, activities are pre-fetched and passed to the method
-    pipeline._get_actual_fees("test-order-id", "BTC/USD", "buy", activities)
+    pipeline._get_actual_fees("test-order-id", "BTC/USD", "buy")
 
     # Assertions
-    # API call now happens in transform(), not _get_actual_fees
+    mock_alpaca.get.assert_called_once()
+    args, kwargs = mock_alpaca.get.call_args
+    # Verify positional args (path) and dict params
+    assert args[0] == "/account/activities"
+    assert args[1] == {"activity_types": "CSD,CFEE"}
 
     # Ensure legacy private method is NOT called
     mock_alpaca._request.assert_not_called()

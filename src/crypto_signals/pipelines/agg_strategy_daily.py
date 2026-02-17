@@ -10,13 +10,15 @@ It implements the "Aggregation Layer" pattern to support fast dashboards.
 
 from typing import Any, List
 
-from google.api_core.exceptions import GoogleAPICallError
+from google.api_core.exceptions import GoogleAPICallError, NotFound
+from google.cloud import bigquery
 from google.cloud.exceptions import GoogleCloudError
 from loguru import logger
 from pydantic import BaseModel
 
 from crypto_signals.config import get_settings
 from crypto_signals.domain.schemas import AggStrategyDaily
+from crypto_signals.engine.schema_guardian import SchemaGuardian
 from crypto_signals.pipelines.base import BigQueryPipelineBase
 
 
@@ -49,6 +51,51 @@ class DailyStrategyAggregation(BigQueryPipelineBase):
             partition_column="ds",
             schema_model=AggStrategyDaily,
         )
+
+    def _create_table_if_not_exists(self, table_id: str) -> None:
+        """
+        Create the BigQuery table if it does not exist.
+
+        Uses the schema defined in AggStrategyDaily.
+        """
+        try:
+            self.bq_client.get_table(table_id)
+            logger.debug(f"[{self.job_name}] Table {table_id} already exists.")
+            return
+        except NotFound:
+            logger.info(f"[{self.job_name}] Table {table_id} not found. Creating...")
+
+        # Construct Schema dynamically using SchemaGuardian
+        guardian = SchemaGuardian(self.bq_client)
+        schema = guardian.generate_schema(self.schema_model)
+
+        table = bigquery.Table(table_id, schema=schema)
+
+        # Configure Partitioning
+        table.time_partitioning = bigquery.TimePartitioning(
+            type_=bigquery.TimePartitioningType.DAY,
+            field="ds",  # Partition by 'ds' column
+        )
+
+        try:
+            self.bq_client.create_table(table)
+            logger.info(f"[{self.job_name}] Created table {table_id}.")
+        except Exception as e:
+            logger.error(
+                f"[{self.job_name}] Failed to create table {table_id}.",
+                extra={"table_id": table_id, "error": str(e)},
+            )
+            raise
+
+    def run(self) -> int:
+        """
+        Override run to ensure tables exist before execution.
+        """
+        # Ensure Fact and Staging tables exist
+        self._create_table_if_not_exists(self.fact_table_id)
+        self._create_table_if_not_exists(self.staging_table_id)
+
+        return super().run()
 
     def extract(self) -> List[Any]:
         """
