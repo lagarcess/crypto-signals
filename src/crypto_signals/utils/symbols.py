@@ -1,5 +1,6 @@
 """Symbol normalization utilities."""
 
+
 def normalize_alpaca_symbol(symbol: str) -> str:
     """Normalize a trading symbol for Alpaca API compatibility.
 

@@ -429,9 +429,13 @@ class StateReconciler:
                 if isinstance(o, Order):
                     # Check both Alpaca UUID and Client Order ID to prevent false MANUAL_EXIT
                     order_id = str(o.id)
-                    client_id = str(o.client_order_id) if o.client_order_id else None
+                    client_id = getattr(o, "client_order_id", None)
+                    if client_id:
+                        client_id = str(client_id)
 
-                    if order_id in ignored_ids or (client_id and client_id in ignored_ids):
+                    if order_id in ignored_ids or (
+                        client_id and client_id in ignored_ids
+                    ):
                         continue
 
                     closing_order = o

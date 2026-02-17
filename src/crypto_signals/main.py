@@ -775,7 +775,9 @@ def main(
                                         # Verify position still exists on Alpaca
                                         # before attempting emergency close.
                                         try:
-                                            alpaca_sym = normalize_alpaca_symbol(pos.symbol)
+                                            alpaca_sym = normalize_alpaca_symbol(
+                                                pos.symbol
+                                            )
                                             alpaca_pos = (
                                                 execution_engine.alpaca.get_open_position(
                                                     alpaca_sym

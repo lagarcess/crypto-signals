@@ -39,9 +39,9 @@ from crypto_signals.domain.schemas import (
 )
 from crypto_signals.engine.risk import RiskEngine
 from crypto_signals.market.data_provider import MarketDataProvider
-from crypto_signals.utils.symbols import normalize_alpaca_symbol
 from crypto_signals.observability import console, get_metrics_collector
 from crypto_signals.repository.firestore import PositionRepository
+from crypto_signals.utils.symbols import normalize_alpaca_symbol
 from loguru import logger
 from rich.panel import Panel
 
