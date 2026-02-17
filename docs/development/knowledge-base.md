@@ -44,6 +44,7 @@
 - [2026-02-02] **IAM Roles**: For CI/CD (GitHub Actions), a Service Account needs `Artifact Registry Writer` (to push images) and `Service Account User` (to deploy as itself). For Runtime (Cloud Run), it needs `Secret Manager Secret Accessor` (startup env vars) and `Cloud Datastore User` (data). Missing `ActAs` or `Writer` roles are common deployment blockers.
 
 ### Pydantic & Data Pipelines
+- [2026-02-17] **Pydantic Excludes**: Fields marked with `exclude=True` (often for runtime state) must be explicitly skipped in schema validation logic (like `SchemaGuardian`) to avoid "Missing Column" errors when comparing against DB schemas.
 - [2026-01-21] **Constraint Paradox**: Strict Pydantic validators (e.g., `PositiveFloat`) are excellent for data integrity but can catch "conceptually valid" failures (like a negative stop loss due to weird volatility) and crash the pipeline.
 - [2026-01-21] **Safe Hydration Pattern**: To persist these "invalid" objects for analysis without relaxing the schema, use a "Safe Hydration" strategy:
   1. Catch the validation error early.
@@ -128,6 +129,9 @@
 - [2026-01-30] **Windows WSL**: On Windows, invoking `bash` from PowerShell may target a broken WSL distribution instead of Git Bash. Use the absolute path to the Git Bash executable (e.g., `& "C:\Program Files\Git\bin\bash.exe"`) for reliable script execution.
 
 ### BigQuery & Data Engineering
+- [2026-02-17] **BigQuery Table Mapping**: Hardcoded table names prevent safe DEV/TEST isolation. Use `ClassVar` on Pydantic models (e.g. `_bq_table_name`) combined with a "Fuzzy Lookup" strategy (checking `_test` suffix) to dynamically resolve environment-specific tables.
+- [2026-02-17] **BigQuery Nested Updates**: To update descriptions for nested `RECORD` fields, you cannot just pass the field name. You must reconstruct the entire `SchemaField` hierarchy (as they are immutable) and pass the full schema back to `update_table`. Recursion is required.
+- [2026-02-17] **BigQuery Batch Updates**: `google-cloud-bigquery` allows batched updates. Modifying a local `Table` object (description + schema) and calling `client.update_table(table, fields=["description", "schema"])` saves API calls compared to individual updates.
 - [2026-01-30] **SQL Division**: BigQuery Standard SQL defaults to `FLOAT64` division (`/`). `SAFE_DIVIDE(x, y)` is useful for zero-safety but technically redundant in `GROUP BY` counts (guaranteed >= 1). However, defensive programming often prefers explicit safety.
 - [2026-01-30] **Schema Management**: Avoid hardcoding BigQuery schemas in pipelines. Use `SchemaGuardian` (or similar utility) to dynamically generate schemas from Pydantic models. This ensures single source of truth and eliminates drift.
 
@@ -183,6 +187,7 @@
 - [2026-02-13] **Pydantic V2 & Mocks**: `arbitrary_types_allowed=True` does NOT bypass validation for fields typed as `BaseModel` subclasses. Pydantic v2 attempts to validate the schema of the subclass even if a Mock is passed. To support `MagicMock` in tests for these fields, use `typing.Any` with a type comment (e.g., `signal: Any  # type: Signal`) instead of the strict type hint.
 
 ### Observability & Metrics
+- [2026-02-17] **Metric Scope**: Conditional metric recording (only inside `if/else`) leads to silent undercounting. Top-level throughput metrics (e.g. "signals processed") must be recorded in the main scope, regardless of the branch taken.
 - [2026-02-13] **Metric Timing**: Do not reuse timer variables (like `start_time`) across multi-phase pipelines. Latency metrics must measure *exclusive* phase duration. Always initialize a fresh `processing_start = time.time()` at the beginning of the phase block to avoid polluting metrics with upstream latency.
 
 ### Linting & Quality

@@ -587,7 +587,9 @@ def main(
                         )
                     else:
                         logger.debug(f"No signal for {symbol}.")
-                        metrics.record_success("signal_generation", symbol_duration)
+
+                    # Record metric for every symbol processed
+                    metrics.record_success("signal_generation", symbol_duration)
 
                     # Active Trade Validation
                     # Check for updates on existing WAITING/ACTIVE signals
