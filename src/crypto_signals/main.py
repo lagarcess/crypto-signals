@@ -30,7 +30,6 @@ from crypto_signals.domain.schemas import (
     AssetClass,
     ExitReason,
     NotificationPayload,
-    OrderSide,
     SignalStatus,
     TradeStatus,
 )
@@ -53,8 +52,8 @@ from crypto_signals.observability import (
 from crypto_signals.pipelines.account_snapshot import AccountSnapshotPipeline
 from crypto_signals.pipelines.agg_strategy_daily import DailyStrategyAggregation
 from crypto_signals.pipelines.expired_signal_archival import ExpiredSignalArchivalPipeline
-from crypto_signals.pipelines.performance import PerformancePipeline
 from crypto_signals.pipelines.fee_patch import FeePatchPipeline
+from crypto_signals.pipelines.performance import PerformancePipeline
 from crypto_signals.pipelines.price_patch import PricePatchPipeline
 from crypto_signals.pipelines.rejected_signal_archival import RejectedSignalArchival
 from crypto_signals.pipelines.strategy_sync import StrategySyncPipeline
@@ -68,6 +67,7 @@ from crypto_signals.repository.firestore import (
 )
 from crypto_signals.secrets_manager import init_secrets
 from crypto_signals.utils.metadata import get_git_hash, get_job_context
+from crypto_signals.utils.symbols import normalize_alpaca_symbol
 
 # Configure logging with Rich integration
 configure_logging(level="INFO")
@@ -97,7 +97,7 @@ def _run_pipeline(
     name: str,
     success_log_fn: Callable[[Any], None],
     metrics_collector: Optional["MetricsCollector"] = None,
-) -> None:
+) -> bool:
     """
     Helper to run a pipeline with standardized logging and metrics.
 
@@ -106,6 +106,9 @@ def _run_pipeline(
         name: The name of the pipeline for metrics/logging.
         success_log_fn: A callback that receives the result and logs success.
         metrics_collector: Optional metrics collector (fetches default if None).
+
+    Returns:
+        bool: True if the pipeline completed successfully, False otherwise.
     """
     logger.info(f"Running {name} Pipeline...")
     start_time = time.time()
@@ -117,9 +120,11 @@ def _run_pipeline(
         result = pipeline.run()
         success_log_fn(result)
         metrics.record_success(name, time.time() - start_time)
+        return True
     except Exception as e:
         logger.error(f"{name} Pipeline failed: {e}")
         metrics.record_failure(name, time.time() - start_time)
+        return False
 
 
 def _log_pipeline_result(
@@ -339,6 +344,7 @@ def main(
         atexit.register(job_lock_repo.release_lock, job_id)
 
         # === STRATEGY SYNC (SCD Type 2) ===
+        # === STRATEGY SYNC (SCD Type 2) ===
         _run_pipeline(
             strategy_sync,
             "strategy_sync",
@@ -502,7 +508,7 @@ def main(
         # Aggregates fact_trades into agg_strategy_daily for dashboard performance.
         # Must run AFTER archival and patches to ensure fresh data.
         if not reconciliation_failed:
-            _run_pipeline(
+            agg_success = _run_pipeline(
                 strategy_aggregation,
                 "strategy_aggregation",
                 lambda count: logger.info(
@@ -516,16 +522,21 @@ def main(
             # === PERFORMANCE PIPELINE ===
             # Calculates summary metrics (Sharpe, etc.) from aggregated daily data.
             # Must run AFTER strategy aggregation.
-            _run_pipeline(
-                performance_pipeline,
-                "performance_pipeline",
-                lambda count: logger.info(
-                    f"✅ Performance metrics complete: {count} records updated"
-                    if count > 0
-                    else "✅ Performance metrics complete: No new data to process"
-                ),
-                metrics_collector=metrics,
-            )
+            if agg_success:
+                _run_pipeline(
+                    performance_pipeline,
+                    "performance_pipeline",
+                    lambda count: logger.info(
+                        f"✅ Performance metrics complete: {count} records updated"
+                        if count > 0
+                        else "✅ Performance metrics complete: No new data to process"
+                    ),
+                    metrics_collector=metrics,
+                )
+            else:
+                logger.warning(
+                    "⚠️ Skipping performance pipeline because strategy aggregation failed."
+                )
 
         else:
             logger.warning(
@@ -569,7 +580,6 @@ def main(
 
         # Phase 1: Signal Discovery & Active Trade Validation
         candidate_signals = []  # To be processed in Phase 2 (Saturation Filter)
-        symbol_results = []  # Track symbol results for summary table
         symbols_processed = 0
 
         with create_portfolio_progress(len(portfolio_items)) as (progress, task):
@@ -623,28 +633,9 @@ def main(
                         candidate_signals.append(
                             (trade_signal, asset_class, symbol_duration)
                         )
-                        symbol_results.append(
-                            {
-                                "symbol": symbol,
-                                "status": "SIGNAL_FOUND",
-                                "pattern": trade_signal.pattern_name,
-                                "duration": symbol_duration,
-                                "asset_class": asset_class.value,
-                            }
-                        )
                     else:
                         logger.debug(f"No signal for {symbol}.")
-                        symbol_results.append(
-                            {
-                                "symbol": symbol,
-                                "status": "NO_SIGNAL",
-                                "duration": symbol_duration,
-                                "asset_class": asset_class.value,
-                            }
-                        )
-
-                    # Record metric for every symbol processed
-                    metrics.record_success("signal_generation", symbol_duration)
+                        metrics.record_success("signal_generation", symbol_duration)
 
                     # Active Trade Validation
                     # Check for updates on existing WAITING/ACTIVE signals
@@ -653,60 +644,6 @@ def main(
                         logger.info(
                             f"Checking active signals for {symbol} ({len(active_signals)})..."
                         )
-
-                        # 0. Defensive Stop-Loss Check (Issue #301)
-                        # Check if price has breached current_stop_loss from Position
-                        latest_bar = df.iloc[-1]
-                        current_close = float(latest_bar["close"])
-
-                        for sig in active_signals[:]:  # Use copy to allow removal
-                            pos = position_repo.get_position_by_signal(sig.signal_id)
-                            if (
-                                pos
-                                and pos.status == TradeStatus.OPEN
-                                and pos.current_stop_loss
-                            ):
-                                is_long = pos.side == OrderSide.BUY
-                                stop_hit = (
-                                    is_long and current_close < pos.current_stop_loss
-                                ) or (
-                                    not is_long and current_close > pos.current_stop_loss
-                                )
-
-                                if stop_hit:
-                                    logger.warning(
-                                        f"STOP HIT: {symbol} @ {current_close} "
-                                        f"(Stop: {pos.current_stop_loss})",
-                                        extra={
-                                            "symbol": symbol,
-                                            "current_price": current_close,
-                                            "stop_loss": pos.current_stop_loss,
-                                            "signal_id": sig.signal_id,
-                                        },
-                                    )
-                                    if execution_engine.close_position_emergency(pos):
-                                        pos.status = TradeStatus.CLOSED
-                                        pos.exit_reason = ExitReason.STOP_LOSS
-                                        position_repo.update_position(pos)
-
-                                        # Update signal status for Discord notification
-                                        sig.status = SignalStatus.INVALIDATED
-                                        sig.exit_reason = ExitReason.STOP_LOSS
-                                        repo.update_signal_atomic(
-                                            sig.signal_id,
-                                            {
-                                                "status": SignalStatus.INVALIDATED.value,
-                                                "exit_reason": ExitReason.STOP_LOSS.value,
-                                            },
-                                        )
-
-                                        # Remove from active_signals to avoid double processing
-                                        active_signals.remove(sig)
-
-                                        # Send Discord notification
-                                        discord.send_signal_update(
-                                            sig, asset_class=asset_class
-                                        )
 
                         # 1. Run Expiration Check (24h Rule)
                         now_utc = datetime.now(timezone.utc)
@@ -886,7 +823,9 @@ def main(
                                         # Verify position still exists on Alpaca
                                         # before attempting emergency close.
                                         try:
-                                            alpaca_sym = pos.symbol.replace("/", "")
+                                            alpaca_sym = normalize_alpaca_symbol(
+                                                pos.symbol
+                                            )
                                             alpaca_pos = (
                                                 execution_engine.alpaca.get_open_position(
                                                     alpaca_sym
@@ -1044,10 +983,6 @@ def main(
                                 )
 
                 except Exception as e:
-                    # Capture error for summary
-                    symbol_results.append(
-                        {"symbol": symbol, "status": "ERROR", "error": str(e)}
-                    )
                     symbol_duration = time.time() - symbol_start_time
                     metrics.record_failure("signal_generation", symbol_duration)
                     logger.error(
@@ -1304,7 +1239,7 @@ def main(
                 # If we already have an open position, skip to
                 # prevent the TP automation race condition.
                 try:
-                    alpaca_symbol = trade_signal.symbol.replace("/", "")
+                    alpaca_symbol = normalize_alpaca_symbol(trade_signal.symbol)
                     existing_alpaca_pos = execution_engine.alpaca.get_open_position(
                         alpaca_symbol
                     )
@@ -1419,11 +1354,14 @@ def main(
                             break
 
                     try:
-                        original_status = pos.status
+                        # Capture original state for change detection
+                        # Position is a Pydantic model; model_copy() allows detecting
+                        # in-place modifications made by sync_position_status()
+                        original_pos = pos.model_copy(deep=True)
                         updated_pos = execution_engine.sync_position_status(pos)
 
                         # Check if position was closed externally (TP/SL hit)
-                        if updated_pos.status != original_status:
+                        if updated_pos.status != original_pos.status:
                             position_repo.update_position(updated_pos)
                             closed_count += 1
                             logger.info(
@@ -1472,8 +1410,8 @@ def main(
                                         duration_str=duration_str,
                                         exit_reason=exit_reason,
                                     )
-                        elif updated_pos != pos:
-                            # Any field changed (leg IDs, filled_at, entry_fill_price, etc.)
+                        elif updated_pos != original_pos:
+                            # Any field changed (leg IDs, qty, entry_fill_price, etc.)
                             position_repo.update_position(updated_pos)
                             synced_count += 1
 
@@ -1539,6 +1477,31 @@ def main(
                 logger.error(f"Position sync failed: {e}", exc_info=True)
                 metrics.record_failure("position_sync", time.time() - sync_start)
 
+                metrics.record_failure("position_sync", time.time() - sync_start)
+
+        # =========================================================================
+        # AGGREGATION & PERFORMANCE (T-1 CADENCE)
+        # =========================================================================
+        # 1. Aggregate signals and trades into daily stats
+        _run_pipeline(
+            strategy_aggregation,
+            "strategy_aggregation",
+            lambda count: _log_pipeline_result(
+                "Daily Strategy Aggregation", count, "records", "aggregated"
+            ),
+            metrics_collector=metrics,
+        )
+
+        # 2. Calculate performance metrics (Sharpe, etc.) based on aggregation
+        _run_pipeline(
+            performance_pipeline,
+            "performance_pipeline",
+            lambda count: _log_pipeline_result(
+                "Performance Metrics Calculation", count, "strategies", "updated"
+            ),
+            metrics_collector=metrics,
+        )
+
         # Display Rich execution summary table
         total_duration = time.time() - app_start_time
         console.print()  # Empty line for spacing
@@ -1553,8 +1516,6 @@ def main(
             symbols_processed=symbols_processed,
             total_symbols=len(portfolio_items),
             signals_found=signals_found,
-            signals_rejected=signals_rejected,
-            symbol_results=symbol_results,
             avg_slippage_pct=avg_slippage,
         )
         console.print(summary_table)

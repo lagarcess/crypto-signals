@@ -241,8 +241,6 @@ class StrategyConfig(BaseModel):
     Defines the parameters and assets for a trading strategy.
     """
 
-    _bq_table_name: ClassVar[str] = "dim_strategies"
-
     strategy_id: str = Field(
         ...,
         description="Unique identifier for the strategy",
@@ -718,8 +716,6 @@ class TradeExecution(BaseModel):
     analysis and reporting.
     """
 
-    _bq_table_name: ClassVar[str] = "fact_trades"
-
     ds: date = Field(
         ...,
         description="Partition key - date of trade execution",
@@ -944,8 +940,6 @@ class ExpiredSignal(BaseModel):
     sensitivity and "near misses".
     """
 
-    _bq_table_name: ClassVar[str] = "fact_signals_expired"
-
     doc_id: Optional[str] = Field(None, description="Firestore document ID")
     ds: date = Field(..., description="Partition key - date signal was generated")
     signal_id: str = Field(..., description="Unique identifier for the signal")
@@ -972,8 +966,6 @@ class FactRejectedSignal(BaseModel):
 
     This matches the `fact_rejected_signals` BigQuery table.
     """
-
-    _bq_table_name: ClassVar[str] = "fact_rejected_signals"
 
     doc_id: Optional[str] = Field(None, description="Firestore document ID")
     ds: date
@@ -1124,8 +1116,6 @@ class AccountSnapshot(BaseModel):
     Stored in the snapshot_accounts table, partitioned by ds (date). Captures daily
     account metrics for performance tracking.
     """
-
-    _bq_table_name: ClassVar[str] = "snapshot_accounts"
 
     ds: date = Field(
         ...,
@@ -1355,8 +1345,6 @@ class StrategyPerformance(BaseModel):
     Aggregated daily performance metrics per strategy.
     """
 
-    _bq_table_name: ClassVar[str] = "summary_strategy_performance"
-
     ds: date = Field(
         ...,
         description="Partition key - performance date",
@@ -1524,8 +1512,6 @@ class AggStrategyDaily(BaseModel):
     Stored in the agg_strategy_daily table.
     Groups trades by strategy, symbol, and date to provide fast dashboard metrics.
     """
-
-    _bq_table_name: ClassVar[str] = "agg_strategy_daily"
 
     ds: date = Field(
         ...,

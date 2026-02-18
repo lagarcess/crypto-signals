@@ -151,7 +151,13 @@ class SchemaGuardian:
                 # Recursive generation for nested models
                 fields = tuple(self.generate_schema(python_type))
 
-            schema.append(bigquery.SchemaField(name, bq_type, mode=mode, fields=fields))
+            description = field_info.description
+
+            schema.append(
+                bigquery.SchemaField(
+                    name, bq_type, mode=mode, fields=fields, description=description
+                )
+            )
 
         return schema
 
@@ -290,10 +296,6 @@ class SchemaGuardian:
         mismatches = []
 
         for name, field_info in model_fields:
-            # Skip excluded fields (Issue #149)
-            if field_info.exclude:
-                continue
-
             full_name = f"{parent_path}.{name}" if parent_path else name
 
             # 1. Resolve Type

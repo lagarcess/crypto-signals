@@ -138,32 +138,8 @@ To maintain database hygiene and manage storage costs, positions have a fixed **
 - **TTL Enforcement**: Google Cloud Firestore automatically prunes expired positions via the `delete_at` TTL policy.
 - **Manual Cleanup**: The `cleanup_firestore.py` script can be used to manually trigger pruning across all operational collections.
 
-## Alpaca Crypto Order Constraints
-
-Per Alpaca Crypto Orders docs, certain advanced order types are not supported for crypto assets. Our system adapts to these constraints through software-managed exits.
-
-| Feature | Supported | Notes |
-| :--- | :--- | :--- |
-| **Market orders** | ✅ | Used for entries and all exit types. |
-| **Limit orders** | ✅ | Available, used for equity TP legs. |
-| **Stop orders (plain)** | ❌ | Not supported for crypto. |
-| **Stop-limit orders** | ✅ | Only stop-type order for crypto (introduces gap risk). |
-| **Bracket / OTOCO** | ❌ | Equity only. Crypto returns Error 42210000. |
-| **Position Liquidation** | ✅ | `DELETE /v2/positions/{symbol}` supports percentage param. |
-
-### Software-Managed Exits (Crypto)
-
-Since bracket orders are unavailable for crypto, the system manages the position lifecycle manually:
-
-1.  **Entry**: Simple Market Order.
-2.  **Tracking**: SL and TP levels are stored in Firestore (`Position` and `Signal` models).
-3.  **Evaluation**: Every execution run, `main.py` evaluates the current price against:
-    -   `Position.current_stop_loss`: A defensive floor that triggers an immediate emergency close if breached.
-    -   `generator.check_exits()`: Evaluates dynamic indicators (Chandelier Exit) and structural invalidation levels.
-4.  **Execution**: Exits are performed using Alpaca's **Close Position API** (`DELETE /v2/positions/{symbol}`), which is more robust than a standard market sell as it uses the broker's source-of-truth for quantity and supports precise percentage-based liquidation.
-
 ## Related Files
 
-- [`execution.py`](../src/crypto_signals/engine/execution.py) - `scale_out_position()`, `move_stop_to_breakeven()`, `close_position_emergency()`
-- [`main.py`](../src/crypto_signals/main.py) - TP automation logic and defensive stop-loss evaluation
+- [`execution.py`](../src/crypto_signals/engine/execution.py) - `scale_out_position()`, `move_stop_to_breakeven()`
+- [`main.py`](../src/crypto_signals/main.py) - TP automation logic
 - [`schemas.py`](../src/crypto_signals/domain/schemas.py) - Position tracking fields

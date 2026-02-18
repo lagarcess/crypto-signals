@@ -142,7 +142,6 @@ crypto-signals/
 │   │   │   └── state_analysis.py  # Firestore state analysis
 │   │   └── maintenance/           # Maintenance and cleanup utilities
 │   │       ├── cleanup_firestore.py # Firestore TTL cleanup
-│   │       ├── migrate_bq_descriptions.py # BigQuery description migration
 │   │       ├── migrate_schema.py  # BigQuery schema migration
 │   │       ├── purge_positions.py # Purge positions (DEV/TEST only)
 │   │       └── purge_signals.py   # Purge signals (DEV/TEST only)

@@ -11,9 +11,11 @@ from crypto_signals.pipelines.performance import PerformancePipeline
 def pipeline():
     """Create a pipeline instance with mocked BigQuery client."""
     with patch("google.cloud.bigquery.Client"):
-        with patch("crypto_signals.pipelines.base.get_settings") as mock_settings:
+        with patch("crypto_signals.pipelines.performance.get_settings") as mock_settings:
             mock_settings.return_value.GOOGLE_CLOUD_PROJECT = "test-project"
             mock_settings.return_value.ENVIRONMENT = "DEV"
+            mock_settings.return_value.SCHEMA_GUARDIAN_STRICT_MODE = True
+            mock_settings.return_value.SCHEMA_MIGRATION_AUTO = True
             return PerformancePipeline()
 
 

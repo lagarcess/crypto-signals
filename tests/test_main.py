@@ -947,3 +947,30 @@ def test_thread_recovery_check(mock_dependencies, caplog):
     mock_repo_instance.update_signal_atomic.assert_called()
     # Check signal object state updated
     assert mock_signal.discord_thread_id == "recovered_thread_123"
+
+
+def test_performance_pipeline_skipped_on_aggregation_failure(mock_dependencies, caplog):
+    """Test that performance pipeline is skipped if aggregation fails."""
+    # 1. Mock aggregation to fail
+    mock_dependencies["strategy_aggregation"].return_value.run.side_effect = RuntimeError(
+        "BQ Error"
+    )
+
+    # 2. Mock reconciler to succeed (so we reach aggregation)
+    mock_report = MagicMock()
+    mock_report.critical_issues = []
+    mock_dependencies["reconciler"].return_value.reconcile.return_value = mock_report
+
+    with caplog.at_level("WARNING"):
+        main(smoke_test=False)
+
+    # 3. Verify aggregation failed log
+    assert "strategy_aggregation Pipeline failed: BQ Error" in caplog.text
+
+    # 4. Verify skip log
+    assert (
+        "Skipping performance pipeline because strategy aggregation failed" in caplog.text
+    )
+
+    # 5. Verify performance pipeline was NEVER run
+    mock_dependencies["performance_pipeline"].return_value.run.assert_not_called()
