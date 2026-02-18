@@ -37,6 +37,10 @@ class Settings(BaseSettings):
 
     # Google Cloud Configuration (Required)
     GOOGLE_CLOUD_PROJECT: str | None = Field(default=None)
+    BIGQUERY_DATASET: str = Field(
+        default="crypto_analytics",
+        description="BigQuery dataset name for analytics tables",
+    )
 
     # Google Cloud Credentials Path (Optional - for service account auth)
     GOOGLE_APPLICATION_CREDENTIALS: str | None = Field(
