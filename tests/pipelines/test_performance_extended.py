@@ -1,11 +1,10 @@
 """Integration tests for the Performance Pipeline with real calculations."""
 
 from unittest.mock import MagicMock, patch
-from datetime import date, datetime, timedelta, timezone
 
 import pytest
-from crypto_signals.domain.schemas import StrategyPerformance
 from crypto_signals.pipelines.performance import PerformancePipeline
+
 
 @pytest.fixture
 def pipeline():
@@ -17,6 +16,7 @@ def pipeline():
             mock_settings.return_value.SCHEMA_GUARDIAN_STRICT_MODE = True
             mock_settings.return_value.SCHEMA_MIGRATION_AUTO = True
             return PerformancePipeline()
+
 
 def test_extract_targets_t_minus_1(pipeline):
     """Verify that extract targets T-1 data."""
@@ -37,6 +37,7 @@ def test_extract_targets_t_minus_1(pipeline):
     # Check that at least one query mentions DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY)
     queries = [call.args[0] for call in mock_bq.query.call_args_list]
     assert any("DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY)" in q for q in queries)
+
 
 def test_extract_skips_if_no_data(pipeline):
     """Verify that extract returns empty list if T-1 data is not available."""
