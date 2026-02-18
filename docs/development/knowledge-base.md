@@ -44,7 +44,6 @@
 - [2026-02-02] **IAM Roles**: For CI/CD (GitHub Actions), a Service Account needs `Artifact Registry Writer` (to push images) and `Service Account User` (to deploy as itself). For Runtime (Cloud Run), it needs `Secret Manager Secret Accessor` (startup env vars) and `Cloud Datastore User` (data). Missing `ActAs` or `Writer` roles are common deployment blockers.
 
 ### Pydantic & Data Pipelines
-- [2026-02-17] **Pydantic Excludes**: Fields marked with `exclude=True` (often for runtime state) must be explicitly skipped in schema validation logic (like `SchemaGuardian`) to avoid "Missing Column" errors when comparing against DB schemas.
 - [2026-01-21] **Constraint Paradox**: Strict Pydantic validators (e.g., `PositiveFloat`) are excellent for data integrity but can catch "conceptually valid" failures (like a negative stop loss due to weird volatility) and crash the pipeline.
 - [2026-01-21] **Safe Hydration Pattern**: To persist these "invalid" objects for analysis without relaxing the schema, use a "Safe Hydration" strategy:
   1. Catch the validation error early.
@@ -129,9 +128,6 @@
 - [2026-01-30] **Windows WSL**: On Windows, invoking `bash` from PowerShell may target a broken WSL distribution instead of Git Bash. Use the absolute path to the Git Bash executable (e.g., `& "C:\Program Files\Git\bin\bash.exe"`) for reliable script execution.
 
 ### BigQuery & Data Engineering
-- [2026-02-17] **BigQuery Table Mapping**: Hardcoded table names prevent safe DEV/TEST isolation. Use `ClassVar` on Pydantic models (e.g. `_bq_table_name`) combined with a "Fuzzy Lookup" strategy (checking `_test` suffix) to dynamically resolve environment-specific tables.
-- [2026-02-17] **BigQuery Nested Updates**: To update descriptions for nested `RECORD` fields, you cannot just pass the field name. You must reconstruct the entire `SchemaField` hierarchy (as they are immutable) and pass the full schema back to `update_table`. Recursion is required.
-- [2026-02-17] **BigQuery Batch Updates**: `google-cloud-bigquery` allows batched updates. Modifying a local `Table` object (description + schema) and calling `client.update_table(table, fields=["description", "schema"])` saves API calls compared to individual updates.
 - [2026-01-30] **SQL Division**: BigQuery Standard SQL defaults to `FLOAT64` division (`/`). `SAFE_DIVIDE(x, y)` is useful for zero-safety but technically redundant in `GROUP BY` counts (guaranteed >= 1). However, defensive programming often prefers explicit safety.
 - [2026-01-30] **Schema Management**: Avoid hardcoding BigQuery schemas in pipelines. Use `SchemaGuardian` (or similar utility) to dynamically generate schemas from Pydantic models. This ensures single source of truth and eliminates drift.
 
@@ -187,7 +183,6 @@
 - [2026-02-13] **Pydantic V2 & Mocks**: `arbitrary_types_allowed=True` does NOT bypass validation for fields typed as `BaseModel` subclasses. Pydantic v2 attempts to validate the schema of the subclass even if a Mock is passed. To support `MagicMock` in tests for these fields, use `typing.Any` with a type comment (e.g., `signal: Any  # type: Signal`) instead of the strict type hint.
 
 ### Observability & Metrics
-- [2026-02-17] **Metric Scope**: Conditional metric recording (only inside `if/else`) leads to silent undercounting. Top-level throughput metrics (e.g. "signals processed") must be recorded in the main scope, regardless of the branch taken.
 - [2026-02-13] **Metric Timing**: Do not reuse timer variables (like `start_time`) across multi-phase pipelines. Latency metrics must measure *exclusive* phase duration. Always initialize a fresh `processing_start = time.time()` at the beginning of the phase block to avoid polluting metrics with upstream latency.
 
 ### Linting & Quality
@@ -197,6 +192,7 @@
 - [2026-02-13] **Pytest Collection Warnings**: Classes named `Test*` (e.g., `TestModel`, `TestPipeline`) in test files are collected by pytest as test classes, triggering `PytestCollectionWarning` when they lack test methods. Rename helper/fixture classes to `Mock*` or `Stub*` to avoid collision with pytest's default `python_classes = Test*` collection pattern.
 - [2026-02-13] **Mock Spec for Alpaca Models**: Using `MagicMock()` without `spec=` for Alpaca SDK models (e.g., `Position`, `Order`) causes XFAIL-worthy failures when production code accesses specific model attributes or uses `isinstance` checks. Always use `MagicMock(spec=ModelClass)` and explicitly set required attributes to match the SDK's attribute contract.
 - [2026-02-13] **Performance Test Thresholds**: Numba JIT-compiled functions achieve 2-5ms locally but can take 50-200ms in CI due to shared runners, cold caches, and CPU throttling. Set thresholds at 4× the expected CI worst case (e.g., 200ms for a 50ms-expected operation) rather than 20× (1s), which masks genuine algorithmic regressions.
+
 
 ### Cloud Run & Operational Reliability
 - [2026-02-18] **Discord Thread Constraints**: Discord API returns `400 Bad Request` if `thread_name` is included in a webhook payload targeting a Text Channel (Type 0). It is strictly reserved for Forum Channels (Type 15). Code must conditionally strip this field based on the target channel type or configuration (`DISCORD_USE_FORUMS`).
@@ -218,3 +214,6 @@
 - Always distinguish between Forum and Text channels in Discord integration.
 - Ensure `thread_name` is conditionally applied based on the target channel type, not just a global flag.
 - "Signals Found" metrics should account for rejected candidates to avoid "X Generated vs 0 Found" discrepancies.
+
+- [2026-02-18] **Schema Self-Documentation**: `SchemaGuardian` now automatically propagates Pydantic `description` fields to BigQuery schemas. Helper scripts like `migrate_bq_descriptions.py` are obsolete; documentation should live in the Pydantic models.
+- [2026-02-18] **Pipeline Dependency Ordering**: Aggregation pipelines (e.g., `DailyStrategyAggregation`) must execute *before* consumers (e.g., `PerformancePipeline`) within the same job cycle to ensure consumers have data to process, even if they target T-1.

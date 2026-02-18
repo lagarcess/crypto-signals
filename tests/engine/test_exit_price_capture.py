@@ -51,8 +51,7 @@ class TestEmergencyCloseRetryBudget:
         mock_order.filled_at = datetime.now(timezone.utc)
         mock_order.status = OrderStatus.FILLED
 
-        mock_trading_client.close_position.return_value = mock_order
-        mock_trading_client.get_open_position.return_value = MagicMock(qty="0.05")
+        mock_trading_client.submit_order.return_value = mock_order
 
         # Act
         with patch("crypto_signals.engine.execution.get_settings") as mock_settings:
@@ -93,8 +92,7 @@ class TestEmergencyCloseRetryBudget:
         mock_order.filled_at = None
         mock_order.status = OrderStatus.ACCEPTED
 
-        mock_trading_client.close_position.return_value = mock_order
-        mock_trading_client.get_open_position.return_value = MagicMock(qty="0.05")
+        mock_trading_client.submit_order.return_value = mock_order
 
         # Mock get_order_details for retries
         # Retry 1: Still not filled
@@ -154,8 +152,7 @@ class TestEmergencyCloseRetryBudget:
         mock_order.filled_at = None
         mock_order.status = OrderStatus.ACCEPTED
 
-        mock_trading_client.close_position.return_value = mock_order
-        mock_trading_client.get_open_position.return_value = MagicMock(qty="0.05")
+        mock_trading_client.submit_order.return_value = mock_order
 
         # Mock get_order_details - never fills
         mock_order_retry = MagicMock(spec=Order)
@@ -258,8 +255,7 @@ class TestScaleOutWeightedAverage:
         mock_order.filled_avg_price = 52000.0
         mock_order.status = OrderStatus.FILLED
 
-        mock_trading_client.close_position.return_value = mock_order
-        mock_trading_client.get_open_position.return_value = MagicMock(qty="0.05")
+        mock_trading_client.submit_order.return_value = mock_order
 
         # Act
         # Act
@@ -303,8 +299,7 @@ class TestScaleOutWeightedAverage:
         mock_order_tp1.filled_avg_price = 3200.0
         mock_order_tp1.status = OrderStatus.FILLED
 
-        mock_trading_client.close_position.return_value = mock_order_tp1
-        mock_trading_client.get_open_position.return_value = MagicMock(qty="1.0")
+        mock_trading_client.submit_order.return_value = mock_order_tp1
 
         # Act: TP1 (50% @ $3200)
         # Act: TP1 (50% @ $3200)
@@ -326,8 +321,7 @@ class TestScaleOutWeightedAverage:
         mock_order_tp2.filled_avg_price = 3400.0
         mock_order_tp2.status = OrderStatus.FILLED
 
-        mock_trading_client.close_position.return_value = mock_order_tp2
-        mock_trading_client.get_open_position.return_value = MagicMock(qty="0.5")
+        mock_trading_client.submit_order.return_value = mock_order_tp2
 
         # Act: TP2 (50% of remaining = 0.25 total @ $3400)
         # Act: TP2 (50% of remaining = 0.25 total @ $3400)
@@ -370,8 +364,7 @@ class TestScaleOutWeightedAverage:
         mock_order.filled_avg_price = None
         mock_order.status = OrderStatus.ACCEPTED
 
-        mock_trading_client.close_position.return_value = mock_order
-        mock_trading_client.get_open_position.return_value = MagicMock(qty="0.05")
+        mock_trading_client.submit_order.return_value = mock_order
 
         # Mock get_order_details - fills on retry 1
         mock_order_retry = MagicMock(spec=Order)
