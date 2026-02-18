@@ -913,8 +913,12 @@ class DiscordClient:
         message = self._format_shadow_message(signal)
 
         # FORUM CHANNEL LOGIC: Add thread_name if enabled
-        # DISABLE THREAD NAME FOR SHADOW SIGNALS (Issue: Shadow channel is Text, not Forum)
-        # See Issue #312 for granular configuration plan.
+        if self.settings.DISCORD_SHADOW_USE_FORUMS:
+            rejection_reason = (
+                (signal.rejection_reason or "Unknown").replace("_", " ").title()
+            )
+            thread_name = f"👻 {signal.symbol} Rejected: {rejection_reason}"
+            message["thread_name"] = thread_name
 
         try:
             response = requests.post(webhook_url, json=message, timeout=5.0)
