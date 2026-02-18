@@ -329,6 +329,7 @@ def create_execution_summary_table(
     symbols_processed: int,
     total_symbols: int,
     signals_found: int,
+    signals_rejected: int = 0,
     symbol_results: Optional[List[Dict[str, Any]]] = None,
     avg_slippage_pct: Optional[float] = None,
 ) -> Table:
@@ -374,6 +375,7 @@ def create_execution_summary_table(
     summary_table.add_row("⏱️  Total Duration", f"{total_duration:.2f}s")
     summary_table.add_row("📈 Symbols Processed", f"{symbols_processed}/{total_symbols}")
     summary_table.add_row("🎯 Signals Found", str(signals_found))
+    summary_table.add_row("👻 Signals Rejected", str(signals_rejected))
     summary_table.add_row(
         "❌ Errors Encountered",
         f"[red]{total_errors}[/red]" if total_errors > 0 else "0",

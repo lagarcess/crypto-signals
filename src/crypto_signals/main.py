@@ -335,7 +335,6 @@ def main(
         atexit.register(job_lock_repo.release_lock, job_id)
 
         # === STRATEGY SYNC (SCD Type 2) ===
-        # === STRATEGY SYNC (SCD Type 2) ===
         _run_pipeline(
             strategy_sync,
             "strategy_sync",
@@ -532,6 +531,7 @@ def main(
 
         # Phase 1: Signal Discovery & Active Trade Validation
         candidate_signals = []  # To be processed in Phase 2 (Saturation Filter)
+        symbol_results = []  # Track symbol results for summary table
         symbols_processed = 0
 
         with create_portfolio_progress(len(portfolio_items)) as (progress, task):
@@ -585,8 +585,25 @@ def main(
                         candidate_signals.append(
                             (trade_signal, asset_class, symbol_duration)
                         )
+                        symbol_results.append(
+                            {
+                                "symbol": symbol,
+                                "status": "SIGNAL_FOUND",
+                                "pattern": trade_signal.pattern_name,
+                                "duration": symbol_duration,
+                                "asset_class": asset_class.value,
+                            }
+                        )
                     else:
                         logger.debug(f"No signal for {symbol}.")
+                        symbol_results.append(
+                            {
+                                "symbol": symbol,
+                                "status": "NO_SIGNAL",
+                                "duration": symbol_duration,
+                                "asset_class": asset_class.value,
+                            }
+                        )
 
                     # Record metric for every symbol processed
                     metrics.record_success("signal_generation", symbol_duration)
@@ -989,6 +1006,10 @@ def main(
                                 )
 
                 except Exception as e:
+                    # Capture error for summary
+                    symbol_results.append(
+                        {"symbol": symbol, "status": "ERROR", "error": str(e)}
+                    )
                     symbol_duration = time.time() - symbol_start_time
                     metrics.record_failure("signal_generation", symbol_duration)
                     logger.error(
@@ -1015,6 +1036,10 @@ def main(
             len(portfolio_items) * settings.SIGNAL_SATURATION_THRESHOLD_PCT
         )
         signals_found = 0
+        signals_rejected = 0
+        for sig, _, _ in candidate_signals:
+            if sig.status == SignalStatus.REJECTED_BY_FILTER:
+                signals_rejected += 1
 
         # Phase 3: Signal Processing (Persistence, Notification, Execution)
         for trade_signal, asset_class, _symbol_duration in candidate_signals:
@@ -1489,6 +1514,8 @@ def main(
             symbols_processed=symbols_processed,
             total_symbols=len(portfolio_items),
             signals_found=signals_found,
+            signals_rejected=signals_rejected,
+            symbol_results=symbol_results,
             avg_slippage_pct=avg_slippage,
         )
         console.print(summary_table)
