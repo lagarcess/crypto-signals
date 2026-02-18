@@ -99,8 +99,8 @@ class StateReconciler:
                 ]
             )
 
-        zombies: List[Position] = []
-        orphans: List[Position] = []
+        zombies: List[str] = []
+        orphans: List[str] = []
         reconciled_count = 0
         critical_issues = []
 

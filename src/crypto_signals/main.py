@@ -1009,11 +1009,6 @@ def main(
             len(portfolio_items) * settings.SIGNAL_SATURATION_THRESHOLD_PCT
         )
         signals_found = 0
-        signals_rejected = sum(
-            1
-            for sig, _, _ in candidate_signals
-            if sig.status == SignalStatus.REJECTED_BY_FILTER
-        )
 
         # Phase 3: Signal Processing (Persistence, Notification, Execution)
         for trade_signal, asset_class, _symbol_duration in candidate_signals:
@@ -1475,8 +1470,6 @@ def main(
                 )
             except Exception as e:
                 logger.error(f"Position sync failed: {e}", exc_info=True)
-                metrics.record_failure("position_sync", time.time() - sync_start)
-
                 metrics.record_failure("position_sync", time.time() - sync_start)
 
         # =========================================================================

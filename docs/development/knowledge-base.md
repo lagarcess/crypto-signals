@@ -214,3 +214,6 @@
 - Always distinguish between Forum and Text channels in Discord integration.
 - Ensure `thread_name` is conditionally applied based on the target channel type, not just a global flag.
 - "Signals Found" metrics should account for rejected candidates to avoid "X Generated vs 0 Found" discrepancies.
+
+- [2026-02-18] **Schema Self-Documentation**: `SchemaGuardian` now automatically propagates Pydantic `description` fields to BigQuery schemas. Helper scripts like `migrate_bq_descriptions.py` are obsolete; documentation should live in the Pydantic models.
+- [2026-02-18] **Pipeline Dependency Ordering**: Aggregation pipelines (e.g., `DailyStrategyAggregation`) must execute *before* consumers (e.g., `PerformancePipeline`) within the same job cycle to ensure consumers have data to process, even if they target T-1.
