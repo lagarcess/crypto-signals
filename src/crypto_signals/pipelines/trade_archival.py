@@ -14,7 +14,7 @@ Pattern: "Enrich-Extract-Load"
 import time
 from datetime import datetime, timezone
 from types import SimpleNamespace
-from typing import Any, List, cast
+from typing import Any, List
 
 import pandas as pd
 from alpaca.common.exceptions import APIError
@@ -31,7 +31,6 @@ from crypto_signals.config import (
 )
 from crypto_signals.domain.schemas import ExitReason, OrderSide, TradeExecution
 from crypto_signals.market.data_provider import MarketDataProvider
-from crypto_signals.observability import get_metrics_collector
 from crypto_signals.pipelines.base import BigQueryPipelineBase
 
 
@@ -249,6 +248,8 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                         raise e
 
                 # Cast order to Any to avoid MyPy 'dict' inference errors (Issue #114)
+                from typing import Any, cast
+
                 order = cast(Any, order)
 
                 # 2. Calculate Derived Metrics
@@ -275,6 +276,8 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                 # Source of Truth: Alpaca Order Side (Entry Order)
                 # Cast to string to handle Enum or str types robustly
                 # Cast order to Any to avoid MyPy 'dict' inference error
+                from typing import cast
+
                 order_any = cast(Any, order)
 
                 alpaca_order_id = (
@@ -284,6 +287,9 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                 order_side_str = str(order_any.side).lower()
 
                 # Get exit price from Firestore document, default to 0.0 if missing
+                exit_price_val = float(pos.get("exit_fill_price", 0.0))
+
+                # exit_price_val initially comes from final close
                 # exit_price_val initially comes from final close
                 # Weighted average will be calculated by the TradeExecution model validator
                 exit_price_val = float(pos.get("exit_fill_price") or 0.0)
@@ -515,7 +521,6 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
                     f"[{self.job_name}] Failed to transform position "
                     f"{pos.get('position_id')}: {e}"
                 )
-                get_metrics_collector().record_failure("trade_transform", 0.0)
                 continue
 
         return transformed

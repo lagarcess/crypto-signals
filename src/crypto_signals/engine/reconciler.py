@@ -38,6 +38,7 @@ from crypto_signals.domain.schemas import (
 )
 from crypto_signals.engine.reconciler_notifications import ReconcilerNotificationService
 from crypto_signals.repository.firestore import PositionRepository
+from crypto_signals.utils.symbols import normalize_alpaca_symbol
 from loguru import logger
 
 
@@ -119,7 +120,10 @@ class StateReconciler:
                 alpaca_positions_list: list[AlpacaPosition] = (
                     raw_alpaca_positions if isinstance(raw_alpaca_positions, list) else []
                 )
-                alpaca_symbols = {p.symbol for p in alpaca_positions_list}
+                # Normalize symbols for set comparison (e.g., AAVEUSD)
+                alpaca_symbols = {
+                    normalize_alpaca_symbol(p.symbol) for p in alpaca_positions_list
+                }
                 logger.info(
                     f"Alpaca state: {len(alpaca_symbols)} open positions",
                     extra={"symbols": sorted(list(alpaca_symbols))},
@@ -143,22 +147,48 @@ class StateReconciler:
                     if p.trade_type != TradeType.THEORETICAL.value
                 ]
 
-                firestore_symbols = {p.symbol for p in firestore_positions}
+                # Normalize symbols for comparison (e.g., AAVE/USD -> AAVEUSD)
+                firestore_symbols_norm = {
+                    normalize_alpaca_symbol(p.symbol) for p in firestore_positions
+                }
+                # Mapping from normalized back to original for lookup
+                norm_to_original = {
+                    normalize_alpaca_symbol(p.symbol): p.symbol
+                    for p in firestore_positions
+                }
                 symbol_to_position = {p.symbol: p for p in firestore_positions}
+
                 logger.info(
-                    f"Firestore state: {len(firestore_symbols)} open positions",
-                    extra={"symbols": sorted(list(firestore_symbols))},
+                    f"Firestore state: {len(firestore_symbols_norm)} open positions",
+                    extra={"symbols": sorted(list(firestore_symbols_norm))},
                 )
             except Exception as e:
                 error_msg = f"Failed to fetch Firestore positions: {e}"
                 logger.error(error_msg)
                 critical_issues.append(error_msg)
-                firestore_symbols = set()
+                firestore_symbols_norm = set()
+                norm_to_original = {}
                 symbol_to_position = {}
 
             # 3. Detect discrepancies
-            zombies = list(firestore_symbols - alpaca_symbols)
-            orphans = list(alpaca_symbols - firestore_symbols)
+            zombie_symbols_norm = firestore_symbols_norm - alpaca_symbols
+            orphan_symbols_norm = alpaca_symbols - firestore_symbols_norm
+
+            # Map zombies back to their original "slashed" symbols for DB lookup
+            zombies = [norm_to_original[s] for s in zombie_symbols_norm]
+
+            # Denormalize orphans for display consistency (BTCUSD -> BTC/USD)
+            # Use configured symbols as the authority for formatting
+            crypto_config = self.settings.CRYPTO_SYMBOLS or []
+            config_map = {normalize_alpaca_symbol(s): s for s in crypto_config}
+
+            orphans = []
+            for s_norm in orphan_symbols_norm:
+                if s_norm in config_map:
+                    orphans.append(config_map[s_norm])
+                else:
+                    # Fallback to normalized if not in config (e.g. manual trade on new asset)
+                    orphans.append(s_norm)
 
             logger.info(
                 "Reconciliation analysis complete",
@@ -221,10 +251,7 @@ class StateReconciler:
                         critical_issues.append(error_msg)
 
                         # Send critical alert for unverified zombie
-                        try:
-                            self.notifications.notify_critical_sync_failure(symbol)
-                        except Exception as e:
-                            logger.warning(f"Critical sync failure notification failed: {e}")
+                        self.notifications.notify_critical_sync_failure(symbol)
 
                 except Exception as e:
                     error_msg = f"Failed to heal zombie {symbol}: {e}"
@@ -241,10 +268,7 @@ class StateReconciler:
                     },
                 )
 
-                try:
-                    self.notifications.notify_orphan(symbol)
-                except Exception as e:
-                    logger.warning(f"Orphan notification failed: {e}")
+                self.notifications.notify_orphan(symbol)
 
                 critical_issues.append(
                     ReconciliationErrors.ORPHAN_POSITION.format(symbol=symbol)
@@ -261,7 +285,9 @@ class StateReconciler:
                 for closed_pos in closed_positions:
                     try:
                         # Check if this position is still open in Alpaca
-                        alpaca_pos = self.alpaca.get_open_position(closed_pos.symbol)
+                        alpaca_pos = self.alpaca.get_open_position(
+                            normalize_alpaca_symbol(closed_pos.symbol)
+                        )
                         if alpaca_pos:
                             # REVERSE ORPHAN DETECTED
                             reverse_orphans.append(closed_pos.symbol)
@@ -274,12 +300,9 @@ class StateReconciler:
                                 },
                             )
 
-                            try:
-                                self.notifications.notify_reverse_orphan(
-                                    closed_pos.symbol, closed_pos.position_id
-                                )
-                            except Exception as e:
-                                logger.warning(f"Reverse orphan notification failed: {e}")
+                            self.notifications.notify_reverse_orphan(
+                                closed_pos.symbol, closed_pos.position_id
+                            )
 
                             critical_issues.append(
                                 ReconciliationErrors.REVERSE_ORPHAN.format(
@@ -379,10 +402,26 @@ class StateReconciler:
 
             # 3. Find the most recent fill that is NOT our known TP or SL legs
             closing_order = None
-            ignored_ids = {position.tp_order_id, position.sl_order_id}
+            ignored_ids = {
+                position.tp_order_id,
+                position.sl_order_id,
+                position.alpaca_order_id,
+                position.position_id,  # Used as client_order_id for entry
+            }
 
             for o in recent_orders:
-                if isinstance(o, Order) and str(o.id) not in ignored_ids:
+                if isinstance(o, Order):
+                    # Check both Alpaca UUID and Client Order ID to prevent false MANUAL_EXIT
+                    order_id = str(o.id)
+                    client_id = getattr(o, "client_order_id", None)
+                    if client_id:
+                        client_id = str(client_id)
+
+                    if order_id in ignored_ids or (
+                        client_id and client_id in ignored_ids
+                    ):
+                        continue
+
                     closing_order = o
                     break
 
@@ -406,12 +445,9 @@ class StateReconciler:
                 )
 
                 # Notify Discord of the manual exit detected during sync
-                try:
-                    self.notifications.notify_manual_exit(
-                        position.symbol, str(closing_order.id)
-                    )
-                except Exception as e:
-                    logger.warning(f"Manual exit notification failed: {e}")
+                self.notifications.notify_manual_exit(
+                    position.symbol, str(closing_order.id)
+                )
 
                 return True
 

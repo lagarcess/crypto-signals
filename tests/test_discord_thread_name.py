@@ -265,12 +265,9 @@ def test_send_shadow_signal_includes_thread_name_in_forum_mode():
             client.send_shadow_signal(shadow_signal)
 
             payload = mock_post.call_args.kwargs.get("json")
-            # HOTFIX: Shadow signals currently disable thread_name globally to prevent
-            # 400 errors on Text channels. This test is updated to reflect that behavior
-            # until DISCORD_SHADOW_USE_FORUMS (Issue #312) is implemented.
-            assert "thread_name" not in payload
-            # assert "DOGE/USD" in payload["thread_name"]
-            # assert "Rejected: Low Volume" in payload["thread_name"]
+            assert "thread_name" in payload
+            assert "DOGE/USD" in payload["thread_name"]
+            assert "Rejected: Low Volume" in payload["thread_name"]
 
 
 def test_send_shadow_signal_omits_thread_name_in_standard_mode():

@@ -290,10 +290,6 @@ class SchemaGuardian:
         mismatches = []
 
         for name, field_info in model_fields:
-            # Skip excluded fields (Issue #149)
-            if field_info.exclude:
-                continue
-
             full_name = f"{parent_path}.{name}" if parent_path else name
 
             # 1. Resolve Type
