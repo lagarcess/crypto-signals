@@ -5,6 +5,7 @@ os.environ["ENVIRONMENT"] = "PROD"
 
 from google.cloud import firestore  # noqa: E402
 from rich.console import Console  # noqa: E402
+from rich.prompt import Confirm  # noqa: E402
 
 from crypto_signals.config import get_settings  # noqa: E402
 
@@ -29,8 +30,10 @@ def main():
         return
 
     # 2. Confirm
-    # if not Confirm.ask(f"DANGER: Are you sure you want to PERMANENTLY DELETE all {count} PROD positions?"):
-    #    return
+    if not Confirm.ask(
+        f"DANGER: Are you sure you want to PERMANENTLY DELETE all {count} PROD positions?"
+    ):
+        return
     console.print("Auto-confirming purge...")
 
     # 3. Delete
