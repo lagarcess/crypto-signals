@@ -251,10 +251,7 @@ class StateReconciler:
                         critical_issues.append(error_msg)
 
                         # Send critical alert for unverified zombie
-                        try:
-                            self.notifications.notify_critical_sync_failure(symbol)
-                        except Exception as e:
-                            logger.warning(f"Critical sync failure notification failed: {e}")
+                        self.notifications.notify_critical_sync_failure(symbol)
 
                 except Exception as e:
                     error_msg = f"Failed to heal zombie {symbol}: {e}"
@@ -271,10 +268,7 @@ class StateReconciler:
                     },
                 )
 
-                try:
-                    self.notifications.notify_orphan(symbol)
-                except Exception as e:
-                    logger.warning(f"Orphan notification failed: {e}")
+                self.notifications.notify_orphan(symbol)
 
                 critical_issues.append(
                     ReconciliationErrors.ORPHAN_POSITION.format(symbol=symbol)
@@ -306,12 +300,9 @@ class StateReconciler:
                                 },
                             )
 
-                            try:
-                                self.notifications.notify_reverse_orphan(
-                                    closed_pos.symbol, closed_pos.position_id
-                                )
-                            except Exception as e:
-                                logger.warning(f"Reverse orphan notification failed: {e}")
+                            self.notifications.notify_reverse_orphan(
+                                closed_pos.symbol, closed_pos.position_id
+                            )
 
                             critical_issues.append(
                                 ReconciliationErrors.REVERSE_ORPHAN.format(
@@ -454,12 +445,9 @@ class StateReconciler:
                 )
 
                 # Notify Discord of the manual exit detected during sync
-                try:
-                    self.notifications.notify_manual_exit(
-                        position.symbol, str(closing_order.id)
-                    )
-                except Exception as e:
-                    logger.warning(f"Manual exit notification failed: {e}")
+                self.notifications.notify_manual_exit(
+                    position.symbol, str(closing_order.id)
+                )
 
                 return True
 

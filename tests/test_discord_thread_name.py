@@ -266,7 +266,6 @@ def test_send_shadow_signal_includes_thread_name_when_shadow_forums_enabled():
             client.send_shadow_signal(shadow_signal)
 
             payload = mock_post.call_args.kwargs.get("json")
-
             # CRITICAL: thread_name should be present when shadow forums are enabled
             assert "thread_name" in payload
             assert "DOGE/USD" in payload["thread_name"]

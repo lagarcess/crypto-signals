@@ -545,21 +545,22 @@ class TestReconcilerEdgeCases:
         self,
         mock_trading_client,
         mock_position_repo,
-        mock_notification_service,
         mock_settings,
         sample_alpaca_position,
     ):
-        """Notification failure doesn't block reconciliation."""
+        """Notification failure (at service level) doesn't block reconciliation."""
         mock_trading_client.get_all_positions.return_value = [sample_alpaca_position]
         mock_position_repo.get_open_positions.return_value = []
 
-        # Fail on notification send
-        mock_notification_service.notify_orphan.side_effect = Exception("Notification Error")
+        # Use real service with mocked discord client to test internal error handling
+        mock_discord = MagicMock()
+        mock_discord.send_message.side_effect = Exception("Discord Error")
+        service = ReconcilerNotificationService(mock_discord)
 
         reconciler = StateReconciler(
             alpaca_client=mock_trading_client,
             position_repo=mock_position_repo,
-            notification_service=mock_notification_service,
+            notification_service=service,
             settings=mock_settings,
         )
 
@@ -568,7 +569,7 @@ class TestReconcilerEdgeCases:
 
         assert len(report.orphans) > 0  # Orphan still detected
         expected_error = ReconciliationErrors.ORPHAN_POSITION.format(symbol="BTC/USD")
-        assert expected_error in report.critical_issues
+        assert any(expected_error in issue for issue in report.critical_issues)
 
     def test_reconcile_report_timestamp_is_set(
         self,
