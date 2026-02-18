@@ -8,6 +8,7 @@ the Performance Table (summary_strategy_performance).
 It implements the "Aggregation Layer" pattern to support fast dashboards.
 """
 
+from pathlib import Path
 from typing import Any, List
 
 from loguru import logger
@@ -52,6 +53,30 @@ class PerformancePipeline(BigQueryPipelineBase):
             schema_model=StrategyPerformance,
         )
 
+    def _check_t_minus_1_data(self) -> bool:
+        """
+        Check if data for T-1 is available in the source table.
+
+        Returns:
+            bool: True if data exists, False otherwise.
+        """
+        query = f"""
+            SELECT COUNT(*) as cnt
+            FROM `{self.source_table_id}`
+            WHERE ds = DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY)
+        """
+        try:
+            query_job = self.bq_client.query(query)
+            results = query_job.result()
+            result = next(iter(results), None)
+            return result.cnt > 0 if result else False
+        except Exception as e:
+            logger.error(
+                f"[{self.job_name}] Failed to check T-1 data availability.",
+                extra={"error": str(e)},
+            )
+            return False
+
     def extract(self) -> List[Any]:
         """
         Execute BigQuery aggregation query on agg_strategy_daily.
@@ -59,28 +84,24 @@ class PerformancePipeline(BigQueryPipelineBase):
         Returns:
             List[dict]: Performance data rows.
         """
+        # 1. T-1 Architecture: Verify data availability
+        if not self._check_t_minus_1_data():
+            logger.warning(
+                f"[{self.job_name}] No data found for T-1 in {self.source_table_id}. Skipping execution."
+            )
+            return []
+
         logger.info(
             f"[{self.job_name}] Calculating performance from {self.source_table_id}..."
         )
 
-        # Basic aggregation query.
-        # Complex metrics (Sharpe, Sortino, Alpha, Beta) are set to 0.0/1.0
-        # as they require complex time-series analysis not yet implemented in SQL.
-        query = f"""
-            SELECT
-                ds,
-                strategy_id,
-                CAST(SUM(trade_count) AS INT64) as total_trades,
-                SAFE_DIVIDE(SUM(win_rate * trade_count), SUM(trade_count)) as win_rate,
-                1.0 as profit_factor,
-                0.0 as sharpe_ratio,
-                0.0 as sortino_ratio,
-                0.0 as max_drawdown_pct,
-                0.0 as alpha,
-                0.0 as beta
-            FROM `{self.source_table_id}`
-            GROUP BY ds, strategy_id
-        """
+        # 2. Advanced Metrics Implementation: Load from SQL file
+        query_path = Path(__file__).parent / "performance_query.sql"
+        query_template = query_path.read_text()
+        query = query_template.format(
+            source_table_id=self.source_table_id,
+            baseline_capital=self.settings.PERFORMANCE_BASELINE_CAPITAL,
+        )
 
         try:
             query_job = self.bq_client.query(query)
