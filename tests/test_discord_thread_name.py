@@ -225,17 +225,18 @@ def test_send_message_succeeds_in_text_channel_mode_without_thread_name():
             assert "thread_name" not in payload
 
 
-def test_send_shadow_signal_includes_thread_name_in_forum_mode():
+def test_send_shadow_signal_includes_thread_name_when_shadow_forums_enabled():
     """
     Verifies send_shadow_signal() includes a thread_name in the payload
-    when DISCORD_USE_FORUMS=True.
+    when DISCORD_SHADOW_USE_FORUMS=True.
     """
     from crypto_signals.domain.schemas import Signal, SignalStatus
     from crypto_signals.notifications.discord import DiscordClient
 
     with patch("crypto_signals.notifications.discord.get_settings") as mock_settings:
         settings_instance = MagicMock()
-        settings_instance.DISCORD_USE_FORUMS = True  # Forum mode ON
+        settings_instance.DISCORD_USE_FORUMS = True  # Global forum mode
+        settings_instance.DISCORD_SHADOW_USE_FORUMS = True  # Shadow forum mode ON
         settings_instance.DISCORD_SHADOW_WEBHOOK_URL = MagicMock()
         settings_instance.DISCORD_SHADOW_WEBHOOK_URL.get_secret_value.return_value = (
             "https://discord.com/api/webhooks/shadow/webhook"
@@ -265,25 +266,25 @@ def test_send_shadow_signal_includes_thread_name_in_forum_mode():
             client.send_shadow_signal(shadow_signal)
 
             payload = mock_post.call_args.kwargs.get("json")
-            # HOTFIX: Shadow signals currently disable thread_name globally to prevent
-            # 400 errors on Text channels. This test is updated to reflect that behavior
-            # until DISCORD_SHADOW_USE_FORUMS (Issue #312) is implemented.
-            assert "thread_name" not in payload
-            # assert "DOGE/USD" in payload["thread_name"]
-            # assert "Rejected: Low Volume" in payload["thread_name"]
+
+            # CRITICAL: thread_name should be present when shadow forums are enabled
+            assert "thread_name" in payload
+            assert "DOGE/USD" in payload["thread_name"]
+            assert "Rejected: Low Volume" in payload["thread_name"]
 
 
-def test_send_shadow_signal_omits_thread_name_in_standard_mode():
+def test_send_shadow_signal_omits_thread_name_when_shadow_forums_disabled():
     """
     Verifies send_shadow_signal() does NOT include a thread_name
-    when DISCORD_USE_FORUMS=False.
+    when DISCORD_SHADOW_USE_FORUMS=False, even if DISCORD_USE_FORUMS=True.
     """
     from crypto_signals.domain.schemas import Signal, SignalStatus
     from crypto_signals.notifications.discord import DiscordClient
 
     with patch("crypto_signals.notifications.discord.get_settings") as mock_settings:
         settings_instance = MagicMock()
-        settings_instance.DISCORD_USE_FORUMS = False  # Forum mode OFF
+        settings_instance.DISCORD_USE_FORUMS = True  # Global forum mode ON
+        settings_instance.DISCORD_SHADOW_USE_FORUMS = False  # Shadow forum mode OFF
         settings_instance.DISCORD_SHADOW_WEBHOOK_URL = MagicMock()
         settings_instance.DISCORD_SHADOW_WEBHOOK_URL.get_secret_value.return_value = (
             "https://discord.com/api/webhooks/shadow/webhook"
@@ -313,4 +314,5 @@ def test_send_shadow_signal_omits_thread_name_in_standard_mode():
             client.send_shadow_signal(shadow_signal)
 
             payload = mock_post.call_args.kwargs.get("json")
+            # CRITICAL: thread_name should be omitted
             assert "thread_name" not in payload
