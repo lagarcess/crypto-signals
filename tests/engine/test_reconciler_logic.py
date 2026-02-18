@@ -12,6 +12,7 @@ from crypto_signals.domain.schemas import (
     TradeStatus,
 )
 from crypto_signals.engine.reconciler import StateReconciler
+from crypto_signals.engine.reconciler_notifications import ReconcilerNotificationService
 
 
 @pytest.fixture
@@ -30,9 +31,16 @@ def mock_discord():
 
 
 @pytest.fixture
-def reconciler(mock_alpaca, mock_repo, mock_discord):
+def mock_notification_service(mock_discord):
+    return ReconcilerNotificationService(mock_discord)
+
+
+@pytest.fixture
+def reconciler(mock_alpaca, mock_repo, mock_notification_service):
     return StateReconciler(
-        alpaca_client=mock_alpaca, position_repo=mock_repo, discord_client=mock_discord
+        alpaca_client=mock_alpaca,
+        position_repo=mock_repo,
+        notification_service=mock_notification_service,
     )
 
 

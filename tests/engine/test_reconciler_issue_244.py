@@ -7,6 +7,7 @@ from crypto_signals.domain.schemas import (
     TradeStatus,
 )
 from crypto_signals.engine.reconciler import StateReconciler
+from crypto_signals.engine.reconciler_notifications import ReconcilerNotificationService
 
 
 class TestReconcilerReproduction(unittest.TestCase):
@@ -14,13 +15,14 @@ class TestReconcilerReproduction(unittest.TestCase):
         self.mock_alpaca = MagicMock()
         self.mock_repo = MagicMock()
         self.mock_discord = MagicMock()
+        self.mock_notifications = ReconcilerNotificationService(self.mock_discord)
         self.mock_settings = MagicMock()
         self.mock_settings.ENVIRONMENT = "PROD"
 
         self.reconciler = StateReconciler(
             alpaca_client=self.mock_alpaca,
             position_repo=self.mock_repo,
-            discord_client=self.mock_discord,
+            notification_service=self.mock_notifications,
             settings=self.mock_settings,
         )
 

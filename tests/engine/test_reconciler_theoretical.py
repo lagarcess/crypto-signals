@@ -9,7 +9,13 @@ from crypto_signals.domain.schemas import (
     TradeType,
 )
 from crypto_signals.engine.reconciler import StateReconciler
+from crypto_signals.engine.reconciler_notifications import ReconcilerNotificationService
 from crypto_signals.repository.firestore import PositionRepository
+
+
+@pytest.fixture
+def mock_notification_service(mock_discord_client):
+    return ReconcilerNotificationService(mock_discord_client)
 
 
 @pytest.fixture
@@ -55,7 +61,7 @@ def theoretical_position():
 def test_reconcile_ignores_theoretical_positions(
     mock_trading_client,
     mock_position_repo,
-    mock_discord_client,
+    mock_notification_service,
     mock_settings,
     theoretical_position,
 ):
@@ -69,7 +75,7 @@ def test_reconcile_ignores_theoretical_positions(
     reconciler = StateReconciler(
         alpaca_client=mock_trading_client,
         position_repo=mock_position_repo,
-        discord_client=mock_discord_client,
+        notification_service=mock_notification_service,
         settings=mock_settings,
     )
 
@@ -86,7 +92,7 @@ def test_reconcile_ignores_theoretical_positions(
 def test_reconcile_detects_normal_zombies(
     mock_trading_client,
     mock_position_repo,
-    mock_discord_client,
+    mock_notification_service,
     mock_settings,
     theoretical_position,
 ):
@@ -119,7 +125,7 @@ def test_reconcile_detects_normal_zombies(
     reconciler = StateReconciler(
         alpaca_client=mock_trading_client,
         position_repo=mock_position_repo,
-        discord_client=mock_discord_client,
+        notification_service=mock_notification_service,
         settings=mock_settings,
     )
 
