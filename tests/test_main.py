@@ -74,12 +74,6 @@ def mock_dependencies():
         )
         fee_patch = stack.enter_context(patch("crypto_signals.main.FeePatchPipeline"))
         price_patch = stack.enter_context(patch("crypto_signals.main.PricePatchPipeline"))
-        strategy_aggregation = stack.enter_context(
-            patch("crypto_signals.main.DailyStrategyAggregation")
-        )
-        performance_pipeline = stack.enter_context(
-            patch("crypto_signals.main.PerformancePipeline")
-        )
         reconciler = stack.enter_context(patch("crypto_signals.main.StateReconciler"))
         job_metadata_repo = stack.enter_context(
             patch("crypto_signals.main.JobMetadataRepository")
@@ -145,8 +139,6 @@ def mock_dependencies():
         trade_archival.return_value.run.return_value = 0
         fee_patch.return_value.run.return_value = 0
         price_patch.return_value.run.return_value = 0
-        strategy_aggregation.return_value.run.return_value = 0
-        performance_pipeline.return_value.run.return_value = 0
         rejected_archival.return_value.run.return_value = 0
         expired_archival.return_value.run.return_value = 0
 
@@ -169,8 +161,6 @@ def mock_dependencies():
             "trade_archival": trade_archival,
             "fee_patch": fee_patch,
             "price_patch": price_patch,
-            "strategy_aggregation": strategy_aggregation,
-            "performance_pipeline": performance_pipeline,
             "reconciler": reconciler,
             "rejected_archival": rejected_archival,
             "expired_archival": expired_archival,
@@ -224,8 +214,6 @@ def test_main_execution_flow(mock_dependencies):
     # Configure pipeline return values to prevent logging interaction (str/repr calls)
     mock_dependencies["trade_archival"].return_value.run.return_value = 5
     mock_dependencies["fee_patch"].return_value.run.return_value = 2
-    mock_dependencies["strategy_aggregation"].return_value.run.return_value = 6
-    mock_dependencies["performance_pipeline"].return_value.run.return_value = 7
     mock_dependencies["rejected_archival"].return_value.run.return_value = 3
     mock_dependencies["expired_archival"].return_value.run.return_value = 4
 
@@ -245,15 +233,6 @@ def test_main_execution_flow(mock_dependencies):
     )
     pipeline_manager.attach_mock(
         mock_dependencies["fee_patch"].return_value.run, "fee_patch"
-    )
-    pipeline_manager.attach_mock(
-        mock_dependencies["price_patch"].return_value.run, "price_patch"
-    )
-    pipeline_manager.attach_mock(
-        mock_dependencies["strategy_aggregation"].return_value.run, "aggregation"
-    )
-    pipeline_manager.attach_mock(
-        mock_dependencies["performance_pipeline"].return_value.run, "performance"
     )
 
     # Execute
@@ -310,17 +289,13 @@ def test_main_execution_flow(mock_dependencies):
 
     # Verify precise call order (Names only to avoid fragile call object comparison)
     actual_calls = [c[0] for c in pipeline_manager.mock_calls]
-    expected_calls = [
+    assert actual_calls == [
         "rejected_archive",
         "expired_archive",
         "reconcile",
         "archive",
         "fee_patch",
-        "price_patch",
-        "aggregation",
-        "performance",
-    ]
-    assert actual_calls == expected_calls
+    ], f"Actual calls mismatch: {actual_calls}"
 
 
 def test_send_signal_captures_thread_id(mock_dependencies):
@@ -948,30 +923,3 @@ def test_thread_recovery_check(mock_dependencies, caplog):
     mock_repo_instance.update_signal_atomic.assert_called()
     # Check signal object state updated
     assert mock_signal.discord_thread_id == "recovered_thread_123"
-
-
-def test_performance_pipeline_skipped_on_aggregation_failure(mock_dependencies, caplog):
-    """Test that performance pipeline is skipped if aggregation fails."""
-    # 1. Mock aggregation to fail
-    mock_dependencies["strategy_aggregation"].return_value.run.side_effect = RuntimeError(
-        "BQ Error"
-    )
-
-    # 2. Mock reconciler to succeed (so we reach aggregation)
-    mock_report = MagicMock()
-    mock_report.critical_issues = []
-    mock_dependencies["reconciler"].return_value.reconcile.return_value = mock_report
-
-    with caplog.at_level("WARNING"):
-        main(smoke_test=False)
-
-    # 3. Verify aggregation failed log
-    assert "strategy_aggregation Pipeline failed: BQ Error" in caplog.text
-
-    # 4. Verify skip log
-    assert (
-        "Skipping performance pipeline because strategy aggregation failed" in caplog.text
-    )
-
-    # 5. Verify performance pipeline was NEVER run
-    mock_dependencies["performance_pipeline"].return_value.run.assert_not_called()

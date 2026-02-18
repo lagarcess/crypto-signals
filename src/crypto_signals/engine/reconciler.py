@@ -22,7 +22,7 @@ Example:
 
 import time
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional
+from typing import Optional
 
 from alpaca.trading.client import TradingClient
 from alpaca.trading.models import Position as AlpacaPosition
