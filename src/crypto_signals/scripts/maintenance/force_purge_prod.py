@@ -34,7 +34,7 @@ def main():
         f"DANGER: Are you sure you want to PERMANENTLY DELETE all {count} PROD positions?"
     ):
         return
-    console.print("Auto-confirming purge...")
+    console.print("Confirmation received. Proceeding with purge...")
 
     # 3. Delete
     batch = db.batch()
