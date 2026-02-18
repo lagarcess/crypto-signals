@@ -110,7 +110,6 @@ def _run_pipeline(
     Returns:
         bool: True if the pipeline completed successfully, False otherwise.
     """
-    logger.info(f"Running {name} Pipeline...")
     start_time = time.time()
 
     # Use provided collector or fetch new one
@@ -1471,29 +1470,6 @@ def main(
             except Exception as e:
                 logger.error(f"Position sync failed: {e}", exc_info=True)
                 metrics.record_failure("position_sync", time.time() - sync_start)
-
-        # =========================================================================
-        # AGGREGATION & PERFORMANCE (T-1 CADENCE)
-        # =========================================================================
-        # 1. Aggregate signals and trades into daily stats
-        _run_pipeline(
-            strategy_aggregation,
-            "strategy_aggregation",
-            lambda count: _log_pipeline_result(
-                "Daily Strategy Aggregation", count, "records", "aggregated"
-            ),
-            metrics_collector=metrics,
-        )
-
-        # 2. Calculate performance metrics (Sharpe, etc.) based on aggregation
-        _run_pipeline(
-            performance_pipeline,
-            "performance_pipeline",
-            lambda count: _log_pipeline_result(
-                "Performance Metrics Calculation", count, "strategies", "updated"
-            ),
-            metrics_collector=metrics,
-        )
 
         # Display Rich execution summary table
         total_duration = time.time() - app_start_time
