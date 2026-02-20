@@ -288,7 +288,7 @@ class TestHealingAndAlerts:
         def verify_side_effect(pos):
             pos.status = TradeStatus.CLOSED
             pos.exit_reason = ExitReason.MANUAL_EXIT
-            return True
+            return pos
 
         with patch.object(
             reconciler, "handle_manual_exit_verification", side_effect=verify_side_effect
@@ -778,7 +778,7 @@ class TestSafetyMechanisms:
         # 2. Mock Verification to FAIL (return False)
         # using patch object on the specific instance method
         with patch.object(
-            reconciler, "handle_manual_exit_verification", return_value=False
+            reconciler, "handle_manual_exit_verification", return_value=None
         ):
             report = reconciler.reconcile()
 
