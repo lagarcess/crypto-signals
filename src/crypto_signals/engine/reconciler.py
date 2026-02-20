@@ -223,7 +223,7 @@ class StateReconciler:
 
             # 4. If closing order found, heal the position state
             if closing_order:
-                # Create a copy or update in place - since we return it, mutation is strictly local until saved
+                # The position object is updated in-place. The caller is responsible for persisting this change.
                 position.status = TradeStatus.CLOSED
                 position.exit_reason = ExitReason.MANUAL_EXIT
                 if closing_order.filled_avg_price:
