@@ -85,7 +85,7 @@ class TestHandleManualExitVerification:
         result = reconciler.handle_manual_exit_verification(sample_position)
 
         # Verify
-        assert result is True
+        assert isinstance(result, Position)
         assert sample_position.status == TradeStatus.CLOSED
         assert sample_position.exit_reason == ExitReason.MANUAL_EXIT
         assert sample_position.exit_fill_price == 55000.0
@@ -106,7 +106,7 @@ class TestHandleManualExitVerification:
         result = reconciler.handle_manual_exit_verification(sample_position)
 
         # Verify
-        assert result is False
+        assert result is None
         assert sample_position.status == TradeStatus.OPEN
         assert sample_position.exit_reason is None
 
@@ -125,5 +125,5 @@ class TestHandleManualExitVerification:
         result = reconciler.handle_manual_exit_verification(sample_position)
 
         # Verify
-        assert result is False
+        assert result is None
         assert sample_position.status == TradeStatus.OPEN

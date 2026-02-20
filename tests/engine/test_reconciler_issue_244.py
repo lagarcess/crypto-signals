@@ -75,7 +75,7 @@ class TestReconcilerReproduction(unittest.TestCase):
 
         # 3. Mock handle_manual_exit_verification to return False
         with patch.object(
-            self.reconciler, "handle_manual_exit_verification", return_value=False
+            self.reconciler, "handle_manual_exit_verification", return_value=None
         ) as mock_verify:
             # 4. Execution
             report = self.reconciler.reconcile()
@@ -115,7 +115,7 @@ class TestReconcilerReproduction(unittest.TestCase):
         # 3. Mock handle_manual_exit_verification to return True
         # NOTE: The real method updates the position object. Here we just return True.
         with patch.object(
-            self.reconciler, "handle_manual_exit_verification", return_value=True
+            self.reconciler, "handle_manual_exit_verification", return_value=pos
         ) as mock_verify:
             # 4. Execution
             self.reconciler.reconcile()

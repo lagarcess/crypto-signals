@@ -106,228 +106,35 @@ class StateReconciler:
                 ]
             )
 
+        critical_issues: list[str] = []
+        reconciled_count: int = 0
         zombies: list[str] = []
         orphans: list[str] = []
-        reconciled_count: int = 0
-        critical_issues: list[str] = []
 
         try:
-            # 1. Fetch Alpaca positions
-            logger.info("Fetching positions from Alpaca...")
-            try:
-                # alpaca-py uses get_all_positions() to fetch all open positions
-                raw_alpaca_positions = self.alpaca.get_all_positions()
-                alpaca_positions_list: list[AlpacaPosition] = (
-                    raw_alpaca_positions if isinstance(raw_alpaca_positions, list) else []
-                )
-                # Normalize symbols for set comparison (e.g., AAVEUSD)
-                alpaca_symbols = {
-                    normalize_alpaca_symbol(p.symbol) for p in alpaca_positions_list
-                }
-                logger.info(
-                    f"Alpaca state: {len(alpaca_symbols)} open positions",
-                    extra={"symbols": sorted(list(alpaca_symbols))},
-                )
-            except Exception as e:
-                error_msg = f"Failed to fetch Alpaca positions: {e}"
-                logger.error(error_msg)
-                critical_issues.append(error_msg)
-                alpaca_symbols = set()
+            # 1. Fetch State
+            alpaca_pos, firestore_pos, fetch_errors = self._fetch_provider_state()
+            critical_issues.extend(fetch_errors)
 
-            # 2. Fetch Firestore positions
-            logger.info("Fetching positions from Firestore...")
-            try:
-                firestore_positions = self.position_repo.get_open_positions()
-
-                # Filter out THEORETICAL trades (simulated state)
-                # These would otherwise be detected as Zombies
-                firestore_positions = [
-                    p
-                    for p in firestore_positions
-                    if p.trade_type != TradeType.THEORETICAL.value
-                ]
-
-                # Normalize symbols for comparison (e.g., AAVE/USD -> AAVEUSD)
-                firestore_symbols_norm = {
-                    normalize_alpaca_symbol(p.symbol) for p in firestore_positions
-                }
-                # Mapping from normalized back to original for lookup
-                norm_to_original = {
-                    normalize_alpaca_symbol(p.symbol): p.symbol
-                    for p in firestore_positions
-                }
-                symbol_to_position = {p.symbol: p for p in firestore_positions}
-
-                logger.info(
-                    f"Firestore state: {len(firestore_symbols_norm)} open positions",
-                    extra={"symbols": sorted(list(firestore_symbols_norm))},
-                )
-            except Exception as e:
-                error_msg = f"Failed to fetch Firestore positions: {e}"
-                logger.error(error_msg)
-                critical_issues.append(error_msg)
-                firestore_symbols_norm = set()
-                norm_to_original = {}
-                symbol_to_position = {}
-
-            # 3. Detect discrepancies
-            zombie_symbols_norm = firestore_symbols_norm - alpaca_symbols
-            orphan_symbols_norm = alpaca_symbols - firestore_symbols_norm
-
-            # Map zombies back to their original "slashed" symbols for DB lookup
-            zombies = [norm_to_original[s] for s in zombie_symbols_norm]
-
-            # Denormalize orphans for display consistency (BTCUSD -> BTC/USD)
-            # Use configured symbols as the authority for formatting
-            crypto_config = self.settings.CRYPTO_SYMBOLS or []
-            config_map = {normalize_alpaca_symbol(s): s for s in crypto_config}
-
-            orphans = []
-            for s_norm in orphan_symbols_norm:
-                if s_norm in config_map:
-                    orphans.append(config_map[s_norm])
-                else:
-                    # Fallback to normalized if not in config (e.g. manual trade on new asset)
-                    orphans.append(s_norm)
-
-            logger.info(
-                "Reconciliation analysis complete",
-                extra={
-                    "zombies_detected": len(zombies),
-                    "orphans_detected": len(orphans),
-                },
+            # 2. Detect Discrepancies
+            zombie_candidates, orphan_candidates = self._detect_discrepancies(
+                alpaca_pos, firestore_pos
             )
 
-            # 4. Heal zombies
-            for symbol in zombies:
-                try:
-                    pos = symbol_to_position.get(symbol)
-                    if not pos:
-                        continue
+            # 3. Heal Zombies
+            zombies, healed_count, zombie_errors = self._heal_zombies(
+                zombie_candidates, firestore_pos, min_age_minutes
+            )
+            reconciled_count += healed_count
+            critical_issues.extend(zombie_errors)
 
-                    # Race Condition Protection: Skip recent positions (< min_age_minutes)
-                    if pos.created_at:
-                        age = datetime.now(timezone.utc) - pos.created_at
-                        if age < timedelta(minutes=min_age_minutes):
-                            logger.warning(
-                                f"Skipping young zombie candidate {symbol}",
-                                extra={
-                                    "symbol": symbol,
-                                    "age_seconds": age.total_seconds(),
-                                    "min_age_minutes": min_age_minutes,
-                                },
-                            )
-                            continue
+            # 4. Handle Orphans
+            orphans, orphan_errors = self._handle_orphans(orphan_candidates)
+            critical_issues.extend(orphan_errors)
 
-                    # Verify exit via manual order history before closing
-                    if self.handle_manual_exit_verification(pos):
-                        # Verification successful - save the updated position
-                        # pos.status/exit_reason already updated by handle_manual_exit_verification
-                        self.position_repo.update_position(pos)
-                        reconciled_count += 1
-
-                        logger.warning(
-                            f"Zombie healed: {symbol}",
-                            extra={
-                                "symbol": symbol,
-                                "position_id": pos.position_id,
-                                "status": pos.status,
-                                "exit_reason": pos.exit_reason,
-                            },
-                        )
-                        # Notification is sent by handle_manual_exit_verification
-                    else:
-                        # Verification failed - Critical Sync Issue
-                        error_msg = ReconciliationErrors.ZOMBIE_EXIT_GAP.format(
-                            symbol=symbol
-                        )
-                        logger.critical(
-                            error_msg,
-                            extra={
-                                "symbol": symbol,
-                                "position_id": pos.position_id,
-                            },
-                        )
-                        critical_issues.append(error_msg)
-
-                        # Send critical alert for unverified zombie
-                        self.notifications.notify_critical_sync_failure(symbol)
-
-                except Exception as e:
-                    error_msg = f"Failed to heal zombie {symbol}: {e}"
-                    logger.error(error_msg)
-                    critical_issues.append(error_msg)
-
-            # 5. Alert orphans
-            for symbol in orphans:
-                logger.critical(
-                    f"ORPHAN POSITION DETECTED: {symbol}",
-                    extra={
-                        "symbol": symbol,
-                        "impact": "Position open in Alpaca but missing from DB",
-                    },
-                )
-
-                self.notifications.notify_orphan(symbol)
-
-                critical_issues.append(
-                    ReconciliationErrors.ORPHAN_POSITION.format(symbol=symbol)
-                )
-
-            # =====================================================================
-            # Detect Reverse Orphans (CLOSED in DB, OPEN in Alpaca)
-            # =====================================================================
-            logger.info("Checking for reverse orphans (CLOSED in DB, OPEN in Alpaca)...")
-            try:
-                closed_positions = self.position_repo.get_closed_positions(limit=50)
-                reverse_orphans = []
-
-                for closed_pos in closed_positions:
-                    try:
-                        # Check if this position is still open in Alpaca
-                        alpaca_pos = self.alpaca.get_open_position(
-                            normalize_alpaca_symbol(closed_pos.symbol)
-                        )
-                        if alpaca_pos:
-                            # REVERSE ORPHAN DETECTED
-                            reverse_orphans.append(closed_pos.symbol)
-                            logger.critical(
-                                f"REVERSE ORPHAN DETECTED: {closed_pos.symbol}",
-                                extra={
-                                    "symbol": closed_pos.symbol,
-                                    "position_id": closed_pos.position_id,
-                                    "impact": "Position closed in DB but STILL OPEN in Alpaca!",
-                                },
-                            )
-
-                            self.notifications.notify_reverse_orphan(
-                                closed_pos.symbol, closed_pos.position_id
-                            )
-
-                            critical_issues.append(
-                                ReconciliationErrors.REVERSE_ORPHAN.format(
-                                    symbol=closed_pos.symbol
-                                )
-                            )
-
-                    except Exception as e:
-                        # 404/not found = position is correctly closed in Alpaca
-                        if "not found" not in str(e).lower() and "404" not in str(e):
-                            logger.warning(
-                                f"Error checking closed position {closed_pos.symbol}: {e}"
-                            )
-
-                if reverse_orphans:
-                    logger.warning(
-                        f"Found {len(reverse_orphans)} reverse orphans",
-                        extra={"symbols": reverse_orphans},
-                    )
-
-            except Exception as e:
-                logger.warning(
-                    "Reverse orphan detection failed.",
-                    extra={"error": str(e)},
-                )
+            # 5. Check Reverse Orphans
+            reverse_orphan_errors = self._check_reverse_orphans()
+            critical_issues.extend(reverse_orphan_errors)
 
         except Exception as e:
             error_msg = f"Reconciliation execution failed: {e}"
@@ -345,24 +152,13 @@ class StateReconciler:
             critical_issues=critical_issues,
         )
 
-        # Log summary
-        logger.info(
-            "Reconciliation complete",
-            extra={
-                "zombies": len(report.zombies),
-                "orphans": len(report.orphans),
-                "reconciled": report.reconciled_count,
-                "duration_seconds": round(report.duration_seconds, 3),
-                "critical_issues": len(report.critical_issues),
-            },
-        )
-
+        self._log_report_summary(report)
         return report
 
-    def handle_manual_exit_verification(self, position: Position) -> bool:
+    def handle_manual_exit_verification(self, position: Position) -> Optional[Position]:
         """
         Verify if a position that is missing from Alpaca has a corresponding manual exit order.
-        If verified, it updates the position object and returns True.
+        If verified, it returns the updated Position object. If not, returns None.
 
         This logic is centralized here to unify state reconciliation strategies.
         """
@@ -427,6 +223,7 @@ class StateReconciler:
 
             # 4. If closing order found, heal the position state
             if closing_order:
+                # The position object is updated in-place. The caller is responsible for persisting this change.
                 position.status = TradeStatus.CLOSED
                 position.exit_reason = ExitReason.MANUAL_EXIT
                 if closing_order.filled_avg_price:
@@ -449,17 +246,273 @@ class StateReconciler:
                     position.symbol, str(closing_order.id)
                 )
 
-                return True
+                return position
 
             # 5. If NO closing order found, it's a critical sync issue (don't close yet)
             logger.error(
                 f"🛑 EXIT VERIFICATION FAILED: {position.symbol} missing from Alpaca "
                 "but NO matching closing order found. Keeping open in DB to prevent gap."
             )
-            return False
+            return None
 
         except Exception as e:
             logger.error(
                 f"Error during manual exit verification for {position.symbol}: {e}"
             )
-            return False
+            return None
+
+    def _fetch_provider_state(
+        self,
+    ) -> tuple[list[AlpacaPosition], list[Position], list[str]]:
+        """Fetch current state from Alpaca and Firestore."""
+        alpaca_positions_list: list[AlpacaPosition] = []
+        firestore_positions: list[Position] = []
+        errors: list[str] = []
+
+        # 1. Fetch Alpaca
+        logger.info("Fetching positions from Alpaca...")
+        try:
+            raw_alpaca_positions = self.alpaca.get_all_positions()
+            alpaca_positions_list = (
+                raw_alpaca_positions if isinstance(raw_alpaca_positions, list) else []
+            )
+
+            # Log state
+            alpaca_symbols = {
+                normalize_alpaca_symbol(p.symbol) for p in alpaca_positions_list
+            }
+            logger.info(
+                f"Alpaca state: {len(alpaca_symbols)} open positions",
+                extra={"symbols": sorted(list(alpaca_symbols))},
+            )
+        except Exception as e:
+            error_msg = f"Failed to fetch Alpaca positions: {e}"
+            logger.error(error_msg)
+            errors.append(error_msg)
+
+        # 2. Fetch Firestore
+        logger.info("Fetching positions from Firestore...")
+        try:
+            all_firestore_positions = self.position_repo.get_open_positions()
+
+            # Filter out THEORETICAL trades (simulated state)
+            firestore_positions = [
+                p
+                for p in all_firestore_positions
+                if p.trade_type != TradeType.THEORETICAL.value
+            ]
+
+            # Log state
+            firestore_symbols = {
+                normalize_alpaca_symbol(p.symbol) for p in firestore_positions
+            }
+            logger.info(
+                f"Firestore state: {len(firestore_positions)} open positions",
+                extra={"symbols": sorted(list(firestore_symbols))},
+            )
+        except Exception as e:
+            error_msg = f"Failed to fetch Firestore positions: {e}"
+            logger.error(error_msg)
+            errors.append(error_msg)
+
+        return alpaca_positions_list, firestore_positions, errors
+
+    def _detect_discrepancies(
+        self,
+        alpaca_positions: list[AlpacaPosition],
+        firestore_positions: list[Position],
+    ) -> tuple[list[str], list[str]]:
+        """Identify zombie and orphan candidates based on position sets."""
+
+        # Normalize keys
+        alpaca_symbols = {normalize_alpaca_symbol(p.symbol) for p in alpaca_positions}
+        firestore_symbols_norm = {
+            normalize_alpaca_symbol(p.symbol) for p in firestore_positions
+        }
+
+        # Mapping for denormalization
+        norm_to_original = {
+            normalize_alpaca_symbol(p.symbol): p.symbol for p in firestore_positions
+        }
+
+        # Logic
+        zombie_symbols_norm = firestore_symbols_norm - alpaca_symbols
+        orphan_symbols_norm = alpaca_symbols - firestore_symbols_norm
+
+        # Map back to originals
+        zombies = [norm_to_original[s] for s in zombie_symbols_norm]
+        orphans = list(orphan_symbols_norm)  # Keep normalized, will be formatted later
+
+        logger.info(
+            "Reconciliation analysis complete",
+            extra={
+                "zombies_detected": len(zombies),
+                "orphans_detected": len(orphans),
+            },
+        )
+        return zombies, orphans
+
+    def _heal_zombies(
+        self,
+        zombies: list[str],
+        firestore_positions: list[Position],
+        min_age_minutes: int,
+    ) -> tuple[list[str], int, list[str]]:
+        """Attempt to heal zombie positions by checking for valid exits."""
+        healed_count = 0
+        final_zombies = []
+        errors = []
+
+        # Fast lookup
+        symbol_to_position = {p.symbol: p for p in firestore_positions}
+
+        for symbol in zombies:
+            try:
+                pos = symbol_to_position.get(symbol)
+                if not pos:
+                    continue
+
+                # Race Condition Protection
+                if pos.created_at:
+                    age = datetime.now(timezone.utc) - pos.created_at
+                    if age < timedelta(minutes=min_age_minutes):
+                        logger.warning(
+                            f"Skipping young zombie candidate {symbol}",
+                            extra={
+                                "symbol": symbol,
+                                "age_seconds": age.total_seconds(),
+                                "min_age_minutes": min_age_minutes,
+                            },
+                        )
+                        # Ensure it's still reported as a zombie, just not acted upon yet
+                        final_zombies.append(symbol)
+                        continue
+
+                # Heal
+                updated_pos = self.handle_manual_exit_verification(pos)
+                if updated_pos:
+                    self.position_repo.update_position(updated_pos)
+                    healed_count += 1
+                    logger.warning(
+                        f"Zombie healed: {symbol}",
+                        extra={
+                            "symbol": symbol,
+                            "position_id": updated_pos.position_id,
+                            "status": updated_pos.status,
+                        },
+                    )
+                else:
+                    # Verification failed
+                    final_zombies.append(symbol)
+                    error_msg = ReconciliationErrors.ZOMBIE_EXIT_GAP.format(symbol=symbol)
+                    logger.critical(
+                        error_msg,
+                        extra={
+                            "symbol": symbol,
+                            "position_id": pos.position_id,
+                        },
+                    )
+                    errors.append(error_msg)
+                    self.notifications.notify_critical_sync_failure(symbol)
+
+            except Exception as e:
+                error_msg = f"Failed to heal zombie {symbol}: {e}"
+                logger.error(error_msg)
+                errors.append(error_msg)
+                final_zombies.append(symbol)
+
+        return final_zombies, healed_count, errors
+
+    def _handle_orphans(
+        self, orphan_candidates: list[str]
+    ) -> tuple[list[str], list[str]]:
+        """Format and alert on orphan positions."""
+        crypto_config = self.settings.CRYPTO_SYMBOLS or []
+        config_map = {normalize_alpaca_symbol(s): s for s in crypto_config}
+
+        orphans = []
+        errors = []
+
+        for s_norm in orphan_candidates:
+            # Denormalize
+            symbol = config_map.get(s_norm, s_norm)
+            orphans.append(symbol)
+
+            # Alert
+            logger.critical(
+                f"ORPHAN POSITION DETECTED: {symbol}",
+                extra={
+                    "symbol": symbol,
+                    "impact": "Position open in Alpaca but missing from DB",
+                },
+            )
+            self.notifications.notify_orphan(symbol)
+            errors.append(ReconciliationErrors.ORPHAN_POSITION.format(symbol=symbol))
+
+        return orphans, errors
+
+    def _check_reverse_orphans(self) -> list[str]:
+        """Check if recently closed positions in DB are still open in Alpaca."""
+        logger.info("Checking for reverse orphans (CLOSED in DB, OPEN in Alpaca)...")
+        errors = []
+
+        try:
+            closed_positions = self.position_repo.get_closed_positions(limit=50)
+            reverse_orphans = []
+
+            for closed_pos in closed_positions:
+                try:
+                    alpaca_pos = self.alpaca.get_open_position(
+                        normalize_alpaca_symbol(closed_pos.symbol)
+                    )
+                    if alpaca_pos:
+                        reverse_orphans.append(closed_pos.symbol)
+                        logger.critical(
+                            f"REVERSE ORPHAN DETECTED: {closed_pos.symbol}",
+                            extra={
+                                "symbol": closed_pos.symbol,
+                                "position_id": closed_pos.position_id,
+                                "impact": "Position closed in DB but STILL OPEN in Alpaca!",
+                            },
+                        )
+
+                        self.notifications.notify_reverse_orphan(
+                            closed_pos.symbol, closed_pos.position_id
+                        )
+
+                        errors.append(
+                            ReconciliationErrors.REVERSE_ORPHAN.format(
+                                symbol=closed_pos.symbol
+                            )
+                        )
+
+                except Exception as e:
+                    # 404/not found means correctly closed
+                    if "not found" not in str(e).lower() and "404" not in str(e):
+                        logger.warning(
+                            f"Error checking closed position {closed_pos.symbol}: {e}"
+                        )
+
+            if reverse_orphans:
+                logger.warning(
+                    f"Found {len(reverse_orphans)} reverse orphans",
+                    extra={"symbols": reverse_orphans},
+                )
+
+        except Exception as e:
+            logger.warning("Reverse orphan detection failed.", extra={"error": str(e)})
+
+        return errors
+
+    def _log_report_summary(self, report: ReconciliationReport) -> None:
+        """Log the final reconciliation summary."""
+        logger.info(
+            "Reconciliation complete",
+            extra={
+                "zombies": len(report.zombies),
+                "orphans": len(report.orphans),
+                "reconciled": report.reconciled_count,
+                "duration_seconds": round(report.duration_seconds, 3),
+                "critical_issues": len(report.critical_issues),
+            },
+        )
