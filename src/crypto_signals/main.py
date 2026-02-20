@@ -35,6 +35,7 @@ from crypto_signals.domain.schemas import (
 )
 from crypto_signals.engine.execution import ExecutionEngine
 from crypto_signals.engine.reconciler import StateReconciler
+from crypto_signals.engine.reconciler_notifications import ReconcilerNotificationService
 from crypto_signals.engine.signal_generator import SignalGenerator
 from crypto_signals.market.asset_service import AssetValidationService
 from crypto_signals.market.data_provider import MarketDataProvider
@@ -50,10 +51,8 @@ from crypto_signals.observability import (
     setup_gcp_logging,
 )
 from crypto_signals.pipelines.account_snapshot import AccountSnapshotPipeline
-from crypto_signals.pipelines.agg_strategy_daily import DailyStrategyAggregation
 from crypto_signals.pipelines.expired_signal_archival import ExpiredSignalArchivalPipeline
 from crypto_signals.pipelines.fee_patch import FeePatchPipeline
-from crypto_signals.pipelines.performance import PerformancePipeline
 from crypto_signals.pipelines.price_patch import PricePatchPipeline
 from crypto_signals.pipelines.rejected_signal_archival import RejectedSignalArchival
 from crypto_signals.pipelines.strategy_sync import StrategySyncPipeline
@@ -97,7 +96,7 @@ def _run_pipeline(
     name: str,
     success_log_fn: Callable[[Any], None],
     metrics_collector: Optional["MetricsCollector"] = None,
-) -> bool:
+) -> None:
     """
     Helper to run a pipeline with standardized logging and metrics.
 
@@ -106,10 +105,8 @@ def _run_pipeline(
         name: The name of the pipeline for metrics/logging.
         success_log_fn: A callback that receives the result and logs success.
         metrics_collector: Optional metrics collector (fetches default if None).
-
-    Returns:
-        bool: True if the pipeline completed successfully, False otherwise.
     """
+    logger.info(f"Running {name} Pipeline...")
     start_time = time.time()
 
     # Use provided collector or fetch new one
@@ -119,11 +116,9 @@ def _run_pipeline(
         result = pipeline.run()
         success_log_fn(result)
         metrics.record_success(name, time.time() - start_time)
-        return True
     except Exception as e:
         logger.error(f"{name} Pipeline failed: {e}")
         metrics.record_failure(name, time.time() - start_time)
-        return False
 
 
 def _log_pipeline_result(
@@ -312,7 +307,7 @@ def main(
             reconciler = StateReconciler(
                 alpaca_client=get_trading_client(),
                 position_repo=position_repo,
-                discord_client=discord,
+                notification_service=ReconcilerNotificationService(discord),
                 settings=settings,
             )
             execution_engine = ExecutionEngine(
@@ -330,8 +325,6 @@ def main(
             price_patch = PricePatchPipeline(execution_engine=execution_engine)
             account_snapshot = AccountSnapshotPipeline()
             strategy_sync = StrategySyncPipeline()
-            strategy_aggregation = DailyStrategyAggregation()
-            performance_pipeline = PerformancePipeline()
 
         # Job Locking
         job_id = "signal_generator_cron"
@@ -501,45 +494,6 @@ def main(
         else:
             logger.warning(
                 "⚠️ Skipping exit price reconciliation due to reconciliation failure."
-            )
-
-        # === DAILY STRATEGY AGGREGATION ===
-        # Aggregates fact_trades into agg_strategy_daily for dashboard performance.
-        # Must run AFTER archival and patches to ensure fresh data.
-        if not reconciliation_failed:
-            agg_success = _run_pipeline(
-                strategy_aggregation,
-                "strategy_aggregation",
-                lambda count: logger.info(
-                    f"✅ Strategy aggregation complete: {count} records aggregated"
-                    if count > 0
-                    else "✅ Strategy aggregation complete: No new data to aggregate"
-                ),
-                metrics_collector=metrics,
-            )
-
-            # === PERFORMANCE PIPELINE ===
-            # Calculates summary metrics (Sharpe, etc.) from aggregated daily data.
-            # Must run AFTER strategy aggregation.
-            if agg_success:
-                _run_pipeline(
-                    performance_pipeline,
-                    "performance_pipeline",
-                    lambda count: logger.info(
-                        f"✅ Performance metrics complete: {count} records updated"
-                        if count > 0
-                        else "✅ Performance metrics complete: No new data to process"
-                    ),
-                    metrics_collector=metrics,
-                )
-            else:
-                logger.warning(
-                    "⚠️ Skipping performance pipeline because strategy aggregation failed."
-                )
-
-        else:
-            logger.warning(
-                "⚠️ Skipping post-processing pipelines due to reconciliation failure."
             )
 
         # Define Portfolio

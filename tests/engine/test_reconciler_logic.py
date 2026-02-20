@@ -12,6 +12,7 @@ from crypto_signals.domain.schemas import (
     TradeStatus,
 )
 from crypto_signals.engine.reconciler import StateReconciler
+from crypto_signals.engine.reconciler_notifications import ReconcilerNotificationService
 
 
 @pytest.fixture
@@ -30,9 +31,16 @@ def mock_discord():
 
 
 @pytest.fixture
-def reconciler(mock_alpaca, mock_repo, mock_discord):
+def mock_notification_service(mock_discord):
+    return ReconcilerNotificationService(mock_discord)
+
+
+@pytest.fixture
+def reconciler(mock_alpaca, mock_repo, mock_notification_service):
     return StateReconciler(
-        alpaca_client=mock_alpaca, position_repo=mock_repo, discord_client=mock_discord
+        alpaca_client=mock_alpaca,
+        position_repo=mock_repo,
+        notification_service=mock_notification_service,
     )
 
 
@@ -77,7 +85,7 @@ class TestHandleManualExitVerification:
         result = reconciler.handle_manual_exit_verification(sample_position)
 
         # Verify
-        assert result is True
+        assert isinstance(result, Position)
         assert sample_position.status == TradeStatus.CLOSED
         assert sample_position.exit_reason == ExitReason.MANUAL_EXIT
         assert sample_position.exit_fill_price == 55000.0
@@ -98,7 +106,7 @@ class TestHandleManualExitVerification:
         result = reconciler.handle_manual_exit_verification(sample_position)
 
         # Verify
-        assert result is False
+        assert result is None
         assert sample_position.status == TradeStatus.OPEN
         assert sample_position.exit_reason is None
 
@@ -117,5 +125,5 @@ class TestHandleManualExitVerification:
         result = reconciler.handle_manual_exit_verification(sample_position)
 
         # Verify
-        assert result is False
+        assert result is None
         assert sample_position.status == TradeStatus.OPEN

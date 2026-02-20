@@ -4,6 +4,7 @@ from datetime import date, datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
+from crypto_signals.domain.enums import ReconciliationErrors
 from crypto_signals.domain.schemas import (
     ExitReason,
     OrderSide,
@@ -12,6 +13,7 @@ from crypto_signals.domain.schemas import (
     TradeType,
 )
 from crypto_signals.engine.reconciler import StateReconciler
+from crypto_signals.engine.reconciler_notifications import ReconcilerNotificationService
 from crypto_signals.repository.firestore import PositionRepository
 
 
@@ -28,9 +30,9 @@ def mock_position_repo():
 
 
 @pytest.fixture
-def mock_discord_client():
-    """Fixture for mocking DiscordClient."""
-    return MagicMock()
+def mock_notification_service():
+    """Fixture for mocking ReconcilerNotificationService."""
+    return MagicMock(spec=ReconcilerNotificationService)
 
 
 @pytest.fixture
@@ -82,19 +84,23 @@ class TestStateReconcilerInitialization:
     """Test StateReconciler initialization and dependency injection."""
 
     def test_init_stores_dependencies(
-        self, mock_trading_client, mock_position_repo, mock_discord_client, mock_settings
+        self,
+        mock_trading_client,
+        mock_position_repo,
+        mock_notification_service,
+        mock_settings,
     ):
         """StateReconciler stores injected dependencies."""
         reconciler = StateReconciler(
             alpaca_client=mock_trading_client,
             position_repo=mock_position_repo,
-            discord_client=mock_discord_client,
+            notification_service=mock_notification_service,
             settings=mock_settings,
         )
 
         assert reconciler.alpaca == mock_trading_client
         assert reconciler.position_repo == mock_position_repo
-        assert reconciler.discord == mock_discord_client
+        assert reconciler.notifications == mock_notification_service
         assert reconciler.settings == mock_settings
 
 
@@ -105,7 +111,7 @@ class TestDetectZombies:
         self,
         mock_trading_client,
         mock_position_repo,
-        mock_discord_client,
+        mock_notification_service,
         mock_settings,
         sample_open_position,
         sample_alpaca_position,
@@ -120,7 +126,7 @@ class TestDetectZombies:
         reconciler = StateReconciler(
             alpaca_client=mock_trading_client,
             position_repo=mock_position_repo,
-            discord_client=mock_discord_client,
+            notification_service=mock_notification_service,
             settings=mock_settings,
         )
 
@@ -134,7 +140,7 @@ class TestDetectZombies:
         self,
         mock_trading_client,
         mock_position_repo,
-        mock_discord_client,
+        mock_notification_service,
         mock_settings,
     ):
         """Reconciliation handles multiple zombies."""
@@ -157,7 +163,7 @@ class TestDetectZombies:
         reconciler = StateReconciler(
             alpaca_client=mock_trading_client,
             position_repo=mock_position_repo,
-            discord_client=mock_discord_client,
+            notification_service=mock_notification_service,
             settings=mock_settings,
         )
 
@@ -175,7 +181,7 @@ class TestDetectOrphans:
         self,
         mock_trading_client,
         mock_position_repo,
-        mock_discord_client,
+        mock_notification_service,
         mock_settings,
         sample_alpaca_position,
     ):
@@ -189,7 +195,7 @@ class TestDetectOrphans:
         reconciler = StateReconciler(
             alpaca_client=mock_trading_client,
             position_repo=mock_position_repo,
-            discord_client=mock_discord_client,
+            notification_service=mock_notification_service,
             settings=mock_settings,
         )
 
@@ -203,7 +209,7 @@ class TestDetectOrphans:
         self,
         mock_trading_client,
         mock_position_repo,
-        mock_discord_client,
+        mock_notification_service,
         mock_settings,
     ):
         """Reconciliation handles multiple orphans."""
@@ -219,7 +225,7 @@ class TestDetectOrphans:
         reconciler = StateReconciler(
             alpaca_client=mock_trading_client,
             position_repo=mock_position_repo,
-            discord_client=mock_discord_client,
+            notification_service=mock_notification_service,
             settings=mock_settings,
         )
 
@@ -233,7 +239,7 @@ class TestDetectOrphans:
         self,
         mock_trading_client,
         mock_position_repo,
-        mock_discord_client,
+        mock_notification_service,
         mock_settings,
         sample_alpaca_position,
     ):
@@ -244,14 +250,15 @@ class TestDetectOrphans:
         reconciler = StateReconciler(
             alpaca_client=mock_trading_client,
             position_repo=mock_position_repo,
-            discord_client=mock_discord_client,
+            notification_service=mock_notification_service,
             settings=mock_settings,
         )
 
         report = reconciler.reconcile()
 
         assert len(report.critical_issues) > 0
-        assert any("BTC/USD" in issue for issue in report.critical_issues)
+        expected_error = ReconciliationErrors.ORPHAN_POSITION.format(symbol="BTC/USD")
+        assert any(expected_error in issue for issue in report.critical_issues)
 
 
 class TestHealingAndAlerts:
@@ -261,7 +268,7 @@ class TestHealingAndAlerts:
         self,
         mock_trading_client,
         mock_position_repo,
-        mock_discord_client,
+        mock_notification_service,
         mock_settings,
         sample_open_position,
     ):
@@ -272,7 +279,7 @@ class TestHealingAndAlerts:
         reconciler = StateReconciler(
             alpaca_client=mock_trading_client,
             position_repo=mock_position_repo,
-            discord_client=mock_discord_client,
+            notification_service=mock_notification_service,
             settings=mock_settings,
         )
 
@@ -281,7 +288,7 @@ class TestHealingAndAlerts:
         def verify_side_effect(pos):
             pos.status = TradeStatus.CLOSED
             pos.exit_reason = ExitReason.MANUAL_EXIT
-            return True
+            return pos
 
         with patch.object(
             reconciler, "handle_manual_exit_verification", side_effect=verify_side_effect
@@ -300,7 +307,7 @@ class TestHealingAndAlerts:
         self,
         mock_trading_client,
         mock_position_repo,
-        mock_discord_client,
+        mock_notification_service,
         mock_settings,
         sample_alpaca_position,
     ):
@@ -311,14 +318,14 @@ class TestHealingAndAlerts:
         reconciler = StateReconciler(
             alpaca_client=mock_trading_client,
             position_repo=mock_position_repo,
-            discord_client=mock_discord_client,
+            notification_service=mock_notification_service,
             settings=mock_settings,
         )
 
         reconciler.reconcile()
 
-        # Verify Discord was called for orphan alert
-        assert mock_discord_client.send_message.called
+        # Verify notification service was called for orphan alert
+        assert mock_notification_service.notify_orphan.called
 
 
 class TestReconciliationBehavior:
@@ -328,7 +335,7 @@ class TestReconciliationBehavior:
         self,
         mock_trading_client,
         mock_position_repo,
-        mock_discord_client,
+        mock_notification_service,
         mock_settings,
     ):
         """reconcile() returns a ReconciliationReport."""
@@ -339,7 +346,7 @@ class TestReconciliationBehavior:
         reconciler = StateReconciler(
             alpaca_client=mock_trading_client,
             position_repo=mock_position_repo,
-            discord_client=mock_discord_client,
+            notification_service=mock_notification_service,
             settings=mock_settings,
         )
 
@@ -356,7 +363,7 @@ class TestReconciliationBehavior:
         self,
         mock_trading_client,
         mock_position_repo,
-        mock_discord_client,
+        mock_notification_service,
         mock_settings,
         sample_open_position,
     ):
@@ -367,7 +374,7 @@ class TestReconciliationBehavior:
         reconciler = StateReconciler(
             alpaca_client=mock_trading_client,
             position_repo=mock_position_repo,
-            discord_client=mock_discord_client,
+            notification_service=mock_notification_service,
             settings=mock_settings,
         )
 
@@ -381,7 +388,7 @@ class TestReconciliationBehavior:
         self,
         mock_trading_client,
         mock_position_repo,
-        mock_discord_client,
+        mock_notification_service,
         mock_settings,
     ):
         """Reconciliation report includes execution duration."""
@@ -391,7 +398,7 @@ class TestReconciliationBehavior:
         reconciler = StateReconciler(
             alpaca_client=mock_trading_client,
             position_repo=mock_position_repo,
-            discord_client=mock_discord_client,
+            notification_service=mock_notification_service,
             settings=mock_settings,
         )
 
@@ -408,7 +415,7 @@ class TestEnvironmentGating:
         self,
         mock_trading_client,
         mock_position_repo,
-        mock_discord_client,
+        mock_notification_service,
         mock_settings,
     ):
         """Reconciliation respects ENVIRONMENT != PROD."""
@@ -419,7 +426,7 @@ class TestEnvironmentGating:
         reconciler = StateReconciler(
             alpaca_client=mock_trading_client,
             position_repo=mock_position_repo,
-            discord_client=mock_discord_client,
+            notification_service=mock_notification_service,
             settings=mock_settings,
         )
 
@@ -436,7 +443,7 @@ class TestErrorHandling:
         self,
         mock_trading_client,
         mock_position_repo,
-        mock_discord_client,
+        mock_notification_service,
         mock_settings,
     ):
         """Reconciliation handles Alpaca API errors gracefully."""
@@ -446,7 +453,7 @@ class TestErrorHandling:
         reconciler = StateReconciler(
             alpaca_client=mock_trading_client,
             position_repo=mock_position_repo,
-            discord_client=mock_discord_client,
+            notification_service=mock_notification_service,
             settings=mock_settings,
         )
 
@@ -459,7 +466,7 @@ class TestErrorHandling:
         self,
         mock_trading_client,
         mock_position_repo,
-        mock_discord_client,
+        mock_notification_service,
         mock_settings,
     ):
         """Reconciliation handles Firestore errors gracefully."""
@@ -469,7 +476,7 @@ class TestErrorHandling:
         reconciler = StateReconciler(
             alpaca_client=mock_trading_client,
             position_repo=mock_position_repo,
-            discord_client=mock_discord_client,
+            notification_service=mock_notification_service,
             settings=mock_settings,
         )
 
@@ -486,7 +493,7 @@ class TestReconcilerEdgeCases:
         self,
         mock_trading_client,
         mock_position_repo,
-        mock_discord_client,
+        mock_notification_service,
         mock_settings,
     ):
         """Reconciliation handles empty symbol sets gracefully."""
@@ -496,7 +503,7 @@ class TestReconcilerEdgeCases:
         reconciler = StateReconciler(
             alpaca_client=mock_trading_client,
             position_repo=mock_position_repo,
-            discord_client=mock_discord_client,
+            notification_service=mock_notification_service,
             settings=mock_settings,
         )
 
@@ -510,7 +517,7 @@ class TestReconcilerEdgeCases:
         self,
         mock_trading_client,
         mock_position_repo,
-        mock_discord_client,
+        mock_notification_service,
         mock_settings,
         sample_open_position,
     ):
@@ -524,7 +531,7 @@ class TestReconcilerEdgeCases:
         reconciler = StateReconciler(
             alpaca_client=mock_trading_client,
             position_repo=mock_position_repo,
-            discord_client=mock_discord_client,
+            notification_service=mock_notification_service,
             settings=mock_settings,
         )
 
@@ -534,25 +541,26 @@ class TestReconcilerEdgeCases:
         assert len(report.critical_issues) > 0
         assert "BTC/USD" in report.zombies  # Zombie still detected
 
-    def test_reconcile_discord_notification_failure_not_blocking(
+    def test_reconcile_notification_failure_not_blocking(
         self,
         mock_trading_client,
         mock_position_repo,
-        mock_discord_client,
         mock_settings,
         sample_alpaca_position,
     ):
-        """Discord notification failure doesn't block reconciliation."""
+        """Notification failure (at service level) doesn't block reconciliation."""
         mock_trading_client.get_all_positions.return_value = [sample_alpaca_position]
         mock_position_repo.get_open_positions.return_value = []
 
-        # Fail on Discord send
-        mock_discord_client.send_message.side_effect = Exception("Discord Error")
+        # Use real service with mocked discord client to test internal error handling
+        mock_discord = MagicMock()
+        mock_discord.send_message.side_effect = Exception("Discord Error")
+        service = ReconcilerNotificationService(mock_discord)
 
         reconciler = StateReconciler(
             alpaca_client=mock_trading_client,
             position_repo=mock_position_repo,
-            discord_client=mock_discord_client,
+            notification_service=service,
             settings=mock_settings,
         )
 
@@ -560,13 +568,14 @@ class TestReconcilerEdgeCases:
         report = reconciler.reconcile()
 
         assert len(report.orphans) > 0  # Orphan still detected
-        assert "ORPHAN: BTC/USD" in report.critical_issues
+        expected_error = ReconciliationErrors.ORPHAN_POSITION.format(symbol="BTC/USD")
+        assert any(expected_error in issue for issue in report.critical_issues)
 
     def test_reconcile_report_timestamp_is_set(
         self,
         mock_trading_client,
         mock_position_repo,
-        mock_discord_client,
+        mock_notification_service,
         mock_settings,
     ):
         """Reconciliation report includes current timestamp."""
@@ -578,7 +587,7 @@ class TestReconcilerEdgeCases:
         reconciler = StateReconciler(
             alpaca_client=mock_trading_client,
             position_repo=mock_position_repo,
-            discord_client=mock_discord_client,
+            notification_service=mock_notification_service,
             settings=mock_settings,
         )
 
@@ -592,7 +601,7 @@ class TestReconcilerEdgeCases:
         self,
         mock_trading_client,
         mock_position_repo,
-        mock_discord_client,
+        mock_notification_service,
         mock_settings,
         sample_open_position,
     ):
@@ -607,7 +616,7 @@ class TestReconcilerEdgeCases:
         reconciler = StateReconciler(
             alpaca_client=mock_trading_client,
             position_repo=mock_position_repo,
-            discord_client=mock_discord_client,
+            notification_service=mock_notification_service,
             settings=mock_settings,
         )
 
@@ -621,7 +630,7 @@ class TestReconcilerEdgeCases:
         self,
         mock_trading_client,
         mock_position_repo,
-        mock_discord_client,
+        mock_notification_service,
         mock_settings,
         sample_open_position,
     ):
@@ -637,7 +646,7 @@ class TestReconcilerEdgeCases:
         reconciler = StateReconciler(
             alpaca_client=mock_trading_client,
             position_repo=mock_position_repo,
-            discord_client=mock_discord_client,
+            notification_service=mock_notification_service,
             settings=mock_settings,
         )
 
@@ -656,7 +665,7 @@ class TestReconcilerSettings:
         self,
         mock_trading_client,
         mock_position_repo,
-        mock_discord_client,
+        mock_notification_service,
     ):
         """Reconciler uses provided settings instead of global defaults."""
         custom_settings = MagicMock()
@@ -665,7 +674,7 @@ class TestReconcilerSettings:
         reconciler = StateReconciler(
             alpaca_client=mock_trading_client,
             position_repo=mock_position_repo,
-            discord_client=mock_discord_client,
+            notification_service=mock_notification_service,
             settings=custom_settings,
         )
 
@@ -676,7 +685,7 @@ class TestReconcilerSettings:
         self,
         mock_trading_client,
         mock_position_repo,
-        mock_discord_client,
+        mock_notification_service,
     ):
         """Reconciler uses get_settings() when settings param is None."""
         with patch("crypto_signals.engine.reconciler.get_settings") as mock_get_settings:
@@ -690,7 +699,7 @@ class TestReconcilerSettings:
             reconciler = StateReconciler(
                 alpaca_client=mock_trading_client,
                 position_repo=mock_position_repo,
-                discord_client=mock_discord_client,
+                notification_service=mock_notification_service,
                 settings=None,
             )
 
@@ -705,7 +714,7 @@ class TestSafetyMechanisms:
         self,
         mock_trading_client,
         mock_position_repo,
-        mock_discord_client,
+        mock_notification_service,
         mock_settings,
         sample_open_position,
     ):
@@ -724,7 +733,7 @@ class TestSafetyMechanisms:
         reconciler = StateReconciler(
             alpaca_client=mock_trading_client,
             position_repo=mock_position_repo,
-            discord_client=mock_discord_client,
+            notification_service=mock_notification_service,
             settings=mock_settings,
         )
 
@@ -747,7 +756,7 @@ class TestSafetyMechanisms:
         self,
         mock_trading_client,
         mock_position_repo,
-        mock_discord_client,
+        mock_notification_service,
         mock_settings,
         sample_open_position,
     ):
@@ -762,14 +771,14 @@ class TestSafetyMechanisms:
         reconciler = StateReconciler(
             alpaca_client=mock_trading_client,
             position_repo=mock_position_repo,
-            discord_client=mock_discord_client,
+            notification_service=mock_notification_service,
             settings=mock_settings,
         )
 
         # 2. Mock Verification to FAIL (return False)
         # using patch object on the specific instance method
         with patch.object(
-            reconciler, "handle_manual_exit_verification", return_value=False
+            reconciler, "handle_manual_exit_verification", return_value=None
         ):
             report = reconciler.reconcile()
 
@@ -779,10 +788,11 @@ class TestSafetyMechanisms:
 
         # Should log critical issue
         assert len(report.critical_issues) > 0
-        assert any("CRITICAL SYNC ISSUE" in i for i in report.critical_issues)
+        expected_error = ReconciliationErrors.ZOMBIE_EXIT_GAP.format(symbol="BTC/USD")
+        assert any(expected_error in i for i in report.critical_issues)
 
-        # Should alert Discord
-        assert mock_discord_client.send_message.called
+        # Should alert notification service
+        assert mock_notification_service.notify_critical_sync_failure.called
 
 
 class TestReconcilerRaceConditions:
@@ -792,7 +802,7 @@ class TestReconcilerRaceConditions:
         self,
         mock_trading_client,
         mock_position_repo,
-        mock_discord_client,
+        mock_notification_service,
         mock_settings,
         sample_open_position,
     ):
@@ -814,7 +824,7 @@ class TestReconcilerRaceConditions:
         reconciler = StateReconciler(
             alpaca_client=mock_trading_client,
             position_repo=mock_position_repo,
-            discord_client=mock_discord_client,
+            notification_service=mock_notification_service,
             settings=mock_settings,
         )
 
@@ -835,7 +845,7 @@ class TestReconcilerRaceConditions:
         self,
         mock_trading_client,
         mock_position_repo,
-        mock_discord_client,
+        mock_notification_service,
         mock_settings,
         sample_open_position,
     ):
@@ -851,7 +861,7 @@ class TestReconcilerRaceConditions:
         reconciler = StateReconciler(
             alpaca_client=mock_trading_client,
             position_repo=mock_position_repo,
-            discord_client=mock_discord_client,
+            notification_service=mock_notification_service,
             settings=mock_settings,
         )
 
@@ -891,7 +901,7 @@ class TestTheoreticalPositions:
         self,
         mock_trading_client,
         mock_position_repo,
-        mock_discord_client,
+        mock_notification_service,
         mock_settings,
         theoretical_position,
     ):
@@ -905,7 +915,7 @@ class TestTheoreticalPositions:
         reconciler = StateReconciler(
             alpaca_client=mock_trading_client,
             position_repo=mock_position_repo,
-            discord_client=mock_discord_client,
+            notification_service=mock_notification_service,
             settings=mock_settings,
         )
 
@@ -922,7 +932,7 @@ class TestTheoreticalPositions:
         self,
         mock_trading_client,
         mock_position_repo,
-        mock_discord_client,
+        mock_notification_service,
         mock_settings,
         theoretical_position,
     ):
@@ -955,7 +965,7 @@ class TestTheoreticalPositions:
         reconciler = StateReconciler(
             alpaca_client=mock_trading_client,
             position_repo=mock_position_repo,
-            discord_client=mock_discord_client,
+            notification_service=mock_notification_service,
             settings=mock_settings,
         )
 

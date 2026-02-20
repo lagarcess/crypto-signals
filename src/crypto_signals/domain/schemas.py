@@ -192,11 +192,11 @@ class ReconciliationReport(BaseModel):
     positions (open in Alpaca, missing from DB).
     """
 
-    zombies: List[str] = Field(
+    zombies: list[str] = Field(
         default_factory=list,
         description="Symbols closed in Alpaca but marked OPEN in Firestore",
     )
-    orphans: List[str] = Field(
+    orphans: list[str] = Field(
         default_factory=list,
         description="Symbols with open positions in Alpaca but no Firestore record",
     )
@@ -212,7 +212,7 @@ class ReconciliationReport(BaseModel):
         default=0.0,
         description="Time taken to run reconciliation (seconds)",
     )
-    critical_issues: List[str] = Field(
+    critical_issues: list[str] = Field(
         default_factory=list,
         description="Critical alerts (e.g., orphan positions)",
     )

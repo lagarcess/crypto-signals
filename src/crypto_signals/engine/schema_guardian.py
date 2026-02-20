@@ -151,13 +151,7 @@ class SchemaGuardian:
                 # Recursive generation for nested models
                 fields = tuple(self.generate_schema(python_type))
 
-            description: Optional[str] = field_info.description
-
-            schema.append(
-                bigquery.SchemaField(
-                    name, bq_type, mode=mode, fields=fields, description=description
-                )
-            )
+            schema.append(bigquery.SchemaField(name, bq_type, mode=mode, fields=fields))
 
         return schema
 

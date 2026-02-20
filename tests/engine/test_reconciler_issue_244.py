@@ -7,6 +7,7 @@ from crypto_signals.domain.schemas import (
     TradeStatus,
 )
 from crypto_signals.engine.reconciler import StateReconciler
+from crypto_signals.engine.reconciler_notifications import ReconcilerNotificationService
 
 
 class TestReconcilerReproduction(unittest.TestCase):
@@ -14,13 +15,14 @@ class TestReconcilerReproduction(unittest.TestCase):
         self.mock_alpaca = MagicMock()
         self.mock_repo = MagicMock()
         self.mock_discord = MagicMock()
+        self.mock_notifications = ReconcilerNotificationService(self.mock_discord)
         self.mock_settings = MagicMock()
         self.mock_settings.ENVIRONMENT = "PROD"
 
         self.reconciler = StateReconciler(
             alpaca_client=self.mock_alpaca,
             position_repo=self.mock_repo,
-            discord_client=self.mock_discord,
+            notification_service=self.mock_notifications,
             settings=self.mock_settings,
         )
 
@@ -73,7 +75,7 @@ class TestReconcilerReproduction(unittest.TestCase):
 
         # 3. Mock handle_manual_exit_verification to return False
         with patch.object(
-            self.reconciler, "handle_manual_exit_verification", return_value=False
+            self.reconciler, "handle_manual_exit_verification", return_value=None
         ) as mock_verify:
             # 4. Execution
             report = self.reconciler.reconcile()
@@ -113,7 +115,7 @@ class TestReconcilerReproduction(unittest.TestCase):
         # 3. Mock handle_manual_exit_verification to return True
         # NOTE: The real method updates the position object. Here we just return True.
         with patch.object(
-            self.reconciler, "handle_manual_exit_verification", return_value=True
+            self.reconciler, "handle_manual_exit_verification", return_value=pos
         ) as mock_verify:
             # 4. Execution
             self.reconciler.reconcile()
