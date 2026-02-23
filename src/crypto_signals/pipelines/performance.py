@@ -9,12 +9,11 @@ It implements the "Aggregation Layer" pattern to support fast dashboards.
 """
 
 from pathlib import Path
-from typing import Any, List
+from typing import Any, Dict, List
 
 from loguru import logger
 from pydantic import BaseModel
 
-from crypto_signals.config import get_settings
 from crypto_signals.domain.schemas import StrategyPerformance
 from crypto_signals.pipelines.base import BigQueryPipelineBase
 
@@ -27,30 +26,30 @@ class PerformancePipeline(BigQueryPipelineBase):
     Writes to: summary_strategy_performance
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the pipeline."""
-        settings = get_settings()
-        project_id = settings.GOOGLE_CLOUD_PROJECT
-        env_suffix = "" if settings.ENVIRONMENT == "PROD" else "_test"
-
-        # Define table IDs
-        self.source_table_id = (
-            f"{project_id}.crypto_analytics.agg_strategy_daily{env_suffix}"
-        )
-        staging_table_id = (
-            f"{project_id}.crypto_analytics.stg_performance_import{env_suffix}"
-        )
-        fact_table_id = (
-            f"{project_id}.crypto_analytics.summary_strategy_performance{env_suffix}"
-        )
-
+        # Initialize base class first — this sets self.settings and self.bq_client
         super().__init__(
             job_name="performance_pipeline",
-            staging_table_id=staging_table_id,
-            fact_table_id=fact_table_id,
+            staging_table_id="",  # Placeholder, set below
+            fact_table_id="",  # Placeholder, set below
             id_column="strategy_id",
             partition_column="ds",
             schema_model=StrategyPerformance,
+        )
+
+        # Derive table IDs from the single self.settings instance (set by super)
+        project_id = self.settings.GOOGLE_CLOUD_PROJECT
+        env_suffix = "" if self.settings.ENVIRONMENT == "PROD" else "_test"
+
+        self.source_table_id = (
+            f"{project_id}.crypto_analytics.agg_strategy_daily{env_suffix}"
+        )
+        self.staging_table_id = (
+            f"{project_id}.crypto_analytics.stg_performance_import{env_suffix}"
+        )
+        self.fact_table_id = (
+            f"{project_id}.crypto_analytics.summary_strategy_performance{env_suffix}"
         )
 
     def _check_t_minus_1_data(self) -> bool:
@@ -77,12 +76,12 @@ class PerformancePipeline(BigQueryPipelineBase):
             )
             return False
 
-    def extract(self) -> List[Any]:
+    def extract(self) -> List[Dict[str, Any]]:
         """
         Execute BigQuery aggregation query on agg_strategy_daily.
 
         Returns:
-            List[dict]: Performance data rows.
+            List[Dict[str, Any]]: Performance data rows.
         """
         # 1. T-1 Architecture: Verify data availability
         if not self._check_t_minus_1_data():
@@ -98,16 +97,24 @@ class PerformancePipeline(BigQueryPipelineBase):
         # 2. Advanced Metrics Implementation: Load from SQL file
         query_path = Path(__file__).parent / "performance_query.sql"
         query_template = query_path.read_text()
+
+        # Safety: validate baseline_capital is a finite number before SQL injection
+        baseline_capital = float(self.settings.PERFORMANCE_BASELINE_CAPITAL)
+        if not (0 < baseline_capital < 1e12):
+            raise ValueError(
+                f"PERFORMANCE_BASELINE_CAPITAL out of safe range: {baseline_capital}"
+            )
+
         query = query_template.format(
             source_table_id=self.source_table_id,
-            baseline_capital=self.settings.PERFORMANCE_BASELINE_CAPITAL,
+            baseline_capital=baseline_capital,
         )
 
         try:
             query_job = self.bq_client.query(query)
             results = query_job.result()  # Wait for completion
 
-            rows = [dict(row) for row in results]
+            rows: List[Dict[str, Any]] = [dict(row) for row in results]
             logger.info(f"[{self.job_name}] Extracted {len(rows)} performance records.")
             return rows
 

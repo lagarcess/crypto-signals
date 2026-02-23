@@ -1,3 +1,18 @@
+-- Performance Query: Strategy-level metrics from agg_strategy_daily
+-- Used by PerformancePipeline.extract() via Path(__file__).parent / "performance_query.sql"
+--
+-- Parameters (injected via Python str.format):
+--   {source_table_id}:   Fully qualified BQ table ID for agg_strategy_daily
+--   {baseline_capital}:  Starting capital for equity curve (validated float, see performance.py)
+--
+-- NOTE on win_rate aggregation:
+--   daily_win_rate in the first CTE is a trade-weighted average across symbols
+--   (SUM(win_rate * trade_count) / SUM(trade_count)). The historical_metrics CTE
+--   then re-weights by daily_trades (which IS SUM(trade_count)), effectively
+--   reconstructing the cumulative win count / total count ratio. This is
+--   mathematically equivalent to tracking wins/totals separately but avoids
+--   adding extra columns to the source table.
+
 WITH daily_strategy_metrics AS (
     SELECT
         ds,
@@ -61,6 +76,8 @@ final_metrics AS (
         IFNULL(sharpe_ratio, 0.0) as sharpe_ratio,
         IFNULL(sortino_ratio, 0.0) as sortino_ratio,
         MAX(current_drawdown) OVER (PARTITION BY strategy_id ORDER BY ds) * 100.0 as max_drawdown_pct,
+        -- TODO(#315): Alpha/Beta require a benchmark index (e.g., BTC or S&P500)
+        -- to compute meaningful values. Currently stubbed to 0.0.
         0.0 as alpha,
         0.0 as beta
     FROM max_drawdown_calc
