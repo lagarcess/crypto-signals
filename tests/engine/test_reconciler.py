@@ -75,6 +75,19 @@ def sample_alpaca_position():
     return mock_pos
 
 
+@pytest.fixture
+def reconciler(
+    mock_trading_client, mock_position_repo, mock_notification_service, mock_settings
+):
+    """Create a StateReconciler with injected mock dependencies."""
+    return StateReconciler(
+        alpaca_client=mock_trading_client,
+        position_repo=mock_position_repo,
+        notification_service=mock_notification_service,
+        settings=mock_settings,
+    )
+
+
 # ============================================================================
 # Test Classes organized by functionality
 # ============================================================================
@@ -140,8 +153,7 @@ class TestDetectZombies:
         self,
         mock_trading_client,
         mock_position_repo,
-        mock_notification_service,
-        mock_settings,
+        reconciler,
     ):
         """A position created < 5 mins ago is skipped to prevent race conditions (Issue #244)."""
         now = datetime.now(timezone.utc)
@@ -154,13 +166,6 @@ class TestDetectZombies:
 
         mock_trading_client.get_all_positions.return_value = []
         mock_position_repo.get_open_positions.return_value = [pos]
-
-        reconciler = StateReconciler(
-            alpaca_client=mock_trading_client,
-            position_repo=mock_position_repo,
-            notification_service=mock_notification_service,
-            settings=mock_settings,
-        )
 
         reconciler.reconcile(min_age_minutes=5)
 
@@ -362,8 +367,7 @@ class TestHealingAndAlerts:
         self,
         mock_trading_client,
         mock_position_repo,
-        mock_notification_service,
-        mock_settings,
+        reconciler,
     ):
         """If manual exit verification fails, position is NOT closed (Issue #244)."""
         now = datetime.now(timezone.utc)
@@ -376,13 +380,6 @@ class TestHealingAndAlerts:
 
         mock_trading_client.get_all_positions.return_value = []
         mock_position_repo.get_open_positions.return_value = [pos]
-
-        reconciler = StateReconciler(
-            alpaca_client=mock_trading_client,
-            position_repo=mock_position_repo,
-            notification_service=mock_notification_service,
-            settings=mock_settings,
-        )
 
         with patch.object(
             reconciler, "handle_manual_exit_verification", return_value=None
@@ -398,8 +395,7 @@ class TestHealingAndAlerts:
         self,
         mock_trading_client,
         mock_position_repo,
-        mock_notification_service,
-        mock_settings,
+        reconciler,
     ):
         """If manual exit verification succeeds, position IS updated (Issue #244)."""
         now = datetime.now(timezone.utc)
@@ -412,13 +408,6 @@ class TestHealingAndAlerts:
 
         mock_trading_client.get_all_positions.return_value = []
         mock_position_repo.get_open_positions.return_value = [pos]
-
-        reconciler = StateReconciler(
-            alpaca_client=mock_trading_client,
-            position_repo=mock_position_repo,
-            notification_service=mock_notification_service,
-            settings=mock_settings,
-        )
 
         with patch.object(
             reconciler, "handle_manual_exit_verification", return_value=pos

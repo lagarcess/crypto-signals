@@ -575,16 +575,10 @@ class TestTradeExecutionModel:
         assert "exit_order_id" in serialized
         assert serialized["exit_order_id"] == "serialized-exit-order-id"
 
-    @pytest.mark.parametrize(
-        "trade_input",
-        [
-            pytest.param({"strategy_id": None}, id="strategy_id_is_none"),
-            pytest.param({}, id="strategy_id_is_missing"),
-        ],
-    )
-    def test_trade_execution_defaults_strategy_id_to_unknown(self, trade_input):
-        """TradeExecution must default strategy_id to 'UNKNOWN' if None or missing (Issue #253)."""
-        base_data = {
+    @pytest.fixture
+    def trade_execution_base_data(self):
+        """Base data for TradeExecution tests."""
+        return {
             "ds": date(2024, 1, 15),
             "trade_id": "trade_123",
             "account_id": "account_abc",
@@ -603,7 +597,19 @@ class TestTradeExecutionModel:
             "slippage_pct": 0.1,
             "trade_duration": 86400,
         }
-        trade_data = {**base_data, **trade_input}
+
+    @pytest.mark.parametrize(
+        "trade_input",
+        [
+            pytest.param({"strategy_id": None}, id="strategy_id_is_none"),
+            pytest.param({}, id="strategy_id_is_missing"),
+        ],
+    )
+    def test_trade_execution_defaults_strategy_id_to_unknown(
+        self, trade_input, trade_execution_base_data
+    ):
+        """TradeExecution must default strategy_id to 'UNKNOWN' if None or missing (Issue #253)."""
+        trade_data = {**trade_execution_base_data, **trade_input}
         trade = TradeExecution(**trade_data)
 
         assert trade.strategy_id == "UNKNOWN"
