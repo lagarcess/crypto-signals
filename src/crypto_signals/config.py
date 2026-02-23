@@ -222,6 +222,13 @@ class Settings(BaseSettings):
         le=1.0,
     )
 
+    # === Performance Metrics Configuration ===
+    PERFORMANCE_BASELINE_CAPITAL: float = Field(
+        default=100000.0,
+        description="Baseline capital for strategy performance percentage calculations.",
+        ge=1000.0,
+    )
+
     # === Cooldown Configuration (Issue #117 Strategic Feedback) ===
     COOLDOWN_SCOPE: str = Field(
         default="SYMBOL",
