@@ -136,6 +136,37 @@ class TestDetectZombies:
         assert "BTC/USD" in report.zombies
         assert len(report.zombies) == 1
 
+    def test_race_condition_young_zombie_skipped(
+        self,
+        mock_trading_client,
+        mock_position_repo,
+        mock_notification_service,
+        mock_settings,
+    ):
+        """A position created < 5 mins ago is skipped to prevent race conditions (Issue #244)."""
+        now = datetime.now(timezone.utc)
+        pos = MagicMock(spec=Position)
+        pos.symbol = "BTC/USD"
+        pos.status = TradeStatus.OPEN
+        pos.position_id = "pos-123"
+        pos.trade_type = "EXECUTED"
+        pos.created_at = now - timedelta(seconds=10)  # 10 seconds old
+
+        mock_trading_client.get_all_positions.return_value = []
+        mock_position_repo.get_open_positions.return_value = [pos]
+
+        reconciler = StateReconciler(
+            alpaca_client=mock_trading_client,
+            position_repo=mock_position_repo,
+            notification_service=mock_notification_service,
+            settings=mock_settings,
+        )
+
+        reconciler.reconcile(min_age_minutes=5)
+
+        # Young position should NOT be closed
+        mock_position_repo.update_position.assert_not_called()
+
     def test_reconcile_handles_multiple_zombies(
         self,
         mock_trading_client,
@@ -326,6 +357,76 @@ class TestHealingAndAlerts:
 
         # Verify notification service was called for orphan alert
         assert mock_notification_service.notify_orphan.called
+
+    def test_manual_verification_failure_does_not_close(
+        self,
+        mock_trading_client,
+        mock_position_repo,
+        mock_notification_service,
+        mock_settings,
+    ):
+        """If manual exit verification fails, position is NOT closed (Issue #244)."""
+        now = datetime.now(timezone.utc)
+        pos = MagicMock(spec=Position)
+        pos.symbol = "ETH/USD"
+        pos.status = TradeStatus.OPEN
+        pos.position_id = "pos-456"
+        pos.trade_type = "EXECUTED"
+        pos.created_at = now - timedelta(minutes=10)
+
+        mock_trading_client.get_all_positions.return_value = []
+        mock_position_repo.get_open_positions.return_value = [pos]
+
+        reconciler = StateReconciler(
+            alpaca_client=mock_trading_client,
+            position_repo=mock_position_repo,
+            notification_service=mock_notification_service,
+            settings=mock_settings,
+        )
+
+        with patch.object(
+            reconciler, "handle_manual_exit_verification", return_value=None
+        ) as mock_verify:
+            report = reconciler.reconcile()
+
+            mock_verify.assert_called_once_with(pos)
+            mock_position_repo.update_position.assert_not_called()
+            assert len(report.critical_issues) > 0
+            assert "CRITICAL SYNC ISSUE" in report.critical_issues[0]
+
+    def test_manual_verification_success_updates_position(
+        self,
+        mock_trading_client,
+        mock_position_repo,
+        mock_notification_service,
+        mock_settings,
+    ):
+        """If manual exit verification succeeds, position IS updated (Issue #244)."""
+        now = datetime.now(timezone.utc)
+        pos = MagicMock(spec=Position)
+        pos.symbol = "ETH/USD"
+        pos.status = TradeStatus.OPEN
+        pos.position_id = "pos-789"
+        pos.trade_type = "EXECUTED"
+        pos.created_at = now - timedelta(minutes=10)
+
+        mock_trading_client.get_all_positions.return_value = []
+        mock_position_repo.get_open_positions.return_value = [pos]
+
+        reconciler = StateReconciler(
+            alpaca_client=mock_trading_client,
+            position_repo=mock_position_repo,
+            notification_service=mock_notification_service,
+            settings=mock_settings,
+        )
+
+        with patch.object(
+            reconciler, "handle_manual_exit_verification", return_value=pos
+        ) as mock_verify:
+            reconciler.reconcile()
+
+            mock_verify.assert_called_once_with(pos)
+            mock_position_repo.update_position.assert_called_once_with(pos)
 
 
 class TestReconciliationBehavior:
