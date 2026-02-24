@@ -1816,3 +1816,107 @@ def test_check_exits_skips_expired_waiting_signal(signal_generator, mock_analyze
     assert (
         signal.status == SignalStatus.WAITING
     ), "Signal status should remain WAITING (skipped by generator)"
+
+
+def test_check_exits_tp3_guard_waiting_signal(
+    signal_generator, mock_market_provider, mock_analyzer_cls
+):
+    """Verify that a WAITING signal NEVER triggers a TP3 (Runner) exit,
+    even if price hits the Chandelier Exit level (Issue #320)."""
+    signal = Signal(
+        signal_id="sig_waiting_tp3",
+        ds=date(2023, 1, 1),
+        strategy_id="strat_1",
+        symbol="BTC/USD",
+        asset_class=AssetClass.CRYPTO,
+        entry_price=100.0,
+        pattern_name="TEST",
+        suggested_stop=90.0,
+        status=SignalStatus.WAITING,
+        take_profit_1=110.0,
+        take_profit_2=120.0,
+        invalidation_price=90.0,
+        valid_until=datetime.now(timezone.utc) + timedelta(hours=24),
+    )
+
+    # Market Data: Close < Chandelier Exit (would normally trigger Long TP3)
+    # AND Close > Entry (profitable)
+    df = pd.DataFrame(
+        {
+            "open": [130.0],
+            "high": [135.0],
+            "low": [125.0],
+            "close": [128.0],
+            "volume": [1000.0],
+            "bearish_engulfing": [False],
+            "RSI_14": [50.0],
+            "ADX_14": [20.0],
+            "CHANDELIER_EXIT_LONG": [129.0],
+        },
+        index=[pd.Timestamp("2023-01-02")],
+    )
+
+    mock_analyzer_instance = MagicMock()
+    mock_analyzer_cls.return_value = mock_analyzer_instance
+    mock_analyzer_instance.check_patterns.return_value = df
+
+    exited = signal_generator.check_exits(
+        [signal], "BTC/USD", AssetClass.CRYPTO, dataframe=df
+    )
+
+    # Verification: Signal should NOT exit at TP3 (guard blocks it)
+    # Because high=135 and TP1=110, it will trigger a TP1 exit on this candle instead.
+    assert len(exited) == 1, "WAITING signal should have triggered normal TP exit"
+    assert (
+        exited[0].status != SignalStatus.TP3_HIT
+    ), "WAITING signal incorrectly triggered TP3 exit"
+    assert (
+        exited[0].status == SignalStatus.TP1_HIT
+    ), "Status should be TP1_HIT due to high > tp1"
+
+
+def test_check_exits_tp3_guard_tp1_signal(
+    signal_generator, mock_market_provider, mock_analyzer_cls
+):
+    """Verify that a TP1_HIT signal correctly triggers a TP3 (Runner) exit."""
+    signal = Signal(
+        signal_id="sig_tp1_tp3",
+        ds=date(2023, 1, 1),
+        strategy_id="strat_1",
+        symbol="BTC/USD",
+        asset_class=AssetClass.CRYPTO,
+        entry_price=100.0,
+        pattern_name="TEST",
+        suggested_stop=110.0,
+        status=SignalStatus.TP1_HIT,
+        take_profit_1=110.0,
+        take_profit_2=120.0,
+        invalidation_price=90.0,
+    )
+
+    df = pd.DataFrame(
+        {
+            "open": [130.0],
+            "high": [135.0],
+            "low": [125.0],
+            "close": [128.0],
+            "volume": [1000.0],
+            "bearish_engulfing": [False],
+            "RSI_14": [50.0],
+            "ADX_14": [20.0],
+            "CHANDELIER_EXIT_LONG": [129.0],
+        },
+        index=[pd.Timestamp("2023-01-02")],
+    )
+
+    mock_analyzer_instance = MagicMock()
+    mock_analyzer_cls.return_value = mock_analyzer_instance
+    mock_analyzer_instance.check_patterns.return_value = df
+
+    exited = signal_generator.check_exits(
+        [signal], "BTC/USD", AssetClass.CRYPTO, dataframe=df
+    )
+
+    assert len(exited) == 1, "TP1_HIT signal should have exited"
+    assert exited[0].status == SignalStatus.TP3_HIT, "Status should be TP3_HIT"
+    assert exited[0].exit_reason == ExitReason.TP_HIT

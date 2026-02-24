@@ -859,13 +859,13 @@ class SignalGenerator:
                         signal.take_profit_3 = chandelier_exit_short
                         trail_updated = True
 
-            # --- PROFIT TAKING ---
-
             # Get appropriate chandelier exit based on side
             is_long = signal.side != OrderSide.SELL
             chandelier_exit = chandelier_exit_long if is_long else chandelier_exit_short
 
-            # Check TP3 (Runner) - Chandelier Exit
+            # --- PROFIT TAKING ---
+
+            # 1. Check TP3 (Runner) - Chandelier Exit
             # Long: exit if close < chandelier (price fell below trailing stop)
             # Short: exit if close > chandelier (price rose above trailing stop)
             tp3_exit_triggered = False
@@ -893,14 +893,14 @@ class SignalGenerator:
                     signal.exit_reason = ExitReason.STOP_LOSS
                 exit_triggered = True
 
-            # Check TP2
-            # Guard: Don't trigger if already TP2 or higher (though list filter handles TP3)
+            # 2. Check TP2
+            # Guard: Only trigger if already TP1_HIT.
             # Long: price rises above TP2 (high >= target)
             # Short: price falls below TP2 (low <= target)
             if (
                 not exit_triggered
                 and signal.take_profit_2
-                and signal.status != SignalStatus.TP2_HIT
+                and signal.status == SignalStatus.TP1_HIT
             ):
                 tp2_hit = False
                 if is_long and current_high >= signal.take_profit_2:
@@ -913,7 +913,7 @@ class SignalGenerator:
                     signal.exit_reason = ExitReason.TP2
                     exit_triggered = True
 
-            # Check TP1
+            # 3. Check TP1
             # Guard: Only trigger if WAITING.
             # If already TP1_HIT, we want to skip this and check TP2 (handled above).
             # Long: price rises above TP1 (high >= target)
