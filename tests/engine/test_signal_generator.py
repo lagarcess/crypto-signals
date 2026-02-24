@@ -1,6 +1,6 @@
 """Unit tests for the SignalGenerator module."""
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
 import pandas as pd
@@ -234,6 +234,7 @@ def test_check_exits_profit_hit_tp1_scaling(
         take_profit_1=110.0,
         take_profit_2=120.0,
         invalidation_price=90.0,
+        valid_until=datetime.now(timezone.utc) + timedelta(hours=24),
     )
 
     # Setup Market Data (Hit TP1)
@@ -282,6 +283,7 @@ def test_check_exits_invalidation(
     signal.take_profit_2 = None
     signal.invalidation_price = 95.0
     signal.status = SignalStatus.WAITING
+    signal.valid_until = datetime.now(timezone.utc) + timedelta(hours=24)
     signal.created_at = None  # Skip cooldown gate in check_exits
 
     # Setup Market Data (Close below invalidation)
@@ -320,6 +322,7 @@ def test_check_exits_none(signal_generator, mock_market_provider, mock_analyzer_
     signal.take_profit_2 = None
     signal.invalidation_price = 90.0
     signal.status = SignalStatus.WAITING
+    signal.valid_until = datetime.now(timezone.utc) + timedelta(hours=24)
     signal.created_at = None  # Skip cooldown gate in check_exits
 
     # Setup Market Data (Normal day)
@@ -404,6 +407,7 @@ def test_check_exits_runner_exit(
     signal.take_profit_2 = 110.0
     signal.entry_price = 100.0
     signal.status = SignalStatus.WAITING
+    signal.valid_until = datetime.now(timezone.utc) + timedelta(hours=24)
 
     # Setup Market Data (Hit TP1)
     df = pd.DataFrame(
@@ -569,6 +573,7 @@ def test_check_exits_trail_not_updated_for_waiting_status(
         take_profit_2=120.0,
         take_profit_3=105.0,  # Initial TP3
         invalidation_price=90.0,
+        valid_until=datetime.now(timezone.utc) + timedelta(hours=24),
     )
 
     # Setup Market Data: Chandelier Exit is higher but status is WAITING
@@ -1067,6 +1072,7 @@ def test_check_exits_cooldown_gate_skips_newly_created_signal(
         take_profit_1=110.0,
         invalidation_price=90.0,
         created_at=now_utc - timedelta(seconds=120),  # 2 minutes ago
+        valid_until=now_utc + timedelta(hours=24),
     )
 
     # Setup Market Data that would normally trigger invalidation
@@ -1117,6 +1123,7 @@ def test_check_exits_cooldown_gate_processes_after_cooldown(
         take_profit_1=110.0,
         invalidation_price=90.0,
         created_at=now_utc - timedelta(seconds=360),  # 6 minutes ago
+        valid_until=now_utc + timedelta(hours=24),
     )
 
     # Setup Market Data that triggers invalidation
@@ -1346,3 +1353,62 @@ def test_generate_signal_elliott_wave_fallback_stop_loss(
     # Stop should fall back to Low * 0.99 = 90.0 * 0.99 = 89.1
     assert signal.suggested_stop == 89.1
     assert signal.invalidation_price == 90.0  # Low price
+
+
+def test_check_exits_skips_expired_waiting_signal(signal_generator, mock_analyzer_cls):
+    """
+    Verify that check_exits skips WAITING signals that are past their valid_until date (Issue #280).
+    This is the defense-in-depth fix.
+    """
+    now_utc = datetime.now(timezone.utc)
+    stale_valid_until = now_utc - timedelta(hours=1)
+
+    # Setup Signal that is WAITING but EXPIRED
+    signal = Signal(
+        signal_id="stale_signal",
+        ds=date.today() - timedelta(days=2),
+        strategy_id="test_strat",
+        symbol="BTC/USD",
+        asset_class=AssetClass.CRYPTO,
+        entry_price=100.0,
+        pattern_name="TEST",
+        suggested_stop=90.0,
+        status=SignalStatus.WAITING,
+        take_profit_1=110.0,
+        invalidation_price=95.0,
+        valid_until=stale_valid_until,
+        created_at=now_utc - timedelta(hours=2),  # Older than 5m cooldown
+    )
+
+    # Setup Market Data that would normally trigger INVALIDATED (price < invalidation_price)
+    df = pd.DataFrame(
+        {
+            "open": [100.0],
+            "high": [102.0],
+            "low": [90.0],
+            "close": [92.0],  # Below 95
+            "volume": [1000.0],
+            "bearish_engulfing": [False],
+            "RSI_14": [50.0],
+            "ADX_14": [20.0],
+        },
+        index=[pd.Timestamp(now_utc)],
+    )
+
+    mock_analyzer_instance = MagicMock()
+    mock_analyzer_cls.return_value = mock_analyzer_instance
+    mock_analyzer_instance.check_patterns.return_value = df
+
+    # Execution
+    exited = signal_generator.check_exits(
+        [signal], "BTC/USD", AssetClass.CRYPTO, dataframe=df
+    )
+
+    # Verification: Signal should be skipped and NOT returned in exited list
+    # (Before fix, it would be returned as INVALIDATED)
+    assert (
+        len(exited) == 0
+    ), "Stale WAITING signal should have been skipped by check_exits"
+    assert (
+        signal.status == SignalStatus.WAITING
+    ), "Signal status should remain WAITING (skipped by generator)"

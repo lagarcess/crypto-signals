@@ -1,7 +1,7 @@
 """Unit tests for the main application entrypoint."""
 
 from contextlib import ExitStack
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from unittest.mock import ANY, MagicMock, Mock, call, patch
 
 import pytest
@@ -9,6 +9,7 @@ from crypto_signals.domain.schemas import (
     AssetClass,
     OrderSide,
     Position,
+    Signal,
     SignalStatus,
     TradeStatus,
 )
@@ -923,3 +924,82 @@ def test_thread_recovery_check(mock_dependencies, caplog):
     mock_repo_instance.update_signal_atomic.assert_called()
     # Check signal object state updated
     assert mock_signal.discord_thread_id == "recovered_thread_123"
+
+
+def test_main_expires_before_check_exits(mock_dependencies):
+    """
+    Verify that main.py expires stale signals before calling check_exits (Issue #280).
+    """
+    repo = mock_dependencies["repo"].return_value
+    generator = mock_dependencies["generator"].return_value
+
+    # 1. Setup a STALE WAITING signal
+    now_utc = datetime.now(timezone.utc)
+    stale_signal = Signal(
+        signal_id="stale_id",
+        ds=datetime.now(timezone.utc).date() - timedelta(days=2),
+        strategy_id="strat",
+        symbol="BTC/USD",
+        asset_class=AssetClass.CRYPTO,
+        entry_price=100.0,
+        pattern_name="TEST",
+        suggested_stop=90.0,
+        status=SignalStatus.WAITING,
+        valid_until=now_utc - timedelta(hours=1),
+        created_at=now_utc - timedelta(hours=2),
+    )
+
+    repo.get_active_signals.return_value = [stale_signal]
+    repo.get_by_id.return_value = None  # For idempotency check
+    generator.generate_signals.return_value = None  # No new signals
+
+    # Mock check_exits to return the signal as INVALIDATED (the bug)
+    # We want to see if main.py prevents this by expiring it first.
+    def mock_check_exits(signals, symbol, asset_class, dataframe=None):
+        results = []
+        for s in signals:
+            if s.status == SignalStatus.WAITING:
+                # Simulate the bug: check_exits incorrectly invalidates a stale signal
+                s.status = SignalStatus.INVALIDATED
+                results.append(s)
+        return results
+
+    generator.check_exits.side_effect = mock_check_exits
+
+    # Track order of calls
+    call_order = []
+
+    # Execute
+    main(smoke_test=False)
+
+    # Verification
+    # Expected behavior:
+    # 1. check_exits called with EMPTY list (because stale signal was removed)
+
+    # Verify check_exits call arguments
+    # find the call where BTC/USD was being checked
+    found_call = False
+    for call_args in generator.check_exits.call_args_list:
+        signals_passed = call_args[0][0]
+        symbol_passed = call_args[0][1]
+        if symbol_passed == "BTC/USD":
+            found_call = True
+            # BUG: If "stale_id" is in the signals list, then it's wrong.
+            ids = [s.signal_id for s in signals_passed]
+            assert (
+                "stale_id" not in ids
+            ), f"Stale signal should NOT be passed to check_exits, got {ids}"
+
+    assert found_call, "check_exits was not called for BTC/USD"
+
+    # Also verify it was updated to EXPIRED
+    # Note: repo.update_signal_atomic is called in main.py
+    # repo.update_signal_atomic.assert_any_call("stale_id", ANY)
+
+    # Find the call for EXPIRED in the update_signal_atomic mock
+    expired_calls = [
+        c
+        for c in repo.update_signal_atomic.call_args_list
+        if c[0][1].get("status") == SignalStatus.EXPIRED.value
+    ]
+    assert len(expired_calls) > 0, "Signal should have been updated to EXPIRED"

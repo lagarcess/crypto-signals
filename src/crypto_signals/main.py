@@ -599,11 +599,45 @@ def main(
                         )
 
                         # 1. Run Expiration Check (24h Rule)
+                        # MUST run before check_exits to prevent stale WAITING signals
+                        # from being falsely invalidated or exited.
                         now_utc = datetime.now(timezone.utc)
+                        valid_active_signals = []
 
-                        # Check exits first
+                        for sig in active_signals:
+                            # Only expire WAITING signals.
+                            if (
+                                sig.status == SignalStatus.WAITING
+                                and sig.valid_until
+                                and now_utc > sig.valid_until
+                            ):
+                                logger.info(
+                                    f"EXPIRING Signal {sig.signal_id} (Valid Until: {sig.valid_until})",
+                                    extra={"symbol": symbol, "signal_id": sig.signal_id},
+                                )
+                                sig.status = SignalStatus.EXPIRED
+                                sig.exit_reason = ExitReason.EXPIRED
+                                repo.update_signal_atomic(
+                                    sig.signal_id,
+                                    {
+                                        "status": SignalStatus.EXPIRED.value,
+                                        "exit_reason": ExitReason.EXPIRED.value,
+                                    },
+                                )
+                                # Reply in thread if available, fallback to main channel
+                                discord.send_message(
+                                    f"⏳ **SIGNAL EXPIRED: {symbol}** ⏳\n"
+                                    f"Signal expired (24h limit reached).",
+                                    thread_id=sig.discord_thread_id,
+                                    asset_class=asset_class,
+                                )
+                                # Do NOT add to valid_active_signals
+                            else:
+                                valid_active_signals.append(sig)
+
+                        # 2. Check exits on remaining valid signals
                         exited_signals = generator.check_exits(
-                            active_signals, symbol, asset_class, dataframe=df
+                            valid_active_signals, symbol, asset_class, dataframe=df
                         )
 
                         # Process Exits (TP / Invalidation) and Trail Updates
@@ -668,9 +702,9 @@ def main(
                                 if hasattr(exited, "_previous_tp3"):
                                     delattr(exited, "_previous_tp3")
 
-                                # Remove from active_signals to skip expiration check
-                                if exited in active_signals:
-                                    active_signals.remove(exited)
+                                # Remove from valid_active_signals to maintain consistency
+                                if exited in valid_active_signals:
+                                    valid_active_signals.remove(exited)
                                 continue
 
                             # --- STATUS CHANGE (Exit) ---
@@ -901,39 +935,9 @@ def main(
                                         f"emergency close for {pos.symbol}.",
                                     )
 
-                            # Remove exited signals from expiration checking
-                            if exited in active_signals:
-                                active_signals.remove(exited)
-
-                        # 2. Expiration Check on REMAINING Waiting signals
-                        for sig in active_signals:
-                            # Only expire WAITING signals.
-                            # If TP1_HIT, it's active.
-                            if sig.status != SignalStatus.WAITING:
-                                continue
-
-                            # Use valid_until (24h from candle close) for expiration check
-                            if now_utc > sig.valid_until:
-                                logger.info(
-                                    f"EXPIRING Signal {sig.signal_id} (Valid Until: {sig.valid_until})",
-                                    extra={"symbol": symbol, "signal_id": sig.signal_id},
-                                )
-                                sig.status = SignalStatus.EXPIRED
-                                sig.exit_reason = ExitReason.EXPIRED
-                                repo.update_signal_atomic(
-                                    sig.signal_id,
-                                    {
-                                        "status": SignalStatus.EXPIRED.value,
-                                        "exit_reason": ExitReason.EXPIRED.value,
-                                    },
-                                )
-                                # Reply in thread if available, fallback to main channel
-                                discord.send_message(
-                                    f"⏳ **SIGNAL EXPIRED: {symbol}** ⏳\n"
-                                    f"Signal expired (24h limit reached).",
-                                    thread_id=sig.discord_thread_id,
-                                    asset_class=asset_class,
-                                )
+                            # Remove exited signals from remaining list
+                            if exited in valid_active_signals:
+                                valid_active_signals.remove(exited)
 
                 except Exception as e:
                     symbol_duration = time.time() - symbol_start_time
