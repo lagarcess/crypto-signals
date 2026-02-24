@@ -5,6 +5,7 @@ This module orchestrates the fetching of market data, application of technical
 indicators, and detection of price patterns to generate trading signals.
 """
 
+import math
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Type
 
@@ -24,6 +25,14 @@ from crypto_signals.domain.schemas import (
 from crypto_signals.engine.parameters import SignalParameterFactory
 from crypto_signals.market.data_provider import MarketDataProvider
 from loguru import logger
+
+# Conviction-Aware Quality Gate Thresholds
+BASE_VOLUME_THRESHOLD = 1.5
+RELAXED_VOLUME_THRESHOLD = 1.2
+BASE_ADX_THRESHOLD = 20
+RELAXED_ADX_THRESHOLD = 15
+BASE_RR_THRESHOLD = 1.5
+RELAXED_RR_THRESHOLD = 1.2
 
 
 class SignalGenerator:
@@ -301,12 +310,6 @@ class SignalGenerator:
         sma_trend = "Above" if close_price > sma_200 and sma_200 > 0 else "Below"
 
         # Conviction-aware thresholds (Phase 2)
-        # Magic Numbers refactored into descriptive constants
-        BASE_VOLUME_THRESHOLD = 1.5
-        RELAXED_VOLUME_THRESHOLD = 1.2
-        BASE_ADX_THRESHOLD = 20
-        RELAXED_ADX_THRESHOLD = 15
-
         volume_threshold = (
             RELAXED_VOLUME_THRESHOLD
             if conviction_tier == "HIGH"
@@ -449,8 +452,6 @@ class SignalGenerator:
                 if confluence_snapshot:
                     confluence_snapshot["rr_ratio"] = round(rr_ratio, 2)
 
-                BASE_RR_THRESHOLD = 1.5
-                RELAXED_RR_THRESHOLD = 1.2
                 rr_threshold = (
                     RELAXED_RR_THRESHOLD
                     if conviction_tier == "HIGH"
@@ -472,7 +473,6 @@ class SignalGenerator:
             Dictionary with pattern_distribution, structural_context_distribution,
             conviction_distribution, shannon_entropy, and total_signals.
         """
-        import math
 
         total = len(signals)
         if total == 0:
