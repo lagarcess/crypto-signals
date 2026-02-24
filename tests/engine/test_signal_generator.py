@@ -1,10 +1,11 @@
 """Unit tests for the SignalGenerator module."""
 
-from datetime import date, timedelta
-from unittest.mock import MagicMock
+from datetime import date, datetime, timedelta, timezone
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
+from crypto_signals.analysis.structural import Pivot
 from crypto_signals.domain.schemas import (
     AssetClass,
     ExitReason,
@@ -55,6 +56,31 @@ def signal_generator(
         pattern_analyzer_cls=mock_analyzer_cls,
         signal_repo=mock_repository,
     )
+
+
+@pytest.fixture
+def chandelier_exit_df(mock_analyzer_cls):
+    """Single-row OHLCV + indicators DataFrame + mock analyzer setup for chandelier exit tests."""
+    df = pd.DataFrame(
+        {
+            "open": [110.0],
+            "high": [115.0],
+            "low": [105.0],
+            "close": [108.0],
+            "volume": [1000.0],
+            "bearish_engulfing": [False],
+            "RSI_14": [50.0],
+            "ADX_14": [20.0],
+            "CHANDELIER_EXIT_LONG": [112.0],
+        },
+        index=[pd.Timestamp("2023-01-02")],
+    )
+
+    mock_analyzer_instance = MagicMock()
+    mock_analyzer_cls.return_value = mock_analyzer_instance
+    mock_analyzer_instance.check_patterns.return_value = df
+
+    return df
 
 
 def test_generate_signal_bullish_engulfing(
@@ -234,6 +260,7 @@ def test_check_exits_profit_hit_tp1_scaling(
         take_profit_1=110.0,
         take_profit_2=120.0,
         invalidation_price=90.0,
+        valid_until=datetime.now(timezone.utc) + timedelta(hours=24),
     )
 
     # Setup Market Data (Hit TP1)
@@ -282,6 +309,7 @@ def test_check_exits_invalidation(
     signal.take_profit_2 = None
     signal.invalidation_price = 95.0
     signal.status = SignalStatus.WAITING
+    signal.valid_until = datetime.now(timezone.utc) + timedelta(hours=24)
     signal.created_at = None  # Skip cooldown gate in check_exits
 
     # Setup Market Data (Close below invalidation)
@@ -320,6 +348,7 @@ def test_check_exits_none(signal_generator, mock_market_provider, mock_analyzer_
     signal.take_profit_2 = None
     signal.invalidation_price = 90.0
     signal.status = SignalStatus.WAITING
+    signal.valid_until = datetime.now(timezone.utc) + timedelta(hours=24)
     signal.created_at = None  # Skip cooldown gate in check_exits
 
     # Setup Market Data (Normal day)
@@ -404,6 +433,7 @@ def test_check_exits_runner_exit(
     signal.take_profit_2 = 110.0
     signal.entry_price = 100.0
     signal.status = SignalStatus.WAITING
+    signal.valid_until = datetime.now(timezone.utc) + timedelta(hours=24)
 
     # Setup Market Data (Hit TP1)
     df = pd.DataFrame(
@@ -435,6 +465,138 @@ def test_check_exits_runner_exit(
     assert exited[0].status == SignalStatus.TP1_HIT
     assert exited[0].suggested_stop == 100.0  # Breakeven
     assert exited[0].exit_reason == ExitReason.TP1
+
+
+def test_check_exits_no_waiting_tp3_jump(
+    signal_generator, mock_market_provider, chandelier_exit_df
+):
+    """Verify WAITING signal is NOT marked TP3_HIT when close < chandelier (Issue 123)."""
+    # Setup Active Signal in WAITING status
+    signal = Signal(
+        signal_id="sig_waiting",
+        ds=date(2023, 1, 1),
+        strategy_id="strat_1",
+        symbol="BTC/USD",
+        asset_class=AssetClass.CRYPTO,
+        entry_price=100.0,
+        pattern_name="TEST",
+        suggested_stop=90.0,
+        status=SignalStatus.WAITING,
+        take_profit_1=150.0,  # Far away
+        take_profit_2=200.0,
+        invalidation_price=80.0,
+        created_at=None,
+    )
+
+    df = chandelier_exit_df
+
+    # Execution
+    exited = signal_generator.check_exits(
+        [signal], "BTC/USD", AssetClass.CRYPTO, dataframe=df
+    )
+
+    # Verification: Currently BUGGY, it will return TP3_HIT.
+    # We want it to be empty (no exit triggered).
+    assert len(exited) == 0
+
+
+def test_check_exits_tp1_to_tp3_hit(
+    signal_generator, mock_market_provider, chandelier_exit_df
+):
+    """Verify TP1_HIT signal correctly transitions to TP3_HIT (Issue 123)."""
+    # Setup Active Signal in TP1_HIT status
+    signal = Signal(
+        signal_id="sig_tp1",
+        ds=date(2023, 1, 1),
+        strategy_id="strat_1",
+        symbol="BTC/USD",
+        asset_class=AssetClass.CRYPTO,
+        entry_price=100.0,
+        pattern_name="TEST",
+        suggested_stop=100.0,
+        status=SignalStatus.TP1_HIT,
+        take_profit_1=110.0,
+        take_profit_2=200.0,
+        invalidation_price=80.0,
+        created_at=None,
+    )
+
+    df = chandelier_exit_df
+
+    # Execution
+    exited = signal_generator.check_exits(
+        [signal], "BTC/USD", AssetClass.CRYPTO, dataframe=df
+    )
+
+    # Verification
+    assert len(exited) == 1
+    assert exited[0].status == SignalStatus.TP3_HIT
+
+
+def test_check_exits_tp2_to_tp3_hit(
+    signal_generator, mock_market_provider, chandelier_exit_df
+):
+    """Verify TP2_HIT signal correctly transitions to TP3_HIT (Issue 123)."""
+    # Setup Active Signal in TP2_HIT status
+    signal = Signal(
+        signal_id="sig_tp2",
+        ds=date(2023, 1, 1),
+        strategy_id="strat_1",
+        symbol="BTC/USD",
+        asset_class=AssetClass.CRYPTO,
+        entry_price=100.0,
+        pattern_name="TEST",
+        suggested_stop=110.0,
+        status=SignalStatus.TP2_HIT,
+        take_profit_1=110.0,
+        take_profit_2=120.0,
+        invalidation_price=80.0,
+        created_at=None,
+    )
+
+    df = chandelier_exit_df
+
+    # Execution
+    exited = signal_generator.check_exits(
+        [signal], "BTC/USD", AssetClass.CRYPTO, dataframe=df
+    )
+
+    # Verification
+    assert len(exited) == 1
+    assert exited[0].status == SignalStatus.TP3_HIT
+
+
+def test_check_exits_stale_waiting_signal_regression(
+    signal_generator, mock_market_provider, chandelier_exit_df
+):
+    """Regression: 288h-old WAITING signal does not phantom-trigger TP3 (Issue 123)."""
+    # Setup Active Signal in WAITING status, created 288 hours ago
+    now_utc = datetime.now(timezone.utc)
+    signal = Signal(
+        signal_id="sig_stale",
+        ds=date(2023, 1, 1),
+        strategy_id="strat_1",
+        symbol="BTC/USD",
+        asset_class=AssetClass.CRYPTO,
+        entry_price=100.0,
+        pattern_name="TEST",
+        suggested_stop=90.0,
+        status=SignalStatus.WAITING,
+        take_profit_1=150.0,
+        take_profit_2=200.0,
+        invalidation_price=80.0,
+        created_at=now_utc - timedelta(hours=288),
+    )
+
+    df = chandelier_exit_df
+
+    # Execution
+    exited = signal_generator.check_exits(
+        [signal], "BTC/USD", AssetClass.CRYPTO, dataframe=df
+    )
+
+    # Verification: Should be empty
+    assert len(exited) == 0
 
 
 def test_check_exits_trail_update_higher(
@@ -569,6 +731,7 @@ def test_check_exits_trail_not_updated_for_waiting_status(
         take_profit_2=120.0,
         take_profit_3=105.0,  # Initial TP3
         invalidation_price=90.0,
+        valid_until=datetime.now(timezone.utc) + timedelta(hours=24),
     )
 
     # Setup Market Data: Chandelier Exit is higher but status is WAITING
@@ -798,10 +961,6 @@ def test_generate_signal_harmonic_and_geometric_merging(
     - harmonic_metadata is populated with ratios
     - conviction_tier is HIGH
     """
-    from datetime import datetime, timezone
-
-    from crypto_signals.analysis.structural import Pivot
-
     # Setup Data
     today = date(2023, 1, 1)
     df = pd.DataFrame(
@@ -857,8 +1016,6 @@ def test_generate_signal_harmonic_and_geometric_merging(
     mock_analyzer_instance.pivots = mock_pivots
 
     # Mock HarmonicAnalyzer to return ABCD pattern
-    from unittest.mock import patch
-
     mock_harmonic_pattern = MagicMock()
     mock_harmonic_pattern.pattern_type = "ABCD"
     mock_harmonic_pattern.ratios = {"AB_CD_price_ratio": 1.0, "AB_CD_time_ratio": 1.0}
@@ -906,12 +1063,8 @@ def test_generate_signal_harmonic_only(
     """Test that harmonic-only detection (no geometric) returns None.
 
     Multi-Layer Architecture: Structural context alone doesn't produce
-    an entry signal â€” a tactical trigger (geometric pattern) is required.
+    an entry signal — a tactical trigger (geometric pattern) is required.
     """
-    from datetime import datetime, timezone
-
-    from crypto_signals.analysis.structural import Pivot
-
     # Setup Data
     today = date(2023, 1, 1)
     df = pd.DataFrame(
@@ -982,10 +1135,6 @@ def test_generate_signal_harmonic_macro_classification(
     Multi-Layer Architecture: Geometric trigger required. Harmonic macro context
     sets pattern_classification to MACRO_PATTERN (not MACRO_HARMONIC).
     """
-    from datetime import datetime, timedelta, timezone
-
-    from crypto_signals.analysis.structural import Pivot
-
     # Setup Data
     today = date(2023, 1, 1)
     df = pd.DataFrame(
@@ -1063,8 +1212,6 @@ def test_check_exits_cooldown_gate_skips_newly_created_signal(
     signal_generator, mock_market_provider, mock_analyzer_cls
 ):
     """Test that signals created within 5 minutes are skipped by check_exits (Issue 99)."""
-    from datetime import datetime, timezone
-
     # Setup Active Signal created 2 minutes ago (120 seconds < 300s cooldown)
     now_utc = datetime.now(timezone.utc)
     signal = Signal(
@@ -1080,6 +1227,7 @@ def test_check_exits_cooldown_gate_skips_newly_created_signal(
         take_profit_1=110.0,
         invalidation_price=90.0,
         created_at=now_utc - timedelta(seconds=120),  # 2 minutes ago
+        valid_until=now_utc + timedelta(hours=24),
     )
 
     # Setup Market Data that would normally trigger invalidation
@@ -1113,8 +1261,6 @@ def test_check_exits_cooldown_gate_processes_after_cooldown(
     signal_generator, mock_market_provider, mock_analyzer_cls
 ):
     """Test that signals older than 5 minutes are processed normally (Issue 99)."""
-    from datetime import datetime, timezone
-
     # Setup Active Signal created 6 minutes ago (360 seconds > 300s cooldown)
     now_utc = datetime.now(timezone.utc)
     signal = Signal(
@@ -1130,6 +1276,7 @@ def test_check_exits_cooldown_gate_processes_after_cooldown(
         take_profit_1=110.0,
         invalidation_price=90.0,
         created_at=now_utc - timedelta(seconds=360),  # 6 minutes ago
+        valid_until=now_utc + timedelta(hours=24),
     )
 
     # Setup Market Data that triggers invalidation
@@ -1164,8 +1311,6 @@ def test_generate_signal_dynamic_ttl_standard_pattern(
     signal_generator, mock_market_provider, mock_analyzer_cls
 ):
     """Test that STANDARD patterns get 48h TTL (Issue 99)."""
-    from datetime import timezone
-
     # Setup Data
     today = date(2023, 1, 1)
     df = pd.DataFrame(
@@ -1209,10 +1354,6 @@ def test_generate_signal_dynamic_ttl_macro_pattern(
 
     Multi-Layer Architecture: Needs geometric trigger + macro harmonic context.
     """
-    from datetime import datetime, timezone
-
-    from crypto_signals.analysis.structural import Pivot
-
     # Setup Data
     today = date(2023, 1, 1)
     df = pd.DataFrame(
@@ -1616,3 +1757,62 @@ def test_standard_conviction_uses_normal_thresholds(
     assert signal is not None
     assert signal.status == SignalStatus.REJECTED_BY_FILTER
     assert signal.conviction_tier is None  # No harmonic = no conviction tier
+
+
+def test_check_exits_skips_expired_waiting_signal(signal_generator, mock_analyzer_cls):
+    """
+    Verify that check_exits skips WAITING signals that are past their valid_until date (Issue #280).
+    This is the defense-in-depth fix.
+    """
+    now_utc = datetime.now(timezone.utc)
+    stale_valid_until = now_utc - timedelta(hours=1)
+
+    # Setup Signal that is WAITING but EXPIRED
+    signal = Signal(
+        signal_id="stale_signal",
+        ds=date.today() - timedelta(days=2),
+        strategy_id="test_strat",
+        symbol="BTC/USD",
+        asset_class=AssetClass.CRYPTO,
+        entry_price=100.0,
+        pattern_name="TEST",
+        suggested_stop=90.0,
+        status=SignalStatus.WAITING,
+        take_profit_1=110.0,
+        invalidation_price=95.0,
+        valid_until=stale_valid_until,
+        created_at=now_utc - timedelta(hours=2),  # Older than 5m cooldown
+    )
+
+    # Setup Market Data that would normally trigger INVALIDATED (price < invalidation_price)
+    df = pd.DataFrame(
+        {
+            "open": [100.0],
+            "high": [102.0],
+            "low": [90.0],
+            "close": [92.0],  # Below 95
+            "volume": [1000.0],
+            "bearish_engulfing": [False],
+            "RSI_14": [50.0],
+            "ADX_14": [20.0],
+        },
+        index=[pd.Timestamp(now_utc)],
+    )
+
+    mock_analyzer_instance = MagicMock()
+    mock_analyzer_cls.return_value = mock_analyzer_instance
+    mock_analyzer_instance.check_patterns.return_value = df
+
+    # Execution
+    exited = signal_generator.check_exits(
+        [signal], "BTC/USD", AssetClass.CRYPTO, dataframe=df
+    )
+
+    # Verification: Signal should be skipped and NOT returned in exited list
+    # (Before fix, it would be returned as INVALIDATED)
+    assert (
+        len(exited) == 0
+    ), "Stale WAITING signal should have been skipped by check_exits"
+    assert (
+        signal.status == SignalStatus.WAITING
+    ), "Signal status should remain WAITING (skipped by generator)"

@@ -804,6 +804,23 @@ class SignalGenerator:
                     )
                     continue
 
+            # ============================================================
+            # STALE SIGNAL GUARD (Defense-in-Depth)
+            # Skip WAITING signals that are past their valid_until date.
+            # These should be handled by the expiration logic in main.py,
+            # but we guard here to prevent false exits on stale data.
+            # ============================================================
+            if (
+                signal.status == SignalStatus.WAITING
+                and signal.valid_until
+                and now_utc > signal.valid_until
+            ):
+                logger.debug(
+                    f"Skip expired WAITING signal {signal.signal_id} "
+                    f"(valid_until={signal.valid_until})"
+                )
+                continue
+
             # Determine side once for this signal
             is_long = signal.side != OrderSide.SELL
 
@@ -852,7 +869,10 @@ class SignalGenerator:
             # Long: exit if close < chandelier (price fell below trailing stop)
             # Short: exit if close > chandelier (price rose above trailing stop)
             tp3_exit_triggered = False
-            if chandelier_exit:
+            if chandelier_exit and signal.status in (
+                SignalStatus.TP1_HIT,
+                SignalStatus.TP2_HIT,
+            ):
                 if is_long and current_close < chandelier_exit:
                     tp3_exit_triggered = True
                 elif not is_long and current_close > chandelier_exit:
