@@ -228,14 +228,15 @@ def test_send_message_succeeds_in_text_channel_mode_without_thread_name():
 def test_send_shadow_signal_includes_thread_name_in_forum_mode():
     """
     Verifies send_shadow_signal() includes a thread_name in the payload
-    when DISCORD_USE_FORUMS=True.
+    when DISCORD_SHADOW_USE_FORUMS=True.
     """
     from crypto_signals.domain.schemas import Signal, SignalStatus
     from crypto_signals.notifications.discord import DiscordClient
 
     with patch("crypto_signals.notifications.discord.get_settings") as mock_settings:
         settings_instance = MagicMock()
-        settings_instance.DISCORD_USE_FORUMS = True  # Forum mode ON
+        settings_instance.TEST_MODE = False
+        settings_instance.DISCORD_SHADOW_USE_FORUMS = True  # Forum mode ON
         settings_instance.DISCORD_SHADOW_WEBHOOK_URL = MagicMock()
         settings_instance.DISCORD_SHADOW_WEBHOOK_URL.get_secret_value.return_value = (
             "https://discord.com/api/webhooks/shadow/webhook"
@@ -273,14 +274,15 @@ def test_send_shadow_signal_includes_thread_name_in_forum_mode():
 def test_send_shadow_signal_omits_thread_name_in_standard_mode():
     """
     Verifies send_shadow_signal() does NOT include a thread_name
-    when DISCORD_USE_FORUMS=False.
+    when DISCORD_SHADOW_USE_FORUMS=False.
     """
     from crypto_signals.domain.schemas import Signal, SignalStatus
     from crypto_signals.notifications.discord import DiscordClient
 
     with patch("crypto_signals.notifications.discord.get_settings") as mock_settings:
         settings_instance = MagicMock()
-        settings_instance.DISCORD_USE_FORUMS = False  # Forum mode OFF
+        settings_instance.TEST_MODE = False
+        settings_instance.DISCORD_SHADOW_USE_FORUMS = False  # Forum mode OFF
         settings_instance.DISCORD_SHADOW_WEBHOOK_URL = MagicMock()
         settings_instance.DISCORD_SHADOW_WEBHOOK_URL.get_secret_value.return_value = (
             "https://discord.com/api/webhooks/shadow/webhook"

@@ -82,6 +82,11 @@ class Settings(BaseSettings):
         description="If True, enables Forum Channel specific logic (e.g. thread_name)",
     )
 
+    DISCORD_SHADOW_USE_FORUMS: bool = Field(
+        default=False,
+        description="If True, enables Forum Channel specific logic for shadow (rejected) signals.",
+    )
+
     # Environment Mode (defaults to True for safety - all traffic goes to test webhook)
     TEST_MODE: bool = Field(
         default=True,
