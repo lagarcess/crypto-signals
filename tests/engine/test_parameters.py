@@ -212,6 +212,7 @@ def test_harmonic_metadata(factory, mock_analyzer):
     mock_harmonic = MagicMock()
     mock_harmonic.ratios = {"XA": 0.618}
     mock_harmonic.is_macro = True
+    mock_harmonic.pattern_type = "GARTLEY"
 
     params = factory.get_parameters(
         symbol="BTC/USD",
@@ -223,9 +224,13 @@ def test_harmonic_metadata(factory, mock_analyzer):
         harmonic_pattern=mock_harmonic,
     )
 
-    assert params["strategy_id"] == "strategies/S002-HARMONIC-PATTERN"
-    assert params["pattern_classification"] == "MACRO_HARMONIC"
+    assert (
+        params["strategy_id"] == "GARTLEY"
+    )  # Multi-Layer: strategy stays as pattern_name
+    assert params["pattern_classification"] == "MACRO_PATTERN"
     assert params["harmonic_metadata"] == {"XA": 0.618}
+    assert params["structural_context"] == "GARTLEY"  # Harmonic type stored as context
+    assert params["conviction_tier"] == "HIGH"  # Tactical + structural
 
     expected_ts = pd.Timestamp("2023-01-01").to_pydatetime().replace(
         tzinfo=timezone.utc

@@ -31,6 +31,8 @@ erDiagram
         string strategy_id FK
         datetime valid_until
         string status
+        string structural_context
+        string conviction_tier
     }
     POSITION {
         string position_id PK

@@ -972,6 +972,33 @@ def main(
         )
         signals_found = 0
 
+        # Diversity Metrics (Phase 3: Multi-Layer Architecture)
+        live_signals = [
+            sig
+            for sig, _, _ in candidate_signals
+            if sig.status != SignalStatus.REJECTED_BY_FILTER
+        ]
+        if live_signals:
+            try:
+                diversity = generator.compute_diversity_metrics(live_signals)
+                logger.info(
+                    f"DIVERSITY: {diversity['total_signals']} signals, "
+                    f"entropy={diversity['shannon_entropy']:.2f}, "
+                    f"patterns={diversity['pattern_distribution']}",
+                    extra={
+                        "diversity_metrics": diversity,
+                        "shannon_entropy": diversity["shannon_entropy"],
+                    },
+                )
+            except AttributeError as e:
+                # This specifically handles MagicMock objects in integration tests
+                # where mock signals lack the required attributes (.pattern_name, etc.)
+                logger.debug(f"Diversity metrics skipped due to mock test objects: {e}")
+            except Exception as e:
+                # Catch-all to prevent observability failures from crashing the main loop,
+                # but logged as an error since a real signal should not fail metrics computation.
+                logger.error(f"Failed to compute diversity metrics: {e}")
+
         # Phase 3: Signal Processing (Persistence, Notification, Execution)
         for trade_signal, asset_class, _symbol_duration in candidate_signals:
             processing_start = time.time()

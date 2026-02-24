@@ -452,17 +452,15 @@ A powerful reversal pattern with three troughs.
 
 ---
 
-## Harmonic Patterns
+## Harmonic Patterns (Structural Context)
 
 > [!NOTE]
-> **Fibonacci-Based Pattern Recognition**: Harmonic patterns use precise Fibonacci ratios with
-> a ±0.1% tolerance gate to identify high-probability reversal zones. Patterns are processed
-> on the most recent 10-15 pivots for sub-2ms scan performance.
+> **Multi-Layer Architecture: Structural Context**: Harmonic patterns are no longer treated as standalone signals. Instead, they provide **Macro Structural Context** to tactical triggers (like candlestick patterns).
 >
-> - **MACRO Classification**: Patterns spanning >90 days from X to D point are classified as
->   MACRO_HARMONIC for institutional-scale context.
-> - **Discord Integration**: Ratio breakdowns (e.g., "B-Leg: 61.8% | D-Leg: 88.6%") are
->   automatically displayed in signal alerts.
+> Fibonacci-Based Pattern Recognition uses precise ratios (±0.1% tolerance gate) to identify high-probability reversal zones processed on the most recent 10-15 pivots.
+>
+> - **MACRO Classification**: Patterns spanning >90 days from X to D point are classified as MACRO_PATTERN for institutional-scale context, conferring up to 120h of signal TTL.
+> - **Conviction Generation**: When a tactical pattern (e.g., Bullish Engulfing) occurs simultaneously with a valid Harmonic pattern, the signal is elevated to a `HIGH` conviction tier.
 
 
 ### ABCD Measured Move
@@ -609,25 +607,34 @@ All patterns require validation through multiple confluence filters to improve s
 
 ---
 
-## Signal Quality Filters
+## Signal Quality Filters & Conviction Tiers
 
-After pattern detection, signals pass through additional quality filters:
+After pattern detection, signals pass through Conviction-Aware Quality Gates. The Multi-Layer Signal Architecture allows signals with superior structural context to bypass strict baseline requirements.
 
-### Volume Confirmation Filter
-**Applies to:** Ascending Triangle, Cup and Handle, Falling Wedge, Inverse H&S
+### Conviction Tiers
+- **HIGH**: Tactical Trigger + Harmonic Structural Context (e.g. Bullish Engulfing formed perfectly at a Gartley D-point).
+- **STANDARD**: Tactical Trigger or Chart Pattern with no active harmonic context.
 
-Breakout patterns require volume ≥ 150% of the 20-period SMA to confirm genuine breakouts and filter fakeouts.
+### Volume Confirmation Gate
+**Applies to**: Continuation patterns (Ascending Triangle, Bull Flag, etc.) and Reversals.
+- **STANDARD Conviction**: Volume ≥ 150% of the 20-period SMA
+- **HIGH Conviction**: Volume ≥ 130% of the 20-period SMA (Relaxed threshold)
 
-### Risk-to-Reward Filter
-**Applies to:** All signals
+### Momentum (ADX) Filter
+**Applies to**: Trend continuation patterns.
+- **STANDARD Conviction**: ADX ≥ 25
+- **HIGH Conviction**: ADX ≥ 20 (Relaxed threshold)
 
-Signals with R:R ratio < 1.5 are automatically rejected:
+### Risk-to-Reward (R:R) Filter
+**Applies to**: All signals.
 
 ```
 R:R = (Take Profit 1 - Entry) / (Entry - Stop Loss)
 ```
 
-If R:R < 1.5, the signal is discarded with a warning log.
+Signals failing the minimum R:R threshold are discarded:
+- **STANDARD Conviction**: Minimum R:R = **1.5**
+- **HIGH Conviction**: Minimum R:R = **1.2** (Allows taking structurally superior trades even if stop loss placement is wider).
 
 ---
 
