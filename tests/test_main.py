@@ -969,6 +969,30 @@ def test_main_expires_before_check_exits(mock_dependencies):
     # Track order of calls
     call_order = []
 
+    def append_to_call_order(method_name, original_mock):
+        def wrapper(*args, **kwargs):
+            call_order.append(method_name)
+            # Handle both function calls and MagicMock return values
+            if callable(original_mock):
+                return original_mock(*args, **kwargs)
+            return original_mock
+
+        return wrapper
+
+    # Assuming these are already patched/mocked in mock_dependencies
+    mock_reconcile = mock_dependencies["reconciler"].return_value.reconcile
+    mock_archive = mock_dependencies["trade_archival"].return_value.run
+    mock_fee_patch = mock_dependencies["fee_patch"].return_value.run
+
+    # Attach side effects to track order
+    mock_reconcile.side_effect = append_to_call_order(
+        "reconcile", mock_reconcile.return_value
+    )
+    mock_archive.side_effect = append_to_call_order("archive", mock_archive.return_value)
+    mock_fee_patch.side_effect = append_to_call_order(
+        "fee_patch", mock_fee_patch.return_value
+    )
+
     # Execute
     main(smoke_test=False)
 
@@ -991,6 +1015,13 @@ def test_main_expires_before_check_exits(mock_dependencies):
             ), f"Stale signal should NOT be passed to check_exits, got {ids}"
 
     assert found_call, "check_exits was not called for BTC/USD"
+
+    # Verify pipeline execution order (HIGH priority CR fix)
+    assert call_order == [
+        "reconcile",
+        "archive",
+        "fee_patch",
+    ], f"Pipeline call order mismatch: {call_order}"
 
     # Also verify it was updated to EXPIRED
     # Note: repo.update_signal_atomic is called in main.py
