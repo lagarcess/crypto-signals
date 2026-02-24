@@ -766,7 +766,10 @@ class SignalGenerator:
             # Long: exit if close < chandelier (price fell below trailing stop)
             # Short: exit if close > chandelier (price rose above trailing stop)
             tp3_exit_triggered = False
-            if chandelier_exit:
+            if chandelier_exit and signal.status in (
+                SignalStatus.TP1_HIT,
+                SignalStatus.TP2_HIT,
+            ):
                 if is_long and current_close < chandelier_exit:
                     tp3_exit_triggered = True
                 elif not is_long and current_close > chandelier_exit:

@@ -913,7 +913,7 @@ class DiscordClient:
         message = self._format_shadow_message(signal)
 
         # FORUM CHANNEL LOGIC: Add thread_name if enabled
-        if self.settings.DISCORD_USE_FORUMS:
+        if self.settings.DISCORD_SHADOW_USE_FORUMS:
             rejection_reason = (
                 (signal.rejection_reason or "Unknown").replace("_", " ").title()
             )
