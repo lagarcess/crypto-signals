@@ -791,11 +791,12 @@ def test_generate_signal_harmonic_and_geometric_merging(
 ):
     """Test merging of harmonic (ABCD) and geometric (Bull Flag) patterns on same candle.
 
-    When both patterns occur:
-    - Harmonic pattern name is prioritized as main pattern
-    - Geometric pattern is added to confluence_factors
+    Multi-Layer Architecture: When both patterns occur:
+    - Geometric pattern is the tactical trigger (pattern_name)
+    - Harmonic pattern is structural context (structural_context field)
     - Single signal is created (no duplicate)
     - harmonic_metadata is populated with ratios
+    - conviction_tier is HIGH
     """
     from datetime import datetime, timezone
 
@@ -875,18 +876,23 @@ def test_generate_signal_harmonic_and_geometric_merging(
     # Verification
     assert signal is not None, "Signal should be generated"
 
-    # 1. Harmonic pattern name is prioritized
-    assert signal.pattern_name == "ABCD", "Pattern name should be ABCD (harmonic)"
-
-    # 2. Geometric pattern added to confluence_factors
+    # 1. Geometric pattern is the tactical trigger (Multi-Layer Architecture)
     assert (
-        "BULL_FLAG" in signal.confluence_factors
-    ), "BULL_FLAG should be in confluence_factors"
+        signal.pattern_name == "BULL_FLAG"
+    ), "Pattern name should be BULL_FLAG (geometric)"
 
-    # 3. Single signal (implicit - we only get one signal back)
+    # 2. Harmonic context stored in structural_context
+    assert (
+        signal.structural_context == "ABCD"
+    ), "structural_context should be ABCD (harmonic)"
+
+    # 3. Conviction tier is HIGH (tactical + structural)
+    assert signal.conviction_tier == "HIGH", "conviction_tier should be HIGH"
+
+    # 4. Single signal (implicit - we only get one signal back)
     assert signal.symbol == "BTC/USD"
 
-    # 4. Harmonic metadata is populated
+    # 5. Harmonic metadata is populated
     assert signal.harmonic_metadata is not None, "harmonic_metadata should be populated"
     assert (
         "AB_CD_price_ratio" in signal.harmonic_metadata
@@ -897,7 +903,11 @@ def test_generate_signal_harmonic_and_geometric_merging(
 def test_generate_signal_harmonic_only(
     signal_generator, mock_market_provider, mock_analyzer_cls
 ):
-    """Test signal generation with only harmonic pattern (no geometric pattern)."""
+    """Test that harmonic-only detection (no geometric) returns None.
+
+    Multi-Layer Architecture: Structural context alone doesn't produce
+    an entry signal â€” a tactical trigger (geometric pattern) is required.
+    """
     from datetime import datetime, timezone
 
     from crypto_signals.analysis.structural import Pivot
@@ -958,19 +968,20 @@ def test_generate_signal_harmonic_only(
     # Execution
     signal = signal_generator.generate_signals("BTC/USD", AssetClass.CRYPTO)
 
-    # Verification
-    assert signal is not None, "Signal should be generated"
-    assert signal.pattern_name == "ABCD", "Pattern name should be ABCD"
-    assert signal.harmonic_metadata is not None, "harmonic_metadata should be populated"
+    # Verification: No signal â€” harmonic-only doesn't produce an entry
     assert (
-        "BULL_FLAG" not in signal.confluence_factors
-    ), "No geometric pattern in confluence"
+        signal is None
+    ), "Harmonic-only should not generate a signal (Multi-Layer Architecture)"
 
 
 def test_generate_signal_harmonic_macro_classification(
     signal_generator, mock_market_provider, mock_analyzer_cls
 ):
-    """Test that MACRO_HARMONIC classification is applied when harmonic pattern is_macro."""
+    """Test that MACRO_PATTERN classification is applied when harmonic pattern is_macro.
+
+    Multi-Layer Architecture: Geometric trigger required. Harmonic macro context
+    sets pattern_classification to MACRO_PATTERN (not MACRO_HARMONIC).
+    """
     from datetime import datetime, timedelta, timezone
 
     from crypto_signals.analysis.structural import Pivot
@@ -993,9 +1004,9 @@ def test_generate_signal_harmonic_macro_classification(
     mock_analyzer_instance = MagicMock()
     mock_analyzer_cls.return_value = mock_analyzer_instance
 
-    # Result DF with NO geometric patterns
+    # Result DF with geometric pattern (required for signal generation)
     result_df = df.copy()
-    result_df["bull_flag"] = False
+    result_df["bull_flag"] = True
     mock_analyzer_instance.check_patterns.return_value = result_df
 
     # Mock pivots for MACRO harmonic pattern (>90 days)
@@ -1034,10 +1045,12 @@ def test_generate_signal_harmonic_macro_classification(
 
     # Verification
     assert signal is not None, "Signal should be generated"
-    assert signal.pattern_name == "ABCD", "Pattern name should be ABCD"
+    assert signal.pattern_name == "BULL_FLAG", "Pattern name should be geometric trigger"
     assert (
-        signal.pattern_classification == "MACRO_HARMONIC"
-    ), "Classification should be MACRO_HARMONIC for macro harmonic patterns"
+        signal.pattern_classification == "MACRO_PATTERN"
+    ), "Classification should be MACRO_PATTERN for macro harmonic context"
+    assert signal.structural_context == "ABCD", "Structural context should be ABCD"
+    assert signal.conviction_tier == "HIGH", "Should be HIGH conviction"
 
 
 # =============================================================================
@@ -1192,7 +1205,10 @@ def test_generate_signal_dynamic_ttl_standard_pattern(
 def test_generate_signal_dynamic_ttl_macro_pattern(
     signal_generator, mock_market_provider, mock_analyzer_cls
 ):
-    """Test that MACRO patterns get 120h TTL (Issue 99)."""
+    """Test that MACRO patterns get 120h TTL (Issue 99).
+
+    Multi-Layer Architecture: Needs geometric trigger + macro harmonic context.
+    """
     from datetime import datetime, timezone
 
     from crypto_signals.analysis.structural import Pivot
@@ -1215,9 +1231,9 @@ def test_generate_signal_dynamic_ttl_macro_pattern(
     mock_analyzer_instance = MagicMock()
     mock_analyzer_cls.return_value = mock_analyzer_instance
 
-    # Result DF with NO geometric patterns
+    # Result DF with geometric pattern (required for signal generation)
     result_df = df.copy()
-    result_df["bull_flag"] = False
+    result_df["bull_flag"] = True
     result_df["bullish_engulfing"] = False
     mock_analyzer_instance.check_patterns.return_value = result_df
 
@@ -1260,7 +1276,7 @@ def test_generate_signal_dynamic_ttl_macro_pattern(
     candle_timestamp = pd.Timestamp(today).to_pydatetime().replace(tzinfo=timezone.utc)
     expected_valid_until = candle_timestamp + timedelta(hours=120)
     assert signal.valid_until == expected_valid_until
-    assert signal.pattern_classification == "MACRO_HARMONIC"
+    assert signal.pattern_classification == "MACRO_PATTERN"
 
 
 # =============================================================================
@@ -1346,3 +1362,257 @@ def test_generate_signal_elliott_wave_fallback_stop_loss(
     # Stop should fall back to Low * 0.99 = 90.0 * 0.99 = 89.1
     assert signal.suggested_stop == 89.1
     assert signal.invalidation_price == 90.0  # Low price
+
+
+# ============================================================
+# PHASE 2: Conviction-Aware Quality Gate Tests
+# ============================================================
+
+
+def _make_conviction_test_df(
+    volume=1000.0,
+    vol_sma_20=1000.0,
+    adx=25.0,
+    rsi=50.0,
+    close=100.0,
+    low=97.0,
+    high=110.0,
+    open_price=98.0,
+    atr=5.0,
+):
+    """Helper to create a DataFrame with configurable indicator values for quality gate tests."""
+    df = pd.DataFrame(
+        {
+            "open": [open_price],
+            "high": [high],
+            "low": [low],
+            "close": [close],
+            "volume": [volume],
+            "VOL_SMA_20": [vol_sma_20],
+            "ADX_14": [adx],
+            "RSI_14": [rsi],
+            "SMA_200": [80.0],
+            "ATRr_14": [atr],
+        },
+        index=[pd.Timestamp("2023-01-01")],
+    )
+    return df
+
+
+def _setup_harmonic_mocks(mock_analyzer_instance):
+    """Setup mocks for harmonic pattern detection (pivots + HarmonicAnalyzer patch)."""
+    from datetime import datetime, timezone
+
+    from crypto_signals.analysis.structural import Pivot
+
+    mock_pivots = [
+        Pivot(
+            price=95.0,
+            timestamp=datetime(2023, 1, 1, tzinfo=timezone.utc),
+            pivot_type="VALLEY",
+            index=0,
+        ),
+        Pivot(
+            price=105.0,
+            timestamp=datetime(2023, 1, 5, tzinfo=timezone.utc),
+            pivot_type="PEAK",
+            index=1,
+        ),
+        Pivot(
+            price=98.0,
+            timestamp=datetime(2023, 1, 10, tzinfo=timezone.utc),
+            pivot_type="VALLEY",
+            index=2,
+        ),
+        Pivot(
+            price=108.0,
+            timestamp=datetime(2023, 1, 15, tzinfo=timezone.utc),
+            pivot_type="PEAK",
+            index=3,
+        ),
+    ]
+    mock_analyzer_instance.pivots = mock_pivots
+
+    mock_harmonic_pattern = MagicMock()
+    mock_harmonic_pattern.pattern_type = "GARTLEY"
+    mock_harmonic_pattern.ratios = {"XA": 0.618}
+    mock_harmonic_pattern.is_macro = False
+
+    return mock_harmonic_pattern
+
+
+def test_high_conviction_relaxes_volume_gate(
+    signal_generator, mock_market_provider, mock_analyzer_cls
+):
+    """Volume 1.3x is rejected normally but passes with HIGH conviction (harmonic context)."""
+    from unittest.mock import patch
+
+    # Volume 1.3x < 1.5x threshold, but > 1.2x relaxed threshold
+    df = _make_conviction_test_df(volume=1300.0, vol_sma_20=1000.0, adx=30.0)
+    mock_market_provider.get_daily_bars.return_value = df
+
+    mock_analyzer_instance = MagicMock()
+    mock_analyzer_cls.return_value = mock_analyzer_instance
+
+    result_df = df.copy()
+    result_df["bull_flag"] = True
+    result_df["bullish_engulfing"] = False
+    result_df["bull_flag_duration"] = 10
+    result_df["bull_flag_classification"] = "STANDARD"
+    mock_analyzer_instance.check_patterns.return_value = result_df
+
+    # WITHOUT harmonic â†’ rejected (volume 1.3x < 1.5x)
+    mock_analyzer_instance.pivots = []
+    signal_no_harmonic = signal_generator.generate_signals("BTC/USD", AssetClass.CRYPTO)
+    assert signal_no_harmonic is not None
+    assert signal_no_harmonic.status == SignalStatus.REJECTED_BY_FILTER
+    assert "Volume" in signal_no_harmonic.rejection_reason
+
+    # WITH harmonic â†’ passes (volume 1.3x > 1.2x relaxed threshold)
+    mock_harmonic_pattern = _setup_harmonic_mocks(mock_analyzer_instance)
+    with patch(
+        "crypto_signals.engine.signal_generator.HarmonicAnalyzer"
+    ) as mock_harmonic_cls:
+        mock_harmonic_instance = MagicMock()
+        mock_harmonic_instance.scan_all_patterns.return_value = [mock_harmonic_pattern]
+        mock_harmonic_cls.return_value = mock_harmonic_instance
+
+        signal_with_harmonic = signal_generator.generate_signals(
+            "BTC/USD", AssetClass.CRYPTO
+        )
+
+    assert signal_with_harmonic is not None
+    assert signal_with_harmonic.status != SignalStatus.REJECTED_BY_FILTER
+    assert signal_with_harmonic.conviction_tier == "HIGH"
+
+
+def test_high_conviction_relaxes_adx_gate(
+    signal_generator, mock_market_provider, mock_analyzer_cls
+):
+    """ADX 17 is rejected normally but passes with HIGH conviction."""
+    from unittest.mock import patch
+
+    # ADX 17 < 20 threshold, but > 15 relaxed threshold
+    # Use close/low values that produce good R:R so only ADX gate matters
+    df = _make_conviction_test_df(
+        volume=2000.0,
+        vol_sma_20=1000.0,
+        adx=17.0,
+        close=100.0,
+        low=97.0,
+        high=110.0,
+        open_price=98.0,
+        atr=5.0,
+    )
+    mock_market_provider.get_daily_bars.return_value = df
+
+    mock_analyzer_instance = MagicMock()
+    mock_analyzer_cls.return_value = mock_analyzer_instance
+
+    result_df = df.copy()
+    result_df["bull_flag"] = True
+    result_df["bullish_engulfing"] = False
+    result_df["bull_flag_duration"] = 10
+    result_df["bull_flag_classification"] = "STANDARD"
+    mock_analyzer_instance.check_patterns.return_value = result_df
+
+    # WITHOUT harmonic â†’ rejected (ADX 17 < 20)
+    mock_analyzer_instance.pivots = []
+    signal_no_harmonic = signal_generator.generate_signals("BTC/USD", AssetClass.CRYPTO)
+    assert signal_no_harmonic is not None
+    assert signal_no_harmonic.status == SignalStatus.REJECTED_BY_FILTER
+    assert "ADX" in signal_no_harmonic.rejection_reason
+
+    # WITH harmonic â†’ passes (ADX 17 > 15 relaxed threshold)
+    mock_harmonic_pattern = _setup_harmonic_mocks(mock_analyzer_instance)
+    with patch(
+        "crypto_signals.engine.signal_generator.HarmonicAnalyzer"
+    ) as mock_harmonic_cls:
+        mock_harmonic_instance = MagicMock()
+        mock_harmonic_instance.scan_all_patterns.return_value = [mock_harmonic_pattern]
+        mock_harmonic_cls.return_value = mock_harmonic_instance
+
+        signal_with_harmonic = signal_generator.generate_signals(
+            "BTC/USD", AssetClass.CRYPTO
+        )
+
+    assert signal_with_harmonic is not None
+    assert signal_with_harmonic.status != SignalStatus.REJECTED_BY_FILTER
+    assert signal_with_harmonic.conviction_tier == "HIGH"
+
+
+def test_high_conviction_relaxes_rr_gate(
+    signal_generator, mock_market_provider, mock_analyzer_cls
+):
+    """R:R 1.3 is rejected normally but passes with HIGH conviction."""
+    from unittest.mock import patch
+
+    # close=100, low=93 â†’ stop=93*0.99=92.07, risk=7.93, TP1=110, profit=10 â†’ R:R=1.26 â€” in range
+    df = _make_conviction_test_df(
+        close=100.0,
+        low=93.0,
+        high=110.0,
+        open_price=95.0,
+        atr=5.0,
+        volume=2000.0,
+        vol_sma_20=1000.0,
+        adx=30.0,
+    )
+    mock_market_provider.get_daily_bars.return_value = df
+
+    mock_analyzer_instance = MagicMock()
+    mock_analyzer_cls.return_value = mock_analyzer_instance
+
+    result_df = df.copy()
+    result_df["bullish_hammer"] = True
+    result_df["bullish_engulfing"] = False
+    mock_analyzer_instance.check_patterns.return_value = result_df
+
+    # WITHOUT harmonic â†’ rejected (R:R ~1.26 < 1.5)
+    mock_analyzer_instance.pivots = []
+    signal_no_harmonic = signal_generator.generate_signals("BTC/USD", AssetClass.CRYPTO)
+    assert signal_no_harmonic is not None
+    assert signal_no_harmonic.status == SignalStatus.REJECTED_BY_FILTER
+    assert "R:R" in signal_no_harmonic.rejection_reason
+
+    # WITH harmonic â†’ passes (R:R 1.26 > 1.2 relaxed threshold)
+    mock_harmonic_pattern = _setup_harmonic_mocks(mock_analyzer_instance)
+    with patch(
+        "crypto_signals.engine.signal_generator.HarmonicAnalyzer"
+    ) as mock_harmonic_cls:
+        mock_harmonic_instance = MagicMock()
+        mock_harmonic_instance.scan_all_patterns.return_value = [mock_harmonic_pattern]
+        mock_harmonic_cls.return_value = mock_harmonic_instance
+
+        signal_with_harmonic = signal_generator.generate_signals(
+            "BTC/USD", AssetClass.CRYPTO
+        )
+
+    assert signal_with_harmonic is not None
+    assert signal_with_harmonic.status != SignalStatus.REJECTED_BY_FILTER
+    assert signal_with_harmonic.conviction_tier == "HIGH"
+
+
+def test_standard_conviction_uses_normal_thresholds(
+    signal_generator, mock_market_provider, mock_analyzer_cls
+):
+    """Without harmonic context, normal thresholds apply â€” no relaxation."""
+    # Volume 1.3x < 1.5x â†’ rejected regardless (no harmonic)
+    df = _make_conviction_test_df(volume=1300.0, vol_sma_20=1000.0, adx=30.0)
+    mock_market_provider.get_daily_bars.return_value = df
+
+    mock_analyzer_instance = MagicMock()
+    mock_analyzer_cls.return_value = mock_analyzer_instance
+
+    result_df = df.copy()
+    result_df["bull_flag"] = True
+    result_df["bullish_engulfing"] = False
+    result_df["bull_flag_duration"] = 10
+    result_df["bull_flag_classification"] = "STANDARD"
+    mock_analyzer_instance.check_patterns.return_value = result_df
+    mock_analyzer_instance.pivots = []
+
+    signal = signal_generator.generate_signals("BTC/USD", AssetClass.CRYPTO)
+    assert signal is not None
+    assert signal.status == SignalStatus.REJECTED_BY_FILTER
+    assert signal.conviction_tier is None  # No harmonic = no conviction tier

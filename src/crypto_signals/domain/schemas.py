@@ -435,6 +435,15 @@ class Signal(BaseModel):
         default=None,
         description="Harmonic pattern ratios for Fibonacci-based patterns: {B_ratio, D_ratio, wave3_to_wave1_ratio, etc.}",
     )
+    # === Multi-Layer Signal Architecture ===
+    structural_context: Optional[str] = Field(
+        default=None,
+        description="Active harmonic/structural regime: 'ELLIOTT_WAVE_135', 'GARTLEY', etc. Context only, not the primary signal.",
+    )
+    conviction_tier: Optional[str] = Field(
+        default=None,
+        description="Signal conviction: 'HIGH' (tactical+structural), 'STANDARD' (tactical only).",
+    )
     # === Signal Age Tracking (Issue 99 Fix) ===
     created_at: Optional[datetime] = Field(
         default=None,

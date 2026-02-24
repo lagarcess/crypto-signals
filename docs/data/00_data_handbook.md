@@ -157,6 +157,8 @@ Optimized for aggregation, backtesting, and performance reporting.
 | `rejection_metadata` | `Dict` | Forensic data for validation failures (e.g., raw invalid stops for audit) |
 | `confluence_snapshot` | `Dict` | Snapshot of indicator values at rejection: {rsi, adx, sma_trend, volume_ratio, rr_ratio} |
 | `harmonic_metadata` | `Dict` | Harmonic pattern ratios for Fibonacci-based patterns: {B_ratio, D_ratio, wave3_to_wave1_ratio, etc.} |
+| `structural_context` | `str` | Active harmonic/structural regime: 'ELLIOTT_WAVE_135', 'GARTLEY', etc. Context only, not the primary signal. |
+| `conviction_tier` | `str` | Signal conviction: 'HIGH' (tactical+structural), 'STANDARD' (tactical only). |
 | `created_at` | `datetime` | UTC timestamp when signal was created. Used for skip-on-creation cooldown in check_exits. |
 | `trade_type` | `str` | Trade classification: EXECUTED (broker order filled), FILTERED (quality gate rejection), THEORETICAL (execution failed, simulating). |
 <!-- END_GENERATED -->

@@ -135,8 +135,8 @@ class SignalParameterFactory:
             and isinstance(latest[col], (bool, np.bool_))
             and latest[col]
         ]
-        if harmonic_pattern and geometric_pattern_name:
-            confluence_factors.append(geometric_pattern_name)
+        # Multi-Layer Architecture: harmonic context has its own field,
+        # no longer appended as a confluence factor
 
         # Structural Metadata
         pattern_duration_days = None
@@ -181,19 +181,22 @@ class SignalParameterFactory:
             else:
                 pattern_classification = "STANDARD_PATTERN"
 
-        # Harmonic Metadata
+        # Harmonic Metadata & Multi-Layer Architecture
         harmonic_metadata = None
+        structural_context = None
+        conviction_tier = None
         if harmonic_pattern:
-            strategy_id = "strategies/S002-HARMONIC-PATTERN"
-            pattern_classification = "HARMONIC_PATTERN"
+            # Multi-Layer: harmonic is context, not primary strategy
+            # strategy_id stays as geometric pattern_name
+            structural_context = harmonic_pattern.pattern_type
+            conviction_tier = "HIGH"
             harmonic_metadata = (
                 harmonic_pattern.ratios.copy()
                 if hasattr(harmonic_pattern, "ratios")
                 else None
             )
-            # Revert to default stop/loss logic for harmonics (attributes do not exist on HarmonicPattern)
             if harmonic_pattern.is_macro:
-                pattern_classification = "MACRO_HARMONIC"
+                pattern_classification = "MACRO_PATTERN"
 
         # Timestamp Calculations
         candle_timestamp = latest.name
@@ -234,6 +237,8 @@ class SignalParameterFactory:
             "pattern_classification": pattern_classification,
             "structural_anchors": structural_anchors,
             "harmonic_metadata": harmonic_metadata,
+            "structural_context": structural_context,
+            "conviction_tier": conviction_tier,
             "created_at": created_at,
             # confluence_snapshot removed from params packing as per review
             "side": OrderSide.BUY,

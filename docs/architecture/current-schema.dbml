@@ -49,6 +49,8 @@ Table live_signals [headercolor: #e06666] {
   rejection_metadata json [note: 'Forensic data for validation failures (e.g., ra...']
   confluence_snapshot json [note: 'Snapshot of indicator values at rejection: {rsi...']
   harmonic_metadata json [note: 'Harmonic pattern ratios for Fibonacci-based pat...']
+  structural_context varchar [note: 'Active harmonic/structural regime: ELLIOTT_WAVE...']
+  conviction_tier varchar [note: 'Signal conviction: HIGH (tactical+structural), ...']
   created_at timestamp [note: 'UTC timestamp when signal was created. Used for...']
   trade_type varchar [note: 'Trade classification: EXECUTED (broker order fi...']
   Note: 'Ephemeral opportunities.'

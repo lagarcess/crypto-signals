@@ -261,18 +261,25 @@ class SignalGenerator:
             geometric_pattern_name = "ELLIOTT_IMPULSE_WAVE"  # ATR-based stop (Issue 99)
 
         if harmonic_pattern and geometric_pattern_name:
-            # Harmonic pattern is primary
-            pattern_name = harmonic_pattern.pattern_type
-            # Geometric pattern goes into confluence_factors (handled in _create_signal)
-        elif harmonic_pattern:
-            # Only harmonic pattern detected
-            pattern_name = harmonic_pattern.pattern_type
-        elif geometric_pattern_name:
-            # Only geometric pattern detected
+            # Multi-Layer Architecture: Geometric is the tactical trigger,
+            # harmonic provides structural context (stored in structural_context field)
             pattern_name = geometric_pattern_name
+        elif geometric_pattern_name:
+            # Only geometric pattern detected — tactical trigger without structural context
+            pattern_name = geometric_pattern_name
+        elif harmonic_pattern:
+            # Harmonic-only: no tactical trigger → no signal
+            # Structural context alone doesn't produce an entry signal
+            return None
         else:
             # No patterns detected
             return None
+
+        # ============================================================
+        # CONVICTION TIER (Phase 2: Multi-Layer Architecture)
+        # ============================================================
+        # Derive conviction tier BEFORE quality gates to allow threshold relaxation
+        conviction_tier = "HIGH" if harmonic_pattern and geometric_pattern_name else None
 
         # ============================================================
         # SIGNAL QUALITY FILTERS (Confluence Validation)
@@ -292,6 +299,22 @@ class SignalGenerator:
         sma_200 = float(latest.get("SMA_200", 0))
         close_price = float(latest.get("close", 0))
         sma_trend = "Above" if close_price > sma_200 and sma_200 > 0 else "Below"
+
+        # Conviction-aware thresholds (Phase 2)
+        # Magic Numbers refactored into descriptive constants
+        BASE_VOLUME_THRESHOLD = 1.5
+        RELAXED_VOLUME_THRESHOLD = 1.2
+        BASE_ADX_THRESHOLD = 20
+        RELAXED_ADX_THRESHOLD = 15
+
+        volume_threshold = (
+            RELAXED_VOLUME_THRESHOLD
+            if conviction_tier == "HIGH"
+            else BASE_VOLUME_THRESHOLD
+        )
+        adx_threshold = (
+            RELAXED_ADX_THRESHOLD if conviction_tier == "HIGH" else BASE_ADX_THRESHOLD
+        )
 
         # Define pattern categories for targeted validation
         breakout_patterns = (
@@ -315,8 +338,8 @@ class SignalGenerator:
         )
 
         # 1. VOLUME CONFIRMATION FILTER (Breakout patterns only)
-        if pattern_name in breakout_patterns and volume_ratio < 1.5:
-            rejection_reasons.append(f"Volume {volume_ratio:.1f}x < 1.5x")
+        if pattern_name in breakout_patterns and volume_ratio < volume_threshold:
+            rejection_reasons.append(f"Volume {volume_ratio:.1f}x < {volume_threshold}x")
 
         # 2. RSI OVERBOUGHT FILTER (Bullish patterns)
         # Reject if RSI > 70 (overbought) - reduces chasing extended moves
@@ -324,9 +347,11 @@ class SignalGenerator:
             rejection_reasons.append(f"RSI {rsi_value:.0f} > 70 (Overbought)")
 
         # 3. ADX WEAK TREND FILTER (Trend-following patterns only)
-        # Reject if ADX < 20 - trend is too weak for trend-following setups
-        if pattern_name in trend_following_patterns and adx_value < 20:
-            rejection_reasons.append(f"ADX {adx_value:.0f} < 20 (Weak Trend)")
+        # Reject if ADX below threshold - trend is too weak for trend-following setups
+        if pattern_name in trend_following_patterns and adx_value < adx_threshold:
+            rejection_reasons.append(
+                f"ADX {adx_value:.0f} < {adx_threshold} (Weak Trend)"
+            )
 
         # Build confluence snapshot for persistence
         confluence_snapshot = {
@@ -334,6 +359,7 @@ class SignalGenerator:
             "adx": round(adx_value, 1),
             "sma_trend": sma_trend,
             "volume_ratio": round(volume_ratio, 2),
+            "conviction_tier": conviction_tier,
         }
 
         # If quality gate failures exist at this point, reject early
@@ -388,7 +414,10 @@ class SignalGenerator:
         )
 
     def _validate_signal_parameters(
-        self, params: Dict[str, Any], confluence_snapshot: Optional[Dict[str, Any]] = None
+        self,
+        params: Dict[str, Any],
+        confluence_snapshot: Optional[Dict[str, Any]] = None,
+        conviction_tier: Optional[str] = None,
     ) -> List[str]:
         """Pure logic validation of signal parameters."""
         rejection_reasons = []
@@ -420,10 +449,80 @@ class SignalGenerator:
                 if confluence_snapshot:
                     confluence_snapshot["rr_ratio"] = round(rr_ratio, 2)
 
-                if rr_ratio < 1.5:
-                    rejection_reasons.append(f"R:R {rr_ratio:.1f} < 1.5")
+                BASE_RR_THRESHOLD = 1.5
+                RELAXED_RR_THRESHOLD = 1.2
+                rr_threshold = (
+                    RELAXED_RR_THRESHOLD
+                    if conviction_tier == "HIGH"
+                    else BASE_RR_THRESHOLD
+                )
+                if rr_ratio < rr_threshold:
+                    rejection_reasons.append(f"R:R {rr_ratio:.1f} < {rr_threshold}")
 
         return rejection_reasons
+
+    @staticmethod
+    def compute_diversity_metrics(signals: list["Signal"]) -> Dict[str, Any]:
+        """Compute pattern distribution, structural context, and entropy metrics.
+
+        Args:
+            signals: List of Signal objects from the current run.
+
+        Returns:
+            Dictionary with pattern_distribution, structural_context_distribution,
+            conviction_distribution, shannon_entropy, and total_signals.
+        """
+        import math
+
+        total = len(signals)
+        if total == 0:
+            return {
+                "total_signals": 0,
+                "pattern_distribution": {},
+                "structural_context_distribution": {},
+                "conviction_distribution": {},
+                "shannon_entropy": 0.0,
+            }
+
+        # Pattern counts
+        pattern_counts: Dict[str, int] = {}
+        context_counts: Dict[str, int] = {}
+        conviction_counts: Dict[str, int] = {}
+
+        for sig in signals:
+            # Pattern distribution
+            name = sig.pattern_name
+            pattern_counts[name] = pattern_counts.get(name, 0) + 1
+
+            # Structural context distribution
+            ctx = sig.structural_context
+            if ctx is not None:
+                context_counts[ctx] = context_counts.get(ctx, 0) + 1
+
+            # Conviction tier distribution
+            tier = sig.conviction_tier
+            conviction_counts[tier] = conviction_counts.get(tier, 0) + 1
+
+        # Pattern distribution with percentages
+        pattern_dist = {
+            name: {"count": count, "pct": round(count / total * 100, 1)}
+            for name, count in sorted(pattern_counts.items(), key=lambda x: -x[1])
+        }
+
+        # Shannon entropy: H = -Σ p(x) * log2(p(x))
+        entropy = 0.0
+        for count in pattern_counts.values():
+            p = count / total
+            if p > 0:
+                entropy -= p * math.log2(p)
+
+        return {
+            "total_signals": total,
+            "pattern_distribution": pattern_dist,
+            "structural_context_distribution": dict(context_counts),
+            "conviction_distribution": dict(conviction_counts),
+            "shannon_entropy": round(entropy, 4),
+        }
 
     def _construct_signal(
         self,
@@ -455,6 +554,8 @@ class SignalGenerator:
             pattern_classification=params.get("pattern_classification"),
             structural_anchors=params.get("structural_anchors"),
             harmonic_metadata=params.get("harmonic_metadata"),
+            structural_context=params.get("structural_context"),
+            conviction_tier=params.get("conviction_tier"),
             created_at=params["created_at"],
             rejection_reason=rejection_reason,
             rejection_metadata=rejection_metadata,
@@ -506,7 +607,9 @@ class SignalGenerator:
             params = self.parameter_factory.hydrate_safe_values(params)
         else:
             # Internal Validation
-            errors = self._validate_signal_parameters(params, confluence_snapshot)
+            errors = self._validate_signal_parameters(
+                params, confluence_snapshot, conviction_tier=params.get("conviction_tier")
+            )
             if errors:
                 final_status = SignalStatus.REJECTED_BY_FILTER
                 final_reason = f"VALIDATION_FAILED: {', '.join(errors)}"
