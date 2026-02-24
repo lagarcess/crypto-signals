@@ -437,6 +437,212 @@ def test_check_exits_runner_exit(
     assert exited[0].exit_reason == ExitReason.TP1
 
 
+def test_check_exits_no_waiting_tp3_jump(
+    signal_generator, mock_market_provider, mock_analyzer_cls
+):
+    """Verify WAITING signal is NOT marked TP3_HIT when close < chandelier (Issue 123)."""
+    # Setup Active Signal in WAITING status
+    signal = Signal(
+        signal_id="sig_waiting",
+        ds=date(2023, 1, 1),
+        strategy_id="strat_1",
+        symbol="BTC/USD",
+        asset_class=AssetClass.CRYPTO,
+        entry_price=100.0,
+        pattern_name="TEST",
+        suggested_stop=90.0,
+        status=SignalStatus.WAITING,
+        take_profit_1=150.0,  # Far away
+        take_profit_2=200.0,
+        invalidation_price=80.0,
+        created_at=None,
+    )
+
+    # Setup Market Data: close < chandelier and close > entry
+    df = pd.DataFrame(
+        {
+            "open": [110.0],
+            "high": [115.0],
+            "low": [105.0],
+            "close": [108.0],
+            "volume": [1000.0],
+            "bearish_engulfing": [False],
+            "RSI_14": [50.0],
+            "ADX_14": [20.0],
+            "CHANDELIER_EXIT_LONG": [112.0],  # close (108) < chandelier (112)
+        },
+        index=[pd.Timestamp("2023-01-02")],
+    )
+
+    mock_analyzer_instance = MagicMock()
+    mock_analyzer_cls.return_value = mock_analyzer_instance
+    mock_analyzer_instance.check_patterns.return_value = df
+
+    # Execution
+    exited = signal_generator.check_exits(
+        [signal], "BTC/USD", AssetClass.CRYPTO, dataframe=df
+    )
+
+    # Verification: Currently BUGGY, it will return TP3_HIT.
+    # We want it to be empty (no exit triggered).
+    assert len(exited) == 0
+
+
+def test_check_exits_tp1_to_tp3_hit(
+    signal_generator, mock_market_provider, mock_analyzer_cls
+):
+    """Verify TP1_HIT signal correctly transitions to TP3_HIT (Issue 123)."""
+    # Setup Active Signal in TP1_HIT status
+    signal = Signal(
+        signal_id="sig_tp1",
+        ds=date(2023, 1, 1),
+        strategy_id="strat_1",
+        symbol="BTC/USD",
+        asset_class=AssetClass.CRYPTO,
+        entry_price=100.0,
+        pattern_name="TEST",
+        suggested_stop=100.0,
+        status=SignalStatus.TP1_HIT,
+        take_profit_1=110.0,
+        take_profit_2=200.0,
+        invalidation_price=80.0,
+        created_at=None,
+    )
+
+    # Setup Market Data: close < chandelier and close > entry
+    df = pd.DataFrame(
+        {
+            "open": [110.0],
+            "high": [115.0],
+            "low": [105.0],
+            "close": [108.0],
+            "volume": [1000.0],
+            "bearish_engulfing": [False],
+            "RSI_14": [50.0],
+            "ADX_14": [20.0],
+            "CHANDELIER_EXIT_LONG": [112.0],
+        },
+        index=[pd.Timestamp("2023-01-02")],
+    )
+
+    mock_analyzer_instance = MagicMock()
+    mock_analyzer_cls.return_value = mock_analyzer_instance
+    mock_analyzer_instance.check_patterns.return_value = df
+
+    # Execution
+    exited = signal_generator.check_exits(
+        [signal], "BTC/USD", AssetClass.CRYPTO, dataframe=df
+    )
+
+    # Verification
+    assert len(exited) == 1
+    assert exited[0].status == SignalStatus.TP3_HIT
+
+
+def test_check_exits_tp2_to_tp3_hit(
+    signal_generator, mock_market_provider, mock_analyzer_cls
+):
+    """Verify TP2_HIT signal correctly transitions to TP3_HIT (Issue 123)."""
+    # Setup Active Signal in TP2_HIT status
+    signal = Signal(
+        signal_id="sig_tp2",
+        ds=date(2023, 1, 1),
+        strategy_id="strat_1",
+        symbol="BTC/USD",
+        asset_class=AssetClass.CRYPTO,
+        entry_price=100.0,
+        pattern_name="TEST",
+        suggested_stop=110.0,
+        status=SignalStatus.TP2_HIT,
+        take_profit_1=110.0,
+        take_profit_2=120.0,
+        invalidation_price=80.0,
+        created_at=None,
+    )
+
+    # Setup Market Data: close < chandelier and close > entry
+    df = pd.DataFrame(
+        {
+            "open": [110.0],
+            "high": [115.0],
+            "low": [105.0],
+            "close": [108.0],
+            "volume": [1000.0],
+            "bearish_engulfing": [False],
+            "RSI_14": [50.0],
+            "ADX_14": [20.0],
+            "CHANDELIER_EXIT_LONG": [112.0],
+        },
+        index=[pd.Timestamp("2023-01-02")],
+    )
+
+    mock_analyzer_instance = MagicMock()
+    mock_analyzer_cls.return_value = mock_analyzer_instance
+    mock_analyzer_instance.check_patterns.return_value = df
+
+    # Execution
+    exited = signal_generator.check_exits(
+        [signal], "BTC/USD", AssetClass.CRYPTO, dataframe=df
+    )
+
+    # Verification
+    assert len(exited) == 1
+    assert exited[0].status == SignalStatus.TP3_HIT
+
+
+def test_check_exits_stale_waiting_signal_regression(
+    signal_generator, mock_market_provider, mock_analyzer_cls
+):
+    """Regression: 288h-old WAITING signal does not phantom-trigger TP3 (Issue 123)."""
+    from datetime import datetime, timezone
+
+    # Setup Active Signal in WAITING status, created 288 hours ago
+    now_utc = datetime.now(timezone.utc)
+    signal = Signal(
+        signal_id="sig_stale",
+        ds=date(2023, 1, 1),
+        strategy_id="strat_1",
+        symbol="BTC/USD",
+        asset_class=AssetClass.CRYPTO,
+        entry_price=100.0,
+        pattern_name="TEST",
+        suggested_stop=90.0,
+        status=SignalStatus.WAITING,
+        take_profit_1=150.0,
+        take_profit_2=200.0,
+        invalidation_price=80.0,
+        created_at=now_utc - timedelta(hours=288),
+    )
+
+    # Setup Market Data: close < chandelier and close > entry
+    df = pd.DataFrame(
+        {
+            "open": [110.0],
+            "high": [115.0],
+            "low": [105.0],
+            "close": [108.0],
+            "volume": [1000.0],
+            "bearish_engulfing": [False],
+            "RSI_14": [50.0],
+            "ADX_14": [20.0],
+            "CHANDELIER_EXIT_LONG": [112.0],
+        },
+        index=[pd.Timestamp("2023-01-02")],
+    )
+
+    mock_analyzer_instance = MagicMock()
+    mock_analyzer_cls.return_value = mock_analyzer_instance
+    mock_analyzer_instance.check_patterns.return_value = df
+
+    # Execution
+    exited = signal_generator.check_exits(
+        [signal], "BTC/USD", AssetClass.CRYPTO, dataframe=df
+    )
+
+    # Verification: Should be empty
+    assert len(exited) == 0
+
+
 def test_check_exits_trail_update_higher(
     signal_generator, mock_market_provider, mock_analyzer_cls
 ):
