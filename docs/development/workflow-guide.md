@@ -10,7 +10,7 @@ Follow this sequence for every standard task or issue.
 | :--- | :--- | :--- | :--- |
 | **0. Health** | `/diagnose` | Optional | **Infrastructure Check**. Verifies GCP, Firestore, and Alpaca health. Run if you suspect environment issues. |
 | **1. Plan** | `/plan [issue]` | **Required** | **The Architect**. Checks logs, validates bugs, reads `KNOWLEDGE_BASE`, and generates `temp/plan/implementation-plan.md`. Stops for user approval. |
-| **2. Build** | `/implement` | **Required** | **The Builder**. Creates feature branch, writes **Tests First**, enters TDD Loop (`/tdd`), and performs hygiene (`/cleanup`). |
+| **2. Build** | `/implement` | **Required** | **The Builder**. Creates feature branch, writes **Tests First**, enters loop, and performs hygiene. |
 | **3. Verify** | `/verify` | **Required** | **The Auditor**. Full tests + Smoke Test + **Local Docker Pre-flight**. Auto-triggers `/fix`. |
 | **4. Pre-Flight** | `/preflight` | Optional | **CI/CD Safety**. Docker build + GCP auth check to prevent remote failures. |
 | **5. Ship** | `/pr` | **Required** | **The Publisher**. Captures lessons (`/learn`), updates docs, and triggers **Gemini Review**. |
@@ -25,7 +25,7 @@ Follow this sequence for every standard task or issue.
 *   **Actions**:
     - Forensics (Log analysis for bugs).
     - System Design Check (`../operations/deployment-guide.md`).
-    - Knowledge Retrieval (Reads `./knowledge-base.md`).
+    - Knowledge Retrieval (Reads `docs/development/knowledge-base.md`).
 *   **Outcome**: A solid plan tailored to the architecture.
 
 ### `/implement`
@@ -116,7 +116,7 @@ To work on multiple branches simultaneously (without switching contexts), use th
 | **New Feature (Standard)** | `/plan` → `/implement` → `/review` → `/verify` → `/pr` | The full Golden Path. Safe, Architected, Verified. |
 | **New Idea (Fast)** | `/plan [idea]` → `/implement` → `/pr` | For non-issue work. Agent auto-names branch. |
 | **Bug Fix (Known)** | `/implement [fix]` → `/verify` → `/pr` | Skip planning if the fix is obvious. |
-| **Code Polish** | `/cleanup` → `/review` → `/verify` | No logic change, just hygiene and refactoring. |
+| **Code Polish** | `/review` → `/verify` | No logic change, just hygiene and refactoring. |
 | **Dependabot/Upgrades** | `/implement [upgrade]` → `/verify` | Updating dependencies and ensuring tests pass. |
 | **Intern Delegation** | `/review-jules` | Review Jules' work and force a fix. |
 | **Infrastructure Fix** | `/diagnose` → `/fix` | Check cloud health and attempt auto-patching. |
@@ -126,7 +126,7 @@ To work on multiple branches simultaneously (without switching contexts), use th
     - **`/fix`**: Run manually if you see a test failure you want the agent to patch immediately.
     - **`/cleanup`**: Run manualy to tidying up dead code/TODOs without running a full verification.
 
-## 🧠 Knowledge Base (`./knowledge-base.md`)
+## 🧠 Knowledge Base (`docs/development/knowledge-base.md`)
 This file is the **Long-Term Memory** of the project.
 *   It is updated automatically by `/pr` (via `/learn`).
 *   It is read automatically by `/plan`.
@@ -136,5 +136,5 @@ This file is the **Long-Term Memory** of the project.
 This project uses a triple-agent model to ensure quality:
 - **Antigravity (IDE)**: Your primary workbench.
 - **Jules (VM)**: Your autonomous execution agent (configured via `AGENTS.md`).
-- **Gemini (Reviewer)**: Your Staff Engineer gatekeeper (configured via `gemini-reviewer-context.md`).
+- **Gemini (Reviewer)**: Your Staff Engineer gatekeeper (configured via `.agent/workflows/review.md`).
 - **Sync**: All tools are synced via the **Repository-as-Source-of-Truth** model. See **[AI Flywheel Guide](flywheel.md)**.

@@ -101,6 +101,7 @@ def mock_dependencies():
             False  # Disable execution by default
         )
         mock_settings.return_value.SIGNAL_SATURATION_THRESHOLD_PCT = 0.5  # 50% threshold
+        mock_settings.return_value.MAX_WORKERS = 3
         mock_settings.return_value.DISCORD_BOT_TOKEN = "test_token"
         mock_settings.return_value.DISCORD_CHANNEL_ID_CRYPTO = "123"
         mock_settings.return_value.DISCORD_CHANNEL_ID_STOCK = "456"
@@ -257,7 +258,7 @@ def test_main_execution_flow(mock_dependencies):
         call("ETH/USD", AssetClass.CRYPTO, dataframe=ANY),
         call("XRP/USD", AssetClass.CRYPTO, dataframe=ANY),
     ]
-    mock_gen_instance.generate_signals.assert_has_calls(expected_calls, any_order=False)
+    mock_gen_instance.generate_signals.assert_has_calls(expected_calls, any_order=True)
 
     # Verify Signal Handling (Save FIRST with CREATED, then Discord, then Update to WAITING)
     # Should be called once for BTC/USD

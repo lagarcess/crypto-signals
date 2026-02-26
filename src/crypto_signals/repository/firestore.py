@@ -22,7 +22,6 @@ from crypto_signals.domain.schemas import (
     TradeStatus,
 )
 from crypto_signals.observability import log_validation_error
-from crypto_signals.utils.retries import retry_firestore
 from google.cloud import firestore
 from google.cloud.firestore import FieldFilter
 from loguru import logger
@@ -38,7 +37,6 @@ class JobLockRepository:
         self.db = firestore.Client(project=settings.GOOGLE_CLOUD_PROJECT)
         self.collection_name = "job_locks"
 
-    @retry_firestore
     def acquire_lock(self, job_id: str, ttl_minutes: int = 10) -> bool:
         """
         Attempt to acquire a distributed lock.
@@ -73,13 +71,25 @@ class JobLockRepository:
             )
             return True
 
-        return cast(bool, _acquire_in_transaction(self.db.transaction()))
+        try:
+            return cast(bool, _acquire_in_transaction(self.db.transaction()))
+        except Exception as e:
+            logger.error(
+                "Failed to acquire lock for {job_id}.",
+                extra={"job_id": job_id, "error": str(e)},
+            )
+            return False
 
-    @retry_firestore
     def release_lock(self, job_id: str) -> None:
         """Release the job lock."""
-        self.db.collection(self.collection_name).document(job_id).delete()
-        logger.info(f"Released lock for {job_id}")
+        try:
+            self.db.collection(self.collection_name).document(job_id).delete()
+            logger.info(f"Released lock for {job_id}")
+        except Exception as e:
+            logger.error(
+                "Failed to release lock for {job_id}.",
+                extra={"job_id": job_id, "error": str(e)},
+            )
 
 
 class SignalRepository:
@@ -96,7 +106,6 @@ class SignalRepository:
         else:
             self.collection_name = "test_signals"
 
-    @retry_firestore
     def save(self, signal: Signal) -> None:
         """Save a signal to Firestore.
 
@@ -108,7 +117,6 @@ class SignalRepository:
         doc_ref = self.db.collection(self.collection_name).document(signal.signal_id)
         doc_ref.set(data)
 
-    @retry_firestore
     def get_active_signals(self, symbol: str) -> list[Signal]:
         """
         Get all ACTIVE signals for a given symbol.
@@ -147,7 +155,6 @@ class SignalRepository:
 
         return results
 
-    @retry_firestore
     def update_signal(self, signal: Signal) -> None:
         """Update an existing signal in Firestore (merged update)."""
         doc_ref = self.db.collection(self.collection_name).document(signal.signal_id)
@@ -156,7 +163,6 @@ class SignalRepository:
             data["ds"] = data["ds"].isoformat()
         doc_ref.set(data, merge=True)
 
-    @retry_firestore
     def get_by_id(self, signal_id: str) -> Signal | None:
         """
         Get a signal by its ID.
@@ -182,7 +188,6 @@ class SignalRepository:
                 return None
         return None
 
-    @retry_firestore
     def update_signal_atomic(self, signal_id: str, updates: Dict[str, Any]) -> bool:
         """
         Atomically update signal fields using Firestore transaction.
@@ -207,9 +212,15 @@ class SignalRepository:
             transaction.update(doc_ref, updates)
             return True
 
-        return cast(bool, update_in_transaction(self.db.transaction()))
+        try:
+            return cast(bool, update_in_transaction(self.db.transaction()))
+        except Exception as e:
+            logger.error(
+                f"Atomic update failed for {signal_id}.",
+                extra={"signal_id": signal_id, "error": str(e)},
+            )
+            return False
 
-    @retry_firestore
     def cleanup_expired(self, retention_days: int = 7) -> int:
         """Delete signals older than a specified number of days based on creation time.
 
@@ -250,7 +261,6 @@ class SignalRepository:
         logger.info(f"Cleanup complete: Deleted {count} expired signals")
         return count
 
-    @retry_firestore
     def flush_all(self) -> int:
         """Delete ALL signals in the collection. Use with caution!
 
@@ -282,7 +292,6 @@ class SignalRepository:
         logger.warning(f"FLUSH ALL complete: Deleted {count} total signals")
         return count
 
-    @retry_firestore
     def get_most_recent_exit(
         self, symbol: str, hours: int = 48, pattern_name: str | None = None
     ) -> Signal | None:
@@ -364,7 +373,6 @@ class RejectedSignalRepository:
         else:
             self.collection_name = "test_rejected_signals"
 
-    @retry_firestore
     def save(self, signal: Signal) -> None:
         """Save a rejected signal to Firestore.
 
@@ -393,7 +401,6 @@ class RejectedSignalRepository:
             f"{signal.rejection_reason}"
         )
 
-    @retry_firestore
     def get_rejections_by_symbol(self, symbol: str, days: int = 7) -> list[Signal]:
         """Get recent rejected signals for a symbol.
 
@@ -425,7 +432,6 @@ class RejectedSignalRepository:
 
         return results
 
-    @retry_firestore
     def get_rejection_stats(self, days: int = 7) -> dict[str, int]:
         """Get aggregated rejection counts by reason.
 
@@ -446,7 +452,6 @@ class RejectedSignalRepository:
 
         return stats
 
-    @retry_firestore
     def cleanup_expired(self, retention_days: int = 7) -> int:
         """Delete expired rejected signals. Returns count deleted."""
         cutoff_date = datetime.now(timezone.utc) - timedelta(days=retention_days)
@@ -473,7 +478,6 @@ class RejectedSignalRepository:
 
         return count
 
-    @retry_firestore
     def flush_all(self) -> int:
         """Delete ALL rejected signals in the collection. Use with caution!
 
@@ -516,7 +520,6 @@ class PositionRepository:
         else:
             self.collection_name = "test_positions"
 
-    @retry_firestore
     def save(self, position: Position) -> None:
         """
         Save a position to Firestore.
@@ -554,7 +557,6 @@ class PositionRepository:
             },
         )
 
-    @retry_firestore
     def count_open_positions_by_class(self, asset_class: AssetClass) -> int:
         """
         Count number of OPEN positions for a specific asset class.
@@ -562,19 +564,27 @@ class PositionRepository:
 
         Requires Composite Index: status (ASC) + asset_class (ASC)
         """
-        # Optimize: Use Count Query (Aggregation) which is cheaper/faster than fetching docs
-        query = (
-            self.db.collection(self.collection_name)
-            .where(filter=FieldFilter("status", "==", TradeStatus.OPEN.value))
-            .where(filter=FieldFilter("asset_class", "==", asset_class))
-            .count()
-        )
+        try:
+            # Optimize: Use Count Query (Aggregation) which is cheaper/faster than fetching docs
+            query = (
+                self.db.collection(self.collection_name)
+                .where(filter=FieldFilter("status", "==", TradeStatus.OPEN.value))
+                .where(filter=FieldFilter("asset_class", "==", asset_class))
+                .count()
+            )
 
-        # Execute aggregation
-        results = query.get()
-        return int(results[0][0].value)
+            # Execute aggregation
+            results = query.get()
+            return int(results[0][0].value)
 
-    @retry_firestore
+        except Exception as e:
+            logger.error(
+                f"Error counting open positions for {asset_class}.",
+                extra={"asset_class": asset_class, "error": str(e)},
+            )
+            # Safety first -> block trading on DB error.
+            return 9999
+
     def get_open_positions(self) -> list[Position]:
         """Get all OPEN positions."""
         query = self.db.collection(self.collection_name).where(
@@ -591,7 +601,6 @@ class PositionRepository:
 
         return results
 
-    @retry_firestore
     def get_position_by_signal(self, signal_id: str) -> Position | None:
         """Get position by its originating signal ID."""
         query = (
@@ -609,7 +618,6 @@ class PositionRepository:
 
         return None
 
-    @retry_firestore
     def get_open_position_by_symbol(self, symbol: str) -> Position | None:
         """
         Get the current OPEN position for a symbol.
@@ -630,7 +638,6 @@ class PositionRepository:
                 return None
         return None
 
-    @retry_firestore
     def update_position(self, position: Position) -> None:
         """Update an existing position in Firestore."""
         doc_ref = self.db.collection(self.collection_name).document(position.position_id)
@@ -640,7 +647,6 @@ class PositionRepository:
         data["updated_at"] = datetime.now(timezone.utc)
         doc_ref.set(data, merge=True)
 
-    @retry_firestore
     def get_closed_positions(self, limit: int = 50) -> list[Position]:
         """Get recently closed positions for orphan detection (Issue #139).
 
@@ -670,7 +676,6 @@ class PositionRepository:
 
         return results
 
-    @retry_firestore
     def get_positions_by_status_and_time(
         self, status: TradeStatus, hours_lookback: int = 24
     ) -> list[Position]:
@@ -704,7 +709,6 @@ class PositionRepository:
 
         return results
 
-    @retry_firestore
     def cleanup_expired(self, retention_days: int = 30) -> int:
         """Delete positions past their TTL. Returns count deleted."""
         cutoff_date = datetime.now(timezone.utc) - timedelta(days=retention_days)
@@ -733,7 +737,6 @@ class PositionRepository:
 
         return count
 
-    @retry_firestore
     def flush_all(self) -> int:
         """Delete ALL positions in the collection. Use with caution!
 
@@ -771,7 +774,6 @@ class JobMetadataRepository:
         self.db = firestore.Client(project=settings.GOOGLE_CLOUD_PROJECT)
         self.collection_name = "job_metadata"
 
-    @retry_firestore
     def get_last_run_date(self, job_id: str) -> Optional[date]:
         """
         Get the last run date for a specific job.
@@ -791,7 +793,6 @@ class JobMetadataRepository:
                 return date.fromisoformat(last_run_str)
         return None
 
-    @retry_firestore
     def update_last_run_date(self, job_id: str, run_date: date) -> None:
         """
         Update the last run date for a specific job.
@@ -802,7 +803,6 @@ class JobMetadataRepository:
         """
         self.save_job_metadata(job_id, {"last_run_date": run_date})
 
-    @retry_firestore
     def save_job_metadata(self, job_id: str, metadata: Dict[str, Any]) -> None:
         """
         Save job metadata to Firestore (merge update).
@@ -835,7 +835,6 @@ class StrategyRepository:
         self.db = firestore.Client(project=settings.GOOGLE_CLOUD_PROJECT)
         self.collection_name = "dim_strategies"
 
-    @retry_firestore
     def get_all_strategies(self) -> list[StrategyConfig]:
         """
         Get all strategies from Firestore.
@@ -862,7 +861,6 @@ class StrategyRepository:
 
         return strategies
 
-    @retry_firestore
     def save(self, strategy: StrategyConfig) -> None:
         """Save a strategy configuration."""
         doc_ref = self.db.collection(self.collection_name).document(strategy.strategy_id)

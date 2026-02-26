@@ -13,6 +13,7 @@ Key Capabilities:
 """
 
 from datetime import date, datetime, timedelta, timezone
+from time import sleep
 from typing import Any, Dict, List, Optional, cast
 
 from alpaca.common.exceptions import APIError
@@ -40,7 +41,6 @@ from crypto_signals.engine.risk import RiskEngine
 from crypto_signals.market.data_provider import MarketDataProvider
 from crypto_signals.observability import console, get_metrics_collector
 from crypto_signals.repository.firestore import PositionRepository
-from crypto_signals.utils.retries import retry_alpaca
 from crypto_signals.utils.symbols import normalize_alpaca_symbol
 from loguru import logger
 from rich.panel import Panel
@@ -105,24 +105,24 @@ class ExecutionEngine:
         )
 
         # Fetch Account ID for data joins (Issue #182)
+        self.account_id = "unknown"
         try:
-            self.account_id = self._get_account_id()
-        except Exception as e:
-            logger.error(
-                "Failed to fetch Alpaca account ID after retries. Defaulting to 'unknown'.",
+            self.account_id = str(self.alpaca.get_account().id)
+        except APIError as e:
+            logger.warning(
+                "Failed to fetch Alpaca account ID. Defaulting to 'unknown'.",
                 extra={"error": str(e)},
             )
-            self.account_id = "unknown"
+        except Exception as e:
+            logger.error(
+                "An unexpected error occurred while fetching Alpaca account ID. Defaulting to 'unknown'.",
+                extra={"error": str(e)},
+            )
 
         # Environment Logging
         logger.info(
             f"Execution Engine Initialized [Env: {settings.ENVIRONMENT} | Mode: {'PAPER' if settings.is_paper_trading else 'LIVE'} | Account: {self.account_id}]"
         )
-
-    @retry_alpaca
-    def _get_account_id(self) -> str:
-        """Fetch Alpaca account ID with retries."""
-        return str(self.alpaca.get_account().id)
 
     def execute_signal(self, signal: Signal) -> Optional[Position]:
         """
@@ -182,7 +182,6 @@ class ExecutionEngine:
             # Theoretical execution (Simulated with slippage)
             return self._execute_theoretical_order(signal)
 
-    @retry_alpaca
     def _execute_crypto_signal(self, signal: Signal) -> Optional[Position]:
         """
         Execute a crypto signal using a simple market order.
@@ -199,86 +198,86 @@ class ExecutionEngine:
         """
         settings = get_settings()
 
-        qty = self._calculate_qty(signal)
-        if qty <= 0:
-            logger.error(f"Invalid quantity calculated for {signal.symbol}: {qty}")
-            return None
-
-        # === COST BASIS CHECK (Issue #192) ===
-        if not self._is_notional_value_sufficient(qty, signal):
-            return None
-
-        # Determine order side
-        effective_side = signal.side or DomainOrderSide.BUY
-        alpaca_side = (
-            OrderSide.BUY if effective_side == DomainOrderSide.BUY else OrderSide.SELL
-        )
-
-        # Simple market order for crypto (NO order_class, NO take_profit/stop_loss)
-        order_request = MarketOrderRequest(
-            symbol=signal.symbol,
-            qty=qty,
-            side=alpaca_side,
-            time_in_force=TimeInForce.GTC,  # GTC required for crypto
-            client_order_id=signal.signal_id,
-        )
-
-        logger.info(
-            f"Submitting crypto market order for {signal.symbol}",
-            extra={
-                "symbol": signal.symbol,
-                "qty": qty,
-                "side": alpaca_side.value,
-                "client_order_id": signal.signal_id,
-                "note": "Simple order - SL/TP tracked manually",
-            },
-        )
-
         try:
+            qty = self._calculate_qty(signal)
+            if qty <= 0:
+                logger.error(f"Invalid quantity calculated for {signal.symbol}: {qty}")
+                return None
+
+            # === COST BASIS CHECK (Issue #192) ===
+            if not self._is_notional_value_sufficient(qty, signal):
+                return None
+
+            # Determine order side
+            effective_side = signal.side or DomainOrderSide.BUY
+            alpaca_side = (
+                OrderSide.BUY if effective_side == DomainOrderSide.BUY else OrderSide.SELL
+            )
+
+            # Simple market order for crypto (NO order_class, NO take_profit/stop_loss)
+            order_request = MarketOrderRequest(
+                symbol=signal.symbol,
+                qty=qty,
+                side=alpaca_side,
+                time_in_force=TimeInForce.GTC,  # GTC required for crypto
+                client_order_id=signal.signal_id,
+            )
+
+            logger.info(
+                f"Submitting crypto market order for {signal.symbol}",
+                extra={
+                    "symbol": signal.symbol,
+                    "qty": qty,
+                    "side": alpaca_side.value,
+                    "client_order_id": signal.signal_id,
+                    "note": "Simple order - SL/TP tracked manually",
+                },
+            )
+
             order = cast(Order, self.alpaca.submit_order(order_request))
+
+            logger.info(
+                f"CRYPTO ORDER SUBMITTED: {signal.symbol}",
+                extra={
+                    "order_id": str(order.id),
+                    "client_order_id": order.client_order_id,
+                    "qty": qty,
+                    "status": str(order.status),
+                },
+            )
+
+            # Create Position with SL/TP for manual tracking
+            delete_at = datetime.now(timezone.utc) + timedelta(
+                days=settings.TTL_DAYS_POSITION
+            )
+
+            position = Position(
+                position_id=signal.signal_id,
+                ds=signal.ds,
+                account_id=self.account_id,
+                symbol=signal.symbol,
+                asset_class=signal.asset_class,
+                signal_id=signal.signal_id,
+                alpaca_order_id=str(cast(Order, order).id),
+                entry_order_id=str(cast(Order, order).id),  # For CFEE attribution
+                discord_thread_id=signal.discord_thread_id,
+                status=TradeStatus.OPEN,
+                entry_fill_price=signal.entry_price,
+                current_stop_loss=signal.suggested_stop,
+                qty=qty,
+                side=effective_side,
+                target_entry_price=signal.entry_price,
+                tp_order_id=None,  # No TP order - tracked manually
+                sl_order_id=None,  # No SL order - tracked manually
+                delete_at=delete_at,
+            )
+
+            return position
+
         except Exception as e:
             self._log_execution_failure(signal, e)
-            raise
+            return None
 
-        logger.info(
-            f"CRYPTO ORDER SUBMITTED: {signal.symbol}",
-            extra={
-                "order_id": str(order.id),
-                "client_order_id": order.client_order_id,
-                "qty": qty,
-                "status": str(order.status),
-            },
-        )
-
-        # Create Position with SL/TP for manual tracking
-        delete_at = datetime.now(timezone.utc) + timedelta(
-            days=settings.TTL_DAYS_POSITION
-        )
-
-        position = Position(
-            position_id=signal.signal_id,
-            ds=signal.ds,
-            account_id=self.account_id,
-            symbol=signal.symbol,
-            asset_class=signal.asset_class,
-            signal_id=signal.signal_id,
-            alpaca_order_id=str(cast(Order, order).id),
-            entry_order_id=str(cast(Order, order).id),  # For CFEE attribution
-            discord_thread_id=signal.discord_thread_id,
-            status=TradeStatus.OPEN,
-            entry_fill_price=signal.entry_price,
-            current_stop_loss=signal.suggested_stop,
-            qty=qty,
-            side=effective_side,
-            target_entry_price=signal.entry_price,
-            tp_order_id=None,  # No TP order - tracked manually
-            sl_order_id=None,  # No SL order - tracked manually
-            delete_at=delete_at,
-        )
-
-        return position
-
-    @retry_alpaca
     def _execute_bracket_order(self, signal: Signal) -> Optional[Position]:
         """
         Execute an equity signal using a bracket order.
@@ -294,91 +293,92 @@ class ExecutionEngine:
         """
         settings = get_settings()
 
-        # Calculate position size
-        qty = self._calculate_qty(signal)
-        if qty <= 0:
-            logger.error(f"Invalid quantity calculated for {signal.symbol}: {qty}")
-            return None
-
-        # === COST BASIS CHECK (Issue #192) ===
-        if not self._is_notional_value_sufficient(qty, signal):
-            return None
-
-        # Determine order side (with None fallback)
-        effective_side = signal.side or DomainOrderSide.BUY
-        alpaca_side = (
-            OrderSide.BUY if effective_side == DomainOrderSide.BUY else OrderSide.SELL
-        )
-
-        # Build the Bracket Order request
-        order_request = MarketOrderRequest(
-            symbol=signal.symbol,  # Alpaca accepts BTC/USD format
-            qty=qty,
-            side=alpaca_side,
-            time_in_force=TimeInForce.GTC,
-            order_class=OrderClass.BRACKET,
-            take_profit=TakeProfitRequest(limit_price=round(signal.take_profit_1, 2)),
-            stop_loss=StopLossRequest(stop_price=round(signal.suggested_stop, 2)),
-            client_order_id=signal.signal_id,  # Traceability link
-        )
-
-        # Submit the order
-        logger.info(
-            f"Submitting bracket order for {signal.symbol}",
-            extra={
-                "symbol": signal.symbol,
-                "qty": qty,
-                "side": alpaca_side.value,
-                "take_profit": signal.take_profit_1,
-                "stop_loss": signal.suggested_stop,
-                "client_order_id": signal.signal_id,
-            },
-        )
-
         try:
+            # Calculate position size
+            qty = self._calculate_qty(signal)
+            if qty <= 0:
+                logger.error(f"Invalid quantity calculated for {signal.symbol}: {qty}")
+                return None
+
+            # === COST BASIS CHECK (Issue #192) ===
+            if not self._is_notional_value_sufficient(qty, signal):
+                return None
+
+            # Determine order side (with None fallback)
+            effective_side = signal.side or DomainOrderSide.BUY
+            alpaca_side = (
+                OrderSide.BUY if effective_side == DomainOrderSide.BUY else OrderSide.SELL
+            )
+
+            # Build the Bracket Order request
+            order_request = MarketOrderRequest(
+                symbol=signal.symbol,  # Alpaca accepts BTC/USD format
+                qty=qty,
+                side=alpaca_side,
+                time_in_force=TimeInForce.GTC,
+                order_class=OrderClass.BRACKET,
+                take_profit=TakeProfitRequest(limit_price=round(signal.take_profit_1, 2)),
+                stop_loss=StopLossRequest(stop_price=round(signal.suggested_stop, 2)),
+                client_order_id=signal.signal_id,  # Traceability link
+            )
+
+            # Submit the order
+            logger.info(
+                f"Submitting bracket order for {signal.symbol}",
+                extra={
+                    "symbol": signal.symbol,
+                    "qty": qty,
+                    "side": alpaca_side.value,
+                    "take_profit": signal.take_profit_1,
+                    "stop_loss": signal.suggested_stop,
+                    "client_order_id": signal.signal_id,
+                },
+            )
+
             order = cast(Order, self.alpaca.submit_order(order_request))
+
+            # Log success
+            logger.info(
+                f"ORDER SUBMITTED: {signal.symbol}",
+                extra={
+                    "order_id": str(order.id),
+                    "client_order_id": order.client_order_id,
+                    "qty": qty,
+                    "status": str(order.status),
+                },
+            )
+
+            # PROD: settings.TTL_DAYS_POSITION (default 90 days)
+            delete_at = datetime.now(timezone.utc) + timedelta(
+                days=settings.TTL_DAYS_POSITION
+            )
+
+            position = Position(
+                position_id=signal.signal_id,
+                ds=signal.ds,
+                account_id=self.account_id,
+                symbol=signal.symbol,
+                asset_class=signal.asset_class,
+                signal_id=signal.signal_id,
+                alpaca_order_id=str(cast(Order, order).id),
+                entry_order_id=str(cast(Order, order).id),  # For CFEE attribution
+                discord_thread_id=signal.discord_thread_id,
+                status=TradeStatus.OPEN,
+                entry_fill_price=signal.entry_price,
+                current_stop_loss=signal.suggested_stop,
+                qty=qty,
+                side=effective_side,
+                target_entry_price=signal.entry_price,
+                tp_order_id=None,
+                sl_order_id=None,
+                delete_at=delete_at,
+            )
+
+            return position
+
         except Exception as e:
             self._log_execution_failure(signal, e)
-            raise
-
-        # Log success
-        logger.info(
-            f"ORDER SUBMITTED: {signal.symbol}",
-            extra={
-                "order_id": str(order.id),
-                "client_order_id": order.client_order_id,
-                "qty": qty,
-                "status": str(order.status),
-            },
-        )
-
-        # PROD: settings.TTL_DAYS_POSITION (default 90 days)
-        delete_at = datetime.now(timezone.utc) + timedelta(
-            days=settings.TTL_DAYS_POSITION
-        )
-
-        position = Position(
-            position_id=signal.signal_id,
-            ds=signal.ds,
-            account_id=self.account_id,
-            symbol=signal.symbol,
-            asset_class=signal.asset_class,
-            signal_id=signal.signal_id,
-            alpaca_order_id=str(cast(Order, order).id),
-            entry_order_id=str(cast(Order, order).id),  # For CFEE attribution
-            discord_thread_id=signal.discord_thread_id,
-            status=TradeStatus.OPEN,
-            entry_fill_price=signal.entry_price,
-            current_stop_loss=signal.suggested_stop,
-            qty=qty,
-            side=effective_side,
-            target_entry_price=signal.entry_price,
-            tp_order_id=None,
-            sl_order_id=None,
-            delete_at=delete_at,
-        )
-
-        return position
+            return None
 
     def _execute_theoretical_order(self, signal: Signal) -> Position:
         """
@@ -622,7 +622,6 @@ class ExecutionEngine:
     # CFEE RECONCILIATION METHODS (Issue #140 - T+1 Fee Settlement)
     # =========================================================================
 
-    @retry_alpaca
     def get_crypto_fees_by_orders(
         self,
         order_ids: List[str],
@@ -648,90 +647,128 @@ class ExecutionEngine:
                 - fee_details: List of individual CFEE records
                 - fee_tier: Volume tier used
         """
-        # Query CFEE activities via raw REST API (TradingClient v2)
-        params = {
-            "activity_types": "CFEE",
-            "date": start_date.isoformat(),
-            "until": end_date.isoformat(),
-            "direction": "asc",
-        }
+        MAX_RETRIES = 3
+        RETRY_DELAY_BASE = 1.0  # seconds
 
-        activities_data = self.alpaca.get("/account/activities", params)
+        for attempt in range(1, MAX_RETRIES + 1):
+            try:
+                # Query CFEE activities via raw REST API (TradingClient v2)
+                params = {
+                    "activity_types": "CFEE",
+                    "date": start_date.isoformat(),
+                    "until": end_date.isoformat(),
+                    "direction": "asc",
+                }
 
-        # Wrap dicts for object compatibility
-        activities = (
-            [_ActivityWrapper(a) for a in activities_data] if activities_data else []
-        )
+                activities_data = self.alpaca.get("/account/activities", params)
 
-        # Filter by symbol and aggregate
-        total_fee_usd = 0.0
-        fee_details = []
-        fee_tier = None
+                # Wrap dicts for object compatibility
+                activities = (
+                    [_ActivityWrapper(a) for a in activities_data]
+                    if activities_data
+                    else []
+                )
 
-        for activity in activities:
-            # Match by symbol (Alpaca uses 'BTCUSD' format, we use 'BTC/USD')
-            activity_symbol = normalize_alpaca_symbol(str(activity.symbol))
-            query_symbol = normalize_alpaca_symbol(symbol)
+                # Filter by symbol and aggregate
+                total_fee_usd = 0.0
+                fee_details = []
+                fee_tier = None
 
-            if activity_symbol != query_symbol:
-                continue
+                for activity in activities:
+                    # Match by symbol (Alpaca uses 'BTCUSD' format, we use 'BTC/USD')
+                    activity_symbol = normalize_alpaca_symbol(str(activity.symbol))
+                    query_symbol = normalize_alpaca_symbol(symbol)
 
-            # Parse fee amount
-            # CFEE qty is in crypto, price is USD/crypto
-            # Fee USD = abs(qty) * price
-            qty = float(activity.qty) if hasattr(activity, "qty") else 0.0
-            price = float(activity.price) if hasattr(activity, "price") else 0.0
+                    if activity_symbol != query_symbol:
+                        continue
 
-            # Validate before conversion (skip invalid records)
-            if qty == 0.0 or price == 0.0:
-                logger.warning(
-                    f"Invalid CFEE record: qty={qty}, price={price}",
+                    # Parse fee amount
+                    # CFEE qty is in crypto, price is USD/crypto
+                    # Fee USD = abs(qty) * price
+                    qty = float(activity.qty) if hasattr(activity, "qty") else 0.0
+                    price = float(activity.price) if hasattr(activity, "price") else 0.0
+
+                    # Validate before conversion (skip invalid records)
+                    if qty == 0.0 or price == 0.0:
+                        logger.warning(
+                            f"Invalid CFEE record: qty={qty}, price={price}",
+                            extra={
+                                "activity_id": activity.id,
+                                "symbol": symbol,
+                                "qty": qty,
+                                "price": price,
+                            },
+                        )
+                        continue  # Skip invalid records
+
+                    fee_usd = abs(qty) * price
+                    total_fee_usd += fee_usd
+
+                    fee_details.append(
+                        {
+                            "activity_id": activity.id,
+                            "date": str(activity.date),
+                            "qty": qty,
+                            "price": price,
+                            "fee_usd": fee_usd,
+                            "description": activity.description
+                            if hasattr(activity, "description")
+                            else None,
+                        }
+                    )
+
+                    # Extract tier from description (e.g., "Tier 0: 0.25%")
+                    if hasattr(activity, "description") and not fee_tier:
+                        desc = str(activity.description)
+                        if "Tier" in desc:
+                            fee_tier = desc
+
+                logger.info(
+                    f"Fetched CFEE for {symbol}: ${total_fee_usd:.4f} ({len(fee_details)} records)",
                     extra={
-                        "activity_id": activity.id,
                         "symbol": symbol,
-                        "qty": qty,
-                        "price": price,
+                        "total_fee_usd": total_fee_usd,
+                        "num_records": len(fee_details),
+                        "fee_tier": fee_tier,
                     },
                 )
-                continue  # Skip invalid records
 
-            fee_usd = abs(qty) * price
-            total_fee_usd += fee_usd
-
-            fee_details.append(
-                {
-                    "activity_id": activity.id,
-                    "date": str(activity.date),
-                    "qty": qty,
-                    "price": price,
-                    "fee_usd": fee_usd,
-                    "description": activity.description
-                    if hasattr(activity, "description")
-                    else None,
+                return {
+                    "total_fee_usd": total_fee_usd,
+                    "fee_details": fee_details,
+                    "fee_tier": fee_tier,
                 }
-            )
 
-            # Extract tier from description (e.g., "Tier 0: 0.25%")
-            if hasattr(activity, "description") and not fee_tier:
-                desc = str(activity.description)
-                if "Tier" in desc:
-                    fee_tier = desc
-
-        logger.info(
-            f"Fetched CFEE for {symbol}: ${total_fee_usd:.4f} ({len(fee_details)} records)",
-            extra={
-                "symbol": symbol,
-                "total_fee_usd": total_fee_usd,
-                "num_records": len(fee_details),
-                "fee_tier": fee_tier,
-            },
-        )
-
-        return {
-            "total_fee_usd": total_fee_usd,
-            "fee_details": fee_details,
-            "fee_tier": fee_tier,
-        }
+            except Exception as e:
+                if attempt < MAX_RETRIES:
+                    # Exponential backoff: 1s, 2s, 4s
+                    delay = RETRY_DELAY_BASE * (2 ** (attempt - 1))
+                    logger.warning(
+                        f"CFEE API call failed (attempt {attempt}/{MAX_RETRIES}), retrying.",
+                        extra={
+                            "symbol": symbol,
+                            "attempt": attempt,
+                            "max_retries": MAX_RETRIES,
+                            "retry_delay": delay,
+                            "error": str(e),
+                        },
+                    )
+                    sleep(delay)
+                else:
+                    # Final attempt failed
+                    logger.warning(
+                        f"Failed to fetch CFEE for {symbol} after multiple attempts.",
+                        extra={
+                            "symbol": symbol,
+                            "max_retries": MAX_RETRIES,
+                            "error": str(e),
+                        },
+                    )
+                    return {
+                        "total_fee_usd": 0.0,
+                        "fee_details": [],
+                        "fee_tier": None,
+                    }
 
     def get_current_fee_tier(self) -> Dict[str, Any]:
         """
@@ -768,7 +805,6 @@ class ExecutionEngine:
     # ORDER MANAGEMENT METHODS (Managed Trade Model)
     # =========================================================================
 
-    @retry_alpaca
     def get_order_details(self, order_id: str) -> Optional[Order]:
         """
         Retrieve order details from Alpaca by order ID.
@@ -788,18 +824,17 @@ class ExecutionEngine:
                 extra={"order_id": order_id, "status": str(order.status)},
             )
             return order
-        except APIError as e:
-            if e.status_code == 404:
-                logger.warning(f"Order {order_id} not found in Alpaca")
-                return None
-            raise
         except Exception as e:
-            # Check for 404/not found in message if not APIError
+            # Check for 404/not found
             error_str = str(e).lower()
             if "not found" in error_str or "404" in error_str:
                 logger.warning(f"Order {order_id} not found in Alpaca")
                 return None
-            raise
+            logger.error(
+                f"Failed to retrieve order {order_id}.",
+                extra={"order_id": order_id, "error": str(e)},
+            )
+            return None
 
     def _retry_fill_price_capture(
         self,
@@ -859,7 +894,6 @@ class ExecutionEngine:
 
         return None
 
-    @retry_alpaca
     def sync_position_status(self, position: Position) -> Position:
         """
         Synchronize position with Alpaca broker state.
@@ -899,198 +933,208 @@ class ExecutionEngine:
             and position.exit_order_id
             and not position.exit_fill_price
         ):
-            exit_order = self.get_order_details(position.exit_order_id)
-            if exit_order and exit_order.filled_avg_price:
-                position.exit_fill_price = float(exit_order.filled_avg_price)
-                if exit_order.filled_at:
-                    position.exit_time = exit_order.filled_at
-                logger.info(
-                    f"[BACKFILL] Captured missing exit price for {position.position_id}: "
-                    f"${position.exit_fill_price}",
-                    extra={
-                        "position_id": position.position_id,
-                        "exit_order_id": position.exit_order_id,
-                        "exit_fill_price": position.exit_fill_price,
-                    },
-                )
-                # Recalculate PnL with the new exit price
-                pnl_usd, pnl_pct = self._calculate_realized_pnl(position)
-                position.realized_pnl_usd = pnl_usd
-                position.realized_pnl_pct = pnl_pct
-                # Clear awaiting_backfill flag (Issue #141)
-                position.awaiting_backfill = False
-
-        # Fetch parent order
-        order = self.get_order_details(position.alpaca_order_id)
-        if not order:
-            position.failed_reason = "Parent order not found in Alpaca"
-            return position
-
-        # Check order status
-        order_status = str(order.status).lower()
-
-        if order_status == "filled":
-            # Update fill details
-            if order.filled_at:
-                position.filled_at = order.filled_at
-            if order.filled_avg_price:
-                position.entry_fill_price = float(order.filled_avg_price)
-
-            # Calculate entry slippage
-            if position.target_entry_price and position.target_entry_price > 0:
-                position.entry_slippage_pct = round(
-                    (position.entry_fill_price - position.target_entry_price)
-                    / position.target_entry_price
-                    * 100,
-                    4,
+            try:
+                exit_order = self.get_order_details(position.exit_order_id)
+                if exit_order and exit_order.filled_avg_price:
+                    position.exit_fill_price = float(exit_order.filled_avg_price)
+                    if exit_order.filled_at:
+                        position.exit_time = exit_order.filled_at
+                    logger.info(
+                        f"[BACKFILL] Captured missing exit price for {position.position_id}: "
+                        f"${position.exit_fill_price}",
+                        extra={
+                            "position_id": position.position_id,
+                            "exit_order_id": position.exit_order_id,
+                            "exit_fill_price": position.exit_fill_price,
+                        },
+                    )
+                    # Recalculate PnL with the new exit price
+                    pnl_usd, pnl_pct = self._calculate_realized_pnl(position)
+                    position.realized_pnl_usd = pnl_usd
+                    position.realized_pnl_pct = pnl_pct
+                    # Clear awaiting_backfill flag (Issue #141)
+                    position.awaiting_backfill = False
+            except Exception as e:
+                logger.warning(
+                    f"Exit price backfill failed for {position.position_id}.",
+                    extra={"position_id": position.position_id, "error": str(e)},
                 )
 
-            # Extract commission if available (Alpaca reports fees in 'commission' field)
-            # Handle None values (common in paper trading)
-            if hasattr(order, "commission"):
-                position.commission = float(order.commission or 0.0)
+        try:
+            # Fetch parent order
+            order = self.get_order_details(position.alpaca_order_id)
+            if not order:
+                position.failed_reason = "Parent order not found in Alpaca"
+                return position
 
-            # Extract leg IDs from bracket order
-            if hasattr(order, "legs") and order.legs:
-                for leg in order.legs:
-                    leg_type = str(getattr(leg, "order_type", "")).lower()
-                    leg_id = str(leg.id) if leg.id else None
+            # Check order status
+            order_status = str(order.status).lower()
 
-                    if "limit" in leg_type:
-                        # Take Profit is a limit order
-                        position.tp_order_id = leg_id
-                    elif "stop" in leg_type:
-                        # Stop Loss is a stop order
-                        position.sl_order_id = leg_id
+            if order_status == "filled":
+                # Update fill details
+                if order.filled_at:
+                    position.filled_at = order.filled_at
+                if order.filled_avg_price:
+                    position.entry_fill_price = float(order.filled_avg_price)
 
-                logger.info(
-                    f"Synced position {position.position_id}: "
-                    f"TP={position.tp_order_id}, SL={position.sl_order_id}"
-                )
-
-        elif order_status in ("canceled", "rejected", "expired"):
-            position.failed_reason = (
-                f"Order {order_status}: {getattr(order, 'failed_message', 'Unknown')}"
-            )
-            position.status = TradeStatus.CLOSED
-
-        # Check if TP or SL was filled (position closed externally)
-        # Only check if leg IDs were successfully extracted to avoid unnecessary API calls
-        if position.tp_order_id:
-            tp_order = self.get_order_details(position.tp_order_id)
-            if tp_order and str(tp_order.status).lower() == "filled":
-                position.status = TradeStatus.CLOSED
-                # Capture exit details for PnL calculation
-                if tp_order.filled_avg_price:
-                    position.exit_fill_price = float(tp_order.filled_avg_price)
-                if tp_order.filled_at:
-                    position.exit_time = tp_order.filled_at
-                position.exit_reason = ExitReason.TP_HIT
-                # ISSUE FIX: Capture exit_order_id for invalidation path backfill
-                position.exit_order_id = str(tp_order.id)
-                logger.info(f"Position {position.position_id} closed via TP")
-
-        if position.sl_order_id and position.status != TradeStatus.CLOSED:
-            sl_order = self.get_order_details(position.sl_order_id)
-            if sl_order and str(sl_order.status).lower() == "filled":
-                position.status = TradeStatus.CLOSED
-                # Capture exit details for PnL calculation
-                if sl_order.filled_avg_price:
-                    position.exit_fill_price = float(sl_order.filled_avg_price)
-                if sl_order.filled_at:
-                    position.exit_time = sl_order.filled_at
-                position.exit_reason = ExitReason.STOP_LOSS
-                # ISSUE FIX: Capture exit_order_id for invalidation path backfill
-                position.exit_order_id = str(sl_order.id)
-                logger.info(f"Position {position.position_id} closed via SL")
-
-        # -------------------------------------------------------------------------
-        # CALCULATE EXIT METRICS (when position is closed)
-        # -------------------------------------------------------------------------
-        if position.status == TradeStatus.CLOSED:
-            # Calculate trade duration
-            if position.filled_at and position.exit_time:
-                duration = position.exit_time - position.filled_at
-                position.trade_duration_seconds = int(duration.total_seconds())
-
-            # Calculate exit slippage (vs target stop or TP level)
-            # High-fidelity: compare against expected exit price
-            if position.exit_fill_price:
-                target_exit = None
-                if position.exit_reason == ExitReason.STOP_LOSS:
-                    # For SL, target is the current stop loss price
-                    target_exit = position.current_stop_loss
-                elif position.exit_reason == ExitReason.TP_HIT:
-                    # For TP, slippage is typically zero (limit order)
-                    # but we still track it for completeness
-                    target_exit = position.exit_fill_price
-                else:
-                    # Other exits (manual, emergency) - no expected target
-                    target_exit = position.exit_fill_price
-
-                if target_exit and target_exit > 0:
-                    position.exit_slippage_pct = round(
-                        (position.exit_fill_price - target_exit) / target_exit * 100,
+                # Calculate entry slippage
+                if position.target_entry_price and position.target_entry_price > 0:
+                    position.entry_slippage_pct = round(
+                        (position.entry_fill_price - position.target_entry_price)
+                        / position.target_entry_price
+                        * 100,
                         4,
                     )
 
-            # Update realized PnL
-            pnl_usd, pnl_pct = self._calculate_realized_pnl(position)
-            position.realized_pnl_usd = pnl_usd
-            position.realized_pnl_pct = pnl_pct
+                # Extract commission if available (Alpaca reports fees in 'commission' field)
+                # Handle None values (common in paper trading)
+                if hasattr(order, "commission"):
+                    position.commission = float(order.commission or 0.0)
 
-        # -------------------------------------------------------------------------
-        # MANUAL / EXTERNAL EXIT DETECTION
-        # -------------------------------------------------------------------------
-        # If position is still marked OPEN but TP/SL were not triggered,
-        # verify if the position corresponds to actual broker state.
-        if position.status == TradeStatus.OPEN:
-            try:
-                # Check actual open position on Alpaca
-                # get_open_position raises 404 if no position exists
-                alpaca_pos = self.alpaca.get_open_position(
-                    normalize_alpaca_symbol(position.symbol)
+                # Extract leg IDs from bracket order
+                if hasattr(order, "legs") and order.legs:
+                    for leg in order.legs:
+                        leg_type = str(getattr(leg, "order_type", "")).lower()
+                        leg_id = str(leg.id) if leg.id else None
+
+                        if "limit" in leg_type:
+                            # Take Profit is a limit order
+                            position.tp_order_id = leg_id
+                        elif "stop" in leg_type:
+                            # Stop Loss is a stop order
+                            position.sl_order_id = leg_id
+
+                    logger.info(
+                        f"Synced position {position.position_id}: "
+                        f"TP={position.tp_order_id}, SL={position.sl_order_id}"
+                    )
+
+            elif order_status in ("canceled", "rejected", "expired"):
+                position.failed_reason = (
+                    f"Order {order_status}: {getattr(order, 'failed_message', 'Unknown')}"
                 )
+                position.status = TradeStatus.CLOSED
 
-                # Authoritative Reconciliation: Sync current qty and avg entry price
-                # from broker live state to ensure Firestore matches reality.
-                if alpaca_pos:
-                    position.qty = float(alpaca_pos.qty)
-                    position.entry_fill_price = float(alpaca_pos.avg_entry_price)
+            # Check if TP or SL was filled (position closed externally)
+            # Only check if leg IDs were successfully extracted to avoid unnecessary API calls
+            if position.tp_order_id:
+                tp_order = self.get_order_details(position.tp_order_id)
+                if tp_order and str(tp_order.status).lower() == "filled":
+                    position.status = TradeStatus.CLOSED
+                    # Capture exit details for PnL calculation
+                    if tp_order.filled_avg_price:
+                        position.exit_fill_price = float(tp_order.filled_avg_price)
+                    if tp_order.filled_at:
+                        position.exit_time = tp_order.filled_at
+                    position.exit_reason = ExitReason.TP_HIT
+                    # ISSUE FIX: Capture exit_order_id for invalidation path backfill
+                    position.exit_order_id = str(tp_order.id)
+                    logger.info(f"Position {position.position_id} closed via TP")
 
-            except Exception as e:
-                # 404 means no position -> BEFORE marking CLOSED, verify if a closing order exists
-                if "not found" in str(e).lower() or "404" in str(e):
-                    # Race Condition Protection: Skip manual exit verification for young positions
-                    # This prevents false closures if sync runs immediately after opening.
-                    min_age_minutes = _MANUAL_EXIT_VERIFICATION_MIN_AGE_MINUTES
-                    if position.created_at:
-                        age = datetime.now(timezone.utc) - position.created_at
-                        if age < timedelta(minutes=min_age_minutes):
-                            logger.warning(
-                                f"Skipping manual exit verification for young position {position.symbol}",
-                                extra={
-                                    "symbol": position.symbol,
-                                    "age_seconds": age.total_seconds(),
-                                    "min_age_minutes": min_age_minutes,
-                                },
-                            )
-                            return position
+            if position.sl_order_id and position.status != TradeStatus.CLOSED:
+                sl_order = self.get_order_details(position.sl_order_id)
+                if sl_order and str(sl_order.status).lower() == "filled":
+                    position.status = TradeStatus.CLOSED
+                    # Capture exit details for PnL calculation
+                    if sl_order.filled_avg_price:
+                        position.exit_fill_price = float(sl_order.filled_avg_price)
+                    if sl_order.filled_at:
+                        position.exit_time = sl_order.filled_at
+                    position.exit_reason = ExitReason.STOP_LOSS
+                    # ISSUE FIX: Capture exit_order_id for invalidation path backfill
+                    position.exit_order_id = str(sl_order.id)
+                    logger.info(f"Position {position.position_id} closed via SL")
 
-                    if self.reconciler:
-                        self.reconciler.handle_manual_exit_verification(position)
+            # -------------------------------------------------------------------------
+            # CALCULATE EXIT METRICS (when position is closed)
+            # -------------------------------------------------------------------------
+            if position.status == TradeStatus.CLOSED:
+                # Calculate trade duration
+                if position.filled_at and position.exit_time:
+                    duration = position.exit_time - position.filled_at
+                    position.trade_duration_seconds = int(duration.total_seconds())
+
+                # Calculate exit slippage (vs target stop or TP level)
+                # High-fidelity: compare against expected exit price
+                if position.exit_fill_price:
+                    target_exit = None
+                    if position.exit_reason == ExitReason.STOP_LOSS:
+                        # For SL, target is the current stop loss price
+                        target_exit = position.current_stop_loss
+                    elif position.exit_reason == ExitReason.TP_HIT:
+                        # For TP, slippage is typically zero (limit order)
+                        # but we still track it for completeness
+                        target_exit = position.exit_fill_price
                     else:
-                        logger.warning(
-                            f"Position {position.position_id} missing on Alpaca. "
-                            "Verification skipped (no reconciler provided)."
+                        # Other exits (manual, emergency) - no expected target
+                        target_exit = position.exit_fill_price
+
+                    if target_exit and target_exit > 0:
+                        position.exit_slippage_pct = round(
+                            (position.exit_fill_price - target_exit) / target_exit * 100,
+                            4,
                         )
-                else:
-                    # Re-raise transient errors (e.g. 500, ConnectionError) to trigger tenacity retry
-                    raise
+
+                # Update realized PnL
+                pnl_usd, pnl_pct = self._calculate_realized_pnl(position)
+                position.realized_pnl_usd = pnl_usd
+                position.realized_pnl_pct = pnl_pct
+
+            # -------------------------------------------------------------------------
+            # MANUAL / EXTERNAL EXIT DETECTION
+            # -------------------------------------------------------------------------
+            # If position is still marked OPEN but TP/SL were not triggered,
+            # verify if the position corresponds to actual broker state.
+            if position.status == TradeStatus.OPEN:
+                try:
+                    # Check actual open position on Alpaca
+                    # get_open_position raises 404 if no position exists
+                    alpaca_pos = self.alpaca.get_open_position(
+                        normalize_alpaca_symbol(position.symbol)
+                    )
+
+                    # Authoritative Reconciliation: Sync current qty and avg entry price
+                    # from broker live state to ensure Firestore matches reality.
+                    if alpaca_pos:
+                        position.qty = float(alpaca_pos.qty)
+                        position.entry_fill_price = float(alpaca_pos.avg_entry_price)
+
+                except Exception as e:
+                    # 404 means no position -> BEFORE marking CLOSED, verify if a closing order exists
+                    if "not found" in str(e).lower() or "404" in str(e):
+                        # Race Condition Protection: Skip manual exit verification for young positions
+                        # This prevents false closures if sync runs immediately after opening.
+                        min_age_minutes = _MANUAL_EXIT_VERIFICATION_MIN_AGE_MINUTES
+                        if position.created_at:
+                            age = datetime.now(timezone.utc) - position.created_at
+                            if age < timedelta(minutes=min_age_minutes):
+                                logger.warning(
+                                    f"Skipping manual exit verification for young position {position.symbol}",
+                                    extra={
+                                        "symbol": position.symbol,
+                                        "age_seconds": age.total_seconds(),
+                                        "min_age_minutes": min_age_minutes,
+                                    },
+                                )
+                                return position
+
+                        if self.reconciler:
+                            self.reconciler.handle_manual_exit_verification(position)
+                        else:
+                            logger.warning(
+                                f"Position {position.position_id} missing on Alpaca. "
+                                "Verification skipped (no reconciler provided)."
+                            )
+
+        except Exception as e:
+            logger.error(
+                f"Failed to sync position {position.position_id}.",
+                extra={"position_id": position.position_id, "error": str(e)},
+            )
+            position.failed_reason = f"Sync error: {str(e)}"
 
         return position
 
-    @retry_alpaca
     def modify_stop_loss(self, position: Position, new_stop: float) -> bool:
         """
         Update the stop-loss order for an open position.
@@ -1139,50 +1183,57 @@ class ExecutionEngine:
             )
             return True
 
-        # Check current SL order status first
-        sl_order = self.get_order_details(position.sl_order_id)
-        if not sl_order:
-            logger.warning(f"SL order {position.sl_order_id} not found")
+        try:
+            # Check current SL order status first
+            sl_order = self.get_order_details(position.sl_order_id)
+            if not sl_order:
+                logger.warning(f"SL order {position.sl_order_id} not found")
+                return False
+
+            sl_status = str(sl_order.status).lower()
+            pending_states = {"pending_new", "pending_cancel", "pending_replace"}
+
+            if sl_status in pending_states:
+                logger.warning(f"Cannot replace SL order in {sl_status} state")
+                return False
+
+            if sl_status != "new" and sl_status != "accepted":
+                logger.warning(f"SL order in non-replaceable state: {sl_status}")
+                return False
+
+            # Replace the stop-loss order
+            from alpaca.trading.requests import ReplaceOrderRequest
+
+            replace_request = ReplaceOrderRequest(stop_price=round(new_stop, 2))
+
+            replaced_order = self.alpaca.replace_order_by_id(
+                order_id=position.sl_order_id, order_data=replace_request
+            )
+
+            logger.info(
+                f"Modified SL for {position.position_id}: "
+                f"{position.current_stop_loss} -> {new_stop}",
+                extra={
+                    "position_id": position.position_id,
+                    "old_stop": position.current_stop_loss,
+                    "new_stop": new_stop,
+                    "new_order_id": str(replaced_order.id),
+                },
+            )
+
+            # Update position with new SL order ID (replacement creates new order)
+            position.sl_order_id = str(replaced_order.id)
+            position.current_stop_loss = new_stop
+
+            return True
+
+        except Exception as e:
+            logger.error(
+                f"Failed to modify stop for {position.position_id}.",
+                extra={"position_id": position.position_id, "error": str(e)},
+            )
             return False
 
-        sl_status = str(sl_order.status).lower()
-        pending_states = {"pending_new", "pending_cancel", "pending_replace"}
-
-        if sl_status in pending_states:
-            logger.warning(f"Cannot replace SL order in {sl_status} state")
-            return False
-
-        if sl_status != "new" and sl_status != "accepted":
-            logger.warning(f"SL order in non-replaceable state: {sl_status}")
-            return False
-
-        # Replace the stop-loss order
-        from alpaca.trading.requests import ReplaceOrderRequest
-
-        replace_request = ReplaceOrderRequest(stop_price=round(new_stop, 2))
-
-        replaced_order = self.alpaca.replace_order_by_id(
-            order_id=position.sl_order_id, order_data=replace_request
-        )
-
-        logger.info(
-            f"Modified SL for {position.position_id}: "
-            f"{position.current_stop_loss} -> {new_stop}",
-            extra={
-                "position_id": position.position_id,
-                "old_stop": position.current_stop_loss,
-                "new_stop": new_stop,
-                "new_order_id": str(replaced_order.id),
-            },
-        )
-
-        # Update position with new SL order ID (replacement creates new order)
-        position.sl_order_id = str(replaced_order.id)
-        position.current_stop_loss = new_stop
-
-        return True
-
-    @retry_alpaca
     def scale_out_position(self, position: Position, scale_pct: float = 0.5) -> bool:
         """
         Partial close: Sell scale_pct of position at market.
@@ -1214,125 +1265,134 @@ class ExecutionEngine:
             logger.warning(f"Cannot scale out {position.position_id}: no quantity")
             return False
 
-        # Capture original qty BEFORE any calculations (only on first scale-out)
-        if position.original_qty is None:
-            position.original_qty = position.qty
+        try:
+            # Capture original qty BEFORE any calculations (only on first scale-out)
+            if position.original_qty is None:
+                position.original_qty = position.qty
 
-        # Calculate scale-out quantity
-        scale_qty = position.qty * scale_pct
+            # Calculate scale-out quantity
+            scale_qty = position.qty * scale_pct
 
-        # For crypto, qty can be fractional. Round to 8 decimal places.
-        scale_qty = round(scale_qty, 8)
+            # For crypto, qty can be fractional. Round to 8 decimal places.
+            scale_qty = round(scale_qty, 8)
 
-        if scale_qty <= 0:
-            logger.warning(f"Scale-out qty too small for {position.position_id}")
-            return False
+            if scale_qty <= 0:
+                logger.warning(f"Scale-out qty too small for {position.position_id}")
+                return False
 
-        # Determine close side (opposite of entry)
-        close_side = (
-            OrderSide.SELL if position.side == DomainOrderSide.BUY else OrderSide.BUY
-        )
-
-        # Submit market order for partial close
-        close_request = MarketOrderRequest(
-            symbol=position.symbol,
-            qty=scale_qty,
-            side=close_side,
-            time_in_force=TimeInForce.GTC,
-        )
-
-        close_order = cast(Order, self.alpaca.submit_order(close_request))
-
-        # === ISSUE #141: Capture fill price with retry budget ===
-        # Track exit order ID for this scale-out
-        exit_order_id = str(close_order.id)
-
-        # Capture immediate fill price
-        fill_price = None
-        if close_order.filled_avg_price:
-            fill_price = float(close_order.filled_avg_price)
-            logger.info(
-                f"[IMMEDIATE] Captured scale-out fill price for {position.position_id}: "
-                f"${fill_price}"
-            )
-        else:
-            # Use retry budget helper for delayed fills
-            result = self._retry_fill_price_capture(
-                order_id=exit_order_id, position_id=position.position_id
-            )
-            if result:
-                fill_price, _ = result  # We don't need filled_at for scale-outs
-
-        if not fill_price:
-            # Mark for backfill but proceed to allow inventory update
-            logger.warning(
-                f"[SCALE-OUT] Fill price not available for {position.position_id} "
-                f"after retry budget exhausted. Order ID: {exit_order_id}"
+            # Determine close side (opposite of entry)
+            close_side = (
+                OrderSide.SELL if position.side == DomainOrderSide.BUY else OrderSide.BUY
             )
 
-        # === WEIGHTED AVERAGE CALCULATION (Issue #141 - Staff Review Gap #2) ===
-        # For multi-stage exits (TP1 @ $100, TP2 @ $110), calculate weighted average
-        # Formula: ((New_Qty * New_Price) + Previous_Exit_Value) / Total_Qty_Exited
-        if fill_price is not None:
-            # Calculate total exit value so far
-            previous_exit_value = position.scaled_out_qty * (
-                position.scaled_out_price or 0.0
+            # Submit market order for partial close
+            close_request = MarketOrderRequest(
+                symbol=position.symbol,
+                qty=scale_qty,
+                side=close_side,
+                time_in_force=TimeInForce.GTC,
             )
-            new_exit_value = scale_qty * fill_price
-            total_exit_value = previous_exit_value + new_exit_value
 
-            # Update scaled-out quantity
-            position.scaled_out_qty += scale_qty
+            close_order = cast(Order, self.alpaca.submit_order(close_request))
 
-            # Calculate weighted average
-            if position.scaled_out_qty > 0:
-                position.scaled_out_price = total_exit_value / position.scaled_out_qty
+            # === ISSUE #141: Capture fill price with retry budget ===
+            # Track exit order ID for this scale-out
+            exit_order_id = str(close_order.id)
+
+            # Capture immediate fill price
+            fill_price = None
+            if close_order.filled_avg_price:
+                fill_price = float(close_order.filled_avg_price)
                 logger.info(
-                    f"[WEIGHTED AVG] Updated exit price for {position.position_id}: "
-                    f"${position.scaled_out_price:.2f} "
-                    f"(previous: ${previous_exit_value / (position.scaled_out_qty - scale_qty) if position.scaled_out_qty > scale_qty else 0:.2f}, "
-                    f"new: ${fill_price:.2f})"
+                    f"[IMMEDIATE] Captured scale-out fill price for {position.position_id}: "
+                    f"${fill_price}"
+                )
+            else:
+                # Use retry budget helper for delayed fills
+                result = self._retry_fill_price_capture(
+                    order_id=exit_order_id, position_id=position.position_id
+                )
+                if result:
+                    fill_price, _ = result  # We don't need filled_at for scale-outs
+
+            if not fill_price:
+                # Mark for backfill but proceed to allow inventory update
+                logger.warning(
+                    f"[SCALE-OUT] Fill price not available for {position.position_id} "
+                    f"after retry budget exhausted. Order ID: {exit_order_id}"
                 )
 
-            # Track individual scale-out for audit trail
-            position.scaled_out_prices.append(
-                {
-                    "qty": scale_qty,
-                    "price": fill_price,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "order_id": exit_order_id,  # NEW: Track order ID for reconciliation
-                }
+            # === WEIGHTED AVERAGE CALCULATION (Issue #141 - Staff Review Gap #2) ===
+            # For multi-stage exits (TP1 @ $100, TP2 @ $110), calculate weighted average
+            # Formula: ((New_Qty * New_Price) + Previous_Exit_Value) / Total_Qty_Exited
+            if fill_price is not None:
+                # Calculate total exit value so far
+                previous_exit_value = position.scaled_out_qty * (
+                    position.scaled_out_price or 0.0
+                )
+                new_exit_value = scale_qty * fill_price
+                total_exit_value = previous_exit_value + new_exit_value
+
+                # Update scaled-out quantity
+                position.scaled_out_qty += scale_qty
+
+                # Calculate weighted average
+                if position.scaled_out_qty > 0:
+                    position.scaled_out_price = total_exit_value / position.scaled_out_qty
+                    logger.info(
+                        f"[WEIGHTED AVG] Updated exit price for {position.position_id}: "
+                        f"${position.scaled_out_price:.2f} "
+                        f"(previous: ${previous_exit_value / (position.scaled_out_qty - scale_qty) if position.scaled_out_qty > scale_qty else 0:.2f}, "
+                        f"new: ${fill_price:.2f})"
+                    )
+
+                # Track individual scale-out for audit trail
+                position.scaled_out_prices.append(
+                    {
+                        "qty": scale_qty,
+                        "price": fill_price,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "order_id": exit_order_id,  # NEW: Track order ID for reconciliation
+                    }
+                )
+
+                # NEW: Update position.exit_fill_price for final archival
+                # This ensures TradeArchivalPipeline gets the correct aggregate value
+                position.exit_fill_price = position.scaled_out_price
+                position.awaiting_backfill = False
+            else:
+                # No fill price captured - mark for backfill
+                position.awaiting_backfill = True
+                logger.warning(
+                    f"[SCALE-OUT] Marking {position.position_id} for backfill (no fill price)"
+                )
+
+            position.scaled_out_at = datetime.now(timezone.utc)
+
+            # Update remaining quantity
+            position.qty = round(position.qty - scale_qty, 8)
+
+            logger.info(
+                f"SCALE OUT: {position.position_id} - {scale_pct * 100:.0f}%",
+                extra={
+                    "position_id": position.position_id,
+                    "symbol": position.symbol,
+                    "scale_qty": scale_qty,
+                    "remaining_qty": position.qty,
+                    "fill_price": fill_price,
+                    "order_id": str(close_order.id),
+                },
             )
 
-            # NEW: Update position.exit_fill_price for final archival
-            # This ensures TradeArchivalPipeline gets the correct aggregate value
-            position.exit_fill_price = position.scaled_out_price
-            position.awaiting_backfill = False
-        else:
-            # No fill price captured - mark for backfill
-            position.awaiting_backfill = True
-            logger.warning(
-                f"[SCALE-OUT] Marking {position.position_id} for backfill (no fill price)"
+            return True
+
+        except Exception as e:
+            logger.error(
+                f"Scale-out failed for {position.position_id}.",
+                extra={"position_id": position.position_id, "error": str(e)},
             )
-
-        position.scaled_out_at = datetime.now(timezone.utc)
-
-        # Update remaining quantity
-        position.qty = round(position.qty - scale_qty, 8)
-
-        logger.info(
-            f"SCALE OUT: {position.position_id} - {scale_pct * 100:.0f}%",
-            extra={
-                "position_id": position.position_id,
-                "symbol": position.symbol,
-                "scale_qty": scale_qty,
-                "remaining_qty": position.qty,
-                "fill_price": fill_price,
-                "order_id": str(close_order.id),
-            },
-        )
-
-        return True
+            position.failed_reason = f"Scale-out failed: {str(e)}"
+            return False
 
     def move_stop_to_breakeven(self, position: Position) -> bool:
         """
@@ -1430,7 +1490,6 @@ class ExecutionEngine:
 
         return (round(pnl_usd, 2), round(pnl_pct, 4))
 
-    @retry_alpaca
     def close_position_emergency(self, position: Position) -> bool:
         """
         Emergency close: Cancel all open orders and exit at market.
@@ -1493,73 +1552,82 @@ class ExecutionEngine:
                 )
 
         # 3. Submit market order to close position
-        # Determine close side (opposite of entry)
-        close_side = (
-            OrderSide.SELL if position.side == DomainOrderSide.BUY else OrderSide.BUY
-        )
-
-        # Use position.symbol directly (added to Position model for this purpose)
-        close_request = MarketOrderRequest(
-            symbol=position.symbol,
-            qty=position.qty,
-            side=close_side,
-            time_in_force=TimeInForce.GTC,
-        )
-
-        close_order = cast(Order, self.alpaca.submit_order(close_request))
-
-        # === ISSUE 139 FIX: Capture exit order details ===
-        # Store exit order ID for reconciliation and backfill
-        position.exit_order_id = str(close_order.id)
-
-        # Capture fill price (market orders typically fill immediately)
-        if close_order.filled_avg_price:
-            position.exit_fill_price = float(close_order.filled_avg_price)
-            if close_order.filled_at:
-                position.exit_time = close_order.filled_at
-            logger.info(
-                f"[IMMEDIATE] Captured exit fill price for {position.position_id}: "
-                f"${position.exit_fill_price}"
-            )
-            position.awaiting_backfill = False
-        else:
-            # Use retry budget helper for delayed fills
-            result = self._retry_fill_price_capture(
-                order_id=position.exit_order_id, position_id=position.position_id
+        try:
+            # Determine close side (opposite of entry)
+            close_side = (
+                OrderSide.SELL if position.side == DomainOrderSide.BUY else OrderSide.BUY
             )
 
-            if result:
-                fill_price, filled_at = result
-                position.exit_fill_price = fill_price
+            # Use position.symbol directly (added to Position model for this purpose)
+            close_request = MarketOrderRequest(
+                symbol=position.symbol,
+                qty=position.qty,
+                side=close_side,
+                time_in_force=TimeInForce.GTC,
+            )
+
+            close_order = cast(Order, self.alpaca.submit_order(close_request))
+
+            # === ISSUE 139 FIX: Capture exit order details ===
+            # Store exit order ID for reconciliation and backfill
+            position.exit_order_id = str(close_order.id)
+
+            # Capture fill price (market orders typically fill immediately)
+            if close_order.filled_avg_price:
+                position.exit_fill_price = float(close_order.filled_avg_price)
+                if close_order.filled_at:
+                    position.exit_time = close_order.filled_at
+                logger.info(
+                    f"[IMMEDIATE] Captured exit fill price for {position.position_id}: "
+                    f"${position.exit_fill_price}"
+                )
                 position.awaiting_backfill = False
-                if filled_at:
-                    position.exit_time = filled_at
             else:
-                # Explicitly handle None (exhausted retries): Mark for deferred backfill
-                position.awaiting_backfill = True
-                logger.warning(
-                    f"[BACKFILL PENDING] Exit price for {position.position_id} "
-                    f"will be backfilled by sync_position_status()"
+                # Use retry budget helper for delayed fills
+                result = self._retry_fill_price_capture(
+                    order_id=position.exit_order_id, position_id=position.position_id
                 )
 
-        # Capture fill timestamp
-        if close_order.filled_at:
-            position.exit_time = close_order.filled_at
-        elif not position.exit_time:
-            # Fallback to current time if not immediately filled
-            position.exit_time = datetime.now(timezone.utc)
+                if result:
+                    fill_price, filled_at = result
+                    position.exit_fill_price = fill_price
+                    position.awaiting_backfill = False
+                    if filled_at:
+                        position.exit_time = filled_at
+                else:
+                    # Explicitly handle None (exhausted retries): Mark for deferred backfill
+                    position.awaiting_backfill = True
+                    logger.warning(
+                        f"[BACKFILL PENDING] Exit price for {position.position_id} "
+                        f"will be backfilled by sync_position_status()"
+                    )
 
-        logger.info(
-            f"EMERGENCY CLOSE: {position.position_id}",
-            extra={
-                "position_id": position.position_id,
-                "symbol": position.symbol,
-                "close_order_id": str(cast(Order, close_order).id),
-                "qty": position.qty,
-                "side": close_side.value,
-                "exit_fill_price": position.exit_fill_price,
-            },
-        )
+            # Capture fill timestamp
+            if close_order.filled_at:
+                position.exit_time = close_order.filled_at
+            elif not position.exit_time:
+                # Fallback to current time if not immediately filled
+                position.exit_time = datetime.now(timezone.utc)
 
-        position.status = TradeStatus.CLOSED
-        return True
+            logger.info(
+                f"EMERGENCY CLOSE: {position.position_id}",
+                extra={
+                    "position_id": position.position_id,
+                    "symbol": position.symbol,
+                    "close_order_id": str(cast(Order, close_order).id),
+                    "qty": position.qty,
+                    "side": close_side.value,
+                    "exit_fill_price": position.exit_fill_price,
+                },
+            )
+
+            position.status = TradeStatus.CLOSED
+            return True
+
+        except Exception as e:
+            logger.error(
+                f"Emergency close failed for {position.position_id}.",
+                extra={"position_id": position.position_id, "error": str(e)},
+            )
+            position.failed_reason = f"Emergency close failed: {str(e)}"
+            return False

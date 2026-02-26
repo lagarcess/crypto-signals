@@ -48,6 +48,7 @@ def mock_deps_metrics():
         mock_settings.return_value.CRYPTO_SYMBOLS = ["BTC/USD"]
         mock_settings.return_value.EQUITY_SYMBOLS = []
         mock_settings.return_value.RATE_LIMIT_DELAY = 0.0
+        mock_settings.return_value.MAX_WORKERS = 1
 
         # Configure Job Lock
         # (Already mocked in context manager, but ensure acquire returns True)
