@@ -1,39 +1,35 @@
 ---
-description: Manager-level review for delegations to Jules (Intern Persona)
+description: Manager-level review and prompt generation for Jules (Intern Persona)
 ---
 
-**Context**: Use this workflow when reviewing PRs submitted by **Jules** (or other junior agents). The goal is to provide high-context, instructional feedback that triggers Jules' "Reactive Mode".
+**Context**: Use this workflow when reviewing PRs submitted by **Jules** via Google Labs. Since Jules does not respond to automated GitHub bot comments, this workflow analyzes the PR and generates a highly-optimized text prompt for you to copy-paste into the Jules Web UI.
 
-1.  **Analyze the Work**
-    - **Fetch Context**: `gh pr view [pr_number]`
-    - **Diff Check**: `git diff main...HEAD`
-    - **Comment Check**: `poetry run python scripts/parse_pr_comments.py temp/output/pr_comments.json`
-      - *Check if Jules missed any previous feedback.*
+1.  **Gather the Context (via GitHub MCP)**
+    - **Fetch Diff**: Use your available tools or MCP to fetch the diff for the PR branch against `main`.
+    - **Fetch PR Comments**: Use the GitHub MCP server to retrieve existing PR review threads and comments that Jules needs to address.
 
-2.  **Generate Review Strategy (The "Manager" Persona)**
-    - Does the code meet the *exact* requirements of the task?
-    - Are there "Junior Mistakes"? (e.g., missing tests, hardcoded values, logic gaps).
-    - **Action**: Draft a review JSON payload in `temp/review/jules_review.json`.
+2.  **Generate Review Strategy (The "Staff Engineer")**
+    - Act as the senior architect reviewing an intern's work.
+    - Check against `agency_blueprint.md` or the `rfc-design.md` contract.
+    - Identify logic errors, hardcoded values, missing edge cases, or leaked I/O in the Domain layer.
 
-    **JSON Format Requirement**:
-    ```json
-    {
-        "body": "## Manager Review\n\nJules, you missed X. Please fix Y...",
-        "comments": [
-            {
-                "path": "src/file.py",
-                "line": 10,
-                "body": "Please extract this magic number to a constant named `MAX_RETRIES`."
-            }
-        ]
-    }
-    ```
+3.  **Draft the Jules UI Prompt**
+    - Create a text artifact at `temp/review/prompt_for_jules.md`.
+    - Format this to be highly instructional, grouping identical file changes together.
+    - **Prompt Format**:
+      ```markdown
+      Hey Jules, I've reviewed your recent PR. Here are the corrections I need you to implement:
 
-3.  **Execute Review**
-    - **Post Feedback**:
-      `poetry run python scripts/post_review.py [pr_number] temp/review/jules_review.json --request-changes`
-    - **Verify**: Check the PR link output provided by the script.
+      **1. src/crypto_signals/domain/schemas.py**
+      - Line 45: You hardcoded the timeout. Please extract this to `config.py` as `DEFAULT_TIMEOUT`.
+      - Missing Validation: Add a Pydantic `@field_validator` to ensure `price > 0`.
 
-4.  **Handover**
-    - Once posted, Jules will receive the notification as if it came from the User.
-    - Wait for Jules to push fixes.
+      **2. External PR Comments**
+      - [Synthesize and list the feedback pulled from GitHub MCP here].
+
+      Please make these changes, run the `pytest` suite locally, and push the updates to the branch.
+      ```
+
+4.  **Handoff to Human**
+    - Display the prompt to the user in the Antigravity chat.
+    - Instruct the user: "Review the prompt above. If it looks good, copy and paste it directly into the Jules Web UI to trigger the fixes."
