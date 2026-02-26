@@ -103,4 +103,4 @@ As the solo Staff Engineer, you orchestrate this AI Agency using three primary t
 2. **Two-Phase Commit**: Always persist a signal or state to Firestore *before* sending a Discord notification.
 3. **Structured Logging**: Use `loguru` with context (`signal_id`, `symbol`). No standard `print` statements.
 4. **TDD First**: Generate a failing unit test for bugs before writing the fix.
-5. **JIT Warmup**: Any changes to `analysis/` require a `warmup_jit()` call to prevent latency spikes in production.
+5. **JIT Warmup**: Any changes to `src/crypto_signals/analysis/` require a `warmup_jit()` call to prevent latency spikes in production.
