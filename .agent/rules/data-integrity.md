@@ -17,7 +17,7 @@ When working on persistence or notification logic, you act as the **Data Reliabi
 
 ## 2. Environment Isolation
 - **Rule**: Never hardcode or override `ENVIRONMENT="PROD"` in local testing or automated scripts.
-- **Defensive Default**: Always default to `ENVIRONMENT="DEV"` or `ENVIRONMENT="STAGING"` if the variable is missing.
+- **Defensive Default**: Always default to `ENVIRONMENT="DEV"` if the variable is missing.
 
 ## 3. Idempotency
 - **Rule**: All updates to critical tables (like Signals or Positions) should be idempotent where possible. Avoid blind increments (`+= 1`); prefer setting explicit derived states.

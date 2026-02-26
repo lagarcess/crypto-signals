@@ -93,13 +93,14 @@ As the solo Staff Engineer, you orchestrate this AI Agency using three primary t
   - Repetitive, isolated tasks (e.g., "Add a new endpoint for X that matches schema Y").
   - Test coverage expansion (e.g., "Write unit tests for `analysis/indicators.py`").
   - Boilerplate generation based on an approved `rfc-design.md` from Antigravity.
+- **VM Setup (`scripts/jules-setup.sh`)**: Jules should run this script to correctly initialize its workspace (dependencies, safe environment variables, JIT warmup) before executing tasks.
 - *Why*: Jules excels at asynchronous, scoped task execution. Jules writes the PR, and you (with Antigravity's help) review it via the `/review-jules` workflow.
 
 ---
 
 ## 🛑 Never-Violate Standards
 
-1. **Environment Isolation**: Never override `ENVIRONMENT=PROD` in automated scripts. Use `DEV` or `STAGING` for fixes.
+1. **Environment Isolation**: Never override `ENVIRONMENT=PROD` in automated scripts. Use `DEV` for fixes.
 2. **Two-Phase Commit**: Always persist a signal or state to Firestore *before* sending a Discord notification.
 3. **Structured Logging**: Use `loguru` with context (`signal_id`, `symbol`). No standard `print` statements.
 4. **TDD First**: Generate a failing unit test for bugs before writing the fix.
