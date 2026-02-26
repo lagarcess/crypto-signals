@@ -10,7 +10,7 @@ Synchronization is driven by the **Repository-as-Source-of-Truth**. All tools sh
 | :--- | :--- | :--- |
 | **Antigravity** | Human-Agent Interface | `temp/plan/implementation-plan.md` |
 | **Jules** | Headless Execution Agent | `AGENTS.md`, `knowledge-base.md` |
-| **Gemini** | Automated PR Reviewer | `.agent/workflows/review.md` |
+| **Gemini** | Automated PR Reviewer | `gemini-reviewer-context.md` |
 
 ### Synchronization Lifecycle Triggers
 
@@ -30,7 +30,7 @@ The flywheel includes an autonomous self-healing and forensic mechanism:
 2.  **CI/CD Failure**: If `deploy.yml` fails, Jules runs **`/diagnose`** to pull GH logs and categorize the failure.
 3.  **Autonomous Fix**: Jules patches the code/config and re-runs `/verify` and `/preflight`.
 4.  **Lesson Extraction**: After a successful fix or rollback, Jules runs `/learn` to extract the technical "gotcha" into the `knowledge-base.md`.
-4.  **Mirroring**: If a safety rule changes, it must be updated in `AGENTS.md` (for Jules) AND `.agent/workflows/review.md` (for Gemini).
+4.  **Mirroring**: If a safety rule changes, it must be updated in `AGENTS.md` (for Jules) AND `gemini-reviewer-context.md` (for Gemini).
 
 ---
 
@@ -58,4 +58,4 @@ To ensure the root `README.md` and the detailed `./docs` wiki remain synchronize
 
 ## 🔗 The "Staff Engineer" Anchor
 
-The `.agent/workflows/review.md` acts as the quality anchor. If you find a new design pattern or safety gap, update that file immediately. This ensures the automated reviewer stays as sharp as the human leads.
+The `gemini-reviewer-context.md` acts as the quality anchor. If you find a new design pattern or safety gap, update that file immediately. This ensures the automated reviewer stays as sharp as the human leads.
