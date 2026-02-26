@@ -30,5 +30,5 @@ Scheduled tasks are "passive." A PR-gate is "active" and prevents drift from eve
 
 ---
 
-> [!TIP]
-> This persona will be implemented as a new system instruction file in `.agent/personas/doc_sentinel.md` to be used by the Jules overnight or PR-gate workflows.
+> [!WARNING]
+> This persona concept has been officially superseded and fully implemented by the automatic `/sync-docs` workflow located in `.agent/workflows/sync_docs.md`.
