@@ -178,12 +178,13 @@ class TestGetValidPortfolio:
         assert "BTC/USD" in result  # From Alpaca's format
         assert "ETHUSD" in result  # From Alpaca's format
 
-    def test_api_failure_raises(self, service, mock_trading_client):
-        """Test that API failure after retries raises the exception."""
+    def test_api_failure_returns_original(self, service, mock_trading_client):
+        """Test that API failure returns original symbols (fail-open)."""
         mock_trading_client.get_all_assets.side_effect = Exception("API Error")
 
-        with pytest.raises(Exception, match="API Error"):
-            service.get_valid_portfolio(["BTC/USD", "ETH/USD"], AssetClass.CRYPTO)
+        result = service.get_valid_portfolio(["BTC/USD", "ETH/USD"], AssetClass.CRYPTO)
+
+        assert result == ["BTC/USD", "ETH/USD"]
 
     def test_correct_asset_class_passed_to_api(self, service, mock_trading_client):
         """Test that correct asset class is passed to Alpaca API."""

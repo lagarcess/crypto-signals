@@ -537,7 +537,7 @@ def main(
         symbols_processed = 0
 
         def process_portfolio_item(
-            item: tuple[str, AssetClass], progress: Any, task: Any
+            item: tuple[str, AssetClass], progress: Any, task: Any, index: int = 0
         ) -> Optional[tuple[Any, AssetClass, float]]:
             """Process a single portfolio item: fetch data, generate signals, and check exits."""
             symbol, asset_class = item
@@ -546,6 +546,14 @@ def main(
             if shutdown_requested:
                 logger.info(f"Shutdown requested. Skipping {symbol}.")
                 return None
+
+            # Concurrency-safe rate limiting: Stagger threads using index-based delay
+            # Ensures we respect Alpaca's rate limits across parallel workers.
+            target_start = phase1_start_time + (index * rate_limit_delay)
+            wait_time = target_start - time.time()
+            if wait_time > 0:
+                logger.debug(f"Staggering {symbol} by {wait_time:.2f}s")
+                time.sleep(wait_time)
 
             symbol_start_time = time.time()
 
@@ -936,15 +944,15 @@ def main(
                 task, description="[cyan]Analyzing portfolio assets in parallel..."
             )
 
-            # Parallelize asset processing with 5 workers
-            max_workers = 5
+            # Parallelize asset processing
+            max_workers = getattr(settings, "MAX_WORKERS", 3)
             logger.info(f"Parallelizing asset loop with {max_workers} workers...")
 
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 # Submit all tasks
                 future_to_symbol = {
-                    executor.submit(process_portfolio_item, item, progress, task): item[0]
-                    for item in portfolio_items
+                    executor.submit(process_portfolio_item, item, progress, task, idx): item[0]
+                    for idx, item in enumerate(portfolio_items)
                 }
 
                 # Collect results as they complete

@@ -59,7 +59,6 @@ Workflows are automated scripts outlining step-by-step processes. Execute them v
 - `/diagnose`: Infrastructure health check (GCP, Firestore, Alpaca) and Book Balancing Audit (Reverse Orphans/Zombies).
 
 ### Review & Learning
-- `/sync`: Resolve upstream conflicts, rebase, and verify infrastructure integrity before PR review.
 - `/pr`: Creates a comprehensive Pull Request from current changes, formatting, and checking for secrets.
 - `/review`: AI Code Review (Staff Engineer Persona) + Automated Code Hygiene pass.
 - `/review-jules`: Manager-level review for delegations to the Jules Agent.
@@ -78,7 +77,7 @@ As the solo Staff Engineer, you orchestrate this AI Agency using three primary t
 *Role*: High-level reasoning, system architecture, complex refactoring, and orchestration.
 - Use for `/kickoff`, `/design`, and `/architect` workflows.
 - Use for deep systemic bugs requiring `/diagnose`.
-- Use to maintain `.agent/agency_blueprint.md` and `AGENTS.md`.
+- Use to maintain `agency_blueprint.md` and `AGENTS.md`.
 
 ### GitHub Issues (The Workflow Contract)
 *Role*: The central source of truth for work tracking.
@@ -93,7 +92,7 @@ As the solo Staff Engineer, you orchestrate this AI Agency using three primary t
 - **When to Delegate (Add `jules` tag to a GitHub Issue)**:
   - Repetitive, isolated tasks (e.g., "Add a new endpoint for X that matches schema Y").
   - Test coverage expansion (e.g., "Write unit tests for `analysis/indicators.py`").
-  - Boilerplate generation based on an approved `temp/plan/rfc-design.md` from Antigravity.
+  - Boilerplate generation based on an approved `rfc-design.md` from Antigravity.
 - **VM Setup (`scripts/jules-setup.sh`)**: Jules should run this script to correctly initialize its workspace (dependencies, safe environment variables, JIT warmup) before executing tasks.
 - *Why*: Jules excels at asynchronous, scoped task execution. Jules writes the PR, and you (with Antigravity's help) review it via the `/review-jules` workflow.
 

@@ -151,6 +151,13 @@ class Settings(BaseSettings):
         le=10.0,
     )
 
+    MAX_WORKERS: int = Field(
+        default=3,
+        description="Maximum number of parallel worker threads for asset processing.",
+        ge=1,
+        le=20,
+    )
+
     # Execution Engine
     ENABLE_EXECUTION: bool = Field(
         default=False,

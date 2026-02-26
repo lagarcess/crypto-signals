@@ -101,6 +101,7 @@ def mock_dependencies():
             False  # Disable execution by default
         )
         mock_settings.return_value.SIGNAL_SATURATION_THRESHOLD_PCT = 0.5  # 50% threshold
+        mock_settings.return_value.MAX_WORKERS = 3
         mock_settings.return_value.DISCORD_BOT_TOKEN = "test_token"
         mock_settings.return_value.DISCORD_CHANNEL_ID_CRYPTO = "123"
         mock_settings.return_value.DISCORD_CHANNEL_ID_STOCK = "456"

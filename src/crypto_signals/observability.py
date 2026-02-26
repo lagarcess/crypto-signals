@@ -691,18 +691,21 @@ class MetricsCollector:
             "blocked_symbols": sorted(list(self.blocked_symbols)),
         }
 
+    def _initialize_operation_metrics(self, operation: str):
+        """Initialize metrics for a new operation if not present."""
+        if operation not in self.metrics:
+            self.metrics[operation] = {
+                "success_count": 0,
+                "failure_count": 0,
+                "total_duration": 0.0,
+                "min_duration": float("inf"),
+                "max_duration": 0.0,
+            }
+
     def record_success(self, operation: str, duration: float):
         """Record successful operation."""
         with self._lock:
-            if operation not in self.metrics:
-                self.metrics[operation] = {
-                    "success_count": 0,
-                    "failure_count": 0,
-                    "total_duration": 0.0,
-                    "min_duration": float("inf"),
-                    "max_duration": 0.0,
-                }
-
+            self._initialize_operation_metrics(operation)
             m = self.metrics[operation]
             m["success_count"] += 1
             m["total_duration"] += duration
@@ -712,15 +715,7 @@ class MetricsCollector:
     def record_failure(self, operation: str, duration: float):
         """Record failed operation."""
         with self._lock:
-            if operation not in self.metrics:
-                self.metrics[operation] = {
-                    "success_count": 0,
-                    "failure_count": 0,
-                    "total_duration": 0.0,
-                    "min_duration": float("inf"),
-                    "max_duration": 0.0,
-                }
-
+            self._initialize_operation_metrics(operation)
             m = self.metrics[operation]
             m["failure_count"] += 1
             m["total_duration"] += duration

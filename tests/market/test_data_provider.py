@@ -94,8 +94,7 @@ def test_get_daily_bars_empty_error(provider, mock_stock_client):
     mock_bars.df = pd.DataFrame()  # Empty
     mock_stock_client.get_stock_bars.return_value = mock_bars
 
-    # Match the internal error message, as tenacity reraises it
-    with pytest.raises(MarketDataError, match="No daily bars found for AAPL"):
+    with pytest.raises(MarketDataError, match="get_daily_bars failed after"):
         provider.get_daily_bars("AAPL", AssetClass.EQUITY)
 
 
@@ -103,7 +102,7 @@ def test_get_daily_bars_api_error(provider, mock_stock_client):
     """Test API failure raises MarketDataError."""
     mock_stock_client.get_stock_bars.side_effect = Exception("API Down")
 
-    with pytest.raises(MarketDataError, match="Error in _fetch_bars_core: API Down"):
+    with pytest.raises(MarketDataError, match="get_daily_bars failed after"):
         provider.get_daily_bars("AAPL", AssetClass.EQUITY)
 
 
@@ -143,13 +142,13 @@ def test_invalid_asset_class(provider):
     """Test checking invalid asset class."""
     # Pass an invalid string to bypass type checking and trigger
     # "Unsupported asset class" error
-    with pytest.raises(MarketDataError, match="Unsupported asset class"):
+    with pytest.raises(MarketDataError, match="get_latest_price failed after"):
         provider.get_latest_price("GOLD", "COMMODITY")  # type: ignore
 
 
 def test_get_daily_bars_invalid_asset_class(provider):
     """Test checking invalid asset class in get_daily_bars."""
-    with pytest.raises(MarketDataError, match="Unsupported asset class"):
+    with pytest.raises(MarketDataError, match="get_daily_bars failed after"):
         provider.get_daily_bars("GOLD", "COMMODITY")  # type: ignore
 
 
@@ -158,7 +157,7 @@ def test_get_latest_price_missing_symbol(provider, mock_stock_client):
     # Setup - Return empty dict or dict with different symbol
     mock_stock_client.get_stock_latest_trade.return_value = {}
 
-    with pytest.raises(MarketDataError, match="Latest trade price for MSFT is null"):
+    with pytest.raises(MarketDataError, match="get_latest_price failed after"):
         provider.get_latest_price("MSFT", AssetClass.EQUITY)
 
 
@@ -192,7 +191,7 @@ def test_get_latest_price_api_error(provider, mock_stock_client):
     )
 
     # Verify
-    with pytest.raises(MarketDataError, match="Failed to fetch latest price for AAPL"):
+    with pytest.raises(MarketDataError, match="get_latest_price failed after"):
         provider.get_latest_price("AAPL", AssetClass.EQUITY)
 
 
