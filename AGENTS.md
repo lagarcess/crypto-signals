@@ -59,6 +59,7 @@ Workflows are automated scripts outlining step-by-step processes. Execute them v
 - `/diagnose`: Infrastructure health check (GCP, Firestore, Alpaca) and Book Balancing Audit (Reverse Orphans/Zombies).
 
 ### Review & Learning
+- `/sync`: Resolve upstream conflicts, rebase, and verify infrastructure integrity before PR review.
 - `/pr`: Creates a comprehensive Pull Request from current changes, formatting, and checking for secrets.
 - `/review`: AI Code Review (Staff Engineer Persona) + Automated Code Hygiene pass.
 - `/review-jules`: Manager-level review for delegations to the Jules Agent.
