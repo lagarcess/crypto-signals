@@ -1,16 +1,16 @@
 ---
-description: Recursive self-correction loop for test failures
+description: Universal TDD and self-correction loop for test failures
 ---
 
-1. **Analyze Failure**
-   - Read the output of the failed test or lint command.
-   - Identify the specific error (e.g., "AssertionError", "ImportError", "Timeout").
+1. **Test Identification & Execution Loop**
+   // turbo
+   - Identify the specific test file you are working on, or read the output of the failed test/lint command globally.
+   - Run the specific test using poetry (e.g., `poetry run pytest tests/path/to/test_file.py`).
 
-2. **Self-Correction Loop (Max 3 Attempts)**
+2. **Self-Correction (Max 3 Attempts)**
    // turbo
    - **Attempt 1**:
-     - Locate the source code causing the error.
-     - Apply a fix based on the error message.
+     - Read the source code causing the error. Fix it based on the failure output.
      - Re-run the specific failing test.
      - If PASS -> Stop and Report Success.
    - **Attempt 2 (if 1 fails)**:
