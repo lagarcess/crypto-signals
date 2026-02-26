@@ -16,6 +16,7 @@ description: Manager-level review and prompt generation for Jules (Intern Person
 3.  **Draft the Jules UI Prompt**
     - Create a text artifact at `temp/review/prompt_for_jules.md`.
     - Format this to be highly instructional, grouping identical file changes together.
+    - **IMPORTANT**: Ensure you understand the PR Code Review suggestions. If available, decide which changes are worth pursuing and provide explicit details on how to fix them. Include exact `File paths`, `Line Ranges (start to end)`, and the exact `Code Suggestion` blocks so Jules can apply them flawlessly.
     - **Prompt Format**:
       ```markdown
       Hey Jules, I've reviewed your recent PR. Here are the corrections I need you to implement:
