@@ -13,18 +13,39 @@ def _is_test_env():
     return os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get("TEST_MODE") == "True"
 
 
+# Retry settings for test environment
+_TEST_RETRY_ATTEMPTS = 3
+_TEST_RETRY_WAIT_MULTIPLIER = 0.1
+_TEST_RETRY_WAIT_MIN = 0.1
+_TEST_RETRY_WAIT_MAX = 0.5
+
+# Retry settings for production environment
+_PROD_RETRY_ATTEMPTS = 6
+_PROD_RETRY_WAIT_MULTIPLIER = 3
+_PROD_RETRY_WAIT_MIN = 4
+_PROD_RETRY_WAIT_MAX = 70
+
+
 def dynamic_stop(retry_state):
     """Dynamic stop condition based on environment."""
     if _is_test_env():
-        return stop_after_attempt(3)(retry_state)
-    return stop_after_attempt(6)(retry_state)
+        return stop_after_attempt(_TEST_RETRY_ATTEMPTS)(retry_state)
+    return stop_after_attempt(_PROD_RETRY_ATTEMPTS)(retry_state)
 
 
 def dynamic_wait(retry_state):
     """Dynamic wait condition based on environment."""
     if _is_test_env():
-        return wait_exponential(multiplier=0.1, min=0.1, max=0.5)(retry_state)
-    return wait_exponential(multiplier=3, min=4, max=70)(retry_state)
+        return wait_exponential(
+            multiplier=_TEST_RETRY_WAIT_MULTIPLIER,
+            min=_TEST_RETRY_WAIT_MIN,
+            max=_TEST_RETRY_WAIT_MAX,
+        )(retry_state)
+    return wait_exponential(
+        multiplier=_PROD_RETRY_WAIT_MULTIPLIER,
+        min=_PROD_RETRY_WAIT_MIN,
+        max=_PROD_RETRY_WAIT_MAX,
+    )(retry_state)
 
 
 def dynamic_before_sleep(retry_state):
