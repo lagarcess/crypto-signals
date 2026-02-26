@@ -10,7 +10,7 @@ description: Manager-level review and prompt generation for Jules (Intern Person
 
 2.  **Generate Review Strategy (The "Staff Engineer")**
     - Act as the senior architect reviewing an intern's work.
-    - Check against `agency_blueprint.md` or the `rfc-design.md` contract.
+    - Check against `agency_blueprint.md` or the `docs/designs/rfc-design.md` contract.
     - Identify logic errors, hardcoded values, missing edge cases, or leaked I/O in the Domain layer.
 
 3.  **Draft the Jules UI Prompt**

@@ -39,8 +39,8 @@ Skills are specialized instruction sets. If your current task touches one of the
 Workflows are automated scripts outlining step-by-step processes. Execute them via `/workflow-name` or by reading the `.agent/workflows/` directory.
 
 ### Orchestration & Design (The Master Hand-offs)
-- `/kickoff`: The Product Owner gathers business requirements and outputs `temp/plan/requirements.md`.
-- `/design`: The Backend Architect and DRE draft a system architecture `temp/plan/rfc-design.md` for your approval.
+- `/kickoff`: The Product Owner gathers business requirements and outputs `docs/designs/requirements.md`.
+- `/design`: The Backend Architect and DRE draft a system architecture `docs/designs/rfc-design.md` for your approval.
 - `/proto-sync`: Translates Google Stitch UI/UX JSON exports into functional frontend components aligned with Pydantic schemas.
 
 ### Core Development Loop
@@ -59,6 +59,7 @@ Workflows are automated scripts outlining step-by-step processes. Execute them v
 - `/diagnose`: Infrastructure health check (GCP, Firestore, Alpaca) and Book Balancing Audit (Reverse Orphans/Zombies).
 
 ### Review & Learning
+- `/sync-docs`: Audits the repository and synchronizes all documentation (.md files, docstrings) with the current codebase state.
 - `/pr`: Creates a comprehensive Pull Request from current changes, formatting, and checking for secrets.
 - `/review`: AI Code Review (Staff Engineer Persona) + Automated Code Hygiene pass.
 - `/review-jules`: Manager-level review for delegations to the Jules Agent.
@@ -92,7 +93,7 @@ As the solo Staff Engineer, you orchestrate this AI Agency using three primary t
 - **When to Delegate (Add `jules` tag to a GitHub Issue)**:
   - Repetitive, isolated tasks (e.g., "Add a new endpoint for X that matches schema Y").
   - Test coverage expansion (e.g., "Write unit tests for `analysis/indicators.py`").
-  - Boilerplate generation based on an approved `rfc-design.md` from Antigravity.
+  - Boilerplate generation based on an approved `docs/designs/rfc-design.md` from Antigravity.
 - **VM Setup (`scripts/jules-setup.sh`)**: Jules should run this script to correctly initialize its workspace (dependencies, safe environment variables, JIT warmup) before executing tasks.
 - *Why*: Jules excels at asynchronous, scoped task execution. Jules writes the PR, and you (with Antigravity's help) review it via the `/review-jules` workflow.
 
