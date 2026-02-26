@@ -1084,9 +1084,6 @@ class ExecutionEngine:
                             f"Position {position.position_id} missing on Alpaca. "
                             "Verification skipped (no reconciler provided)."
                         )
-                    else:
-                        # Re-raise transient errors (e.g. 500, ConnectionError) to trigger tenacity retry
-                        raise
 
         return position
 
