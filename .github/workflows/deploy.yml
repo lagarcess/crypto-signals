@@ -267,11 +267,18 @@ jobs:
           CI_STATUS="${{ needs.ci.result }}"
           VAL_STATUS="${{ needs.validate-deployment.result }}"
           CD_STATUS="${{ needs.cd.result }}"
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
 
           if [[ "$CI_STATUS" == "failure" || "$VAL_STATUS" == "failure" || "$CD_STATUS" == "failure" ]]; then
              COLOR="15158332" # Red
              EMOJI="🚨"
              FINAL_STATUS="FAILED"
+          elif [[ "$CI_STATUS" == "cancelled" || "$VAL_STATUS" == "cancelled" || "$CD_STATUS" == "cancelled" ]]; then
+             COLOR="8421504" # Gray
+             EMOJI="⚪"
+             FINAL_STATUS="CANCELLED"
+          # Note: We don't explicitly check for 'skipped' here to avoid false positives
+          # from jobs that are expectedly skipped (like validation on push).
           else
              COLOR="3066993" # Green
              EMOJI="✅"
@@ -299,7 +306,8 @@ jobs:
                 {"name": "2. Validation", "value": "$(status_emoji $VAL_STATUS)", "inline": true},
                 {"name": "3. Deployment", "value": "$(status_emoji $CD_STATUS)", "inline": true},
                 {"name": "Author", "value": "${{ github.actor }}", "inline": true},
-                {"name": "Commit", "value": "${{ github.sha }}", "inline": false}
+                {"name": "Commit", "value": "[$SHORT_SHA](https://github.com/${{ github.repository }}/commit/${{ github.sha }})", "inline": true},
+                {"name": "Run ID", "value": "[${{ github.run_id }}](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})", "inline": true}
               ]
             }]
           }
