@@ -5,8 +5,10 @@ This module provides pre-flight validation of portfolio symbols against Alpaca's
 live asset status, filtering out inactive or non-tradable symbols before processing.
 """
 
+import logging
 from typing import List
 
+from alpaca.common.exceptions import APIError
 from alpaca.trading.client import TradingClient
 from alpaca.trading.enums import AssetClass as AlpacaAssetClass
 from alpaca.trading.enums import AssetStatus
@@ -15,6 +17,13 @@ from alpaca.trading.requests import GetAssetsRequest
 from crypto_signals.domain.schemas import AssetClass
 from crypto_signals.observability import log_critical_situation
 from loguru import logger
+from tenacity import (
+    before_sleep_log,
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 
 class AssetValidationService:
@@ -65,6 +74,13 @@ class AssetValidationService:
         else:
             raise ValueError(f"Unsupported asset class: {asset_class}")
 
+    @retry(
+        retry=retry_if_exception_type((ConnectionError, TimeoutError, APIError)),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        stop=stop_after_attempt(3),
+        before_sleep=before_sleep_log(logger, logging.WARNING),
+        reraise=True,
+    )
     def get_valid_portfolio(
         self,
         symbols: List[str],

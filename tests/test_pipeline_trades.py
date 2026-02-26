@@ -117,6 +117,7 @@ def test_active_trade_validation_loop(
         mock_settings.return_value.RATE_LIMIT_DELAY = 0.0
         mock_settings.return_value.ENABLE_EXECUTION = False
         mock_settings.return_value.ENABLE_GCP_LOGGING = False
+        mock_settings.return_value.MAX_WORKERS = 1
 
         active_sig = SignalFactory.build(
             status=SignalStatus.INVALIDATED,
