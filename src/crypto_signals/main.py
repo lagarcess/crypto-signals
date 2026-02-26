@@ -9,6 +9,7 @@ import atexit
 import signal
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, timezone
 from typing import Any, Callable, Optional, Protocol, cast
 
@@ -535,428 +536,437 @@ def main(
         candidate_signals = []  # To be processed in Phase 2 (Saturation Filter)
         symbols_processed = 0
 
-        with create_portfolio_progress(len(portfolio_items)) as (progress, task):
-            for idx, (symbol, asset_class) in enumerate(portfolio_items):
-                # Update progress bar description
-                progress.update(
-                    task, description=f"[cyan]Analyzing {symbol} ({asset_class.value})..."
+        def process_portfolio_item(
+            item: tuple[str, AssetClass], progress: Any, task: Any
+        ) -> Optional[tuple[Any, AssetClass, float]]:
+            """Process a single portfolio item: fetch data, generate signals, and check exits."""
+            symbol, asset_class = item
+
+            # Check for shutdown signal
+            if shutdown_requested:
+                logger.info(f"Shutdown requested. Skipping {symbol}.")
+                return None
+
+            symbol_start_time = time.time()
+
+            try:
+                logger.info(
+                    f"Analyzing {symbol} ({asset_class.value})...",
+                    extra={"symbol": symbol, "asset_class": asset_class.value},
                 )
 
-                # Check for shutdown signal
-                if shutdown_requested:
-                    logger.info("Shutdown requested. Stopping processing gracefully...")
-                    break
-
-                symbol_start_time = time.time()
-
+                # Fetch Data ONCE
                 try:
-                    # Rate limiting: Add delay between symbols (except first)
-                    if idx > 0:
-                        logger.debug(f"Rate limit delay: {rate_limit_delay}s")
-                        time.sleep(rate_limit_delay)
+                    df = market_provider.get_daily_bars(
+                        symbol, asset_class, lookback_days=365
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to fetch data for {symbol}: {e}")
+                    return None
 
+                if df.empty:
+                    logger.warning(f"No data for {symbol}")
+                    return None
+
+                # Generate Signals
+                trade_signal = generator.generate_signals(
+                    symbol, asset_class, dataframe=df
+                )
+
+                # Track metrics
+                symbol_duration = time.time() - symbol_start_time
+
+                if not trade_signal:
+                    logger.debug(f"No signal for {symbol}.")
+                    metrics.record_success("signal_generation", symbol_duration)
+
+                # Active Trade Validation
+                # Check for updates on existing WAITING/ACTIVE signals
+                active_signals = repo.get_active_signals(symbol)
+                if active_signals:
                     logger.info(
-                        f"Analyzing {symbol} ({asset_class.value})...",
-                        extra={"symbol": symbol, "asset_class": asset_class.value},
+                        f"Checking active signals for {symbol} ({len(active_signals)})..."
                     )
 
-                    # Fetch Data ONCE
-                    try:
-                        df = market_provider.get_daily_bars(
-                            symbol, asset_class, lookback_days=365
-                        )
-                    except Exception as e:
-                        logger.error(f"Failed to fetch data for {symbol}: {e}")
-                        continue
+                    # 1. Run Expiration Check (24h Rule)
+                    # MUST run before check_exits to prevent stale WAITING signals
+                    # from being falsely invalidated or exited.
+                    now_utc = datetime.now(timezone.utc)
+                    expired_signals = []
+                    valid_active_signals = []
 
-                    if df.empty:
-                        logger.warning(f"No data for {symbol}")
-                        continue
+                    # Phase 1: Partition signals
+                    for sig in active_signals:
+                        # Only expire WAITING signals.
+                        if (
+                            sig.status == SignalStatus.WAITING
+                            and sig.valid_until
+                            and now_utc > sig.valid_until
+                        ):
+                            expired_signals.append(sig)
+                        else:
+                            valid_active_signals.append(sig)
 
-                    # Generate Signals
-                    trade_signal = generator.generate_signals(
-                        symbol, asset_class, dataframe=df
-                    )
-
-                    # Track metrics
-                    symbol_duration = time.time() - symbol_start_time
-                    symbols_processed += 1
-
-                    if trade_signal:
-                        candidate_signals.append(
-                            (trade_signal, asset_class, symbol_duration)
-                        )
-                    else:
-                        logger.debug(f"No signal for {symbol}.")
-                        metrics.record_success("signal_generation", symbol_duration)
-
-                    # Active Trade Validation
-                    # Check for updates on existing WAITING/ACTIVE signals
-                    active_signals = repo.get_active_signals(symbol)
-                    if active_signals:
+                    # Phase 2: Process expired signals (side effects)
+                    for sig in expired_signals:
                         logger.info(
-                            f"Checking active signals for {symbol} ({len(active_signals)})..."
+                            f"EXPIRING Signal {sig.signal_id} (Valid Until: {sig.valid_until})",
+                            extra={"symbol": symbol, "signal_id": sig.signal_id},
+                        )
+                        sig.status = SignalStatus.EXPIRED
+                        sig.exit_reason = ExitReason.EXPIRED
+                        repo.update_signal_atomic(
+                            sig.signal_id,
+                            {
+                                "status": SignalStatus.EXPIRED.value,
+                                "exit_reason": ExitReason.EXPIRED.value,
+                            },
+                        )
+                        # Reply in thread if available, fallback to main channel
+                        discord.send_message(
+                            f"⏳ **SIGNAL EXPIRED: {symbol}** ⏳\n"
+                            f"Signal expired (24h limit reached).",
+                            thread_id=sig.discord_thread_id,
+                            asset_class=asset_class,
                         )
 
-                        # 1. Run Expiration Check (24h Rule)
-                        # MUST run before check_exits to prevent stale WAITING signals
-                        # from being falsely invalidated or exited.
-                        now_utc = datetime.now(timezone.utc)
-                        expired_signals = []
-                        valid_active_signals = []
+                    # 2. Check exits on remaining valid signals
+                    exited_signals = generator.check_exits(
+                        valid_active_signals, symbol, asset_class, dataframe=df
+                    )
 
-                        # Phase 1: Partition signals
-                        for sig in active_signals:
-                            # Only expire WAITING signals.
-                            if (
-                                sig.status == SignalStatus.WAITING
-                                and sig.valid_until
-                                and now_utc > sig.valid_until
-                            ):
-                                expired_signals.append(sig)
-                            else:
-                                valid_active_signals.append(sig)
-
-                        # Phase 2: Process expired signals (side effects)
-                        for sig in expired_signals:
-                            logger.info(
-                                f"EXPIRING Signal {sig.signal_id} (Valid Until: {sig.valid_until})",
-                                extra={"symbol": symbol, "signal_id": sig.signal_id},
+                    # Process Exits (TP / Invalidation) and Trail Updates
+                    for exited in exited_signals:
+                        # --- TRAIL UPDATE (not a status change) ---
+                        if getattr(exited, "_trail_updated", False):
+                            # Calculate movement percentage (absolute for Short positions)
+                            old_tp3 = getattr(exited, "_previous_tp3", 0.0)
+                            new_tp3 = exited.take_profit_3 or 0.0
+                            movement_pct = (
+                                abs((new_tp3 - old_tp3) / old_tp3 * 100)
+                                if old_tp3 > 0
+                                else 100.0
                             )
-                            sig.status = SignalStatus.EXPIRED
-                            sig.exit_reason = ExitReason.EXPIRED
-                            repo.update_signal_atomic(
-                                sig.signal_id,
-                                {
-                                    "status": SignalStatus.EXPIRED.value,
-                                    "exit_reason": ExitReason.EXPIRED.value,
+
+                            logger.info(
+                                f"TRAIL UPDATE: {exited.signal_id} "
+                                f"TP3 moved from ${old_tp3:.2f} to ${new_tp3:.2f} "
+                                f"({movement_pct:.1f}%)",
+                                extra={
+                                    "symbol": symbol,
+                                    "signal_id": exited.signal_id,
+                                    "old_tp3": old_tp3,
+                                    "new_tp3": new_tp3,
+                                    "movement_pct": movement_pct,
                                 },
                             )
-                            # Reply in thread if available, fallback to main channel
-                            discord.send_message(
-                                f"⏳ **SIGNAL EXPIRED: {symbol}** ⏳\n"
-                                f"Signal expired (24h limit reached).",
-                                thread_id=sig.discord_thread_id,
-                                asset_class=asset_class,
+
+                            # Always persist the updated trailing value
+                            repo.update_signal_atomic(
+                                exited.signal_id, {"take_profit_3": new_tp3}
                             )
 
-                        # 2. Check exits on remaining valid signals
-                        exited_signals = generator.check_exits(
-                            valid_active_signals, symbol, asset_class, dataframe=df
-                        )
-
-                        # Process Exits (TP / Invalidation) and Trail Updates
-                        for exited in exited_signals:
-                            # --- TRAIL UPDATE (not a status change) ---
-                            if getattr(exited, "_trail_updated", False):
-                                # Calculate movement percentage (absolute for Short positions)
-                                old_tp3 = getattr(exited, "_previous_tp3", 0.0)
-                                new_tp3 = exited.take_profit_3 or 0.0
-                                movement_pct = (
-                                    abs((new_tp3 - old_tp3) / old_tp3 * 100)
-                                    if old_tp3 > 0
-                                    else 100.0
+                            # Notify Discord if significant movement (>1%)
+                            if movement_pct > 1.0:
+                                discord.send_trail_update(
+                                    exited,
+                                    old_stop=old_tp3,
+                                    asset_class=asset_class,
                                 )
 
-                                logger.info(
-                                    f"TRAIL UPDATE: {exited.signal_id} "
-                                    f"TP3 moved from ${old_tp3:.2f} to ${new_tp3:.2f} "
-                                    f"({movement_pct:.1f}%)",
-                                    extra={
-                                        "symbol": symbol,
-                                        "signal_id": exited.signal_id,
-                                        "old_tp3": old_tp3,
-                                        "new_tp3": new_tp3,
-                                        "movement_pct": movement_pct,
-                                    },
-                                )
-
-                                # Always persist the updated trailing value
-                                repo.update_signal_atomic(
-                                    exited.signal_id, {"take_profit_3": new_tp3}
-                                )
-
-                                # Notify Discord if significant movement (>1%)
-                                if movement_pct > 1.0:
-                                    discord.send_trail_update(
-                                        exited,
-                                        old_stop=old_tp3,
-                                        asset_class=asset_class,
-                                    )
-
-                                # === SYNC TRAIL TO ALPACA ===
-                                # Update broker stop-loss to match new trailing stop
-                                if settings.ENABLE_EXECUTION and new_tp3:
-                                    pos = position_repo.get_position_by_signal(
-                                        exited.signal_id
-                                    )
-                                    if pos and pos.status == TradeStatus.OPEN:
-                                        if execution_engine.modify_stop_loss(
-                                            pos, new_tp3
-                                        ):
-                                            logger.info(
-                                                f"TRAIL SYNC: Stop -> "
-                                                f"${new_tp3:.2f} for "
-                                                f"{pos.position_id}"
-                                            )
-                                            position_repo.update_position(pos)
-
-                                # Clean up private attributes
-                                if hasattr(exited, "_trail_updated"):
-                                    delattr(exited, "_trail_updated")
-                                if hasattr(exited, "_previous_tp3"):
-                                    delattr(exited, "_previous_tp3")
-
-                                # Remove from valid_active_signals to maintain consistency
-                                if exited in valid_active_signals:
-                                    valid_active_signals.remove(exited)
-                                continue
-
-                            # --- STATUS CHANGE (Exit) ---
-                            updates = {
-                                "status": exited.status.value,
-                            }
-                            if exited.exit_reason:
-                                updates["exit_reason"] = exited.exit_reason
-
-                            if repo.update_signal_atomic(exited.signal_id, updates):
-                                logger.info(
-                                    f"SIGNAL UPDATE: {exited.signal_id} "
-                                    f"status -> {exited.status}",
-                                    extra={
-                                        "symbol": symbol,
-                                        "signal_id": exited.signal_id,
-                                        "new_status": exited.status,
-                                    },
-                                )
-                            else:
-                                logger.error(
-                                    f"Failed atomic update for status change {exited.signal_id}"
-                                )
-                                continue
-
-                            # Notify Discord of Status Change
-                            # Uses send_signal_update for consistent formatting
-                            # (TEST/LIVE mode labels, pattern name formatting, etc.)
-                            if not exited.discord_thread_id:
-                                # Self-healing: Orphaned signal - send recovery msg
-                                logger.info(
-                                    f"Self-healing: Orphaned signal {exited.signal_id} - "
-                                    "sending update to main channel"
-                                )
-                                # For orphaned signals, prepend recovery notice
-                                recovery_prefix = (
-                                    f"🔄 **THREAD RECOVERY: {symbol}** 🔄\n"
-                                    f"*(Original thread unavailable)*\n\n"
-                                )
-                                # Build inline message for recovery case
-                                status_emoji = {
-                                    SignalStatus.INVALIDATED: "🚫",
-                                    SignalStatus.TP1_HIT: "🎯",
-                                    SignalStatus.TP2_HIT: "🚀",
-                                    SignalStatus.TP3_HIT: "🌕",
-                                    SignalStatus.EXPIRED: "⏳",
-                                }.get(exited.status, "ℹ️")
-                                msg = (
-                                    f"{status_emoji} **SIGNAL UPDATE: {symbol}** "
-                                    f"{status_emoji}\n"
-                                    f"**Status**: {exited.status.value}\n"
-                                    f"**Pattern**: {exited.pattern_name}\n"
-                                )
-                                if exited.exit_reason:
-                                    msg += f"**Reason**: {exited.exit_reason}\n"
-                                if exited.status == SignalStatus.TP1_HIT:
-                                    msg += (
-                                        "ℹ️ **Action**: Scaling Out (50%) "
-                                        "& Stop -> **Breakeven**"
-                                    )
-                                discord.send_message(
-                                    recovery_prefix + msg, asset_class=asset_class
-                                )
-                            else:
-                                # Normal case: use dedicated method
-                                result = discord.send_signal_update(
-                                    exited, asset_class=asset_class
-                                )
-                                # Self-healing: Clear stale thread_id for next run
-                                if result == "thread_stale":
-                                    logger.warning(
-                                        f"Self-healing: Clearing stale discord_thread_id "
-                                        f"for signal {exited.signal_id}"
-                                    )
-                                    repo.update_signal_atomic(
-                                        exited.signal_id,
-                                        {"discord_thread_id": None},
-                                    )
-
-                            # === TP AUTOMATION ===
-                            # Progressive stop management on each TP stage
-                            if settings.ENABLE_EXECUTION:
-                                # Find position linked to this signal
+                            # === SYNC TRAIL TO ALPACA ===
+                            # Update broker stop-loss to match new trailing stop
+                            if settings.ENABLE_EXECUTION and new_tp3:
                                 pos = position_repo.get_position_by_signal(
                                     exited.signal_id
                                 )
-                                # === ISSUE 275 FIX: signal_id Guard ===
-                                # Verify the position actually belongs to this
-                                # signal. Prevents closing a newly-bought
-                                # position when an old signal for the same
-                                # symbol triggers TP3/INVALIDATED.
-                                if (
-                                    pos
-                                    and pos.status == TradeStatus.OPEN
-                                    and pos.signal_id == exited.signal_id
-                                ):
-                                    # Handle Terminal States (Close All) first
-                                    if exited.status in (
-                                        SignalStatus.TP3_HIT,
-                                        SignalStatus.INVALIDATED,
-                                    ):
-                                        # === ISSUE 275 FIX: Alpaca Qty Check ===
-                                        # Verify position still exists on Alpaca
-                                        # before attempting emergency close.
-                                        try:
-                                            alpaca_sym = normalize_alpaca_symbol(
-                                                pos.symbol
-                                            )
-                                            alpaca_pos = (
-                                                execution_engine.alpaca.get_open_position(
-                                                    alpaca_sym
-                                                )
-                                            )
-                                            alpaca_qty = float(cast(Any, alpaca_pos).qty)
-                                            if alpaca_qty < pos.qty:
-                                                logger.warning(
-                                                    f"ISSUE 275: Alpaca qty "
-                                                    f"({alpaca_qty}) < Firestore "
-                                                    f"qty ({pos.qty}) for "
-                                                    f"{pos.symbol}. Adjusting.",
-                                                )
-                                                pos.qty = alpaca_qty
-                                        except APIError as e:
-                                            if getattr(e, "status_code", None) == 404:
-                                                # Position gone from Alpaca (confirmed)
-                                                logger.warning(
-                                                    f"Position {pos.position_id} not "
-                                                    f"found on Alpaca, marking "
-                                                    f"CLOSED_EXTERNALLY",
-                                                )
-                                                pos.status = TradeStatus.CLOSED
-                                                pos.exit_reason = (
-                                                    ExitReason.CLOSED_EXTERNALLY
-                                                )
-                                                position_repo.update_position(pos)
-                                                continue
-                                            else:
-                                                # Transient error (500, 429) -> Skip close
-                                                logger.error(
-                                                    f"ISSUE 275: Alpaca API Error during qty check: {e}",
-                                                    extra={
-                                                        "symbol": pos.symbol,
-                                                        "signal_id": pos.signal_id,
-                                                    },
-                                                )
-                                                continue  # Safe fail-closed
-
-                                        if execution_engine.close_position_emergency(pos):
-                                            pos.status = TradeStatus.CLOSED
-                                            reason = (
-                                                "TP3 Runner"
-                                                if exited.status == SignalStatus.TP3_HIT
-                                                else "INVALIDATED"
-                                            )
-                                            logger.info(
-                                                f"{reason}: Closed {pos.position_id}"
-                                            )
+                                if pos and pos.status == TradeStatus.OPEN:
+                                    if execution_engine.modify_stop_loss(pos, new_tp3):
+                                        logger.info(
+                                            f"TRAIL SYNC: Stop -> "
+                                            f"${new_tp3:.2f} for "
+                                            f"{pos.position_id}"
+                                        )
                                         position_repo.update_position(pos)
 
-                                    # Handle Progressive States (Scaling)
-                                    else:
-                                        # TP1 Logic: Run if TP1 OR TP2 hit
-                                        if exited.status in (
-                                            SignalStatus.TP1_HIT,
-                                            SignalStatus.TP2_HIT,
-                                        ):
-                                            # Idempotency: Skip if already scaled
-                                            if pos.scaled_out_qty > 0:
-                                                pass  # Already done
-                                            else:
-                                                # 1. Scale out 50%
-                                                if execution_engine.scale_out_position(
-                                                    pos, 0.5
-                                                ):
-                                                    logger.info(
-                                                        f"TP1 AUTO: Scaled out 50% of {pos.position_id}"
-                                                    )
-                                                # 2. Move stop to breakeven
-                                                if execution_engine.move_stop_to_breakeven(
-                                                    pos
-                                                ):
-                                                    logger.info(
-                                                        f"TP1 AUTO: Stop -> breakeven for {pos.position_id}"
-                                                    )
+                            # Clean up private attributes
+                            if hasattr(exited, "_trail_updated"):
+                                delattr(exited, "_trail_updated")
+                            if hasattr(exited, "_previous_tp3"):
+                                delattr(exited, "_previous_tp3")
 
-                                        # TP2 Logic: Run if TP2 hit
-                                        if exited.status == SignalStatus.TP2_HIT:
-                                            # Idempotency: TP1 scales 50% of Orig. TP2 scales 50% of Rem (25% Orig).
-                                            # Total scaled should be > 50% of original.
-                                            original = pos.original_qty or pos.qty
-                                            # Use 0.6 as safe threshold (0.5 + epsilon)
-                                            if pos.scaled_out_qty > original * 0.6:
-                                                pass  # Already done
-                                            else:
-                                                # 1. Scale out 50% of remaining
-                                                if execution_engine.scale_out_position(
-                                                    pos, 0.5
-                                                ):
-                                                    logger.info(
-                                                        f"TP2 AUTO: Scaled out 50% remaining of {pos.position_id}"
-                                                    )
-
-                                                # 2. Move stop to TP1 level
-                                                tp1_level = exited.take_profit_1
-                                                if tp1_level:
-                                                    if execution_engine.modify_stop_loss(
-                                                        pos, tp1_level
-                                                    ):
-                                                        logger.info(
-                                                            f"TP2 AUTO: Stop -> TP1 ${tp1_level:.2f} for {pos.position_id}"
-                                                        )
-                                                else:
-                                                    logger.warning(
-                                                        f"TP2 AUTO: No TP1 level set for {exited.signal_id}"
-                                                    )
-
-                                        # Persist position updates
-                                        position_repo.update_position(pos)
-                                elif (
-                                    pos
-                                    and pos.status == TradeStatus.OPEN
-                                    and pos.signal_id != exited.signal_id
-                                ):
-                                    logger.warning(
-                                        f"ISSUE 275: signal_id mismatch — "
-                                        f"exited signal {exited.signal_id} vs "
-                                        f"position {pos.signal_id}. Skipping "
-                                        f"emergency close for {pos.symbol}.",
-                                    )
-
-                            # Remove exited signals from remaining list
+                            # Remove from valid_active_signals to maintain consistency
                             if exited in valid_active_signals:
                                 valid_active_signals.remove(exited)
+                            continue
 
-                except Exception as e:
-                    symbol_duration = time.time() - symbol_start_time
-                    metrics.record_failure("signal_generation", symbol_duration)
-                    logger.error(
-                        f"Error processing {symbol} ({asset_class.value}): {e}",
-                        exc_info=True,
-                        extra={"symbol": symbol, "asset_class": asset_class.value},
-                    )
-                    # Continue to next symbol despite error
-                    continue
-                finally:
-                    # Advance progress bar after each symbol
-                    progress.advance(task)
+                        # --- STATUS CHANGE (Exit) ---
+                        updates = {
+                            "status": exited.status.value,
+                        }
+                        if exited.exit_reason:
+                            updates["exit_reason"] = exited.exit_reason
+
+                        if repo.update_signal_atomic(exited.signal_id, updates):
+                            logger.info(
+                                f"SIGNAL UPDATE: {exited.signal_id} "
+                                f"status -> {exited.status}",
+                                extra={
+                                    "symbol": symbol,
+                                    "signal_id": exited.signal_id,
+                                    "new_status": exited.status,
+                                },
+                            )
+                        else:
+                            logger.error(
+                                f"Failed atomic update for status change {exited.signal_id}"
+                            )
+                            continue
+
+                        # Notify Discord of Status Change
+                        if not exited.discord_thread_id:
+                            # Self-healing: Orphaned signal - send recovery msg
+                            logger.info(
+                                f"Self-healing: Orphaned signal {exited.signal_id} - "
+                                "sending update to main channel"
+                            )
+                            # For orphaned signals, prepend recovery notice
+                            recovery_prefix = (
+                                f"🔄 **THREAD RECOVERY: {symbol}** 🔄\n"
+                                f"*(Original thread unavailable)*\n\n"
+                            )
+                            # Build inline message for recovery case
+                            status_emoji = {
+                                SignalStatus.INVALIDATED: "🚫",
+                                SignalStatus.TP1_HIT: "🎯",
+                                SignalStatus.TP2_HIT: "🚀",
+                                SignalStatus.TP3_HIT: "🌕",
+                                SignalStatus.EXPIRED: "⏳",
+                            }.get(exited.status, "ℹ️")
+                            msg = (
+                                f"{status_emoji} **SIGNAL UPDATE: {symbol}** "
+                                f"{status_emoji}\n"
+                                f"**Status**: {exited.status.value}\n"
+                                f"**Pattern**: {exited.pattern_name}\n"
+                            )
+                            if exited.exit_reason:
+                                msg += f"**Reason**: {exited.exit_reason}\n"
+                            if exited.status == SignalStatus.TP1_HIT:
+                                msg += (
+                                    "ℹ️ **Action**: Scaling Out (50%) "
+                                    "& Stop -> **Breakeven**"
+                                )
+                            discord.send_message(
+                                recovery_prefix + msg, asset_class=asset_class
+                            )
+                        else:
+                            # Normal case: use dedicated method
+                            result_status = discord.send_signal_update(
+                                exited, asset_class=asset_class
+                            )
+                            # Self-healing: Clear stale thread_id for next run
+                            if result_status == "thread_stale":
+                                logger.warning(
+                                    f"Self-healing: Clearing stale discord_thread_id "
+                                    f"for signal {exited.signal_id}"
+                                )
+                                repo.update_signal_atomic(
+                                    exited.signal_id,
+                                    {"discord_thread_id": None},
+                                )
+
+                        # === TP AUTOMATION ===
+                        # Progressive stop management on each TP stage
+                        if settings.ENABLE_EXECUTION:
+                            # Find position linked to this signal
+                            pos = position_repo.get_position_by_signal(exited.signal_id)
+                            # === ISSUE 275 FIX: signal_id Guard ===
+                            if (
+                                pos
+                                and pos.status == TradeStatus.OPEN
+                                and pos.signal_id == exited.signal_id
+                            ):
+                                # Handle Terminal States (Close All) first
+                                if exited.status in (
+                                    SignalStatus.TP3_HIT,
+                                    SignalStatus.INVALIDATED,
+                                ):
+                                    # === ISSUE 275 FIX: Alpaca Qty Check ===
+                                    try:
+                                        alpaca_sym = normalize_alpaca_symbol(pos.symbol)
+                                        alpaca_pos = (
+                                            execution_engine.alpaca.get_open_position(
+                                                alpaca_sym
+                                            )
+                                        )
+                                        alpaca_qty = float(cast(Any, alpaca_pos).qty)
+                                        if alpaca_qty < pos.qty:
+                                            logger.warning(
+                                                f"ISSUE 275: Alpaca qty "
+                                                f"({alpaca_qty}) < Firestore "
+                                                f"qty ({pos.qty}) for "
+                                                f"{pos.symbol}. Adjusting.",
+                                            )
+                                            pos.qty = alpaca_qty
+                                    except APIError as e:
+                                        if getattr(e, "status_code", None) == 404:
+                                            # Position gone from Alpaca (confirmed)
+                                            logger.warning(
+                                                f"Position {pos.position_id} not "
+                                                f"found on Alpaca, marking "
+                                                f"CLOSED_EXTERNALLY",
+                                            )
+                                            pos.status = TradeStatus.CLOSED
+                                            pos.exit_reason = ExitReason.CLOSED_EXTERNALLY
+                                            position_repo.update_position(pos)
+                                            continue
+                                        else:
+                                            # Transient error (500, 429) -> Skip close
+                                            logger.error(
+                                                f"ISSUE 275: Alpaca API Error during qty check: {e}",
+                                                extra={
+                                                    "symbol": pos.symbol,
+                                                    "signal_id": pos.signal_id,
+                                                },
+                                            )
+                                            continue  # Safe fail-closed
+
+                                    if execution_engine.close_position_emergency(pos):
+                                        pos.status = TradeStatus.CLOSED
+                                        reason = (
+                                            "TP3 Runner"
+                                            if exited.status == SignalStatus.TP3_HIT
+                                            else "INVALIDATED"
+                                        )
+                                        logger.info(f"{reason}: Closed {pos.position_id}")
+                                    position_repo.update_position(pos)
+
+                                # Handle Progressive States (Scaling)
+                                else:
+                                    # TP1 Logic: Run if TP1 OR TP2 hit
+                                    if exited.status in (
+                                        SignalStatus.TP1_HIT,
+                                        SignalStatus.TP2_HIT,
+                                    ):
+                                        # Idempotency: Skip if already scaled
+                                        if pos.scaled_out_qty > 0:
+                                            pass  # Already done
+                                        else:
+                                            # 1. Scale out 50%
+                                            if execution_engine.scale_out_position(
+                                                pos, 0.5
+                                            ):
+                                                logger.info(
+                                                    f"TP1 AUTO: Scaled out 50% of {pos.position_id}"
+                                                )
+                                            # 2. Move stop to breakeven
+                                            if execution_engine.move_stop_to_breakeven(
+                                                pos
+                                            ):
+                                                logger.info(
+                                                    f"TP1 AUTO: Stop -> breakeven for {pos.position_id}"
+                                                )
+
+                                    # TP2 Logic: Run if TP2 hit
+                                    if exited.status == SignalStatus.TP2_HIT:
+                                        # Idempotency
+                                        original = pos.original_qty or pos.qty
+                                        if pos.scaled_out_qty > original * 0.6:
+                                            pass  # Already done
+                                        else:
+                                            # 1. Scale out 50% of remaining
+                                            if execution_engine.scale_out_position(
+                                                pos, 0.5
+                                            ):
+                                                logger.info(
+                                                    f"TP2 AUTO: Scaled out 50% remaining of {pos.position_id}"
+                                                )
+
+                                            # 2. Move stop to TP1 level
+                                            tp1_level = exited.take_profit_1
+                                            if tp1_level:
+                                                if execution_engine.modify_stop_loss(
+                                                    pos, tp1_level
+                                                ):
+                                                    logger.info(
+                                                        f"TP2 AUTO: Stop -> TP1 ${tp1_level:.2f} for {pos.position_id}"
+                                                    )
+                                            else:
+                                                logger.warning(
+                                                    f"TP2 AUTO: No TP1 level set for {exited.signal_id}"
+                                                )
+
+                                    # Persist position updates
+                                    position_repo.update_position(pos)
+                            elif (
+                                pos
+                                and pos.status == TradeStatus.OPEN
+                                and pos.signal_id != exited.signal_id
+                            ):
+                                logger.warning(
+                                    f"ISSUE 275: signal_id mismatch — "
+                                    f"exited signal {exited.signal_id} vs "
+                                    f"position {pos.signal_id}. Skipping "
+                                    f"emergency close for {pos.symbol}.",
+                                )
+
+                        # Remove exited signals from remaining list
+                        if exited in valid_active_signals:
+                            valid_active_signals.remove(exited)
+
+                return (trade_signal, asset_class, symbol_duration)
+
+            except Exception as e:
+                symbol_duration = time.time() - symbol_start_time
+                metrics.record_failure("signal_generation", symbol_duration)
+                logger.error(
+                    f"Error processing {symbol} ({asset_class.value}): {e}",
+                    exc_info=True,
+                    extra={"symbol": symbol, "asset_class": asset_class.value},
+                )
+                return None
+            finally:
+                # Advance progress bar after each symbol
+                progress.advance(task)
+
+        phase1_start_time = time.time()
+        with create_portfolio_progress(len(portfolio_items)) as (progress, task):
+            # Update progress description
+            progress.update(
+                task, description="[cyan]Analyzing portfolio assets in parallel..."
+            )
+
+            # Parallelize asset processing with 5 workers
+            max_workers = 5
+            logger.info(f"Parallelizing asset loop with {max_workers} workers...")
+
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                # Submit all tasks
+                future_to_symbol = {
+                    executor.submit(process_portfolio_item, item, progress, task): item[0]
+                    for item in portfolio_items
+                }
+
+                # Collect results as they complete
+                for future in as_completed(future_to_symbol):
+                    try:
+                        res = future.result()
+                        if res:
+                            symbols_processed += 1
+                            trade_signal, asset_class, symbol_duration = res
+                            if trade_signal:
+                                candidate_signals.append(
+                                    (trade_signal, asset_class, symbol_duration)
+                                )
+                    except Exception as e:
+                        symbol = future_to_symbol[future]
+                        logger.error(f"Worker thread for {symbol} failed: {e}")
+
+        phase1_duration = time.time() - phase1_start_time
+        logger.info(
+            f"✅ Phase 1 complete: Processed {symbols_processed} symbols in {phase1_duration:.2f}s "
+            f"(Wall-clock time)"
+        )
 
         # Phase 2: Signal Saturation Filtering
         # Prevents macro-level noise from spamming notifications if >50% of symbols trigger the same pattern.

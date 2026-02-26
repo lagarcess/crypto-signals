@@ -257,7 +257,7 @@ def test_main_execution_flow(mock_dependencies):
         call("ETH/USD", AssetClass.CRYPTO, dataframe=ANY),
         call("XRP/USD", AssetClass.CRYPTO, dataframe=ANY),
     ]
-    mock_gen_instance.generate_signals.assert_has_calls(expected_calls, any_order=False)
+    mock_gen_instance.generate_signals.assert_has_calls(expected_calls, any_order=True)
 
     # Verify Signal Handling (Save FIRST with CREATED, then Discord, then Update to WAITING)
     # Should be called once for BTC/USD

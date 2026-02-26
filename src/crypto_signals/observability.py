@@ -12,6 +12,7 @@ Key Features:
 - Structured tables for execution summaries
 """
 
+import threading
 import time
 from contextlib import contextmanager
 from functools import wraps
@@ -665,6 +666,7 @@ class MetricsCollector:
         self.risk_counts: Dict[str, int] = {}
         self.capital_protected: float = 0.0
         self.blocked_symbols: set[str] = set()
+        self._lock = threading.Lock()
 
     def record_risk_block(self, gate: str, symbol: str, amount: float = 0.0):
         """
@@ -675,9 +677,10 @@ class MetricsCollector:
             symbol: The symbol being blocked
             amount: The estimated capital that was protected (prevented from being risked)
         """
-        self.risk_counts[gate] = self.risk_counts.get(gate, 0) + 1
-        self.capital_protected += amount
-        self.blocked_symbols.add(symbol)
+        with self._lock:
+            self.risk_counts[gate] = self.risk_counts.get(gate, 0) + 1
+            self.capital_protected += amount
+            self.blocked_symbols.add(symbol)
 
     def get_risk_summary(self) -> Dict[str, Any]:
         """Get summary of risk metrics."""
@@ -690,35 +693,37 @@ class MetricsCollector:
 
     def record_success(self, operation: str, duration: float):
         """Record successful operation."""
-        if operation not in self.metrics:
-            self.metrics[operation] = {
-                "success_count": 0,
-                "failure_count": 0,
-                "total_duration": 0.0,
-                "min_duration": float("inf"),
-                "max_duration": 0.0,
-            }
+        with self._lock:
+            if operation not in self.metrics:
+                self.metrics[operation] = {
+                    "success_count": 0,
+                    "failure_count": 0,
+                    "total_duration": 0.0,
+                    "min_duration": float("inf"),
+                    "max_duration": 0.0,
+                }
 
-        m = self.metrics[operation]
-        m["success_count"] += 1
-        m["total_duration"] += duration
-        m["min_duration"] = min(m["min_duration"], duration)
-        m["max_duration"] = max(m["max_duration"], duration)
+            m = self.metrics[operation]
+            m["success_count"] += 1
+            m["total_duration"] += duration
+            m["min_duration"] = min(m["min_duration"], duration)
+            m["max_duration"] = max(m["max_duration"], duration)
 
     def record_failure(self, operation: str, duration: float):
         """Record failed operation."""
-        if operation not in self.metrics:
-            self.metrics[operation] = {
-                "success_count": 0,
-                "failure_count": 0,
-                "total_duration": 0.0,
-                "min_duration": float("inf"),
-                "max_duration": 0.0,
-            }
+        with self._lock:
+            if operation not in self.metrics:
+                self.metrics[operation] = {
+                    "success_count": 0,
+                    "failure_count": 0,
+                    "total_duration": 0.0,
+                    "min_duration": float("inf"),
+                    "max_duration": 0.0,
+                }
 
-        m = self.metrics[operation]
-        m["failure_count"] += 1
-        m["total_duration"] += duration
+            m = self.metrics[operation]
+            m["failure_count"] += 1
+            m["total_duration"] += duration
 
     def get_summary(self) -> Dict[str, Dict[str, Any]]:
         """Get metrics summary."""
