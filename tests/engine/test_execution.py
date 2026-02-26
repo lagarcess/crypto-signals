@@ -670,7 +670,10 @@ class TestSyncPositionStatus:
         mock_order = MagicMock()
         mock_order.id = "parent-order-123"
         mock_order.status = "filled"
-        mock_order.filled_at = "2025-01-15T10:00:00Z"
+        # Use real datetime objects, not strings, as expected by calculation logic
+        from datetime import datetime, timezone
+
+        mock_order.filled_at = datetime(2025, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
         mock_order.filled_avg_price = "50100.0"
         mock_order.legs = [mock_tp_leg, mock_sl_leg]
 

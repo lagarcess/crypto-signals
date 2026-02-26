@@ -100,6 +100,7 @@ class TestExecutionRiskIntegration(unittest.TestCase):
         signal.side = OrderSide.BUY
         signal.signal_id = "sig_pass"
         signal.ds = date(2023, 1, 1)
+        signal.discord_thread_id = "test_thread"
 
         self.mock_risk_engine.validate_signal.return_value = RiskCheckResult(passed=True)
 
