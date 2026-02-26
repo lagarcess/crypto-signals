@@ -50,7 +50,7 @@ Workflows are automated scripts outlining step-by-step processes. Execute them v
 
 ### Validation & CI/CD
 - `/verify`: Runs the full suite, coverage regression check, type checking, and pre-commit hooks.
-- `/preflight`: Local Docker + GCP check (FLAgged AS BROKEN - run manually for now).
+- /preflight: Local Docker + GCP check (FLAGGED AS BROKEN - run manually for now).
 - `/architect`: Analyzes massive monoliths (e.g. `main.py`) to draft an extraction plan without touching code.
 - `/perf`: Benchmarks Numba JIT logic and backtest paths to catch latency spikes.
 

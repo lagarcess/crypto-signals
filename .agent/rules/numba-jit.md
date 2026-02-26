@@ -7,7 +7,7 @@ glob: "src/crypto_signals/analysis/**/*.py"
 You are editing code in the `analysis` directory. This is the mathematical core of the engine, optimized with Numba Just-In-Time compiling.
 
 ## 1. No External Dependencies inside JIT
-- Numba `@njit` compiling will fail if you use external Python objects (like Pandas pandas DataFrames, lists of dicts, or custom classes) inside the compiled function.
+- Numba `@njit` compiling will fail if you use external Python objects (like Pandas DataFrames, lists of dicts, or custom classes) inside the compiled function.
 - **Rule**: The function signature of an `@njit` decorated function must be strictly primitive types (float, int, bool) and NumPy arrays (`np.ndarray`).
 
 ## 2. JIT Warmup Requirement

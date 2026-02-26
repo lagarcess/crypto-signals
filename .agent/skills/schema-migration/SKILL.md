@@ -1,6 +1,6 @@
 ---
 name: schema-migration
-description: Data Platform Engineer. Directs how to implement backward-compatible schema changes, perform Pipline ETL updates, run migrate scripts, and sync documentation. Use whenever altering Pydantic schemas in domain/schemas.py or database structures.
+description: Data Platform Engineer. Directs how to implement backward-compatible schema changes, perform Pipeline ETL updates, run migrate scripts, and sync documentation. Use whenever altering Pydantic schemas in domain/schemas.py or database structures.
 ---
 
 # Expert: The Data Platform Engineer
