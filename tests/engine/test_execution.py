@@ -602,20 +602,18 @@ class TestCalculateQty:
 class TestErrorHandling:
     """Tests for error handling and Rich error panels."""
 
-    def test_api_failure_returns_none(
+    def test_api_failure_raises(
         self, execution_engine, sample_signal, mock_trading_client
     ):
-        """Verify API failure returns None and doesn't raise."""
+        """Verify API failure after retries raises."""
         # Setup - simulate Alpaca API failure
         mock_trading_client.submit_order.side_effect = Exception(
             "Insufficient buying power"
         )
 
-        # Execute - should not raise
-        position = execution_engine.execute_signal(sample_signal)
-
-        # Verify
-        assert position is None, "Position should be None on API failure"
+        # Execute - should raise after tenacity retries
+        with pytest.raises(Exception, match="Insufficient buying power"):
+            execution_engine.execute_signal(sample_signal)
 
 
 class TestGetOrderDetails:
@@ -654,6 +652,8 @@ class TestSyncPositionStatus:
 
     def test_sync_extracts_leg_ids(self, execution_engine, mock_trading_client):
         """Verify TP and SL leg IDs are extracted from filled parent order."""
+        from datetime import datetime, timezone
+
         from crypto_signals.domain.schemas import Position, TradeStatus
 
         # Setup parent order with legs
@@ -670,7 +670,8 @@ class TestSyncPositionStatus:
         mock_order = MagicMock()
         mock_order.id = "parent-order-123"
         mock_order.status = "filled"
-        mock_order.filled_at = "2025-01-15T10:00:00Z"
+        # Use real datetime objects, not strings, as expected by calculation logic
+        mock_order.filled_at = datetime(2025, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
         mock_order.filled_avg_price = "50100.0"
         mock_order.legs = [mock_tp_leg, mock_sl_leg]
 
@@ -1247,8 +1248,10 @@ class TestScaleOutPosition:
         assert result is False, "scale_out_position should fail for zero qty"
         mock_trading_client.submit_order.assert_not_called()
 
-    def test_scale_out_handles_order_failure(self, execution_engine, mock_trading_client):
-        """Verify failed_reason is set when order submission fails."""
+    def test_scale_out_raises_on_order_failure(
+        self, execution_engine, mock_trading_client
+    ):
+        """Verify exception is raised when order submission fails after retries."""
         from crypto_signals.domain.schemas import Position, TradeStatus
 
         mock_trading_client.submit_order.side_effect = Exception("Insufficient funds")
@@ -1267,12 +1270,8 @@ class TestScaleOutPosition:
             side=OrderSide.BUY,
         )
 
-        result = execution_engine.scale_out_position(position, scale_pct=0.5)
-
-        assert result is False, "scale_out_position should fail on API exception"
-        assert (
-            "Scale-out failed" in position.failed_reason
-        ), "failed_reason not set correctly"
+        with pytest.raises(Exception, match="Insufficient funds"):
+            execution_engine.scale_out_position(position, scale_pct=0.5)
 
 
 class TestMoveStopToBreakeven:
@@ -1523,25 +1522,21 @@ class TestCFEEReconciliation:
         assert result["total_fee_usd"] == 10.5, "total_fee_usd aggregation mismatch"
         assert len(result["fee_details"]) == 2, "fee_details length mismatch"
 
-    def test_get_crypto_fees_by_orders_api_failure(
+    def test_get_crypto_fees_by_orders_api_failure_raises(
         self, execution_engine, mock_trading_client
     ):
-        """Ensure graceful handling when the Alpaca CFEE API call fails."""
+        """Ensure exception is raised when the Alpaca CFEE API call fails after retries."""
         # Setup API failure
         mock_trading_client.get.side_effect = Exception("API rate limit exceeded")
 
-        # Execute - should not raise
-        result = execution_engine.get_crypto_fees_by_orders(
-            order_ids=["order-123"],
-            symbol="BTC/USD",
-            start_date=date(2025, 1, 15),
-            end_date=date(2025, 1, 17),
-        )
-
-        # Verify fallback to zero fees
-        assert result["total_fee_usd"] == 0.0, "Expected 0.0 total fees on API failure"
-        assert result["fee_details"] == [], "Expected empty fee_details on API failure"
-        assert result["fee_tier"] is None, "Expected None fee_tier on API failure"
+        # Execute - should raise after tenacity retries
+        with pytest.raises(Exception, match="API rate limit exceeded"):
+            execution_engine.get_crypto_fees_by_orders(
+                order_ids=["order-123"],
+                symbol="BTC/USD",
+                start_date=date(2025, 1, 15),
+                end_date=date(2025, 1, 17),
+            )
 
     def test_get_crypto_fees_by_orders_invalid_qty_price(
         self, execution_engine, mock_trading_client
@@ -1577,34 +1572,21 @@ class TestCFEEReconciliation:
     def test_get_crypto_fees_by_orders_retry_logic(
         self, execution_engine, mock_trading_client
     ):
-        """Verify retry logic with exponential backoff on transient failures."""
+        """Verify retry logic on transient failures."""
         # Setup: Always fail to verify retry attempts
         mock_trading_client.get.side_effect = Exception("Persistent API error")
 
-        # Mock sleep to avoid delays and track calls
-        with patch("crypto_signals.engine.execution.sleep") as mock_sleep:
-            # Execute
-            result = execution_engine.get_crypto_fees_by_orders(
+        # Execute - should raise after 3 retry attempts (in test mode)
+        with pytest.raises(Exception, match="Persistent API error"):
+            execution_engine.get_crypto_fees_by_orders(
                 order_ids=["order-123"],
                 symbol="BTC/USD",
                 start_date=date(2025, 1, 15),
                 end_date=date(2025, 1, 17),
             )
 
-        # Verify retries happened (3 attempts total)
+        # Verify retries happened (3 attempts total based on dynamic test config)
         assert mock_trading_client.get.call_count == 3, "Expected 3 retry attempts"
-        # Verify exponential backoff: sleep called 2 times
-        assert mock_sleep.call_count == 2, "Expected 2 sleep calls for backoff"
-        # Verify fallback to zero fees after all retries exhausted
-        assert (
-            result["total_fee_usd"] == 0.0
-        ), "Expected 0.0 total fees after retries exhausted"
-        assert (
-            result["fee_details"] == []
-        ), "Expected empty fee_details after retries exhausted"
-        assert (
-            result["fee_tier"] is None
-        ), "Expected None fee_tier after retries exhausted"
 
     def test_get_current_fee_tier_success(self, execution_engine, mock_trading_client):
         """Verify successful retrieval of the current fee tier from Alpaca."""

@@ -251,10 +251,10 @@ class TestSignalRepositoryAtomicUpdate:
         # update should NOT have been called
         mock_transaction.update.assert_not_called()
 
-    def test_atomic_update_transaction_failure(
+    def test_atomic_update_transaction_failure_raises(
         self, mock_settings, mock_firestore_client
     ):
-        """Test atomic update returns False when transaction fails."""
+        """Test atomic update raises exception when transaction fails after retries."""
         mock_db = mock_firestore_client.return_value
         mock_collection = mock_db.collection.return_value
         # Note: mock_doc_ref not needed as transaction fails before document access
@@ -270,11 +270,8 @@ class TestSignalRepositoryAtomicUpdate:
         with patch("google.cloud.firestore.transactional") as mock_transactional:
             mock_transactional.side_effect = lambda fn: fn
 
-            result = repo.update_signal_atomic("test-signal-123", {"status": "TP1_HIT"})
-
-        # Should gracefully return False, not raise
-        assert result is False
-        mock_collection.document.assert_called_with("test-signal-123")
+            with pytest.raises(Exception, match="Transaction conflict"):
+                repo.update_signal_atomic("test-signal-123", {"status": "TP1_HIT"})
 
 
 @pytest.fixture

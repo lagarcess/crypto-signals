@@ -90,6 +90,7 @@
 ### Exception Handling & CI/CD
 - [2026-01-29] **Silent Failures**: Never swallow exceptions in CLI tools without re-raising. `except Exception as e: logger.error(...)` without `raise` causes the script to exit with code 0, falsely reporting success in CI/CD pipelines.
 - [2026-01-29] **Redundant Exception Handling**: `except (SpecificError, Exception)` is redundant since `Exception` catches everything. Either catch only the specific error for targeted handling, or just catch `Exception`. Mixing them adds no value and signals code smell to reviewers.
+- [2026-02-26] **Nested Else Blocks**: When re-raising exceptions (e.g., `raise`) to trigger external retry wrappers like `tenacity` from within complex validation logic (`try...except...else`), ensure the `else: raise` block is aligned precisely with the target `except` block. A dangling `else` aligned with an inner `if` block will cause a `SyntaxError` that bypasses linters but crashes at runtime.
 
 ### BigQuery Schema Evolution
 - [2026-01-29] **ALTER TABLE Multi-Column**: BigQuery supports adding multiple columns in a single `ALTER TABLE` statement with comma-separated `ADD COLUMN` clauses. This is more efficient than individual ALTER statements and ensures atomicity within BigQuery's eventual consistency.
@@ -111,6 +112,7 @@
 ### Architecture & Patterns
 - [2026-01-29] **Repository Pattern**: Always encapsulate Firestore access (e.g., `dim_strategies`) in a dedicated Repository class rather than using raw clients in pipelines. This ensures consistent error handling, centralized query logic, and significantly easier mocking in unit tests.
 - [2026-01-29] **Merge Strategy**: When merging multiple concurrent feature branches (e.g., Metrics Fixes, Strategy Sync, Snapshot), carefully inspect central orchestration files like `main.py`. Automated merges often drop lines or duplicate logic blocks. Verify the presence of ALL features post-merge before running tests.
+- [2026-02-26] **Retry Configuration**: Do not hardcode retry parameters (like `wait_exponential` multipliers or `stop_after_attempt` thresholds) inside Tenacity wrapper functions. Extract them to module-level constants (e.g., `_PROD_RETRY_ATTEMPTS`) to significantly improve maintainability and readability for Code Reviewers.
 
 ### Testing
 - [2026-01-29] **Pydantic Mocking**: When unit testing logic that relies on Pydantic's `model_dump()`, mocking the model instance with `MagicMock` often fails because `model_dump` is a complex method. Use real Pydantic model instances in tests whenever possible to avoid "mock drift" where tests pass but runtime fails.
