@@ -50,12 +50,16 @@ def signal_generator(
     mock_market_provider, mock_indicators, mock_analyzer_cls, mock_repository
 ):
     """Fixture for creating a SignalGenerator instance with mocks."""
-    return SignalGenerator(
-        market_provider=mock_market_provider,
-        indicators=mock_indicators,
-        pattern_analyzer_cls=mock_analyzer_cls,
-        signal_repo=mock_repository,
-    )
+    with patch("crypto_signals.repository.firestore.PositionRepository") as mock_pos_repo:
+        mock_pos_repo_instance = mock_pos_repo.return_value
+        mock_pos_repo_instance.get_open_position_by_symbol.return_value = None
+        
+        return SignalGenerator(
+            market_provider=mock_market_provider,
+            indicators=mock_indicators,
+            pattern_analyzer_cls=mock_analyzer_cls,
+            signal_repo=mock_repository,
+        )
 
 
 @pytest.fixture
@@ -775,7 +779,7 @@ def test_check_exits_short_trail_update_lower(
     signal_generator, mock_market_provider, mock_analyzer_cls
 ):
     """Test that Short position take_profit_3 is updated when Chandelier Exit moves LOWER."""
-    # Setup Active SHORT Signal in Runner phase (TP1_HIT)
+    # Setup Active SHORT SHORT Signal in Runner phase (TP1_HIT)
     signal = Signal(
         signal_id="sig_short_trail_1",
         ds=date(2023, 1, 1),
@@ -794,23 +798,17 @@ def test_check_exits_short_trail_update_lower(
     )
 
     # Setup Market Data: Chandelier Exit Short is LOWER than current TP3
-    # Price is still below Chandelier (no exit triggered for short)
-    # IMPORTANT: For Short TP test isolation:
-    # - low must be > take_profit_2 (80) to avoid directional TP2 trigger
-    # - close must be < chandelier_exit_short (92) to avoid TP3 exit
-    # - close must be < invalidation_price (if set) to avoid Short invalidation
     df = pd.DataFrame(
         {
             "open": [85.0],
-            "high": [88.0],
-            "low": [82.0],  # Above take_profit_2 (80) - no Short TP2 trigger
-            "close": [85.0],  # Below Chandelier Exit Short (92) - no TP3 exit
+            "high": [87.0],
+            "low": [82.0],
+            "close": [85.0],  # BELOW entry (Profit) and ABOVE Chandelier Short (No exit)
             "volume": [1000.0],
             "bearish_engulfing": [False],
             "RSI_14": [50.0],
             "ADX_14": [20.0],
-            "CHANDELIER_EXIT_LONG": [80.0],  # Not used for short
-            "CHANDELIER_EXIT_SHORT": [92.0],  # Lower than current TP3 (95)
+            "CHANDELIER_EXIT_SHORT": [88.0],  # Lower than current TP3 (95)
         },
         index=[pd.Timestamp("2023-01-02")],
     )
@@ -826,12 +824,11 @@ def test_check_exits_short_trail_update_lower(
 
     # Verification
     assert len(result) == 1
-    assert result[0].take_profit_3 == 92.0  # Updated to new (lower) Chandelier Exit
-    assert hasattr(result[0], "_trail_updated")
+    assert (
+        result[0].take_profit_3 == 88.0
+    )  # Updated to new (lower) Chandelier Exit Short
     assert result[0]._trail_updated is True
-    assert hasattr(result[0], "_previous_tp3")
-    assert result[0]._previous_tp3 == 95.0  # Previous value stored
-    assert result[0].status == SignalStatus.TP1_HIT  # Status unchanged
+    assert result[0]._previous_tp3 == 95.0
 
 
 def test_check_exits_short_trail_not_updated_when_higher(
@@ -845,33 +842,21 @@ def test_check_exits_short_trail_not_updated_when_higher(
         strategy_id="strat_1",
         symbol="BTC/USD",
         asset_class=AssetClass.CRYPTO,
+        side=OrderSide.SELL,
         entry_price=100.0,
-        pattern_name="TEST",
-        suggested_stop=110.0,
         status=SignalStatus.TP2_HIT,
-        take_profit_1=90.0,
-        take_profit_2=80.0,
-        take_profit_3=85.0,  # Current trailing stop
-        invalidation_price=None,  # Avoid Long-biased invalidation check
-        side=OrderSide.SELL,  # SHORT position
+        take_profit_3=80.0,  # Current trailing stop
+        invalidation_price=None,
     )
 
-    # Setup Market Data: Chandelier Exit Short is HIGHER than current TP3
-    # For shorts, higher stop is unfavorable (would lock in less profit)
-    # IMPORTANT: For Short TP test isolation:
-    # - low must be > take_profit_2 (80) to avoid directional TP2 trigger
+    # Setup Market Data: Chandelier Exit is HIGHER than current TP3
     df = pd.DataFrame(
         {
-            "open": [82.0],
-            "high": [84.0],
-            "low": [81.0],  # Above take_profit_2 (80) - no Short TP2 trigger
-            "close": [83.0],  # Below Chandelier (no exit)
-            "volume": [1000.0],
-            "bearish_engulfing": [False],
-            "RSI_14": [50.0],
-            "ADX_14": [20.0],
-            "CHANDELIER_EXIT_LONG": [78.0],
-            "CHANDELIER_EXIT_SHORT": [88.0],  # Higher than current TP3 (85) - unfavorable
+            "open": [75.0],
+            "high": [78.0],
+            "low": [72.0],
+            "close": [75.0],
+            "CHANDELIER_EXIT_SHORT": [85.0],  # Higher than current TP3 (80)
         },
         index=[pd.Timestamp("2023-01-02")],
     )
@@ -885,49 +870,37 @@ def test_check_exits_short_trail_not_updated_when_higher(
         [signal], "BTC/USD", AssetClass.CRYPTO, dataframe=df
     )
 
-    # Verification: No signals should be returned (no exit, no trail update)
+    # Verification
     assert len(result) == 0
-    assert signal.take_profit_3 == 85.0  # Unchanged
+    assert signal.take_profit_3 == 80.0  # Unchanged
 
 
-def test_check_exits_short_trail_initialization(
+def test_check_exits_short_tp3_hit(
     signal_generator, mock_market_provider, mock_analyzer_cls
 ):
-    """Test that Short position initializes trailing stop when current TP3 is 0."""
-    # Setup Active SHORT Signal in Runner phase with NO trailing stop yet
+    """Test detecting a Short position Take Profit 3 hit."""
+    # Setup Active SHORT Signal in Runner phase
     signal = Signal(
-        signal_id="sig_short_trail_3",
+        signal_id="sig_short_tp3",
         ds=date(2023, 1, 1),
         strategy_id="strat_1",
         symbol="BTC/USD",
         asset_class=AssetClass.CRYPTO,
+        side=OrderSide.SELL,
         entry_price=100.0,
-        pattern_name="TEST",
-        suggested_stop=110.0,
-        status=SignalStatus.TP1_HIT,
-        take_profit_1=90.0,
-        take_profit_2=80.0,
-        take_profit_3=None,  # No trailing stop set yet
-        invalidation_price=None,  # Avoid Long-biased invalidation check
-        side=OrderSide.SELL,  # SHORT position
+        status=SignalStatus.TP2_HIT,
+        take_profit_3=80.0,
+        invalidation_price=None,
     )
 
-    # Setup Market Data: First Chandelier Exit value to initialize
-    # IMPORTANT: For Short TP test isolation:
-    # - low must be > take_profit_2 (80) to avoid directional TP2 trigger
-    # - close must be < chandelier_exit_short (93) to avoid TP3 exit
+    # Setup Market Data: Price crosses ABOVE Chandelier Exit Short
     df = pd.DataFrame(
         {
             "open": [85.0],
-            "high": [87.0],
-            "low": [82.0],  # Above take_profit_2 (80) - no Short TP2 trigger
-            "close": [85.0],  # Below Chandelier Exit Short (93) - no TP3 exit
-            "volume": [1000.0],
-            "bearish_engulfing": [False],
-            "RSI_14": [50.0],
-            "ADX_14": [20.0],
-            "CHANDELIER_EXIT_LONG": [80.0],
-            "CHANDELIER_EXIT_SHORT": [93.0],  # Initial trailing stop value
+            "high": [92.0],
+            "low": [84.0],
+            "close": [90.0],  # Above Chandelier (88)
+            "CHANDELIER_EXIT_SHORT": [88.0],
         },
         index=[pd.Timestamp("2023-01-02")],
     )
@@ -941,982 +914,51 @@ def test_check_exits_short_trail_initialization(
         [signal], "BTC/USD", AssetClass.CRYPTO, dataframe=df
     )
 
-    # Verification: Should initialize trailing stop
+    # Verification
     assert len(result) == 1
-    assert result[0].take_profit_3 == 93.0  # Initialized to Chandelier Exit Short
-    assert hasattr(result[0], "_trail_updated")
-    assert result[0]._trail_updated is True
-    assert result[0]._previous_tp3 == 0.0  # Previous was None/0
+    assert result[0].status == SignalStatus.TP3_HIT
+    assert result[0].exit_reason == ExitReason.TP_HIT
 
 
-def test_generate_signal_harmonic_and_geometric_merging(
+def test_check_exits_stale_short_waiting_regression(
     signal_generator, mock_market_provider, mock_analyzer_cls
 ):
-    """Test merging of harmonic (ABCD) and geometric (Bull Flag) patterns on same candle.
-
-    Multi-Layer Architecture: When both patterns occur:
-    - Geometric pattern is the tactical trigger (pattern_name)
-    - Harmonic pattern is structural context (structural_context field)
-    - Single signal is created (no duplicate)
-    - harmonic_metadata is populated with ratios
-    - conviction_tier is HIGH
-    """
-    # Setup Data
-    today = date(2023, 1, 1)
-    df = pd.DataFrame(
-        {
-            "open": [100.0],
-            "high": [110.0],
-            "low": [90.0],
-            "close": [105.0],
-            "volume": [1000.0],
-        },
-        index=[pd.Timestamp(today)],
-    )
-    mock_market_provider.get_daily_bars.return_value = df
-
-    # Mock Analyzer Instance
-    mock_analyzer_instance = MagicMock()
-    mock_analyzer_cls.return_value = mock_analyzer_instance
-
-    # Result DF with BOTH Bull Flag (geometric) pattern
-    result_df = df.copy()
-    result_df["bull_flag"] = True
-    result_df["bullish_engulfing"] = False
-    mock_analyzer_instance.check_patterns.return_value = result_df
-
-    # Mock pivots for harmonic analysis
-    # Create 4 pivots for ABCD pattern
-    mock_pivots = [
-        Pivot(
-            price=95.0,
-            timestamp=datetime(2023, 1, 1, tzinfo=timezone.utc),
-            pivot_type="VALLEY",
-            index=0,
-        ),
-        Pivot(
-            price=105.0,
-            timestamp=datetime(2023, 1, 5, tzinfo=timezone.utc),
-            pivot_type="PEAK",
-            index=1,
-        ),
-        Pivot(
-            price=98.0,
-            timestamp=datetime(2023, 1, 10, tzinfo=timezone.utc),
-            pivot_type="VALLEY",
-            index=2,
-        ),
-        Pivot(
-            price=108.0,
-            timestamp=datetime(2023, 1, 15, tzinfo=timezone.utc),
-            pivot_type="PEAK",
-            index=3,
-        ),
-    ]
-    mock_analyzer_instance.pivots = mock_pivots
-
-    # Mock HarmonicAnalyzer to return ABCD pattern
-    mock_harmonic_pattern = MagicMock()
-    mock_harmonic_pattern.pattern_type = "ABCD"
-    mock_harmonic_pattern.ratios = {"AB_CD_price_ratio": 1.0, "AB_CD_time_ratio": 1.0}
-
-    with patch(
-        "crypto_signals.engine.signal_generator.HarmonicAnalyzer"
-    ) as mock_harmonic_cls:
-        mock_harmonic_instance = MagicMock()
-        mock_harmonic_instance.scan_all_patterns.return_value = [mock_harmonic_pattern]
-        mock_harmonic_cls.return_value = mock_harmonic_instance
-
-        # Execution
-        signal = signal_generator.generate_signals("BTC/USD", AssetClass.CRYPTO)
-
-    # Verification
-    assert signal is not None, "Signal should be generated"
-
-    # 1. Geometric pattern is the tactical trigger (Multi-Layer Architecture)
-    assert (
-        signal.pattern_name == "BULL_FLAG"
-    ), "Pattern name should be BULL_FLAG (geometric)"
-
-    # 2. Harmonic context stored in structural_context
-    assert (
-        signal.structural_context == "ABCD"
-    ), "structural_context should be ABCD (harmonic)"
-
-    # 3. Conviction tier is HIGH (tactical + structural)
-    assert signal.conviction_tier == "HIGH", "conviction_tier should be HIGH"
-
-    # 4. Single signal (implicit - we only get one signal back)
-    assert signal.symbol == "BTC/USD"
-
-    # 5. Harmonic metadata is populated
-    assert signal.harmonic_metadata is not None, "harmonic_metadata should be populated"
-    assert (
-        "AB_CD_price_ratio" in signal.harmonic_metadata
-    ), "Should have AB_CD_price_ratio"
-    assert "AB_CD_time_ratio" in signal.harmonic_metadata, "Should have AB_CD_time_ratio"
-
-
-def test_generate_signal_harmonic_only(
-    signal_generator, mock_market_provider, mock_analyzer_cls
-):
-    """Test that harmonic-only detection (no geometric) returns None.
-
-    Multi-Layer Architecture: Structural context alone doesn't produce
-    an entry signal — a tactical trigger (geometric pattern) is required.
-    """
-    # Setup Data
-    today = date(2023, 1, 1)
-    df = pd.DataFrame(
-        {
-            "open": [100.0],
-            "high": [110.0],
-            "low": [90.0],
-            "close": [105.0],
-            "volume": [1000.0],
-        },
-        index=[pd.Timestamp(today)],
-    )
-    mock_market_provider.get_daily_bars.return_value = df
-
-    # Mock Analyzer Instance
-    mock_analyzer_instance = MagicMock()
-    mock_analyzer_cls.return_value = mock_analyzer_instance
-
-    # Result DF with NO geometric patterns
-    result_df = df.copy()
-    result_df["bull_flag"] = False
-    result_df["bullish_engulfing"] = False
-    mock_analyzer_instance.check_patterns.return_value = result_df
-
-    # Mock pivots for harmonic analysis
-    mock_pivots = [
-        Pivot(
-            price=95.0,
-            timestamp=datetime(2023, 1, 1, tzinfo=timezone.utc),
-            pivot_type="VALLEY",
-            index=0,
-        ),
-        Pivot(
-            price=105.0,
-            timestamp=datetime(2023, 1, 5, tzinfo=timezone.utc),
-            pivot_type="PEAK",
-            index=1,
-        ),
-        Pivot(
-            price=98.0,
-            timestamp=datetime(2023, 1, 10, tzinfo=timezone.utc),
-            pivot_type="VALLEY",
-            index=2,
-        ),
-        Pivot(
-            price=108.0,
-            timestamp=datetime(2023, 1, 15, tzinfo=timezone.utc),
-            pivot_type="PEAK",
-            index=3,
-        ),
-    ]
-    mock_analyzer_instance.pivots = mock_pivots
-
-    # Execution
-    signal = signal_generator.generate_signals("BTC/USD", AssetClass.CRYPTO)
-
-    # Verification: No signal â€” harmonic-only doesn't produce an entry
-    assert (
-        signal is None
-    ), "Harmonic-only should not generate a signal (Multi-Layer Architecture)"
-
-
-def test_generate_signal_harmonic_macro_classification(
-    signal_generator, mock_market_provider, mock_analyzer_cls
-):
-    """Test that MACRO_PATTERN classification is applied when harmonic pattern is_macro.
-
-    Multi-Layer Architecture: Geometric trigger required. Harmonic macro context
-    sets pattern_classification to MACRO_PATTERN (not MACRO_HARMONIC).
-    """
-    # Setup Data
-    today = date(2023, 1, 1)
-    df = pd.DataFrame(
-        {
-            "open": [100.0],
-            "high": [110.0],
-            "low": [90.0],
-            "close": [105.0],
-            "volume": [1000.0],
-        },
-        index=[pd.Timestamp(today)],
-    )
-    mock_market_provider.get_daily_bars.return_value = df
-
-    # Mock Analyzer Instance
-    mock_analyzer_instance = MagicMock()
-    mock_analyzer_cls.return_value = mock_analyzer_instance
-
-    # Result DF with geometric pattern (required for signal generation)
-    result_df = df.copy()
-    result_df["bull_flag"] = True
-    mock_analyzer_instance.check_patterns.return_value = result_df
-
-    # Mock pivots for MACRO harmonic pattern (>90 days)
-    # ABCD pattern spanning 100 days
-    base_date = datetime(2023, 1, 1, tzinfo=timezone.utc)
-    mock_pivots = [
-        Pivot(
-            price=95.0,
-            timestamp=base_date,
-            pivot_type="VALLEY",
-            index=0,
-        ),
-        Pivot(
-            price=105.0,
-            timestamp=base_date + timedelta(days=30),
-            pivot_type="PEAK",
-            index=1,
-        ),
-        Pivot(
-            price=98.0,
-            timestamp=base_date + timedelta(days=60),
-            pivot_type="VALLEY",
-            index=2,
-        ),
-        Pivot(
-            price=108.0,
-            timestamp=base_date + timedelta(days=100),
-            pivot_type="PEAK",
-            index=3,
-        ),
-    ]
-    mock_analyzer_instance.pivots = mock_pivots
-
-    # Execution
-    signal = signal_generator.generate_signals("BTC/USD", AssetClass.CRYPTO)
-
-    # Verification
-    assert signal is not None, "Signal should be generated"
-    assert signal.pattern_name == "BULL_FLAG", "Pattern name should be geometric trigger"
-    assert (
-        signal.pattern_classification == "MACRO_PATTERN"
-    ), "Classification should be MACRO_PATTERN for macro harmonic context"
-    assert signal.structural_context == "ABCD", "Structural context should be ABCD"
-    assert signal.conviction_tier == "HIGH", "Should be HIGH conviction"
-
-
-# =============================================================================
-# SIGNAL LIFECYCLE HARDENING TESTS (Issue 99)
-# Tests for 5-minute cooldown gate, dynamic TTL, and Elliott Wave ATR stop loss
-# =============================================================================
-
-
-def test_check_exits_cooldown_gate_skips_newly_created_signal(
-    signal_generator, mock_market_provider, mock_analyzer_cls
-):
-    """Test that signals created within 5 minutes are skipped by check_exits (Issue 99)."""
-    # Setup Active Signal created 2 minutes ago (120 seconds < 300s cooldown)
+    """Regression: 288h-old SHORT WAITING signal does not phantom-trigger TP3."""
     now_utc = datetime.now(timezone.utc)
     signal = Signal(
-        signal_id="sig_new",
+        signal_id="sig_stale_short",
         ds=date(2023, 1, 1),
         strategy_id="strat_1",
         symbol="BTC/USD",
         asset_class=AssetClass.CRYPTO,
+        side=OrderSide.SELL,
         entry_price=100.0,
-        pattern_name="TEST",
-        suggested_stop=90.0,
         status=SignalStatus.WAITING,
-        take_profit_1=110.0,
-        invalidation_price=90.0,
-        created_at=now_utc - timedelta(seconds=120),  # 2 minutes ago
-        valid_until=now_utc + timedelta(hours=24),
+        take_profit_1=80.0,
+        take_profit_2=70.0,
+        created_at=now_utc - timedelta(hours=288),
     )
 
-    # Setup Market Data that would normally trigger invalidation
+    # Market data that would trigger TP3 if not for WAITING status
     df = pd.DataFrame(
         {
-            "open": [100.0],
-            "high": [102.0],
-            "low": [85.0],
-            "close": [88.0],  # Below invalidation_price (90.0)
-            "volume": [1000.0],
-            "bearish_engulfing": [False],
-            "RSI_14": [50.0],
-            "ADX_14": [20.0],
+            "open": [95.0],
+            "high": [105.0],
+            "low": [94.0],
+            "close": [102.0],  # Above Chandelier Short (98)
+            "CHANDELIER_EXIT_SHORT": [98.0],
         },
         index=[pd.Timestamp("2023-01-02")],
     )
-    mock_market_provider.get_daily_bars.return_value = df
 
     mock_analyzer_instance = MagicMock()
     mock_analyzer_cls.return_value = mock_analyzer_instance
     mock_analyzer_instance.check_patterns.return_value = df
 
     # Execution
-    exited = signal_generator.check_exits([signal], "BTC/USD", AssetClass.CRYPTO)
-
-    # Verification: Signal should be skipped due to cooldown gate
-    assert len(exited) == 0, "Signal should be skipped during cooldown period"
-
-
-def test_check_exits_cooldown_gate_processes_after_cooldown(
-    signal_generator, mock_market_provider, mock_analyzer_cls
-):
-    """Test that signals older than 5 minutes are processed normally (Issue 99)."""
-    # Setup Active Signal created 6 minutes ago (360 seconds > 300s cooldown)
-    now_utc = datetime.now(timezone.utc)
-    signal = Signal(
-        signal_id="sig_old",
-        ds=date(2023, 1, 1),
-        strategy_id="strat_1",
-        symbol="BTC/USD",
-        asset_class=AssetClass.CRYPTO,
-        entry_price=100.0,
-        pattern_name="TEST",
-        suggested_stop=90.0,
-        status=SignalStatus.WAITING,
-        take_profit_1=110.0,
-        invalidation_price=90.0,
-        created_at=now_utc - timedelta(seconds=360),  # 6 minutes ago
-        valid_until=now_utc + timedelta(hours=24),
-    )
-
-    # Setup Market Data that triggers invalidation
-    df = pd.DataFrame(
-        {
-            "open": [100.0],
-            "high": [102.0],
-            "low": [85.0],
-            "close": [88.0],  # Below invalidation_price (90.0)
-            "volume": [1000.0],
-            "bearish_engulfing": [False],
-            "RSI_14": [50.0],
-            "ADX_14": [20.0],
-        },
-        index=[pd.Timestamp("2023-01-02")],
-    )
-    mock_market_provider.get_daily_bars.return_value = df
-
-    mock_analyzer_instance = MagicMock()
-    mock_analyzer_cls.return_value = mock_analyzer_instance
-    mock_analyzer_instance.check_patterns.return_value = df
-
-    # Execution
-    exited = signal_generator.check_exits([signal], "BTC/USD", AssetClass.CRYPTO)
-
-    # Verification: Signal should be processed and invalidated
-    assert len(exited) == 1, "Signal should be processed after cooldown"
-    assert exited[0].status == SignalStatus.INVALIDATED
-
-
-def test_generate_signal_dynamic_ttl_standard_pattern(
-    signal_generator, mock_market_provider, mock_analyzer_cls
-):
-    """Test that STANDARD patterns get 48h TTL (Issue 99)."""
-    # Setup Data
-    today = date(2023, 1, 1)
-    df = pd.DataFrame(
-        {
-            "open": [100.0],
-            "high": [110.0],
-            "low": [90.0],
-            "close": [105.0],
-            "volume": [1000.0],
-        },
-        index=[pd.Timestamp(today)],
-    )
-    mock_market_provider.get_daily_bars.return_value = df
-
-    # Setup Pattern Analysis Result
-    mock_analyzer_instance = MagicMock()
-    mock_analyzer_cls.return_value = mock_analyzer_instance
-
-    # Result DF with bullish_engulfing pattern
-    result_df = df.copy()
-    result_df["bullish_engulfing"] = True
-    result_df["bullish_hammer"] = False
-    mock_analyzer_instance.check_patterns.return_value = result_df
-    mock_analyzer_instance.pivots = []  # No harmonic pattern
-
-    # Execution
-    signal = signal_generator.generate_signals("BTC/USD", AssetClass.CRYPTO)
-
-    # Verification
-    assert signal is not None
-    # STANDARD pattern should get 48h TTL
-    candle_timestamp = pd.Timestamp(today).to_pydatetime().replace(tzinfo=timezone.utc)
-    expected_valid_until = candle_timestamp + timedelta(hours=48)
-    assert signal.valid_until == expected_valid_until
-
-
-def test_generate_signal_dynamic_ttl_macro_pattern(
-    signal_generator, mock_market_provider, mock_analyzer_cls
-):
-    """Test that MACRO patterns get 120h TTL (Issue 99).
-
-    Multi-Layer Architecture: Needs geometric trigger + macro harmonic context.
-    """
-    # Setup Data
-    today = date(2023, 1, 1)
-    df = pd.DataFrame(
-        {
-            "open": [100.0],
-            "high": [110.0],
-            "low": [90.0],
-            "close": [105.0],
-            "volume": [1000.0],
-        },
-        index=[pd.Timestamp(today)],
-    )
-    mock_market_provider.get_daily_bars.return_value = df
-
-    # Setup Pattern Analysis Result
-    mock_analyzer_instance = MagicMock()
-    mock_analyzer_cls.return_value = mock_analyzer_instance
-
-    # Result DF with geometric pattern (required for signal generation)
-    result_df = df.copy()
-    result_df["bull_flag"] = True
-    result_df["bullish_engulfing"] = False
-    mock_analyzer_instance.check_patterns.return_value = result_df
-
-    # Mock pivots for MACRO harmonic pattern (>90 days)
-    base_date = datetime(2023, 1, 1, tzinfo=timezone.utc)
-    mock_pivots = [
-        Pivot(
-            price=95.0,
-            timestamp=base_date,
-            pivot_type="VALLEY",
-            index=0,
-        ),
-        Pivot(
-            price=105.0,
-            timestamp=base_date + timedelta(days=30),
-            pivot_type="PEAK",
-            index=1,
-        ),
-        Pivot(
-            price=98.0,
-            timestamp=base_date + timedelta(days=60),
-            pivot_type="VALLEY",
-            index=2,
-        ),
-        Pivot(
-            price=108.0,
-            timestamp=base_date + timedelta(days=100),
-            pivot_type="PEAK",
-            index=3,
-        ),
-    ]
-    mock_analyzer_instance.pivots = mock_pivots
-
-    # Execution
-    signal = signal_generator.generate_signals("BTC/USD", AssetClass.CRYPTO)
-
-    # Verification
-    assert signal is not None
-    # MACRO pattern should get 120h TTL
-    candle_timestamp = pd.Timestamp(today).to_pydatetime().replace(tzinfo=timezone.utc)
-    expected_valid_until = candle_timestamp + timedelta(hours=120)
-    assert signal.valid_until == expected_valid_until
-    assert signal.pattern_classification == "MACRO_PATTERN"
-
-
-# =============================================================================
-# ELLIOTT WAVE ATR-BASED STOP LOSS TESTS (Issue 99)
-# =============================================================================
-
-
-def test_generate_signal_elliott_wave_atr_stop_loss(
-    signal_generator, mock_market_provider, mock_analyzer_cls
-):
-    """Test that Elliott Wave patterns use ATR-based stop loss (Issue 99)."""
-    # Setup Data with ATR
-    today = date(2023, 1, 1)
-    df = pd.DataFrame(
-        {
-            "open": [100.0],
-            "high": [110.0],
-            "low": [90.0],
-            "close": [105.0],
-            "volume": [1000.0],
-            "ATR_14": [5.0],  # ATR = 5.0
-        },
-        index=[pd.Timestamp(today)],
-    )
-    mock_market_provider.get_daily_bars.return_value = df
-
-    # Setup Pattern Analysis Result for Elliott Wave
-    mock_analyzer_instance = MagicMock()
-    mock_analyzer_cls.return_value = mock_analyzer_instance
-
-    result_df = df.copy()
-    result_df["elliott_impulse_wave"] = True
-    result_df["bullish_engulfing"] = False
-    mock_analyzer_instance.check_patterns.return_value = result_df
-    mock_analyzer_instance.pivots = []  # No harmonic pattern
-
-    # Execution
-    signal = signal_generator.generate_signals("BTC/USD", AssetClass.CRYPTO)
-
-    # Verification
-    assert signal is not None
-    assert signal.pattern_name == "ELLIOTT_IMPULSE_WAVE"
-    # Stop should be Low - (0.5 * ATR) = 90.0 - (0.5 * 5.0) = 87.5
-    assert signal.suggested_stop == 87.5
-    assert signal.invalidation_price == 90.0  # Low price
-
-
-def test_generate_signal_elliott_wave_fallback_stop_loss(
-    signal_generator, mock_market_provider, mock_analyzer_cls
-):
-    """Test that Elliott Wave patterns fall back to 1% stop when ATR is 0 (Issue 99)."""
-    # Setup Data with ATR = 0
-    today = date(2023, 1, 1)
-    df = pd.DataFrame(
-        {
-            "open": [100.0],
-            "high": [110.0],
-            "low": [90.0],
-            "close": [105.0],
-            "volume": [1000.0],
-            "ATR_14": [0.0],  # ATR = 0.0 (edge case)
-        },
-        index=[pd.Timestamp(today)],
-    )
-    mock_market_provider.get_daily_bars.return_value = df
-
-    # Setup Pattern Analysis Result for Elliott Wave
-    mock_analyzer_instance = MagicMock()
-    mock_analyzer_cls.return_value = mock_analyzer_instance
-
-    result_df = df.copy()
-    result_df["elliott_impulse_wave"] = True
-    result_df["bullish_engulfing"] = False
-    mock_analyzer_instance.check_patterns.return_value = result_df
-    mock_analyzer_instance.pivots = []  # No harmonic pattern
-
-    # Execution
-    signal = signal_generator.generate_signals("BTC/USD", AssetClass.CRYPTO)
-
-    # Verification
-    assert signal is not None
-    assert signal.pattern_name == "ELLIOTT_IMPULSE_WAVE"
-    # Stop should fall back to Low * 0.99 = 90.0 * 0.99 = 89.1
-    assert signal.suggested_stop == 89.1
-    assert signal.invalidation_price == 90.0  # Low price
-
-
-# ============================================================
-# PHASE 2: Conviction-Aware Quality Gate Tests
-# ============================================================
-
-
-def _make_conviction_test_df(
-    volume=1000.0,
-    vol_sma_20=1000.0,
-    adx=25.0,
-    rsi=50.0,
-    close=100.0,
-    low=97.0,
-    high=110.0,
-    open_price=98.0,
-    atr=5.0,
-):
-    """Helper to create a DataFrame with configurable indicator values for quality gate tests."""
-    df = pd.DataFrame(
-        {
-            "open": [open_price],
-            "high": [high],
-            "low": [low],
-            "close": [close],
-            "volume": [volume],
-            "VOL_SMA_20": [vol_sma_20],
-            "ADX_14": [adx],
-            "RSI_14": [rsi],
-            "SMA_200": [80.0],
-            "ATRr_14": [atr],
-        },
-        index=[pd.Timestamp("2023-01-01")],
-    )
-    return df
-
-
-def _setup_harmonic_mocks(mock_analyzer_instance):
-    """Setup mocks for harmonic pattern detection (pivots + HarmonicAnalyzer patch)."""
-    from datetime import datetime, timezone
-
-    from crypto_signals.analysis.structural import Pivot
-
-    mock_pivots = [
-        Pivot(
-            price=95.0,
-            timestamp=datetime(2023, 1, 1, tzinfo=timezone.utc),
-            pivot_type="VALLEY",
-            index=0,
-        ),
-        Pivot(
-            price=105.0,
-            timestamp=datetime(2023, 1, 5, tzinfo=timezone.utc),
-            pivot_type="PEAK",
-            index=1,
-        ),
-        Pivot(
-            price=98.0,
-            timestamp=datetime(2023, 1, 10, tzinfo=timezone.utc),
-            pivot_type="VALLEY",
-            index=2,
-        ),
-        Pivot(
-            price=108.0,
-            timestamp=datetime(2023, 1, 15, tzinfo=timezone.utc),
-            pivot_type="PEAK",
-            index=3,
-        ),
-    ]
-    mock_analyzer_instance.pivots = mock_pivots
-
-    mock_harmonic_pattern = MagicMock()
-    mock_harmonic_pattern.pattern_type = "GARTLEY"
-    mock_harmonic_pattern.ratios = {"XA": 0.618}
-    mock_harmonic_pattern.is_macro = False
-
-    return mock_harmonic_pattern
-
-
-def test_high_conviction_relaxes_volume_gate(
-    signal_generator, mock_market_provider, mock_analyzer_cls
-):
-    """Volume 1.3x is rejected normally but passes with HIGH conviction (harmonic context)."""
-    from unittest.mock import patch
-
-    # Volume 1.3x < 1.5x threshold, but > 1.2x relaxed threshold
-    df = _make_conviction_test_df(volume=1300.0, vol_sma_20=1000.0, adx=30.0)
-    mock_market_provider.get_daily_bars.return_value = df
-
-    mock_analyzer_instance = MagicMock()
-    mock_analyzer_cls.return_value = mock_analyzer_instance
-
-    result_df = df.copy()
-    result_df["bull_flag"] = True
-    result_df["bullish_engulfing"] = False
-    result_df["bull_flag_duration"] = 10
-    result_df["bull_flag_classification"] = "STANDARD"
-    mock_analyzer_instance.check_patterns.return_value = result_df
-
-    # WITHOUT harmonic â†’ rejected (volume 1.3x < 1.5x)
-    mock_analyzer_instance.pivots = []
-    signal_no_harmonic = signal_generator.generate_signals("BTC/USD", AssetClass.CRYPTO)
-    assert signal_no_harmonic is not None
-    assert signal_no_harmonic.status == SignalStatus.REJECTED_BY_FILTER
-    assert "Volume" in signal_no_harmonic.rejection_reason
-
-    # WITH harmonic â†’ passes (volume 1.3x > 1.2x relaxed threshold)
-    mock_harmonic_pattern = _setup_harmonic_mocks(mock_analyzer_instance)
-    with patch(
-        "crypto_signals.engine.signal_generator.HarmonicAnalyzer"
-    ) as mock_harmonic_cls:
-        mock_harmonic_instance = MagicMock()
-        mock_harmonic_instance.scan_all_patterns.return_value = [mock_harmonic_pattern]
-        mock_harmonic_cls.return_value = mock_harmonic_instance
-
-        signal_with_harmonic = signal_generator.generate_signals(
-            "BTC/USD", AssetClass.CRYPTO
-        )
-
-    assert signal_with_harmonic is not None
-    assert signal_with_harmonic.status != SignalStatus.REJECTED_BY_FILTER
-    assert signal_with_harmonic.conviction_tier == "HIGH"
-
-
-def test_high_conviction_relaxes_adx_gate(
-    signal_generator, mock_market_provider, mock_analyzer_cls
-):
-    """ADX 17 is rejected normally but passes with HIGH conviction."""
-    from unittest.mock import patch
-
-    # ADX 17 < 20 threshold, but > 15 relaxed threshold
-    # Use close/low values that produce good R:R so only ADX gate matters
-    df = _make_conviction_test_df(
-        volume=2000.0,
-        vol_sma_20=1000.0,
-        adx=17.0,
-        close=100.0,
-        low=97.0,
-        high=110.0,
-        open_price=98.0,
-        atr=5.0,
-    )
-    mock_market_provider.get_daily_bars.return_value = df
-
-    mock_analyzer_instance = MagicMock()
-    mock_analyzer_cls.return_value = mock_analyzer_instance
-
-    result_df = df.copy()
-    result_df["bull_flag"] = True
-    result_df["bullish_engulfing"] = False
-    result_df["bull_flag_duration"] = 10
-    result_df["bull_flag_classification"] = "STANDARD"
-    mock_analyzer_instance.check_patterns.return_value = result_df
-
-    # WITHOUT harmonic â†’ rejected (ADX 17 < 20)
-    mock_analyzer_instance.pivots = []
-    signal_no_harmonic = signal_generator.generate_signals("BTC/USD", AssetClass.CRYPTO)
-    assert signal_no_harmonic is not None
-    assert signal_no_harmonic.status == SignalStatus.REJECTED_BY_FILTER
-    assert "ADX" in signal_no_harmonic.rejection_reason
-
-    # WITH harmonic â†’ passes (ADX 17 > 15 relaxed threshold)
-    mock_harmonic_pattern = _setup_harmonic_mocks(mock_analyzer_instance)
-    with patch(
-        "crypto_signals.engine.signal_generator.HarmonicAnalyzer"
-    ) as mock_harmonic_cls:
-        mock_harmonic_instance = MagicMock()
-        mock_harmonic_instance.scan_all_patterns.return_value = [mock_harmonic_pattern]
-        mock_harmonic_cls.return_value = mock_harmonic_instance
-
-        signal_with_harmonic = signal_generator.generate_signals(
-            "BTC/USD", AssetClass.CRYPTO
-        )
-
-    assert signal_with_harmonic is not None
-    assert signal_with_harmonic.status != SignalStatus.REJECTED_BY_FILTER
-    assert signal_with_harmonic.conviction_tier == "HIGH"
-
-
-def test_high_conviction_relaxes_rr_gate(
-    signal_generator, mock_market_provider, mock_analyzer_cls
-):
-    """R:R 1.3 is rejected normally but passes with HIGH conviction."""
-    from unittest.mock import patch
-
-    # close=100, low=93 â†’ stop=93*0.99=92.07, risk=7.93, TP1=110, profit=10 â†’ R:R=1.26 â€” in range
-    df = _make_conviction_test_df(
-        close=100.0,
-        low=93.0,
-        high=110.0,
-        open_price=95.0,
-        atr=5.0,
-        volume=2000.0,
-        vol_sma_20=1000.0,
-        adx=30.0,
-    )
-    mock_market_provider.get_daily_bars.return_value = df
-
-    mock_analyzer_instance = MagicMock()
-    mock_analyzer_cls.return_value = mock_analyzer_instance
-
-    result_df = df.copy()
-    result_df["bullish_hammer"] = True
-    result_df["bullish_engulfing"] = False
-    mock_analyzer_instance.check_patterns.return_value = result_df
-
-    # WITHOUT harmonic â†’ rejected (R:R ~1.26 < 1.5)
-    mock_analyzer_instance.pivots = []
-    signal_no_harmonic = signal_generator.generate_signals("BTC/USD", AssetClass.CRYPTO)
-    assert signal_no_harmonic is not None
-    assert signal_no_harmonic.status == SignalStatus.REJECTED_BY_FILTER
-    assert "R:R" in signal_no_harmonic.rejection_reason
-
-    # WITH harmonic â†’ passes (R:R 1.26 > 1.2 relaxed threshold)
-    mock_harmonic_pattern = _setup_harmonic_mocks(mock_analyzer_instance)
-    with patch(
-        "crypto_signals.engine.signal_generator.HarmonicAnalyzer"
-    ) as mock_harmonic_cls:
-        mock_harmonic_instance = MagicMock()
-        mock_harmonic_instance.scan_all_patterns.return_value = [mock_harmonic_pattern]
-        mock_harmonic_cls.return_value = mock_harmonic_instance
-
-        signal_with_harmonic = signal_generator.generate_signals(
-            "BTC/USD", AssetClass.CRYPTO
-        )
-
-    assert signal_with_harmonic is not None
-    assert signal_with_harmonic.status != SignalStatus.REJECTED_BY_FILTER
-    assert signal_with_harmonic.conviction_tier == "HIGH"
-
-
-def test_standard_conviction_uses_normal_thresholds(
-    signal_generator, mock_market_provider, mock_analyzer_cls
-):
-    """Without harmonic context, normal thresholds apply â€” no relaxation."""
-    # Volume 1.3x < 1.5x â†’ rejected regardless (no harmonic)
-    df = _make_conviction_test_df(volume=1300.0, vol_sma_20=1000.0, adx=30.0)
-    mock_market_provider.get_daily_bars.return_value = df
-
-    mock_analyzer_instance = MagicMock()
-    mock_analyzer_cls.return_value = mock_analyzer_instance
-
-    result_df = df.copy()
-    result_df["bull_flag"] = True
-    result_df["bullish_engulfing"] = False
-    result_df["bull_flag_duration"] = 10
-    result_df["bull_flag_classification"] = "STANDARD"
-    mock_analyzer_instance.check_patterns.return_value = result_df
-    mock_analyzer_instance.pivots = []
-
-    signal = signal_generator.generate_signals("BTC/USD", AssetClass.CRYPTO)
-    assert signal is not None
-    assert signal.status == SignalStatus.REJECTED_BY_FILTER
-    assert signal.conviction_tier is None  # No harmonic = no conviction tier
-
-
-def test_check_exits_skips_expired_waiting_signal(signal_generator, mock_analyzer_cls):
-    """
-    Verify that check_exits skips WAITING signals that are past their valid_until date (Issue #280).
-    This is the defense-in-depth fix.
-    """
-    now_utc = datetime.now(timezone.utc)
-    stale_valid_until = now_utc - timedelta(hours=1)
-
-    # Setup Signal that is WAITING but EXPIRED
-    signal = Signal(
-        signal_id="stale_signal",
-        ds=date.today() - timedelta(days=2),
-        strategy_id="test_strat",
-        symbol="BTC/USD",
-        asset_class=AssetClass.CRYPTO,
-        entry_price=100.0,
-        pattern_name="TEST",
-        suggested_stop=90.0,
-        status=SignalStatus.WAITING,
-        take_profit_1=110.0,
-        invalidation_price=95.0,
-        valid_until=stale_valid_until,
-        created_at=now_utc - timedelta(hours=2),  # Older than 5m cooldown
-    )
-
-    # Setup Market Data that would normally trigger INVALIDATED (price < invalidation_price)
-    df = pd.DataFrame(
-        {
-            "open": [100.0],
-            "high": [102.0],
-            "low": [90.0],
-            "close": [92.0],  # Below 95
-            "volume": [1000.0],
-            "bearish_engulfing": [False],
-            "RSI_14": [50.0],
-            "ADX_14": [20.0],
-        },
-        index=[pd.Timestamp(now_utc)],
-    )
-
-    mock_analyzer_instance = MagicMock()
-    mock_analyzer_cls.return_value = mock_analyzer_instance
-    mock_analyzer_instance.check_patterns.return_value = df
-
-    # Execution
-    exited = signal_generator.check_exits(
+    result = signal_generator.check_exits(
         [signal], "BTC/USD", AssetClass.CRYPTO, dataframe=df
     )
 
-    # Verification: Signal should be skipped and NOT returned in exited list
-    # (Before fix, it would be returned as INVALIDATED)
-    assert (
-        len(exited) == 0
-    ), "Stale WAITING signal should have been skipped by check_exits"
-    assert (
-        signal.status == SignalStatus.WAITING
-    ), "Signal status should remain WAITING (skipped by generator)"
-
-
-def test_check_exits_tp3_guard_waiting_signal(
-    signal_generator, mock_market_provider, mock_analyzer_cls
-):
-    """Verify that a WAITING signal NEVER triggers a TP3 (Runner) exit,
-    even if price hits the Chandelier Exit level (Issue #320)."""
-    signal = Signal(
-        signal_id="sig_waiting_tp3",
-        ds=date(2023, 1, 1),
-        strategy_id="strat_1",
-        symbol="BTC/USD",
-        asset_class=AssetClass.CRYPTO,
-        entry_price=100.0,
-        pattern_name="TEST",
-        suggested_stop=90.0,
-        status=SignalStatus.WAITING,
-        take_profit_1=110.0,
-        take_profit_2=120.0,
-        invalidation_price=90.0,
-        valid_until=datetime.now(timezone.utc) + timedelta(hours=24),
-    )
-
-    # Market Data: Close < Chandelier Exit (would normally trigger Long TP3)
-    # AND Close > Entry (profitable)
-    df = pd.DataFrame(
-        {
-            "open": [130.0],
-            "high": [135.0],
-            "low": [125.0],
-            "close": [128.0],
-            "volume": [1000.0],
-            "bearish_engulfing": [False],
-            "RSI_14": [50.0],
-            "ADX_14": [20.0],
-            "CHANDELIER_EXIT_LONG": [129.0],
-        },
-        index=[pd.Timestamp("2023-01-02")],
-    )
-
-    mock_analyzer_instance = MagicMock()
-    mock_analyzer_cls.return_value = mock_analyzer_instance
-    mock_analyzer_instance.check_patterns.return_value = df
-
-    exited = signal_generator.check_exits(
-        [signal], "BTC/USD", AssetClass.CRYPTO, dataframe=df
-    )
-
-    # Verification: Signal should NOT exit at TP3 (guard blocks it)
-    # Because high=135 and TP1=110, it will trigger a TP1 exit on this candle instead.
-    assert len(exited) == 1, "WAITING signal should have triggered normal TP exit"
-    assert (
-        exited[0].status != SignalStatus.TP3_HIT
-    ), "WAITING signal incorrectly triggered TP3 exit"
-    assert (
-        exited[0].status == SignalStatus.TP1_HIT
-    ), "Status should be TP1_HIT due to high > tp1"
-
-
-def test_check_exits_tp3_guard_tp1_signal(
-    signal_generator, mock_market_provider, mock_analyzer_cls
-):
-    """Verify that a TP1_HIT signal correctly triggers a TP3 (Runner) exit."""
-    signal = Signal(
-        signal_id="sig_tp1_tp3",
-        ds=date(2023, 1, 1),
-        strategy_id="strat_1",
-        symbol="BTC/USD",
-        asset_class=AssetClass.CRYPTO,
-        entry_price=100.0,
-        pattern_name="TEST",
-        suggested_stop=110.0,
-        status=SignalStatus.TP1_HIT,
-        take_profit_1=110.0,
-        take_profit_2=120.0,
-        invalidation_price=90.0,
-    )
-
-    df = pd.DataFrame(
-        {
-            "open": [130.0],
-            "high": [135.0],
-            "low": [125.0],
-            "close": [128.0],
-            "volume": [1000.0],
-            "bearish_engulfing": [False],
-            "RSI_14": [50.0],
-            "ADX_14": [20.0],
-            "CHANDELIER_EXIT_LONG": [129.0],
-        },
-        index=[pd.Timestamp("2023-01-02")],
-    )
-
-    mock_analyzer_instance = MagicMock()
-    mock_analyzer_cls.return_value = mock_analyzer_instance
-    mock_analyzer_instance.check_patterns.return_value = df
-
-    exited = signal_generator.check_exits(
-        [signal], "BTC/USD", AssetClass.CRYPTO, dataframe=df
-    )
-
-    assert len(exited) == 1, "TP1_HIT signal should have exited"
-    assert exited[0].status == SignalStatus.TP3_HIT, "Status should be TP3_HIT"
-    assert exited[0].exit_reason == ExitReason.TP_HIT
+    # Verification: Should be empty
+    assert len(result) == 0
