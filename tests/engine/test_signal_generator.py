@@ -837,7 +837,11 @@ def test_check_exits_short_trail_not_updated_when_higher(
         side=OrderSide.SELL,
         entry_price=100.0,
         status=SignalStatus.TP2_HIT,
-        take_profit_3=80.0,  # Current trailing stop
+        take_profit_1=90.0,
+        take_profit_2=80.0,
+        take_profit_3=80.0,
+        suggested_stop=110.0,
+        pattern_name="TEST",
         invalidation_price=None,
     )
 
@@ -881,7 +885,11 @@ def test_check_exits_short_tp3_hit(
         side=OrderSide.SELL,
         entry_price=100.0,
         status=SignalStatus.TP2_HIT,
+        take_profit_1=90.0,
+        take_profit_2=80.0,
         take_profit_3=80.0,
+        suggested_stop=110.0,
+        pattern_name="TEST",
         invalidation_price=None,
     )
 
@@ -928,6 +936,8 @@ def test_check_exits_stale_short_waiting_regression(
         status=SignalStatus.WAITING,
         take_profit_1=80.0,
         take_profit_2=70.0,
+        suggested_stop=110.0,
+        pattern_name="TEST",
         created_at=now_utc - timedelta(hours=288),
     )
 

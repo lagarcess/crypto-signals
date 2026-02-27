@@ -17,7 +17,7 @@ def mock_market_provider():
 @pytest.fixture
 def mock_indicators():
     mock = MagicMock()
-    mock.add_all_indicators.side_effect = lambda df: df
+    mock.add_all_indicators.return_value = None  # modified from side_effect lambda
     return mock
 
 
@@ -30,6 +30,7 @@ def mock_analyzer_cls():
 def mock_repository():
     mock = MagicMock()
     mock.get_most_recent_exit.return_value = None
+    mock.get_open_position_by_symbol.return_value = None
     return mock
 
 
@@ -37,12 +38,14 @@ def mock_repository():
 def signal_generator(
     mock_market_provider, mock_indicators, mock_analyzer_cls, mock_repository
 ):
-    return SignalGenerator(
+    sg = SignalGenerator(
         market_provider=mock_market_provider,
         indicators=mock_indicators,
         pattern_analyzer_cls=mock_analyzer_cls,
         signal_repo=mock_repository,
     )
+    sg.position_repo = mock_repository
+    return sg
 
 
 def test_elliott_pattern_negative_stop_prevention(
@@ -91,18 +94,18 @@ def test_elliott_pattern_negative_stop_prevention(
     mock_analyzer_instance.check_patterns.return_value = result_df
 
     # Execution
-    signal = signal_generator.generate_signals("PEPE/USD", AssetClass.CRYPTO)
+    sig = signal_generator.generate_signals("PEPE/USD", AssetClass.CRYPTO)
 
     # Verification
-    assert signal is not None
-    assert signal.pattern_name == "ELLIOTT_IMPULSE_WAVE"
+    assert sig is not None
+    assert sig.pattern_name == "ELLIOTT_IMPULSE_WAVE"
 
     # Check stop loss floor
     SAFE_STOP_VAL = 1e-8
     expected_stop = SAFE_STOP_VAL
 
-    assert signal.suggested_stop == expected_stop
-    assert signal.suggested_stop > 0
+    assert sig.suggested_stop == expected_stop
+    assert sig.suggested_stop > 0
 
 
 def test_elliott_pattern_normal_stop(
