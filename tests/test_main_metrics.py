@@ -19,23 +19,48 @@ def mock_deps_metrics():
         mock_exec_engine = stack.enter_context(
             patch("crypto_signals.main.ExecutionEngine")
         )
-        stack.enter_context(patch("crypto_signals.main.SignalGenerator"))
+        generator_mock = stack.enter_context(patch("crypto_signals.main.SignalGenerator"))
         stack.enter_context(patch("crypto_signals.main.SignalRepository"))
+        stack.enter_context(patch("crypto_signals.main.RejectedSignalRepository"))
         stack.enter_context(patch("crypto_signals.main.MarketDataProvider"))
         stack.enter_context(patch("crypto_signals.main.DiscordClient"))
         stack.enter_context(patch("crypto_signals.main.init_secrets", return_value=True))
+        stack.enter_context(
+            patch("crypto_signals.main.load_config_from_firestore", return_value={})
+        )
         stack.enter_context(patch("crypto_signals.main.JobLockRepository"))
         stack.enter_context(patch("crypto_signals.main.AssetValidationService"))
         stack.enter_context(patch("crypto_signals.main.StateReconciler"))
-        stack.enter_context(patch("crypto_signals.main.TradeArchivalPipeline"))
-        stack.enter_context(patch("crypto_signals.main.FeePatchPipeline"))
-        stack.enter_context(patch("crypto_signals.main.PricePatchPipeline"))
+        trade_archive = stack.enter_context(
+            patch("crypto_signals.main.TradeArchivalPipeline")
+        )
+        fee_patch = stack.enter_context(patch("crypto_signals.main.FeePatchPipeline"))
+        price_patch = stack.enter_context(patch("crypto_signals.main.PricePatchPipeline"))
         stack.enter_context(patch("crypto_signals.main.JobMetadataRepository"))
         stack.enter_context(patch("crypto_signals.main.get_stock_data_client"))
         stack.enter_context(patch("crypto_signals.main.get_crypto_data_client"))
         stack.enter_context(patch("crypto_signals.main.get_trading_client"))
-        stack.enter_context(patch("crypto_signals.main.AccountSnapshotPipeline"))
-        stack.enter_context(patch("crypto_signals.main.StrategySyncPipeline"))
+        account_snap = stack.enter_context(
+            patch("crypto_signals.main.AccountSnapshotPipeline")
+        )
+        strategy_sync = stack.enter_context(
+            patch("crypto_signals.main.StrategySyncPipeline")
+        )
+        expired_archive = stack.enter_context(
+            patch("crypto_signals.main.ExpiredSignalArchivalPipeline")
+        )
+        rejected_archive = stack.enter_context(
+            patch("crypto_signals.main.RejectedSignalArchival")
+        )
+
+        # Prevent pipeline hangs
+        trade_archive.return_value.run.return_value = 0
+        fee_patch.return_value.run.return_value = 0
+        price_patch.return_value.run.return_value = 0
+        account_snap.return_value.run.return_value = 0
+        strategy_sync.return_value.run.return_value = 0
+        expired_archive.return_value.run.return_value = 0
+        rejected_archive.return_value.run.return_value = 0
 
         # Configure Metrics Mock
         mock_metrics = MagicMock()
@@ -57,12 +82,16 @@ def mock_deps_metrics():
             "metrics": mock_metrics,
             "pos_repo": mock_pos_repo,
             "exec_engine": mock_exec_engine,
+            "generator": generator_mock,
         }
 
 
 def test_position_sync_metrics_failure_individual(mock_deps_metrics):
     """Test that individual position sync failure records a metric."""
     mocks = mock_deps_metrics
+
+    # Mock generator to avoid infinite loops from MagicMocks
+    mocks["generator"].return_value.generate_signals.return_value = None
 
     # Setup open positions
     mock_pos = MagicMock()
@@ -85,17 +114,17 @@ def test_position_sync_metrics_failure_global(mock_deps_metrics):
     """Test that global position sync loop failure records a metric."""
     mocks = mock_deps_metrics
 
-    # Make get_open_positions raise exception (global failure)
-    mocks["pos_repo"].return_value.get_open_positions.side_effect = RuntimeError(
-        "DB Error"
-    )
+    # Mock generator to avoid infinite loops from MagicMocks
+    mocks["generator"].return_value.generate_signals.return_value = None
 
-    # Run main
-    main(smoke_test=False)
+    # Since main.py now uses StateReconciler, mock that instead of pos_repo
+    with patch("crypto_signals.main.StateReconciler") as mock_reconciler:
+        mock_reconciler_instance = mock_reconciler.return_value
+        mock_reconciler_instance.reconcile.side_effect = RuntimeError("Sync Error")
 
-    # Verify record_failure called for global sync
-    # We expect a call like record_failure("position_sync", time_duration)
-    # Since time_duration is variable, we check call args
+        # Run main
+        main(smoke_test=False)
 
-    calls = mocks["metrics"].record_failure.call_args_list
-    assert any(call.args[0] == "position_sync" for call in calls)
+        # Verify record_failure called for global sync
+        calls = mocks["metrics"].record_failure.call_args_list
+        assert any(call.args[0] == "reconciliation" for call in calls)

@@ -14,15 +14,28 @@ def mock_market_provider():
 
 
 @pytest.fixture
-def mock_repository():
-    return MagicMock()
+def mock_indicators():
+    mock = MagicMock()
+    mock.add_all_indicators.return_value = None
+    return mock
 
 
 @pytest.fixture
-def signal_generator(mock_market_provider, mock_repository):
-    return SignalGenerator(
-        market_provider=mock_market_provider, signal_repo=mock_repository
+def mock_repository():
+    mock = MagicMock()
+    mock.get_open_position_by_symbol.return_value = None
+    return mock
+
+
+@pytest.fixture
+def signal_generator(mock_market_provider, mock_indicators, mock_repository):
+    sg = SignalGenerator(
+        market_provider=mock_market_provider,
+        indicators=mock_indicators,
+        signal_repo=mock_repository,
     )
+    sg.position_repo = mock_repository
+    return sg
 
 
 def test_generate_signal_with_negative_stop(signal_generator):
