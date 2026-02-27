@@ -951,7 +951,9 @@ def main(
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 # Submit all tasks
                 future_to_symbol = {
-                    executor.submit(process_portfolio_item, item, progress, task, idx): item[0]
+                    executor.submit(
+                        process_portfolio_item, item, progress, task, idx
+                    ): item[0]
                     for idx, item in enumerate(portfolio_items)
                 }
 

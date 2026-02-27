@@ -9,10 +9,11 @@ description: Audits the repository and synchronizes all documentation (.md files
     - Verify that all mentioned tools, constraints, and personas actually exist in the `.agent/` directories or `scripts/`.
     - If a feature is documented but missing, flag it as a hallucination or dead link.
 
-2.  **Design Contract Synchronization**
-    - Review `docs/designs/rfc-design.md` or `knowledge-base.md`.
-    - Cross-reference the documented Python classes/types against the actual `src/crypto_signals/` implementations.
-    - Has a Pydantic schema evolved but the design doc still reflects the old version? Fix the design doc.
+2.  **Comprehensive Documentation Audit (`docs/` directory)**
+    - Iterate through **all** markdown files in the `docs/` directory hierarchy (`docs/**/*.md`), including Strategy, Architecture, Operations, and Development guides.
+    - Ensure cross-references between `docs/README.md`, `AGENTS.md`, and individual guides remain valid and accurately represent the current `.agent/workflows/` and `.agent/skills/`.
+    - Cross-reference documented Python classes/types in `docs/designs/rfc-design.md` or `knowledge-base.md` against the actual `src/crypto_signals/` implementations.
+    - If a Pydantic schema or system component has evolved, ensure the corresponding documentation in `docs/` is updated immediately.
 
 3.  **Actionable Output**
     - **Hard Fixes**: Directly edit markdown files (`docs/**/*.md`, `AGENTS.md`, etc.) to match the code truth.

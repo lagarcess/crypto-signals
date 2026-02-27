@@ -52,7 +52,7 @@ def test_verify_order_not_found(mock_trading_client):
     ), "Expected 'not found' message in output"
 
 
-def test_verify_order_found(mock_trading_client):
+def test_verify_order_found(mock_trading_client, mock_position_repo):
     # Setup
     mock_order = MagicMock()
     mock_order.status = "filled"
@@ -64,6 +64,7 @@ def test_verify_order_found(mock_trading_client):
     mock_order.model_dump.return_value = order_dict
 
     mock_trading_client.get_order_by_id.return_value = mock_order
+    mock_position_repo.get_open_positions.return_value = []
 
     # Execute
     result = runner.invoke(app, ["--order-id", "existing-id"])

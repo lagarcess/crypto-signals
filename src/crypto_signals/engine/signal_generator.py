@@ -279,6 +279,10 @@ class SignalGenerator:
         elif harmonic_pattern:
             # Harmonic-only: no tactical trigger → no signal
             # Structural context alone doesn't produce an entry signal
+            logger.debug(
+                f"[{symbol}] Harmonic pattern ({harmonic_pattern.pattern_type}) detected, "
+                f"but missing geometric tactical trigger. Skipping signal generation."
+            )
             return None
         else:
             # No patterns detected

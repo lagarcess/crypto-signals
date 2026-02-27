@@ -20,6 +20,9 @@ Follow this sequence for every standard task or issue.
 
 ## 🛠 Command Details
 
+> [!NOTE]
+> This section highlights the core development loop. For the complete, authoritative registry of all supported agentic workflows (including Architecture, Data Migrations, and Orchestration loops), please reference the [AI Team Registry](../../AGENTS.md).
+
 ### `/plan`
 *   **Trigger**: Start of every new task.
 *   **Actions**:

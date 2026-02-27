@@ -107,6 +107,10 @@ Crypto Sentinel is a production-ready trading bot that:
 
 ```
 crypto-signals/
+├── .agent/                        # AI Team Directory (Expert capabilities)
+│   ├── rules/                     # Global behavioral constraints
+│   ├── skills/                    # Domain-expert reusable knowledge
+│   └── workflows/                 # Automated CI/CD and AI orchestrated loops
 ├── src/crypto_signals/
 │   ├── main.py                    # Application entrypoint
 │   ├── config.py                  # Configuration management
@@ -158,7 +162,7 @@ crypto-signals/
 │   ├── operations/                # Deployment, monitoring, troubleshooting
 │   ├── development/               # Tips, workflows, scripts guide
 │   └── images/                    # Architecture diagrams
-├── temp/                          # Transient files (gitignored)
+├── temp/                          # Ephemeral runtime artifacts (tracked via .gitkeep)
 │   ├── reports/                   # Diagnostic output files
 │   ├── coverage/                  # Code coverage reports (HTML/XML)
 │   ├── output/                    # Script-generated data exports
@@ -167,7 +171,7 @@ crypto-signals/
 │   ├── pr/                        # Pull request drafts
 │   ├── review/                    # Code review outputs
 │   └── verify/                    # Verification outputs
-
+│
 ├── tests/                         # Comprehensive test suite
 ├── Dockerfile                     # Multi-stage production build
 ├── docker-compose.yml             # Local development setup
