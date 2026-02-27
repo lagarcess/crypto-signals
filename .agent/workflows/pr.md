@@ -69,11 +69,7 @@ description: Create a comprehensive Pull Request from current changes
    - Push changes: `git push origin HEAD`
 
 7. **Submission**
-   - Infer PR labels from branch type:
-     - `feat/*` -> `enhancement`
-     - `fix/*` -> `bug`
-     - `chore/*` -> `chore`
-     - `docs/*` -> `documentation`
+   - **Enforce SemVer Rule**: Strictly follow the guidelines defined in `.agent/rules/conventional-commits.md` for constructing the PR title and inferring Labels based on the original branch prefix.
    - Output the PR command for the user (referencing the temp file):
-     - `gh pr create --title "[Title]" --body-file temp/pr/description.md --label "[inferred-label]"`
+     - `gh pr create --title "<type>(<scope>): <description>" --body-file temp/pr/description.md --label "[inferred-label]"`
    - **Optional**: Ask user if they want to add specialized reviewers.

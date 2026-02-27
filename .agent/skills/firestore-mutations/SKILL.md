@@ -32,5 +32,5 @@ Firestore requires explicit composite indexes for queries with multiple `.where(
 ## 3. The 1MB Limit
 A single Firestore document cannot exceed 1MB. Do not embed infinite arrays (like tick-by-tick price history) into a Signal document. Store large arrays in BigQuery or Google Cloud Storage, leaving only the references or aggregations in Firestore.
 
-## 4. Enforce Two-Phase Commit
-Remember the core DB rule: **Persistence before Notification**. Write to Firestore -> `batch.commit()` -> Wait for success -> Notify Discord/External.
+## 4. Atomic Updates
+Use Firestore batches for all multi-document updates to satisfy the data integrity rules.
