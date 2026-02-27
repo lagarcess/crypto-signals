@@ -32,6 +32,7 @@ ALWAYS follow these steps in order when tackling a bug:
 *   **AI-Generated Code Audits**: Actively check for hallucinations, incorrect API usages, missing imports, and variable scope issues.
 
 ## Guidelines for Specific Scenarios
+*   **Test Suite Deadlocks/Hangs**: If a test hangs indefinitely rather than failing, suspect infinite recursion within unconfigured `MagicMock` objects (especially inside thread pools) or un-mocked external connection retries. Identify the exact hang location using `pytest -s` (to see unbuffered raw output) or trailing print statements.
 *   **Intermittent / Flaky Failures**: Reproduce under stress (loops, high concurrency). Check for race conditions, state leakage between tests, and non-determinism (time, random seeds). Control the environment by seeding random numbers or mocking time (e.g., `freezegun`).
 *   **Runtime Errors**: Read tracebacks top-down to understand the entry point, but bottom-up to see the immediate crash context. Use `pdb.post_mortem()` or analyze variables exactly at the crash point. Common issues: `NameError` (undefined vars), `TypeError` (wrong types/NoneType), `IndexError` (bounds).
 *   **'It worked before' dilemma**: If an issue suddenly appears on `main`, use `git bisect` to locate the breaking commit. Compare environments (dependency versions, configs). Reproduce old and new states to isolate the hidden change.
