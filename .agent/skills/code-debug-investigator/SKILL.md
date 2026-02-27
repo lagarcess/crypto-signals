@@ -37,11 +37,11 @@ ALWAYS follow these steps in order when tackling a bug:
 *   **'It worked before' dilemma**: If an issue suddenly appears on `main`, use `git bisect` to locate the breaking commit. Compare environments (dependency versions, configs). Reproduce old and new states to isolate the hidden change.
 
 ## Anti-Patterns to Avoid (Inversions)
-*   Γ¥î **Avoid shotgun debugging**: No random changes, "try this" permutations, or copy-paste fixes without deep understanding.
-*   Γ¥î **Don't ignore warnings**: Treat warnings (`DeprecationWarning`, `UserWarning`) as potential deeper issues or future bugs.
-*   Γ¥î **Process violations**: Consecutive, scattershot fixes in different areas signal architectural problems (e.g., spaghetti code, tight coupling). Stop patching, document these systemic findings, and recommend refactoring.
-*   Γ¥î **No incomplete isolation**: Always create an MRE. Trying to debug exclusively within a massive, complex full system loop obscures timing and state issues.
-*   Γ¥î **Avoid over-reliance on automated tools blindly**: Always cross-verify complex debugger output or AI assumptions with manual, isolated script verification.
+*   **Avoid shotgun debugging**: No random changes, "try this" permutations, or copy-paste fixes without deep understanding.
+*   **Don't ignore warnings**: Treat warnings (`DeprecationWarning`, `UserWarning`) as potential deeper issues or future bugs.
+*   **Process violations**: Consecutive, scattershot fixes in different areas signal architectural problems (e.g., spaghetti code, tight coupling). Stop patching, document these systemic findings, and recommend refactoring.
+*   **No incomplete isolation**: Always create an MRE. Trying to debug exclusively within a massive, complex full system loop obscures timing and state issues.
+*   **Avoid over-reliance on automated tools blindly**: Always cross-verify complex debugger output or AI assumptions with manual, isolated script verification.
 
 ## Output Format
 When communicating your findings to the user, structure your response as follows:
