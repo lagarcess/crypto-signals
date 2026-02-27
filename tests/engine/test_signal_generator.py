@@ -50,12 +50,16 @@ def signal_generator(
     mock_market_provider, mock_indicators, mock_analyzer_cls, mock_repository
 ):
     """Fixture for creating a SignalGenerator instance with mocks."""
-    return SignalGenerator(
-        market_provider=mock_market_provider,
-        indicators=mock_indicators,
-        pattern_analyzer_cls=mock_analyzer_cls,
-        signal_repo=mock_repository,
-    )
+    with patch("crypto_signals.repository.firestore.PositionRepository") as mock_pos_repo:
+        mock_pos_repo_instance = mock_pos_repo.return_value
+        mock_pos_repo_instance.get_open_position_by_symbol.return_value = None
+
+        return SignalGenerator(
+            market_provider=mock_market_provider,
+            indicators=mock_indicators,
+            pattern_analyzer_cls=mock_analyzer_cls,
+            signal_repo=mock_repository,
+        )
 
 
 @pytest.fixture
@@ -120,7 +124,6 @@ def test_generate_signal_bullish_engulfing(
     assert signal.symbol == "BTC/USD"
     assert signal.pattern_name == "BULLISH_ENGULFING"
     assert signal.ds == today
-    assert signal.strategy_id == "BULLISH_ENGULFING"
     assert signal.strategy_id == "BULLISH_ENGULFING"
     # Engulfing invalidation is Open (100.0). Stop is 100.0 * 0.99 = 99.0
     assert signal.suggested_stop == 100.0 * 0.99
@@ -235,10 +238,6 @@ def test_generate_signal_empty_data(signal_generator, mock_market_provider):
     signal = signal_generator.generate_signals("BTC/USD", AssetClass.CRYPTO)
 
     # Verification
-    assert signal is None
-
-    assert signal is None
-
     assert signal is None
 
 
