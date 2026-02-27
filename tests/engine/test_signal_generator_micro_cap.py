@@ -94,18 +94,18 @@ def test_elliott_pattern_negative_stop_prevention(
     mock_analyzer_instance.check_patterns.return_value = result_df
 
     # Execution
-    sig = signal_generator.generate_signals("PEPE/USD", AssetClass.CRYPTO)
+    signal = signal_generator.generate_signals("PEPE/USD", AssetClass.CRYPTO)
 
     # Verification
-    assert sig is not None
-    assert sig.pattern_name == "ELLIOTT_IMPULSE_WAVE"
+    assert signal is not None
+    assert signal.pattern_name == "ELLIOTT_IMPULSE_WAVE"
 
     # Check stop loss floor
     SAFE_STOP_VAL = 1e-8
     expected_stop = SAFE_STOP_VAL
 
-    assert sig.suggested_stop == expected_stop
-    assert sig.suggested_stop > 0
+    assert signal.suggested_stop == expected_stop
+    assert signal.suggested_stop > 0
 
 
 def test_elliott_pattern_normal_stop(
