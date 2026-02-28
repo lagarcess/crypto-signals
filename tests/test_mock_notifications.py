@@ -5,9 +5,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
-from crypto_signals.domain.schemas import AssetClass, ExitReason, Signal, SignalStatus
+from crypto_signals.domain.schemas import AssetClass, ExitReason, SignalStatus
 from crypto_signals.notifications.discord import DiscordClient
 from pydantic import SecretStr
+
+from tests.factories import PositionFactory, SignalFactory
 
 
 def create_mock_settings(
@@ -39,7 +41,7 @@ class TestDiscordClient(unittest.TestCase):
         self.test_webhook = "https://discord.com/api/webhooks/test"
         self.crypto_webhook = "https://discord.com/api/webhooks/crypto"
         self.stock_webhook = "https://discord.com/api/webhooks/stock"
-        self.signal = Signal(
+        self.signal = SignalFactory.build(
             signal_id="test_id",
             ds=date(2025, 1, 1),
             strategy_id="test_strat",
@@ -275,7 +277,7 @@ class TestDiscordClient(unittest.TestCase):
         settings = create_mock_settings(test_mode=True)
         client = DiscordClient(settings=settings)
 
-        full_signal = Signal(
+        full_signal = SignalFactory.build(
             signal_id="test_id_full",
             ds=date(2025, 1, 1),
             strategy_id="test_strat",
@@ -319,7 +321,7 @@ class TestDiscordClient(unittest.TestCase):
         client = DiscordClient(settings=settings)
 
         # Signal with only TP1 defined, TP2 and TP3 are None
-        partial_signal = Signal(
+        partial_signal = SignalFactory.build(
             signal_id="test_id_partial",
             ds=date(2025, 1, 1),
             strategy_id="test_strat",
@@ -363,7 +365,7 @@ class TestDiscordClient(unittest.TestCase):
         """Test that winning trade uses 💰 emoji."""
         from datetime import datetime, timezone
 
-        from crypto_signals.domain.schemas import OrderSide, Position, TradeStatus
+        from crypto_signals.domain.schemas import OrderSide, TradeStatus
 
         settings = create_mock_settings(test_mode=True, use_forums=True)
         client = DiscordClient(settings=settings)
@@ -371,7 +373,7 @@ class TestDiscordClient(unittest.TestCase):
         # Add discord_thread_id to the signal to simulate an existing thread
         self.signal.discord_thread_id = "thread_win_123"
 
-        position = Position(
+        position = PositionFactory.build(
             position_id="test-pos-1",
             ds=date(2025, 1, 1),
             account_id="paper",
@@ -414,7 +416,7 @@ class TestDiscordClient(unittest.TestCase):
         """Test that losing trade uses 💀 emoji."""
         from datetime import datetime, timezone
 
-        from crypto_signals.domain.schemas import OrderSide, Position, TradeStatus
+        from crypto_signals.domain.schemas import OrderSide, TradeStatus
 
         settings = create_mock_settings(test_mode=True, use_forums=True)
         client = DiscordClient(settings=settings)
@@ -422,7 +424,7 @@ class TestDiscordClient(unittest.TestCase):
         # Add discord_thread_id to the signal to simulate an existing thread
         self.signal.discord_thread_id = "thread_loss_456"
 
-        position = Position(
+        position = PositionFactory.build(
             position_id="test-pos-2",
             ds=date(2025, 1, 1),
             account_id="paper",
@@ -464,13 +466,13 @@ class TestDiscordClient(unittest.TestCase):
     def test_send_trade_close_with_thread_id(self, mock_post):
         """Test that trade close sends to existing thread."""
 
-        from crypto_signals.domain.schemas import OrderSide, Position, TradeStatus
+        from crypto_signals.domain.schemas import OrderSide, TradeStatus
 
         settings = create_mock_settings(test_mode=True)
         client = DiscordClient(settings=settings)
 
         # Signal with thread_id
-        signal_with_thread = Signal(
+        signal_with_thread = SignalFactory.build(
             signal_id="test_id",
             ds=date(2025, 1, 1),
             strategy_id="test_strat",
@@ -484,7 +486,7 @@ class TestDiscordClient(unittest.TestCase):
             discord_thread_id="thread_123456",
         )
 
-        position = Position(
+        position = PositionFactory.build(
             position_id="test-pos-3",
             ds=date(2025, 1, 1),
             account_id="paper",
@@ -526,7 +528,7 @@ class TestDiscordClient(unittest.TestCase):
         settings = create_mock_settings(test_mode=True)
         client = DiscordClient(settings=settings)
 
-        signal = Signal(
+        signal = SignalFactory.build(
             signal_id="test_id",
             ds=date(2025, 1, 1),
             strategy_id="test_strat",
@@ -563,7 +565,7 @@ class TestDiscordClient(unittest.TestCase):
         settings = create_mock_settings(test_mode=True)
         client = DiscordClient(settings=settings)
 
-        signal = Signal(
+        signal = SignalFactory.build(
             signal_id="test_id",
             ds=date(2025, 1, 1),
             strategy_id="test_strat",
@@ -598,7 +600,7 @@ class TestDiscordClient(unittest.TestCase):
         settings = create_mock_settings(test_mode=True)
         client = DiscordClient(settings=settings)
 
-        signal = Signal(
+        signal = SignalFactory.build(
             signal_id="test_id",
             ds=date(2025, 1, 1),
             strategy_id="test_strat",
@@ -633,7 +635,7 @@ class TestDiscordClient(unittest.TestCase):
         settings = create_mock_settings(test_mode=True)
         client = DiscordClient(settings=settings)
 
-        signal = Signal(
+        signal = SignalFactory.build(
             signal_id="test_id",
             ds=date(2025, 1, 1),
             strategy_id="test_strat",
@@ -668,7 +670,7 @@ class TestDiscordClient(unittest.TestCase):
         )
         client = DiscordClient(settings=settings)
 
-        signal = Signal(
+        signal = SignalFactory.build(
             signal_id="test_id",
             ds=date(2025, 1, 1),
             strategy_id="test_strat",
@@ -727,7 +729,9 @@ class TestConfigValidation(unittest.TestCase):
                     Settings(_env_file=None)
 
                 # Validator checks LIVE_CRYPTO first, so that error is raised
-                assert "LIVE_CRYPTO_DISCORD_WEBHOOK_URL" in str(exc_info.value)
+                assert "LIVE_CRYPTO_DISCORD_WEBHOOK_URL" in str(
+                    exc_info.value
+                ), "Expected condition to be met"
         finally:
             # Re-clear cache so other tests get fresh settings
             get_settings.cache_clear()
@@ -754,7 +758,9 @@ class TestConfigValidation(unittest.TestCase):
                 with pytest.raises(ValueError) as exc_info:
                     Settings(_env_file=None)
 
-                assert "LIVE_STOCK_DISCORD_WEBHOOK_URL" in str(exc_info.value)
+                assert "LIVE_STOCK_DISCORD_WEBHOOK_URL" in str(
+                    exc_info.value
+                ), "Expected condition to be met"
         finally:
             get_settings.cache_clear()
 
@@ -779,8 +785,12 @@ class TestConfigValidation(unittest.TestCase):
             with patch.dict(os.environ, test_env, clear=True):
                 # Should not raise - all required webhooks are present
                 settings = Settings(_env_file=None)
-                assert settings.TEST_MODE is False
-                assert settings.LIVE_CRYPTO_DISCORD_WEBHOOK_URL is not None
-                assert settings.LIVE_STOCK_DISCORD_WEBHOOK_URL is not None
+                assert settings.TEST_MODE is False, "Expected condition to be met"
+                assert (
+                    settings.LIVE_CRYPTO_DISCORD_WEBHOOK_URL is not None
+                ), "Expected condition to be met"
+                assert (
+                    settings.LIVE_STOCK_DISCORD_WEBHOOK_URL is not None
+                ), "Expected condition to be met"
         finally:
             get_settings.cache_clear()
