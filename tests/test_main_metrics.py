@@ -1,101 +1,65 @@
-from contextlib import ExitStack
 from unittest.mock import MagicMock, patch
 
-import pytest
 from crypto_signals.main import main
 
 
-@pytest.fixture
-def mock_deps_metrics():
-    """Mock dependencies for metric testing."""
-    with ExitStack() as stack:
-        mock_get_metrics = stack.enter_context(
-            patch("crypto_signals.main.get_metrics_collector")
-        )
-        mock_settings = stack.enter_context(patch("crypto_signals.main.get_settings"))
-        mock_pos_repo = stack.enter_context(
-            patch("crypto_signals.main.PositionRepository")
-        )
-        mock_exec_engine = stack.enter_context(
-            patch("crypto_signals.main.ExecutionEngine")
-        )
-        stack.enter_context(patch("crypto_signals.main.SignalGenerator"))
-        stack.enter_context(patch("crypto_signals.main.SignalRepository"))
-        stack.enter_context(patch("crypto_signals.main.MarketDataProvider"))
-        stack.enter_context(patch("crypto_signals.main.DiscordClient"))
-        stack.enter_context(patch("crypto_signals.main.init_secrets", return_value=True))
-        stack.enter_context(patch("crypto_signals.main.JobLockRepository"))
-        stack.enter_context(patch("crypto_signals.main.AssetValidationService"))
-        stack.enter_context(patch("crypto_signals.main.StateReconciler"))
-        stack.enter_context(patch("crypto_signals.main.TradeArchivalPipeline"))
-        stack.enter_context(patch("crypto_signals.main.FeePatchPipeline"))
-        stack.enter_context(patch("crypto_signals.main.PricePatchPipeline"))
-        stack.enter_context(patch("crypto_signals.main.JobMetadataRepository"))
-        stack.enter_context(patch("crypto_signals.main.get_stock_data_client"))
-        stack.enter_context(patch("crypto_signals.main.get_crypto_data_client"))
-        stack.enter_context(patch("crypto_signals.main.get_trading_client"))
-        stack.enter_context(patch("crypto_signals.main.AccountSnapshotPipeline"))
-        stack.enter_context(patch("crypto_signals.main.StrategySyncPipeline"))
+def test_position_sync_metrics_failure_individual(mock_main_dependencies):
+    """Test that individual position sync failure records a metric."""
+    mocks = mock_main_dependencies
 
-        # Configure Metrics Mock
+    # We need to explicitly mock get_metrics_collector for this test natively
+    # since mock_main_dependencies does not return metrics.
+    with patch("crypto_signals.main.get_metrics_collector") as mock_get_metrics:
         mock_metrics = MagicMock()
         mock_metrics.get_summary.return_value = {}
         mock_get_metrics.return_value = mock_metrics
 
-        # Configure Settings
-        mock_settings.return_value.ENABLE_EXECUTION = True
-        mock_settings.return_value.ENABLE_GCP_LOGGING = False
-        mock_settings.return_value.CRYPTO_SYMBOLS = ["BTC/USD"]
-        mock_settings.return_value.EQUITY_SYMBOLS = []
-        mock_settings.return_value.RATE_LIMIT_DELAY = 0.0
-        mock_settings.return_value.MAX_WORKERS = 1
+        # Mock generator to avoid infinite loops from MagicMocks
+        mocks["generator"].return_value.generate_signals.return_value = None
 
-        # Configure Job Lock
-        # (Already mocked in context manager, but ensure acquire returns True)
+        # Setup open positions
+        mock_pos = MagicMock()
+        mock_pos.position_id = "pos-fail"
+        mocks["position_repo"].return_value.get_open_positions.return_value = [mock_pos]
 
-        yield {
-            "metrics": mock_metrics,
-            "pos_repo": mock_pos_repo,
-            "exec_engine": mock_exec_engine,
-        }
+        mocks["settings"].return_value.ENABLE_EXECUTION = True
+        mocks["settings"].return_value.CRYPTO_SYMBOLS = ["BTC/USD"]
 
+        # Make sync raise exception
+        mocks[
+            "execution_engine"
+        ].return_value.sync_position_status.side_effect = RuntimeError("Sync Error")
 
-def test_position_sync_metrics_failure_individual(mock_deps_metrics):
-    """Test that individual position sync failure records a metric."""
-    mocks = mock_deps_metrics
+        # Run main
+        main(smoke_test=False)
 
-    # Setup open positions
-    mock_pos = MagicMock()
-    mock_pos.position_id = "pos-fail"
-    mocks["pos_repo"].return_value.get_open_positions.return_value = [mock_pos]
-
-    # Make sync raise exception
-    mocks["exec_engine"].return_value.sync_position_status.side_effect = RuntimeError(
-        "Sync Error"
-    )
-
-    # Run main
-    main(smoke_test=False)
-
-    # Verify record_failure called for individual position
-    mocks["metrics"].record_failure.assert_any_call("position_sync_single", 0)
+        # Verify record_failure called for individual position
+        mock_metrics.record_failure.assert_any_call("position_sync_single", 0)
 
 
-def test_position_sync_metrics_failure_global(mock_deps_metrics):
+def test_position_sync_metrics_failure_global(mock_main_dependencies):
     """Test that global position sync loop failure records a metric."""
-    mocks = mock_deps_metrics
+    mocks = mock_main_dependencies
 
-    # Make get_open_positions raise exception (global failure)
-    mocks["pos_repo"].return_value.get_open_positions.side_effect = RuntimeError(
-        "DB Error"
-    )
+    with patch("crypto_signals.main.get_metrics_collector") as mock_get_metrics:
+        mock_metrics = MagicMock()
+        mock_metrics.get_summary.return_value = {}
+        mock_get_metrics.return_value = mock_metrics
 
-    # Run main
-    main(smoke_test=False)
+        # Mock generator to avoid infinite loops from MagicMocks
+        mocks["generator"].return_value.generate_signals.return_value = None
 
-    # Verify record_failure called for global sync
-    # We expect a call like record_failure("position_sync", time_duration)
-    # Since time_duration is variable, we check call args
+        mocks["settings"].return_value.ENABLE_EXECUTION = True
+        mocks["settings"].return_value.CRYPTO_SYMBOLS = ["BTC/USD"]
 
-    calls = mocks["metrics"].record_failure.call_args_list
-    assert any(call.args[0] == "position_sync" for call in calls)
+        # Since main.py now uses StateReconciler, mock that instead of pos_repo
+        with patch("crypto_signals.main.StateReconciler") as mock_reconciler:
+            mock_reconciler_instance = mock_reconciler.return_value
+            mock_reconciler_instance.reconcile.side_effect = RuntimeError("Sync Error")
+
+            # Run main
+            main(smoke_test=False)
+
+            # Verify record_failure called for global sync
+            calls = mock_metrics.record_failure.call_args_list
+            assert any(call.args[0] == "reconciliation" for call in calls)

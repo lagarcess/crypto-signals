@@ -1,5 +1,5 @@
 ---
-glob: "src/crypto_signals/analysis/**/*.py"
+description: Numba JIT Rules (Model Decision - Trigger on any task modifying src/crypto_signals/analysis/**/*.py)
 ---
 
 # Numba JIT Rules

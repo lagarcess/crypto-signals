@@ -21,8 +21,9 @@ Welcome to the Crypto Sentinel Wiki. This repository contains detailed guides on
 - **[Production Monitoring](operations/monitoring.md)**: Alerting and log analysis.
 - **[Troubleshooting](operations/troubleshooting.md)**: Common issues and fixes.
 
-## 🛠️ Development
-- **[Workflow Guide](development/workflow-guide.md)**: Developer slash commands and AI-agent workflows.
+## 🛠️ Development & AI Agency
+- **[AI Team Registry](../AGENTS.md)**: The definitive source for all AI expert skills, global rules, workflows, and delegation strategies.
+- **[Workflow Guide](development/workflow-guide.md)**: Detailed breakdown of developer slash commands and AI-agent workflows.
 - **[AI Flywheel Guide](development/flywheel.md)**: Synergy between Antigravity, Gemini, and Jules.
 - **[Scripts Organization](development/scripts-organization.md)**: How to run scripts and diagnostic tools.
 

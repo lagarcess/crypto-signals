@@ -12,15 +12,10 @@ description: Turn issues into working code with a single command
      - **Check Remote**: `git fetch origin`
      - **Check Linked Branch**: Check if a branch like `feat/123-desc` already exists remotely.
        - IF Exists: `git checkout [existing_branch]`
-       - IF Not Exists: Create a new branch:
+       - IF Not Exists: Create a new branch strictly following `.agent/rules/conventional-commits.md`:
          - IF Issue Exists: `[type]/[issue_id]-[short-desc]`
          - IF No Issue: `[type]/[short-desc]`
-   - **Type Selection**:
-     - `feat`: New features
-     - `fix`: Bug fixes
-     - `refactor`: Code restructuring
-     - `chore`: Maintenance/Docs
-     - `perf`: Performance improvements
+   - **Type Selection**: Adhere strictly to the Conventional Commits rules defined for Branch Naming (e.g. `feat`, `fix`, `refactor`).
 
 3. **Test-First Implementation**
    - Create new test files in `tests/` outlining the desired behavior (Red phase).
@@ -30,7 +25,7 @@ description: Turn issues into working code with a single command
      - Integration points (if applicable).
 
 3. **Iterative Development**
-   - Execute the `/tdd` workflow.
+   - Execute the `/fix` workflow for TDD self-correction.
    - Loop: Write minimal code -> Run specific test -> Fix -> Repeat until PASS.
 
 4. **Code Coverage Check**
@@ -39,4 +34,4 @@ description: Turn issues into working code with a single command
    - If coverage drops significantly, add missing test cases.
 
 5. **Hygiene Pass**
-   - Execute the `/cleanup` workflow to tidy up artifacts before final verification.
+   - Execute the `/cleanup_branch` workflow to tidy up artifacts before final verification.

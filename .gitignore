@@ -24,9 +24,6 @@ htmlcov/
 *.log
 logs/
 
-# Debug
-debug.txt
-
 # Secrets directory (for local development)
 secrets/
 *.json
@@ -34,16 +31,12 @@ secrets/
 valid_assets.txt
 
 # Temporary files
-tmp/
-temp/
-*.tmp
-PR_DESCRIPTION.md
-task.md
-instructions.md
-implementation_plan.md
-walkthrough.md
+
+# Ignore everything in the temp folder...
+temp/*
+# ...but don't ignore the .gitkeep file itself
+!temp/.gitkeep
 
 # OS files
 .DS_Store
 Thumbs.db
-agent_temp/

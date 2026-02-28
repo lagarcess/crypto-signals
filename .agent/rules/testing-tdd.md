@@ -1,5 +1,5 @@
 ---
-glob: "tests/**/*.py"
+description: Testing and TDD constraints (Model Decision - Trigger on any task modifying tests/**/*.py)
 ---
 
 # TDD & Testing Rules
@@ -12,9 +12,5 @@ You are editing the test suite. This project strictly follows Test-Driven Develo
 ## 2. Never Bypass Failing Tests
 - **Rule**: When running the `/fix` loop, if a test is failing, you must fix the *source code*, not loosen the test to make it pass (unless the test itself is fundamentally flawed based on new requirements).
 
-## 3. Object Generation
-- **Rule**: Do not hand-write large mock dictionaries for Pydantic schemas.
-- **Implementation**: Instead, utilize `polyfactory` (already in `pyproject.toml`) or the existing factories in `tests/factories.py` to generate valid mock data.
-
-## 4. Assertion Helpers
-- Use the helpers established in `tests/assertion_helpers.py` when validating complex state changes rather than rewriting massive `assert` blocks.
+## 3. Delegation of Mechanics
+- **Rule**: Follow the strict testing mechanics (e.g., AAA pattern, factory generation, assertion helpers) defined in the `test-writer` skill to maintain suite quality.

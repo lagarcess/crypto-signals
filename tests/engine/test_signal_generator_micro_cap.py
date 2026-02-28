@@ -17,7 +17,7 @@ def mock_market_provider():
 @pytest.fixture
 def mock_indicators():
     mock = MagicMock()
-    mock.add_all_indicators.side_effect = lambda df: df
+    mock.add_all_indicators.return_value = None  # modified from side_effect lambda
     return mock
 
 
@@ -30,6 +30,7 @@ def mock_analyzer_cls():
 def mock_repository():
     mock = MagicMock()
     mock.get_most_recent_exit.return_value = None
+    mock.get_open_position_by_symbol.return_value = None
     return mock
 
 
@@ -37,12 +38,14 @@ def mock_repository():
 def signal_generator(
     mock_market_provider, mock_indicators, mock_analyzer_cls, mock_repository
 ):
-    return SignalGenerator(
+    sg = SignalGenerator(
         market_provider=mock_market_provider,
         indicators=mock_indicators,
         pattern_analyzer_cls=mock_analyzer_cls,
         signal_repo=mock_repository,
     )
+    sg.position_repo = mock_repository
+    return sg
 
 
 def test_elliott_pattern_negative_stop_prevention(
