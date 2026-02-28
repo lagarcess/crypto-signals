@@ -15,6 +15,7 @@ from crypto_signals.domain.schemas import (
 from crypto_signals.engine.risk import RiskEngine
 from crypto_signals.market.data_provider import MarketDataProvider
 from crypto_signals.repository.firestore import PositionRepository
+from tests.factories import PositionFactory, SignalFactory
 
 
 class TestRiskCorrelationBatching:
@@ -37,7 +38,8 @@ class TestRiskCorrelationBatching:
             return risk, repo, market
 
     def create_signal(self, symbol="BTC/USD"):
-        return Signal(
+        """Utility to create a signal for testing correlation."""
+        return SignalFactory.build(
             signal_id="sig_1",
             ds=datetime.now().date(),
             strategy_id="strat",
@@ -56,7 +58,8 @@ class TestRiskCorrelationBatching:
         )
 
     def create_position(self, symbol="ETH/USD"):
-        return Position(
+        """Utility to create a position for testing correlation."""
+        return PositionFactory.build(
             position_id="p1",
             ds=datetime.now().date(),
             account_id="a1",
@@ -72,11 +75,11 @@ class TestRiskCorrelationBatching:
         )
 
     def test_check_correlation_batches_calls(self, mock_components):
+        """Verify that correlation checks batch symbols of the same asset class into a single call."""
+        # Arrange
         risk_engine, mock_repo, mock_market = mock_components
 
         # Setup: 1 open position (ETH) + 1 Candidate (BTC) -> Both Crypto
-        # Should result in 1 call to get_daily_bars with list ["BTC/USD", "ETH/USD"] (order doesn't matter)
-
         mock_repo.get_open_positions.return_value = [self.create_position("ETH/USD")]
         signal = self.create_signal("BTC/USD")
 
@@ -90,47 +93,38 @@ class TestRiskCorrelationBatching:
         df = pd.DataFrame({"close": data}, index=index)
         mock_market.get_daily_bars.return_value = df
 
+        # Act
         result = risk_engine.check_correlation(signal)
 
-        assert result.passed is True
-
+        # Assert
+        assert result.passed is True, f"Correlation check failed: {result.reason}"
         mock_market.get_daily_bars.assert_called_once()
-        args, kwargs = mock_market.get_daily_bars.call_args
+        args, _ = mock_market.get_daily_bars.call_args
 
-        # Check first arg is list
         fetched_symbols = args[0]
-        assert isinstance(fetched_symbols, list)
-        assert len(fetched_symbols) == 2
-        assert "BTC/USD" in fetched_symbols
-        assert "ETH/USD" in fetched_symbols
-        assert args[1] == AssetClass.CRYPTO
+        assert isinstance(fetched_symbols, list), "Expected fetched symbols to be a list"
+        assert len(fetched_symbols) == 2, f"Expected 2 symbols, got {len(fetched_symbols)}"
+        assert "BTC/USD" in fetched_symbols, "Candidate symbol BTC/USD missing from fetch"
+        assert "ETH/USD" in fetched_symbols, "Existing position symbol ETH/USD missing from fetch"
+        assert args[1] == AssetClass.CRYPTO, f"Expected AssetClass.CRYPTO, got {args[1]}"
 
     def test_check_correlation_mixed_assets(self, mock_components):
+        """Verify that correlation checks separate symbols by asset class into distinct calls."""
+        # Arrange
         risk_engine, mock_repo, mock_market = mock_components
 
         # Setup: 1 Crypto Position, Candidate is Equity
-        # Should batch separately?
-        # Candidate = AAPL (Equity)
-        # Position = ETH/USD (Crypto)
-
         mock_repo.get_open_positions.return_value = [self.create_position("ETH/USD")]
         signal = self.create_signal("AAPL")
         signal.asset_class = AssetClass.EQUITY
 
-        # We expect 2 calls: one for Equity (AAPL), one for Crypto (ETH)
-        # Or does logic group them?
-        # Logic iterates symbols_by_class.
-
-        # Mock returns
         def side_effect(symbols, asset_class, lookback_days=90):
             if asset_class == AssetClass.CRYPTO:
-                # ETH
                 idx = pd.MultiIndex.from_product(
                     [["ETH/USD"], pd.date_range("2023-01-01", periods=90)]
                 )
                 return pd.DataFrame({"close": np.linspace(10, 12, 90)}, index=idx)
             else:
-                # AAPL
                 idx = pd.MultiIndex.from_product(
                     [["AAPL"], pd.date_range("2023-01-01", periods=90)]
                 )
@@ -138,6 +132,10 @@ class TestRiskCorrelationBatching:
 
         mock_market.get_daily_bars.side_effect = side_effect
 
+        # Act
         risk_engine.check_correlation(signal)
 
-        assert mock_market.get_daily_bars.call_count == 2
+        # Assert
+        assert (
+            mock_market.get_daily_bars.call_count == 2
+        ), f"Expected 2 calls to get_daily_bars for mixed assets, but got {mock_market.get_daily_bars.call_count}"

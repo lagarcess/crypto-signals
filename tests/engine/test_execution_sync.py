@@ -6,10 +6,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 from crypto_signals.domain.schemas import (
     OrderSide,
-    Position,
     TradeStatus,
 )
 from crypto_signals.engine.execution import ExecutionEngine
+from tests.factories import PositionFactory
 
 
 @pytest.fixture
@@ -55,7 +55,7 @@ def execution_engine(mock_settings, mock_trading_client, mock_reconciler):
 @pytest.fixture
 def sample_position():
     """Create a sample OPEN position."""
-    return Position(
+    return PositionFactory.build(
         position_id="test-pos-sync-1",
         ds=date(2025, 1, 15),
         account_id="paper",
@@ -78,19 +78,16 @@ class TestSyncPositionStatusIssue139:
     def test_sync_delegates_to_reconciler_if_missing_from_alpaca(
         self, execution_engine, sample_position, mock_trading_client, mock_reconciler
     ):
-        """
-        Verify that if get_open_position fails (404), ExecutionEngine delegats to
-        the reconciler for verification.
-        """
-        # 1. Mock get_open_position to raise 404
+        """Verify that if get_open_position fails (404), ExecutionEngine delegates to the reconciler (Issue #139)."""
+        # Arrange
         mock_trading_client.get_open_position.side_effect = Exception(
             "position not found (404)"
         )
 
-        # Execute
+        # Act
         execution_engine.sync_position_status(sample_position)
 
-        # Verify delegation
+        # Assert
         mock_reconciler.handle_manual_exit_verification.assert_called_once_with(
             sample_position
         )
@@ -98,22 +95,18 @@ class TestSyncPositionStatusIssue139:
     def test_sync_keeps_open_if_no_reconciler_provided(
         self, execution_engine, sample_position, mock_trading_client
     ):
-        """
-        Verify safety fallback: if no reconciler is provided, position stays OPEN.
-        """
-        # 1. Mock get_open_position to raise 404
+        """Verify safety fallback: if no reconciler is provided, position stays OPEN when missing from Alpaca."""
+        # Arrange
         mock_trading_client.get_open_position.side_effect = Exception("404")
 
-        # 2. Use an engine WITHOUT a reconciler
-        from crypto_signals.engine.execution import ExecutionEngine
-
+        # Use an engine WITHOUT a reconciler
         standalone_engine = ExecutionEngine(
             trading_client=mock_trading_client,
-            repository=MagicMock(),  # Fix: Inject mock repo to avoid real Firestore init
+            repository=MagicMock(),
         )
 
-        # Execute
+        # Act
         updated_pos = standalone_engine.sync_position_status(sample_position)
 
-        # Verify
-        assert updated_pos.status == TradeStatus.OPEN
+        # Assert
+        assert updated_pos.status == TradeStatus.OPEN, f"Expected status OPEN, but got {updated_pos.status}"

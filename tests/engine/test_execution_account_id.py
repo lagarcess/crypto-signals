@@ -1,8 +1,9 @@
 from datetime import date
 from unittest.mock import MagicMock, patch
 
-from crypto_signals.domain.schemas import AssetClass, OrderSide, Signal, SignalStatus
+from crypto_signals.domain.schemas import AssetClass, OrderSide, SignalStatus
 from crypto_signals.engine.execution import ExecutionEngine
+from tests.factories import SignalFactory
 
 
 class TestExecutionAccountID:
@@ -35,8 +36,8 @@ class TestExecutionAccountID:
         mock_order.status = "accepted"
         mock_trading_client.submit_order.return_value = mock_order
 
-        # Sample Signal
-        signal = Signal(
+        # Arrange
+        signal = SignalFactory.build(
             signal_id="test-signal-uuid",
             ds=date(2025, 1, 15),
             strategy_id="TEST",
@@ -67,35 +68,31 @@ class TestExecutionAccountID:
                 trading_client=mock_trading_client, repository=MagicMock()
             )
 
-            # Execute Signal
+            # Act
             position = engine.execute_signal(signal)
 
-            # Verification
-            assert position is not None
-            # THIS ASSERTION SHOULD FAIL until the fix is implemented
-            # Currently it returns "paper"
+            # Assert
+            assert position is not None, "Execution failed to return a position object"
             assert (
                 position.account_id == expected_account_id
             ), f"Expected account_id {expected_account_id}, but got {position.account_id}"
 
     def test_account_id_defaults_to_unknown_on_error(self):
-        """
-        Verify that ExecutionEngine defaults account_id to 'unknown'
-        when the Alpaca API fails.
-        """
+        """Verify that ExecutionEngine defaults account_id to 'unknown' when Alpaca API fails."""
+        # Arrange
         mock_trading_client = MagicMock()
         from alpaca.common.exceptions import APIError
 
-        # Simulate API Error
         mock_trading_client.get_account.side_effect = APIError("API Connection Failed")
 
         with patch("crypto_signals.engine.execution.get_settings") as mock_settings_ref:
             mock_settings = mock_settings_ref.return_value
             mock_settings.ENVIRONMENT = "PROD"
 
-            # Allow initialization despite error (via try-except block)
+            # Act
             engine = ExecutionEngine(
                 trading_client=mock_trading_client, repository=MagicMock()
             )
 
-            assert engine.account_id == "unknown"
+            # Assert
+            assert engine.account_id == "unknown", f"Expected account_id 'unknown', but got {engine.account_id}"

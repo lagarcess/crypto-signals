@@ -6,10 +6,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 from crypto_signals.domain.schemas import (
     OrderSide,
-    Position,
     TradeStatus,
 )
 from crypto_signals.engine.execution import ExecutionEngine
+from tests.factories import PositionFactory
 
 
 @pytest.fixture
@@ -49,12 +49,12 @@ def execution_engine(mock_settings, mock_trading_client):
 class TestInvalidationPath:
     def test_sl_exit_captures_exit_order_id(self, execution_engine, mock_trading_client):
         """Verify exit_order_id is set when Position closes via Stop Loss."""
-        # Setup
+        # Arrange
         mock_parent = MagicMock()
         mock_parent.status = "filled"
         mock_parent.filled_at = None
         mock_parent.filled_avg_price = None
-        mock_parent.legs = []  # Assuming legs processed previously or irrelevant for this specific sync check
+        mock_parent.legs = []
 
         mock_tp_order = MagicMock()
         mock_tp_order.status = "new"
@@ -76,7 +76,7 @@ class TestInvalidationPath:
 
         mock_trading_client.get_order_by_id.side_effect = side_effect
 
-        position = Position(
+        position = PositionFactory.build(
             position_id="test-pos-sl-exit",
             ds=date(2025, 1, 15),
             account_id="paper",
@@ -92,17 +92,20 @@ class TestInvalidationPath:
             side=OrderSide.BUY,
         )
 
-        # Execute
+        # Act
         updated = execution_engine.sync_position_status(position)
 
-        # Verify
-        assert updated.status == TradeStatus.CLOSED
-        # This is the Critical Gap: exit_order_id MUST be set to the SL order ID
-        assert updated.exit_order_id == "sl-order-uuid-123"
+        # Assert
+        assert (
+            updated.status == TradeStatus.CLOSED
+        ), f"Expected position status CLOSED, but got {updated.status}"
+        assert (
+            updated.exit_order_id == "sl-order-uuid-123"
+        ), f"Expected exit_order_id sl-order-uuid-123, but got {updated.exit_order_id}"
 
     def test_tp_exit_captures_exit_order_id(self, execution_engine, mock_trading_client):
         """Verify exit_order_id is set when Position closes via Take Profit."""
-        # Setup
+        # Arrange
         mock_parent = MagicMock()
         mock_parent.status = "filled"
         mock_parent.legs = []
@@ -122,7 +125,7 @@ class TestInvalidationPath:
 
         mock_trading_client.get_order_by_id.side_effect = side_effect
 
-        position = Position(
+        position = PositionFactory.build(
             position_id="test-pos-tp-exit",
             ds=date(2025, 1, 15),
             account_id="paper",
@@ -138,10 +141,13 @@ class TestInvalidationPath:
             side=OrderSide.BUY,
         )
 
-        # Execute
+        # Act
         updated = execution_engine.sync_position_status(position)
 
-        # Verify
-        assert updated.status == TradeStatus.CLOSED
-        # This is the Critical Gap: exit_order_id MUST be set to the TP order ID
-        assert updated.exit_order_id == "tp-order-uuid-456"
+        # Assert
+        assert (
+            updated.status == TradeStatus.CLOSED
+        ), f"Expected position status CLOSED, but got {updated.status}"
+        assert (
+            updated.exit_order_id == "tp-order-uuid-456"
+        ), f"Expected exit_order_id tp-order-uuid-456, but got {updated.exit_order_id}"

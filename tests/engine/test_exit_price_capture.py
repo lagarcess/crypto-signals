@@ -14,11 +14,11 @@ import pytest
 from alpaca.trading.models import Order, OrderStatus
 from crypto_signals.domain.schemas import (
     OrderSide,
-    Position,
     TradeStatus,
     TradeType,
 )
 from crypto_signals.engine.execution import ExecutionEngine
+from tests.factories import PositionFactory
 
 
 class TestEmergencyCloseRetryBudget:
@@ -30,7 +30,7 @@ class TestEmergencyCloseRetryBudget:
         engine = ExecutionEngine(
             trading_client=mock_trading_client, repository=MagicMock()
         )
-        position = Position(
+        position = PositionFactory.build(
             position_id="test-pos-1",
             ds=datetime.now(timezone.utc).date(),
             account_id="paper",
@@ -59,11 +59,19 @@ class TestEmergencyCloseRetryBudget:
             result = engine.close_position_emergency(position)
 
         # Assert
-        assert result is True
-        assert position.exit_order_id == "order-123"
-        assert position.exit_fill_price == 51000.0
-        assert position.exit_time == mock_order.filled_at
-        assert position.awaiting_backfill is False
+        assert result is True, "Emergency close should return True on success"
+        assert (
+            position.exit_order_id == "order-123"
+        ), f"Expected exit_order_id order-123, but got {position.exit_order_id}"
+        assert (
+            position.exit_fill_price == 51000.0
+        ), f"Expected exit_fill_price 51000.0, but got {position.exit_fill_price}"
+        assert (
+            position.exit_time == mock_order.filled_at
+        ), f"Expected exit_time {mock_order.filled_at}, but got {position.exit_time}"
+        assert (
+            position.awaiting_backfill is False
+        ), "Position should not be awaiting backfill after immediate fill"
 
     def test_retry_budget_success(self, mock_trading_client):
         """Test emergency close with retry budget (fills on retry 2)."""
@@ -71,7 +79,7 @@ class TestEmergencyCloseRetryBudget:
         engine = ExecutionEngine(
             trading_client=mock_trading_client, repository=MagicMock()
         )
-        position = Position(
+        position = PositionFactory.build(
             position_id="test-pos-2",
             ds=datetime.now(timezone.utc).date(),
             account_id="paper",
@@ -111,19 +119,28 @@ class TestEmergencyCloseRetryBudget:
         )
 
         # Act
-        # Act
         with patch("crypto_signals.engine.execution.get_settings") as mock_settings:
             mock_settings.return_value.ENVIRONMENT = "PROD"
             with patch("time.sleep"):  # Skip actual sleep
                 result = engine.close_position_emergency(position)
 
         # Assert
-        assert result is True
-        assert position.exit_order_id == "order-456"
-        assert position.exit_fill_price == 3100.0
-        assert position.exit_time == mock_order_retry2.filled_at
-        assert position.awaiting_backfill is False
-        assert engine.get_order_details.call_count == 2  # Stopped after retry 2
+        assert result is True, "Emergency close should return True"
+        assert (
+            position.exit_order_id == "order-456"
+        ), f"Expected exit_order_id order-456, but got {position.exit_order_id}"
+        assert (
+            position.exit_fill_price == 3100.0
+        ), f"Expected exit_fill_price 3100.0, but got {position.exit_fill_price}"
+        assert (
+            position.exit_time == mock_order_retry2.filled_at
+        ), f"Expected exit_time {mock_order_retry2.filled_at}, but got {position.exit_time}"
+        assert (
+            position.awaiting_backfill is False
+        ), "Position should not be awaiting backfill after retry success"
+        assert (
+            engine.get_order_details.call_count == 2
+        ), f"Expected 2 retry calls, but got {engine.get_order_details.call_count}"
 
     def test_retry_budget_exhausted(self, mock_trading_client):
         """Test emergency close with retry budget exhausted (awaiting backfill)."""
@@ -131,7 +148,7 @@ class TestEmergencyCloseRetryBudget:
         engine = ExecutionEngine(
             trading_client=mock_trading_client, repository=MagicMock()
         )
-        position = Position(
+        position = PositionFactory.build(
             position_id="test-pos-3",
             ds=datetime.now(timezone.utc).date(),
             account_id="paper",
@@ -162,18 +179,25 @@ class TestEmergencyCloseRetryBudget:
         engine.get_order_details = MagicMock(return_value=mock_order_retry)
 
         # Act
-        # Act
         with patch("crypto_signals.engine.execution.get_settings") as mock_settings:
             mock_settings.return_value.ENVIRONMENT = "PROD"
             with patch("time.sleep"):  # Skip actual sleep
                 result = engine.close_position_emergency(position)
 
         # Assert
-        assert result is True  # Order submitted successfully
-        assert position.exit_order_id == "order-789"
-        assert position.exit_fill_price is None  # Not filled yet
-        assert position.awaiting_backfill is True  # Marked for backfill
-        assert engine.get_order_details.call_count == 3  # All 3 retries exhausted
+        assert result is True, "Emergency close should return True even if fill is delayed"
+        assert (
+            position.exit_order_id == "order-789"
+        ), f"Expected exit_order_id order-789, but got {position.exit_order_id}"
+        assert (
+            position.exit_fill_price is None
+        ), f"Expected None exit_fill_price, but got {position.exit_fill_price}"
+        assert (
+            position.awaiting_backfill is True
+        ), "Position should be marked for backfill when retry budget is exhausted"
+        assert (
+            engine.get_order_details.call_count == 3
+        ), f"Expected 3 retry calls, but got {engine.get_order_details.call_count}"
 
 
 class TestRetryFillPriceHelper:
@@ -235,7 +259,7 @@ class TestScaleOutWeightedAverage:
         engine = ExecutionEngine(
             trading_client=mock_trading_client, repository=MagicMock()
         )
-        position = Position(
+        position = PositionFactory.build(
             position_id="test-pos-5",
             ds=datetime.now(timezone.utc).date(),
             account_id="paper",
@@ -258,20 +282,33 @@ class TestScaleOutWeightedAverage:
         mock_trading_client.submit_order.return_value = mock_order
 
         # Act
-        # Act
         with patch("crypto_signals.engine.execution.get_settings") as mock_settings:
             mock_settings.return_value.ENVIRONMENT = "PROD"
             result = engine.scale_out_position(position, scale_pct=0.5)
 
         # Assert
-        assert result is True
-        assert position.scaled_out_qty == 0.5
-        assert position.scaled_out_price == 52000.0  # No averaging needed
-        assert position.exit_fill_price == 52000.0  # Set for archival
-        assert position.qty == 0.5  # Remaining
-        assert len(position.scaled_out_prices) == 1
-        assert position.scaled_out_prices[0]["price"] == 52000.0
-        assert position.scaled_out_prices[0]["order_id"] == "scale-order-1"
+        assert result is True, "Scale-out should return True"
+        assert (
+            position.scaled_out_qty == 0.5
+        ), f"Expected scaled_out_qty 0.5, but got {position.scaled_out_qty}"
+        assert (
+            position.scaled_out_price == 52000.0
+        ), f"Expected scaled_out_price 52000.0, but got {position.scaled_out_price}"
+        assert (
+            position.exit_fill_price == 52000.0
+        ), f"Expected exit_fill_price 52000.0, but got {position.exit_fill_price}"
+        assert (
+            position.qty == 0.5
+        ), f"Expected remaining qty 0.5, but got {position.qty}"
+        assert (
+            len(position.scaled_out_prices) == 1
+        ), f"Expected 1 scaled_out_price record, but got {len(position.scaled_out_prices)}"
+        assert (
+            position.scaled_out_prices[0]["price"] == 52000.0
+        ), f"Price in history mismatch: {position.scaled_out_prices[0]['price']}"
+        assert (
+            position.scaled_out_prices[0]["order_id"] == "scale-order-1"
+        ), f"Order ID in history mismatch: {position.scaled_out_prices[0]['order_id']}"
 
     def test_multi_stage_weighted_average(self, mock_trading_client):
         """Test multi-stage scale-out with weighted average (TP1 + TP2)."""
@@ -279,7 +316,7 @@ class TestScaleOutWeightedAverage:
         engine = ExecutionEngine(
             trading_client=mock_trading_client, repository=MagicMock()
         )
-        position = Position(
+        position = PositionFactory.build(
             position_id="test-pos-6",
             ds=datetime.now(timezone.utc).date(),
             account_id="paper",
@@ -302,17 +339,22 @@ class TestScaleOutWeightedAverage:
         mock_trading_client.submit_order.return_value = mock_order_tp1
 
         # Act: TP1 (50% @ $3200)
-        # Act: TP1 (50% @ $3200)
         with patch("crypto_signals.engine.execution.get_settings") as mock_settings:
             mock_settings.return_value.ENVIRONMENT = "PROD"
             result_tp1 = engine.scale_out_position(position, scale_pct=0.5)
 
         # Assert TP1
-        assert result_tp1 is True
-        assert position.scaled_out_qty == 0.5
-        assert position.scaled_out_price == 3200.0
-        assert position.exit_fill_price == 3200.0
-        assert position.qty == 0.5
+        assert result_tp1 is True, "TP1 scale-out should return True"
+        assert (
+            position.scaled_out_qty == 0.5
+        ), f"Expected TP1 scaled_out_qty 0.5, but got {position.scaled_out_qty}"
+        assert (
+            position.scaled_out_price == 3200.0
+        ), f"Expected TP1 scaled_out_price 3200.0, but got {position.scaled_out_price}"
+        assert (
+            position.exit_fill_price == 3200.0
+        ), f"Expected TP1 exit_fill_price 3200.0, but got {position.exit_fill_price}"
+        assert position.qty == 0.5, f"Expected TP1 remaining qty 0.5, but got {position.qty}"
 
         # Arrange TP2
         # Mock TP2 scale-out @ $3400
@@ -324,19 +366,24 @@ class TestScaleOutWeightedAverage:
         mock_trading_client.submit_order.return_value = mock_order_tp2
 
         # Act: TP2 (50% of remaining = 0.25 total @ $3400)
-        # Act: TP2 (50% of remaining = 0.25 total @ $3400)
         with patch("crypto_signals.engine.execution.get_settings") as mock_settings:
             mock_settings.return_value.ENVIRONMENT = "PROD"
             result_tp2 = engine.scale_out_position(position, scale_pct=0.5)
 
         # Assert TP2 - Weighted Average
-        assert result_tp2 is True
-        assert position.scaled_out_qty == 0.75  # 0.5 + 0.25
+        assert result_tp2 is True, "TP2 scale-out should return True"
+        assert (
+            position.scaled_out_qty == 0.75
+        ), f"Expected total scaled_out_qty 0.75, but got {position.scaled_out_qty}"
         # Weighted avg: (0.5 * 3200 + 0.25 * 3400) / 0.75 = (1600 + 850) / 0.75 = 3266.67
-        assert position.scaled_out_price == pytest.approx(3266.67, rel=0.01)
-        assert position.exit_fill_price == pytest.approx(3266.67, rel=0.01)
-        assert position.qty == 0.25  # Remaining
-        assert len(position.scaled_out_prices) == 2
+        assert position.scaled_out_price == pytest.approx(
+            3266.67, rel=0.01
+        ), f"Weighted avg price mismatch: {position.scaled_out_price}"
+        assert position.exit_fill_price == pytest.approx(
+            3266.67, rel=0.01
+        ), f"Archival fill price mismatch: {position.exit_fill_price}"
+        assert position.qty == 0.25, f"Expected final remaining qty 0.25, but got {position.qty}"
+        assert len(position.scaled_out_prices) == 2, "Expected 2 scaled_out_prices records"
 
     def test_scale_out_retry_budget(self, mock_trading_client):
         """Test scale-out with retry budget."""
@@ -344,7 +391,7 @@ class TestScaleOutWeightedAverage:
         engine = ExecutionEngine(
             trading_client=mock_trading_client, repository=MagicMock()
         )
-        position = Position(
+        position = PositionFactory.build(
             position_id="test-pos-7",
             ds=datetime.now(timezone.utc).date(),
             account_id="paper",
@@ -375,18 +422,25 @@ class TestScaleOutWeightedAverage:
         engine.get_order_details = MagicMock(return_value=mock_order_retry)
 
         # Act
-        # Act
         with patch("crypto_signals.engine.execution.get_settings") as mock_settings:
             mock_settings.return_value.ENVIRONMENT = "PROD"
             with patch("time.sleep"):  # Skip actual sleep
                 result = engine.scale_out_position(position, scale_pct=0.5)
 
         # Assert
-        assert result is True
-        assert position.scaled_out_price == 105.0
-        assert position.exit_fill_price == 105.0
-        assert position.awaiting_backfill is False
-        assert engine.get_order_details.call_count == 1  # Stopped after retry 1
+        assert result is True, "Scale-out should return True"
+        assert (
+            position.scaled_out_price == 105.0
+        ), f"Expected scaled_out_price 105.0, but got {position.scaled_out_price}"
+        assert (
+            position.exit_fill_price == 105.0
+        ), f"Expected exit_fill_price 105.0, but got {position.exit_fill_price}"
+        assert (
+            position.awaiting_backfill is False
+        ), "Position should not be awaiting backfill after retry success"
+        assert (
+            engine.get_order_details.call_count == 1
+        ), f"Expected 1 retry call, but got {engine.get_order_details.call_count}"
 
 
 @pytest.fixture

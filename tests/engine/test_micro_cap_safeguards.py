@@ -4,8 +4,9 @@ from datetime import date
 from unittest.mock import MagicMock, patch
 
 import pytest
-from crypto_signals.domain.schemas import AssetClass, OrderSide, Signal, SignalStatus
+from crypto_signals.domain.schemas import AssetClass, OrderSide, SignalStatus
 from crypto_signals.engine.execution import ExecutionEngine
+from tests.factories import SignalFactory
 
 
 @pytest.fixture
@@ -49,9 +50,9 @@ class TestMicroCapEdgeCases:
     def test_quantity_calculation_with_tiny_stop_loss(
         self, execution_engine, mock_trading_client
     ):
-        """Ensure qty doesn't explode when stop is at SAFE_STOP_VAL."""
+        """Ensure qty doesn't explode when stop is extremely close to entry price (Issue #136)."""
         # Arrange: Signal with micro-cap params (very tight stop)
-        signal = Signal(
+        signal = SignalFactory.build(
             signal_id="micro-cap-test",
             ds=date(2026, 1, 24),
             strategy_id="TEST",
@@ -59,7 +60,6 @@ class TestMicroCapEdgeCases:
             asset_class=AssetClass.CRYPTO,
             entry_price=0.00001000,
             pattern_name="ELLIOTT_WAVE_135",
-            # suggested_stop very close to entry
             suggested_stop=0.00000999,
             status=SignalStatus.WAITING,
             take_profit_1=0.00001200,
@@ -67,13 +67,10 @@ class TestMicroCapEdgeCases:
             side=OrderSide.BUY,
         )
 
-        # Risk per share = 10.00001000 - 0.00000999 = 0.00000001
-        # Risk per trade = 100
-        # Qty = 100 / 0.00000001 = 10,000,000,000
-        # This should trigger the MAX_POSITION_SIZE guard (1,000,000)
-
         # Act
         qty = execution_engine._calculate_qty(signal)
 
         # Assert
+        # Risk per share = 0.00000001. Risk per trade = 100. Qty = 10B.
+        # This should trigger the MAX_POSITION_SIZE guard (1,000,000)
         assert qty == 1_000_000, f"Expected capped qty 1,000,000 but got {qty}"

@@ -4,11 +4,11 @@ from unittest.mock import MagicMock
 import pytest
 from crypto_signals.domain.schemas import (
     OrderSide,
-    Position,
     TradeStatus,
     TradeType,
 )
 from crypto_signals.engine.reconciler import StateReconciler
+from tests.factories import PositionFactory
 from crypto_signals.engine.reconciler_notifications import ReconcilerNotificationService
 from crypto_signals.repository.firestore import PositionRepository
 
@@ -42,7 +42,8 @@ def mock_settings():
 
 @pytest.fixture
 def theoretical_position():
-    return Position(
+    """Fixture for an OPEN theoretical position."""
+    return PositionFactory.build(
         position_id="theo-123",
         ds=date(2025, 1, 15),
         account_id="theoretical",
@@ -54,7 +55,7 @@ def theoretical_position():
         current_stop_loss=48000.0,
         qty=0.01,
         side=OrderSide.BUY,
-        trade_type=TradeType.THEORETICAL.value,  # Key field
+        trade_type=TradeType.THEORETICAL.value,
     )
 
 
@@ -66,6 +67,7 @@ def test_reconcile_ignores_theoretical_positions(
     theoretical_position,
 ):
     """Verify that OPEN theoretical positions are NOT flagged as zombies when missing from Alpaca."""
+    # Arrange
     # Alpaca has NO positions (empty)
     mock_trading_client.get_all_positions.return_value = []
 
@@ -79,14 +81,16 @@ def test_reconcile_ignores_theoretical_positions(
         settings=mock_settings,
     )
 
+    # Act
     report = reconciler.reconcile()
 
+    # Assert
     # Should be NO zombies because theoretical trades are filtered out
-    assert len(report.zombies) == 0
-    assert "BTC/USD" not in report.zombies
+    assert len(report.zombies) == 0, f"Expected 0 zombies, but got {len(report.zombies)}"
+    assert "BTC/USD" not in report.zombies, "Theoretical symbol BTC/USD should not be in zombies"
 
     # Should be NO orphans
-    assert len(report.orphans) == 0
+    assert len(report.orphans) == 0, f"Expected 0 orphans, but got {len(report.orphans)}"
 
 
 def test_reconcile_detects_normal_zombies(
@@ -97,8 +101,9 @@ def test_reconcile_detects_normal_zombies(
     theoretical_position,
 ):
     """Verify that normal OPEN positions ARE flagged as zombies, even if mixed with theoreticals."""
+    # Arrange
     # Create a normal executed position
-    normal_position = Position(
+    normal_position = PositionFactory.build(
         position_id="real-123",
         ds=date(2025, 1, 15),
         account_id="paper",
@@ -110,7 +115,7 @@ def test_reconcile_detects_normal_zombies(
         current_stop_loss=1900.0,
         qty=1.0,
         side=OrderSide.BUY,
-        trade_type=TradeType.EXECUTED.value,  # Normal trade
+        trade_type=TradeType.EXECUTED.value,
     )
 
     # Alpaca has NO positions
@@ -129,11 +134,13 @@ def test_reconcile_detects_normal_zombies(
         settings=mock_settings,
     )
 
+    # Act
     report = reconciler.reconcile()
 
+    # Assert
     # The normal position should be a zombie
-    assert len(report.zombies) == 1
-    assert "ETH/USD" in report.zombies
+    assert len(report.zombies) == 1, f"Expected 1 zombie, but got {len(report.zombies)}"
+    assert "ETH/USD" in report.zombies, "Expected ETH/USD in zombies list"
 
     # The theoretical position (BTC/USD) should be ignored
-    assert "BTC/USD" not in report.zombies
+    assert "BTC/USD" not in report.zombies, "Theoretical symbol BTC/USD should not be in zombies"

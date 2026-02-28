@@ -14,6 +14,7 @@ from crypto_signals.domain.schemas import (
 from crypto_signals.engine.risk import RiskEngine
 from crypto_signals.market.data_provider import MarketDataProvider
 from crypto_signals.repository.firestore import PositionRepository
+from tests.factories import PositionFactory, SignalFactory
 
 
 class TestRiskCorrelation:
@@ -46,7 +47,8 @@ class TestRiskCorrelation:
             )
 
     def create_signal(self, symbol="BTC/USD"):
-        return Signal(
+        """Utility to create a signal for testing correlation."""
+        return SignalFactory.build(
             signal_id="sig_1",
             ds=datetime.now().date(),
             strategy_id="test_strat",
@@ -65,7 +67,8 @@ class TestRiskCorrelation:
         )
 
     def create_position(self, symbol="ETH/USD"):
-        return Position(
+        """Utility to create a position for testing correlation."""
+        return PositionFactory.build(
             position_id="pos_1",
             ds=datetime.now().date(),
             account_id="paper",
@@ -81,39 +84,33 @@ class TestRiskCorrelation:
         )
 
     def test_check_correlation_no_positions(self, risk_engine, mock_repo):
+        """Verify correlation check passes when no other positions are open."""
+        # Arrange
         mock_repo.get_open_positions.return_value = []
         signal = self.create_signal()
 
-        # Should pass if no positions
-        if not hasattr(risk_engine, "check_correlation"):
-            pytest.fail("RiskEngine.check_correlation not implemented")
-
+        # Act
         result = risk_engine.check_correlation(signal)
-        assert result.passed is True
+
+        # Assert
+        assert result.passed is True, f"Expected correlation check to pass, but got fail: {result.reason}"
 
     def test_check_correlation_high(self, risk_engine, mock_repo, mock_market_provider):
-        # Setup: Open position in ETH
+        """Verify correlation check fails when candidate is highly correlated with existing positions."""
+        # Arrange
         mock_repo.get_open_positions.return_value = [
             self.create_position(symbol="ETH/USD")
         ]
-
         signal = self.create_signal(symbol="BTC/USD")
 
-        # Mock Market Data: Perfectly correlated data
         dates = pd.date_range(end=datetime.now(), periods=90)
-        # BTC and ETH moving exactly together
         btc_prices = [100 + i for i in range(90)]
         eth_prices = [10 + i for i in range(90)]
 
-        # MarketDataProvider.get_daily_bars returns DataFrame with 'close' column (or similar)
-        # Based on MarketDataProvider code: "df.index = pd.to_datetime(df.index)"
-        # And it returns whatever Alpaca returns. Alpaca bars usually have 'close'.
-
         btc_df = pd.DataFrame({"close": btc_prices}, index=dates)
         eth_df = pd.DataFrame({"close": eth_prices}, index=dates)
 
         def get_bars_side_effect(symbol, asset_class, lookback_days=90):
-            # Handle list input (new batching behavior)
             if isinstance(symbol, list):
                 dfs = []
                 keys = []
@@ -124,44 +121,34 @@ class TestRiskCorrelation:
                     elif s == "ETH/USD":
                         dfs.append(eth_df)
                         keys.append(s)
-
                 if not dfs:
                     return pd.DataFrame()
-
-                # Create MultiIndex DF
                 return pd.concat(dfs, keys=keys, names=["symbol", "timestamp"])
-
-            # Handle single input (fallback or old behavior if any)
-            if symbol == "BTC/USD":
-                return btc_df
-            elif symbol == "ETH/USD":
-                return eth_df
-            return pd.DataFrame()
+            return btc_df if symbol == "BTC/USD" else eth_df
 
         mock_market_provider.get_daily_bars.side_effect = get_bars_side_effect
 
-        if not hasattr(risk_engine, "check_correlation"):
-            pytest.fail("RiskEngine.check_correlation not implemented")
-
+        # Act
         result = risk_engine.check_correlation(signal)
-        assert result.passed is False
+
+        # Assert
+        assert result.passed is False, "Expected correlation check to fail for perfectly correlated assets"
         assert (
             "highly correlated" in result.reason.lower()
             or "correlation" in result.reason.lower()
-        )
+        ), f"Expected 'highly correlated' in reason, but got: {result.reason}"
 
     def test_check_correlation_low(self, risk_engine, mock_repo, mock_market_provider):
-        # Setup: Open position in ETH
+        """Verify correlation check passes when assets are uncorrelated or inversely correlated."""
+        # Arrange
         mock_repo.get_open_positions.return_value = [
             self.create_position(symbol="ETH/USD")
         ]
-
         signal = self.create_signal(symbol="BTC/USD")
 
-        # Mock Market Data: Uncorrelated/Inverse
         dates = pd.date_range(end=datetime.now(), periods=90)
         btc_prices = [100 + i for i in range(90)]
-        eth_prices = [100 - i for i in range(90)]  # Inverse
+        eth_prices = [100 - i for i in range(90)]  # Inverse correlation
 
         btc_df = pd.DataFrame({"close": btc_prices}, index=dates)
         eth_df = pd.DataFrame({"close": eth_prices}, index=dates)
@@ -180,39 +167,34 @@ class TestRiskCorrelation:
                 if not dfs:
                     return pd.DataFrame()
                 return pd.concat(dfs, keys=keys, names=["symbol", "timestamp"])
-
-            if symbol == "BTC/USD":
-                return btc_df
-            elif symbol == "ETH/USD":
-                return eth_df
-            return pd.DataFrame()
+            return btc_df if symbol == "BTC/USD" else eth_df
 
         mock_market_provider.get_daily_bars.side_effect = get_bars_side_effect
 
-        if not hasattr(risk_engine, "check_correlation"):
-            pytest.fail("RiskEngine.check_correlation not implemented")
-
+        # Act
         result = risk_engine.check_correlation(signal)
-        assert result.passed is True
+
+        # Assert
+        assert result.passed is True, f"Expected correlation check to pass for uncorrelated assets, but got fail: {result.reason}"
 
     def test_check_correlation_market_data_failure(
         self, risk_engine, mock_repo, mock_market_provider
     ):
+        """Verify correlation check fails safe when market data retrieval fails."""
+        # Arrange
         mock_repo.get_open_positions.return_value = [
             self.create_position(symbol="ETH/USD")
         ]
         signal = self.create_signal(symbol="BTC/USD")
 
-        # Raise exception when fetching data
         mock_market_provider.get_daily_bars.side_effect = Exception("API Error")
 
-        if not hasattr(risk_engine, "check_correlation"):
-            pytest.fail("RiskEngine.check_correlation not implemented")
-
+        # Act
         result = risk_engine.check_correlation(signal)
-        # Should fail safe (block)
-        assert result.passed is False
+
+        # Assert
+        assert result.passed is False, "Expected correlation check to fail safe on API error"
         assert (
             "error checking correlation" in result.reason.lower()
             or "market data missing" in result.reason.lower()
-        )
+        ), f"Expected 'error checking correlation' or 'market data missing' in reason, but got: {result.reason}"

@@ -15,6 +15,7 @@ from crypto_signals.domain.schemas import (
 from crypto_signals.engine.reconciler import StateReconciler
 from crypto_signals.engine.reconciler_notifications import ReconcilerNotificationService
 from crypto_signals.repository.firestore import PositionRepository
+from tests.factories import PositionFactory
 
 
 @pytest.fixture
@@ -48,7 +49,7 @@ def mock_settings():
 @pytest.fixture
 def sample_open_position():
     """Create a sample OPEN position."""
-    return Position(
+    return PositionFactory.build(
         position_id="signal-123",
         ds=date(2025, 1, 15),
         account_id="paper",
@@ -104,6 +105,7 @@ class TestStateReconcilerInitialization:
         mock_settings,
     ):
         """StateReconciler stores injected dependencies."""
+        # Act
         reconciler = StateReconciler(
             alpaca_client=mock_trading_client,
             position_repo=mock_position_repo,
@@ -111,10 +113,17 @@ class TestStateReconcilerInitialization:
             settings=mock_settings,
         )
 
-        assert reconciler.alpaca == mock_trading_client
-        assert reconciler.position_repo == mock_position_repo
-        assert reconciler.notifications == mock_notification_service
-        assert reconciler.settings == mock_settings
+        # Assert
+        assert (
+            reconciler.alpaca == mock_trading_client
+        ), "Alpaca client not stored correctly"
+        assert (
+            reconciler.position_repo == mock_position_repo
+        ), "Position repo not stored correctly"
+        assert (
+            reconciler.notifications == mock_notification_service
+        ), "Notification service not stored correctly"
+        assert reconciler.settings == mock_settings, "Settings not stored correctly"
 
 
 class TestDetectZombies:
@@ -972,7 +981,7 @@ class TestTheoreticalPositions:
 
     @pytest.fixture
     def theoretical_position(self):
-        return Position(
+        return PositionFactory.build(
             position_id="theo-123",
             ds=date(2025, 1, 15),
             account_id="theoretical",
@@ -1027,8 +1036,9 @@ class TestTheoreticalPositions:
         theoretical_position,
     ):
         """Verify that normal OPEN positions ARE flagged as zombies, even if mixed with theoreticals."""
+        # Arrange
         # Create a normal executed position
-        normal_position = Position(
+        normal_position = PositionFactory.build(
             position_id="real-123",
             ds=date(2025, 1, 15),
             account_id="paper",

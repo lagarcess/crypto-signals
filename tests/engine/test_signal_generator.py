@@ -13,6 +13,7 @@ from crypto_signals.domain.schemas import (
     SignalStatus,
 )
 from crypto_signals.engine.signal_generator import SignalGenerator
+from tests.factories import SignalFactory
 
 
 @pytest.fixture
@@ -90,7 +91,7 @@ def test_generate_signal_bullish_engulfing(
     signal_generator, mock_market_provider, mock_analyzer_cls
 ):
     """Test that a signal is generated for a confirmed Bullish Engulfing pattern."""
-    # Setup Data
+    # Arrange
     today = date(2023, 1, 1)
     df = pd.DataFrame(
         {
@@ -115,26 +116,39 @@ def test_generate_signal_bullish_engulfing(
     result_df["bullish_hammer"] = False
     mock_analyzer_instance.check_patterns.return_value = result_df
 
-    # Execution
+    # Act
     signal = signal_generator.generate_signals("BTC/USD", AssetClass.CRYPTO)
 
-    # Verification
-    assert signal is not None
-    assert signal.symbol == "BTC/USD"
-    assert signal.pattern_name == "BULLISH_ENGULFING"
-    assert signal.ds == today
-    assert signal.strategy_id == "BULLISH_ENGULFING"
+    # Assert
+    assert signal is not None, "Signal should be generated for Bullish Engulfing"
+    assert (
+        signal.symbol == "BTC/USD"
+    ), f"Expected symbol BTC/USD but got {signal.symbol}"
+    assert (
+        signal.pattern_name == "BULLISH_ENGULFING"
+    ), f"Expected pattern BULLISH_ENGULFING but got {signal.pattern_name}"
+    assert signal.ds == today, f"Expected date {today} but got {signal.ds}"
+    assert (
+        signal.strategy_id == "BULLISH_ENGULFING"
+    ), f"Expected strategy BULLISH_ENGULFING but got {signal.strategy_id}"
     # Engulfing invalidation is Open (100.0). Stop is 100.0 * 0.99 = 99.0
-    assert signal.suggested_stop == 100.0 * 0.99
-    assert signal.asset_class == AssetClass.CRYPTO
-    assert signal.entry_price == 105.0  # Close price from df
+    expected_stop = 100.0 * 0.99
+    assert (
+        signal.suggested_stop == expected_stop
+    ), f"Expected stop {expected_stop} but got {signal.suggested_stop}"
+    assert (
+        signal.asset_class == AssetClass.CRYPTO
+    ), f"Expected AssetClass.CRYPTO but got {signal.asset_class}"
+    assert (
+        signal.entry_price == 105.0
+    ), f"Expected entry price 105.0 but got {signal.entry_price}"
 
 
 def test_generate_signal_bullish_hammer(
     signal_generator, mock_market_provider, mock_analyzer_cls
 ):
     """Test that a signal is generated for a confirmed Bullish Hammer pattern."""
-    # Setup Data
+    # Arrange
     today = date(2023, 1, 1)
     df = pd.DataFrame(
         {
@@ -158,25 +172,36 @@ def test_generate_signal_bullish_hammer(
     result_df["bullish_hammer"] = True
     mock_analyzer_instance.check_patterns.return_value = result_df
 
-    # Execution
+    # Act
     signal = signal_generator.generate_signals("AAPL", AssetClass.EQUITY)
 
-    # Verification
-    assert signal is not None
-    assert signal.symbol == "AAPL"
-    assert signal.pattern_name == "BULLISH_HAMMER"
-    assert signal.strategy_id == "BULLISH_HAMMER"
-    assert signal.ds == today
-    assert signal.suggested_stop == 90.0 * 0.99
-    assert signal.asset_class == AssetClass.EQUITY
-    assert signal.entry_price == 105.0
+    # Assert
+    assert signal is not None, "Signal should be generated for Bullish Hammer"
+    assert signal.symbol == "AAPL", f"Expected symbol AAPL but got {signal.symbol}"
+    assert (
+        signal.pattern_name == "BULLISH_HAMMER"
+    ), f"Expected pattern BULLISH_HAMMER but got {signal.pattern_name}"
+    assert (
+        signal.strategy_id == "BULLISH_HAMMER"
+    ), f"Expected strategy BULLISH_HAMMER but got {signal.strategy_id}"
+    assert signal.ds == today, f"Expected date {today} but got {signal.ds}"
+    expected_stop = 90.0 * 0.99
+    assert (
+        signal.suggested_stop == expected_stop
+    ), f"Expected stop {expected_stop} but got {signal.suggested_stop}"
+    assert (
+        signal.asset_class == AssetClass.EQUITY
+    ), f"Expected AssetClass.EQUITY but got {signal.asset_class}"
+    assert (
+        signal.entry_price == 105.0
+    ), f"Expected entry price 105.0 but got {signal.entry_price}"
 
 
 def test_generate_signal_priority(
     signal_generator, mock_market_provider, mock_analyzer_cls
 ):
     """Test that Bullish Engulfing is prioritized over Bullish Hammer."""
-    # Setup Data: BOTH patterns are True
+    # Arrange: BOTH patterns are True
     df = pd.DataFrame(
         {
             "open": [100.0],
@@ -197,17 +222,19 @@ def test_generate_signal_priority(
     result_df["bullish_hammer"] = True
     mock_analyzer_instance.check_patterns.return_value = result_df
 
-    # Execution
+    # Act
     signal = signal_generator.generate_signals("BTC/USD", AssetClass.CRYPTO)
 
-    # Verification: Engulfing should win
-    assert signal is not None
-    assert signal.pattern_name == "BULLISH_ENGULFING"
+    # Assert: Engulfing should win
+    assert signal is not None, "Signal should be generated when multiple patterns match"
+    assert (
+        signal.pattern_name == "BULLISH_ENGULFING"
+    ), f"Expected BULLISH_ENGULFING to be prioritized, but got {signal.pattern_name}"
 
 
 def test_generate_signal_none(signal_generator, mock_market_provider, mock_analyzer_cls):
     """Test that None is returned when no patterns are detected."""
-    # Setup Data: NO patterns
+    # Arrange: NO patterns
     df = pd.DataFrame(
         {"close": [100.0], "low": [90.0]}, index=[pd.Timestamp("2023-01-01")]
     )
@@ -221,31 +248,31 @@ def test_generate_signal_none(signal_generator, mock_market_provider, mock_analy
     result_df["bullish_hammer"] = False
     mock_analyzer_instance.check_patterns.return_value = result_df
 
-    # Execution
+    # Act
     signal = signal_generator.generate_signals("BTC/USD", AssetClass.CRYPTO)
 
-    # Verification
-    assert signal is None
+    # Assert
+    assert signal is None, "Signal should be None when no patterns are detected"
 
 
 def test_generate_signal_empty_data(signal_generator, mock_market_provider):
     """Test that None is returned when the market provider returns empty data."""
-    # Setup Data: Empty DataFrame
+    # Arrange: Empty DataFrame
     mock_market_provider.get_daily_bars.return_value = pd.DataFrame()
 
-    # Execution
+    # Act
     signal = signal_generator.generate_signals("BTC/USD", AssetClass.CRYPTO)
 
-    # Verification
-    assert signal is None
+    # Assert
+    assert signal is None, "Signal should be None when no market data is available"
 
 
 def test_check_exits_profit_hit_tp1_scaling(
     signal_generator, mock_market_provider, mock_analyzer_cls
 ):
     """Test detecting a Take Profit 1 hit (Scaling)."""
-    # Setup Active Signal
-    signal = Signal(
+    # Arrange
+    signal = SignalFactory.build(
         signal_id="sig_1",
         ds=date(2023, 1, 1),
         strategy_id="strat_1",
@@ -281,17 +308,25 @@ def test_check_exits_profit_hit_tp1_scaling(
     mock_analyzer_cls.return_value = mock_analyzer_instance
     mock_analyzer_instance.check_patterns.return_value = df
 
-    # Execution
+    # Act
     exited = signal_generator.check_exits(
         [signal], "BTC/USD", AssetClass.CRYPTO, dataframe=df
     )
 
-    # Verification
-    assert len(exited) == 1
-    assert exited[0].status == SignalStatus.TP1_HIT
+    # Assert
+    assert (
+        len(exited) == 1
+    ), f"Expected 1 signal to exit due to TP1, but got {len(exited)}"
+    assert (
+        exited[0].status == SignalStatus.TP1_HIT
+    ), f"Expected status TP1_HIT but got {exited[0].status}"
     # Stop should be moved to Breakeven
-    assert exited[0].suggested_stop == 100.0
-    assert exited[0].exit_reason == ExitReason.TP1
+    assert (
+        exited[0].suggested_stop == 100.0
+    ), f"Expected stop at breakeven (100.0) but got {exited[0].suggested_stop}"
+    assert (
+        exited[0].exit_reason == ExitReason.TP1
+    ), f"Expected exit reason TP1 but got {exited[0].exit_reason}"
 
     # Ensure provider was NOT called because we passed dataframe
     mock_market_provider.get_daily_bars.assert_not_called()
@@ -301,7 +336,7 @@ def test_check_exits_invalidation(
     signal_generator, mock_market_provider, mock_analyzer_cls
 ):
     """Test detecting a Structural Invalidation."""
-    # Setup Active Signal
+    # Arrange
     signal = MagicMock()
     signal.take_profit_1 = 120.0
     signal.take_profit_2 = None
@@ -330,17 +365,21 @@ def test_check_exits_invalidation(
     mock_analyzer_cls.return_value = mock_analyzer_instance
     mock_analyzer_instance.check_patterns.return_value = df
 
-    # Execution
+    # Act
     exited = signal_generator.check_exits([signal], "BTC/USD", AssetClass.CRYPTO)
 
-    # Verification
-    assert len(exited) == 1
-    assert exited[0].status == SignalStatus.INVALIDATED
+    # Assert
+    assert (
+        len(exited) == 1
+    ), f"Expected 1 signal to be invalidated, but got {len(exited)}"
+    assert (
+        exited[0].status == SignalStatus.INVALIDATED
+    ), f"Expected status INVALIDATED but got {exited[0].status}"
 
 
 def test_check_exits_none(signal_generator, mock_market_provider, mock_analyzer_cls):
     """Test no exit triggered."""
-    # Setup Active Signal
+    # Arrange
     signal = MagicMock()
     signal.take_profit_1 = 120.0
     signal.take_profit_2 = None
@@ -369,19 +408,19 @@ def test_check_exits_none(signal_generator, mock_market_provider, mock_analyzer_
     mock_analyzer_cls.return_value = mock_analyzer_instance
     mock_analyzer_instance.check_patterns.return_value = df
 
-    # Execution
+    # Act
     exited = signal_generator.check_exits([signal], "BTC/USD", AssetClass.CRYPTO)
 
-    # Verification
-    assert len(exited) == 0
+    # Assert
+    assert len(exited) == 0, f"Expected 0 exits, but got {len(exited)}"
 
 
 def test_check_exits_runner_exit(
     signal_generator, mock_market_provider, mock_analyzer_cls
 ):
     """Test detecting a Runner Exit (Chandelier Exit)."""
-    # Setup Active Signal (TP2 already hit, now in Runner mode)
-    signal = Signal(
+    # Arrange
+    signal = SignalFactory.build(
         signal_id="sig_2",
         ds=date(2023, 1, 1),
         strategy_id="strat_1",
@@ -417,15 +456,21 @@ def test_check_exits_runner_exit(
     mock_analyzer_cls.return_value = mock_analyzer_instance
     mock_analyzer_instance.check_patterns.return_value = df
 
-    # Execution
+    # Act
     exited = signal_generator.check_exits(
         [signal], "BTC/USD", AssetClass.CRYPTO, dataframe=df
     )
 
-    # Verification
-    assert len(exited) == 1
-    assert exited[0].status == SignalStatus.TP3_HIT
-    assert exited[0].exit_reason == ExitReason.TP_HIT
+    # Assert
+    assert (
+        len(exited) == 1
+    ), f"Expected 1 signal to exit runner phase, but got {len(exited)}"
+    assert (
+        exited[0].status == SignalStatus.TP3_HIT
+    ), f"Expected status TP3_HIT but got {exited[0].status}"
+    assert (
+        exited[0].exit_reason == ExitReason.TP_HIT
+    ), f"Expected exit reason TP_HIT but got {exited[0].exit_reason}"
 
     signal.take_profit_1 = 104.0
     signal.take_profit_2 = 110.0
@@ -453,24 +498,32 @@ def test_check_exits_runner_exit(
     mock_analyzer_cls.return_value = mock_analyzer_instance
     mock_analyzer_instance.check_patterns.return_value = df
 
-    # Execution (pass dataframe)
+    # Act
     exited = signal_generator.check_exits(
         [signal], "BTC/USD", AssetClass.CRYPTO, dataframe=df
     )
 
-    # Verification
-    assert len(exited) == 1
-    assert exited[0].status == SignalStatus.TP1_HIT
-    assert exited[0].suggested_stop == 100.0  # Breakeven
-    assert exited[0].exit_reason == ExitReason.TP1
+    # Assert
+    assert (
+        len(exited) == 1
+    ), f"Expected 1 signal to hit TP1, but got {len(exited)}"
+    assert (
+        exited[0].status == SignalStatus.TP1_HIT
+    ), f"Expected status TP1_HIT but got {exited[0].status}"
+    assert (
+        exited[0].suggested_stop == 100.0
+    ), f"Expected stop at breakeven (100.0) but got {exited[0].suggested_stop}"
+    assert (
+        exited[0].exit_reason == ExitReason.TP1
+    ), f"Expected exit reason TP1 but got {exited[0].exit_reason}"
 
 
 def test_check_exits_no_waiting_tp3_jump(
     signal_generator, mock_market_provider, chandelier_exit_df
 ):
     """Verify WAITING signal is NOT marked TP3_HIT when close < chandelier (Issue 123)."""
-    # Setup Active Signal in WAITING status
-    signal = Signal(
+    # Arrange: Setup Active Signal in WAITING status
+    signal = SignalFactory.build(
         signal_id="sig_waiting",
         ds=date(2023, 1, 1),
         strategy_id="strat_1",
@@ -488,22 +541,23 @@ def test_check_exits_no_waiting_tp3_jump(
 
     df = chandelier_exit_df
 
-    # Execution
+    # Act
     exited = signal_generator.check_exits(
         [signal], "BTC/USD", AssetClass.CRYPTO, dataframe=df
     )
 
-    # Verification: Currently BUGGY, it will return TP3_HIT.
-    # We want it to be empty (no exit triggered).
-    assert len(exited) == 0
+    # Assert: We want it to be empty (no exit triggered).
+    assert (
+        len(exited) == 0
+    ), f"Expected 0 exits for WAITING signal below chandelier, but got {len(exited)}"
 
 
 def test_check_exits_tp1_to_tp3_hit(
     signal_generator, mock_market_provider, chandelier_exit_df
 ):
     """Verify TP1_HIT signal correctly transitions to TP3_HIT (Issue 123)."""
-    # Setup Active Signal in TP1_HIT status
-    signal = Signal(
+    # Arrange: Setup Active Signal in TP1_HIT status
+    signal = SignalFactory.build(
         signal_id="sig_tp1",
         ds=date(2023, 1, 1),
         strategy_id="strat_1",
@@ -521,22 +575,26 @@ def test_check_exits_tp1_to_tp3_hit(
 
     df = chandelier_exit_df
 
-    # Execution
+    # Act
     exited = signal_generator.check_exits(
         [signal], "BTC/USD", AssetClass.CRYPTO, dataframe=df
     )
 
-    # Verification
-    assert len(exited) == 1
-    assert exited[0].status == SignalStatus.TP3_HIT
+    # Assert
+    assert (
+        len(exited) == 1
+    ), f"Expected TP1 signal to transition to TP3 hit, but got {len(exited)} exits"
+    assert (
+        exited[0].status == SignalStatus.TP3_HIT
+    ), f"Expected status TP3_HIT but got {exited[0].status}"
 
 
 def test_check_exits_tp2_to_tp3_hit(
     signal_generator, mock_market_provider, chandelier_exit_df
 ):
     """Verify TP2_HIT signal correctly transitions to TP3_HIT (Issue 123)."""
-    # Setup Active Signal in TP2_HIT status
-    signal = Signal(
+    # Arrange: Setup Active Signal in TP2_HIT status
+    signal = SignalFactory.build(
         signal_id="sig_tp2",
         ds=date(2023, 1, 1),
         strategy_id="strat_1",
@@ -554,23 +612,27 @@ def test_check_exits_tp2_to_tp3_hit(
 
     df = chandelier_exit_df
 
-    # Execution
+    # Act
     exited = signal_generator.check_exits(
         [signal], "BTC/USD", AssetClass.CRYPTO, dataframe=df
     )
 
-    # Verification
-    assert len(exited) == 1
-    assert exited[0].status == SignalStatus.TP3_HIT
+    # Assert
+    assert (
+        len(exited) == 1
+    ), f"Expected TP2 signal to transition to TP3 hit, but got {len(exited)} exits"
+    assert (
+        exited[0].status == SignalStatus.TP3_HIT
+    ), f"Expected status TP3_HIT but got {exited[0].status}"
 
 
 def test_check_exits_stale_waiting_signal_regression(
     signal_generator, mock_market_provider, chandelier_exit_df
 ):
     """Regression: 288h-old WAITING signal does not phantom-trigger TP3 (Issue 123)."""
-    # Setup Active Signal in WAITING status, created 288 hours ago
+    # Arrange: Setup Active Signal in WAITING status, created 288 hours ago
     now_utc = datetime.now(timezone.utc)
-    signal = Signal(
+    signal = SignalFactory.build(
         signal_id="sig_stale",
         ds=date(2023, 1, 1),
         strategy_id="strat_1",
@@ -588,21 +650,23 @@ def test_check_exits_stale_waiting_signal_regression(
 
     df = chandelier_exit_df
 
-    # Execution
+    # Act
     exited = signal_generator.check_exits(
         [signal], "BTC/USD", AssetClass.CRYPTO, dataframe=df
     )
 
-    # Verification: Should be empty
-    assert len(exited) == 0
+    # Assert: Should be empty
+    assert (
+        len(exited) == 0
+    ), f"Expected 0 exits for stale WAITING signal, but got {len(exited)}"
 
 
 def test_check_exits_trail_update_higher(
     signal_generator, mock_market_provider, mock_analyzer_cls
 ):
     """Test that take_profit_3 is updated when Chandelier Exit moves higher."""
-    # Setup Active Signal in Runner phase (TP1_HIT)
-    signal = Signal(
+    # Arrange: Setup Active Signal in Runner phase (TP1_HIT)
+    signal = SignalFactory.build(
         signal_id="sig_trail_1",
         ds=date(2023, 1, 1),
         strategy_id="strat_1",
@@ -642,28 +706,42 @@ def test_check_exits_trail_update_higher(
     mock_analyzer_cls.return_value = mock_analyzer_instance
     mock_analyzer_instance.check_patterns.return_value = df
 
-    # Execution
+    # Act
     result = signal_generator.check_exits(
         [signal], "BTC/USD", AssetClass.CRYPTO, dataframe=df
     )
 
-    # Verification
-    assert len(result) == 1
-    assert result[0].take_profit_3 == 117.0  # Updated to new Chandelier Exit
-    assert hasattr(result[0], "_trail_updated")
-    assert result[0]._trail_updated is True
-    assert hasattr(result[0], "_previous_tp3")
-    assert result[0]._previous_tp3 == 115.0  # Previous value stored
+    # Assert
+    assert (
+        len(result) == 1
+    ), f"Expected 1 trail update signal, but got {len(result)}"
+    assert (
+        result[0].take_profit_3 == 117.0
+    ), f"Expected TP3 to be updated to 117.0, but got {result[0].take_profit_3}"
+    assert hasattr(
+        result[0], "_trail_updated"
+    ), "Signal should have _trail_updated attribute"
+    assert (
+        result[0]._trail_updated is True
+    ), "Expected _trail_updated to be True"
+    assert hasattr(
+        result[0], "_previous_tp3"
+    ), "Signal should have _previous_tp3 attribute"
+    assert (
+        result[0]._previous_tp3 == 115.0
+    ), f"Expected _previous_tp3 to be 115.0, but got {result[0]._previous_tp3}"
     # Status should NOT have changed
-    assert result[0].status == SignalStatus.TP1_HIT
+    assert (
+        result[0].status == SignalStatus.TP1_HIT
+    ), f"Expected status TP1_HIT but got {result[0].status}"
 
 
 def test_check_exits_trail_not_updated_when_lower(
     signal_generator, mock_market_provider, mock_analyzer_cls
 ):
     """Test that take_profit_3 is NOT updated when Chandelier Exit is lower."""
-    # Setup Active Signal in Runner phase (TP2_HIT)
-    signal = Signal(
+    # Arrange: Setup Active Signal in Runner phase (TP2_HIT)
+    signal = SignalFactory.build(
         signal_id="sig_trail_2",
         ds=date(2023, 1, 1),
         strategy_id="strat_1",
@@ -699,23 +777,27 @@ def test_check_exits_trail_not_updated_when_lower(
     mock_analyzer_cls.return_value = mock_analyzer_instance
     mock_analyzer_instance.check_patterns.return_value = df
 
-    # Execution
+    # Act
     result = signal_generator.check_exits(
         [signal], "BTC/USD", AssetClass.CRYPTO, dataframe=df
     )
 
-    # Verification: No signals should be returned (no exit, no trail update)
-    assert len(result) == 0
+    # Assert: No signals should be returned (no exit, no trail update)
+    assert (
+        len(result) == 0
+    ), f"Expected 0 signals because trail didn't improve, but got {len(result)}"
     # Original signal should still have original TP3
-    assert signal.take_profit_3 == 125.0
+    assert (
+        signal.take_profit_3 == 125.0
+    ), f"Expected TP3 to remain 125.0, but got {signal.take_profit_3}"
 
 
 def test_check_exits_trail_not_updated_for_waiting_status(
     signal_generator, mock_market_provider, mock_analyzer_cls
 ):
     """Test that trailing updates only apply to TP1_HIT and TP2_HIT statuses."""
-    # Setup Active Signal in WAITING status (not in Runner phase yet)
-    signal = Signal(
+    # Arrange: Setup Active Signal in WAITING status (not in Runner phase yet)
+    signal = SignalFactory.build(
         signal_id="sig_trail_3",
         ds=date(2023, 1, 1),
         strategy_id="strat_1",
@@ -754,14 +836,18 @@ def test_check_exits_trail_not_updated_for_waiting_status(
     mock_analyzer_cls.return_value = mock_analyzer_instance
     mock_analyzer_instance.check_patterns.return_value = df
 
-    # Execution
+    # Act
     result = signal_generator.check_exits(
         [signal], "BTC/USD", AssetClass.CRYPTO, dataframe=df
     )
 
-    # Verification: No exit, no trail update (WAITING status doesn't get trailing)
-    assert len(result) == 0
-    assert signal.take_profit_3 == 105.0  # Unchanged
+    # Assert: No exit, no trail update (WAITING status doesn't get trailing)
+    assert (
+        len(result) == 0
+    ), f"Expected 0 results for WAITING status trail update check, but got {len(result)}"
+    assert (
+        signal.take_profit_3 == 105.0
+    ), f"Expected TP3 to remain 105.0, but got {signal.take_profit_3}"
 
 
 # =============================================================================
@@ -773,8 +859,8 @@ def test_check_exits_short_trail_update_lower(
     signal_generator, mock_market_provider, mock_analyzer_cls
 ):
     """Test that Short position take_profit_3 is updated when Chandelier Exit moves LOWER."""
-    # Setup Active SHORT SHORT Signal in Runner phase (TP1_HIT)
-    signal = Signal(
+    # Arrange: Setup Active SHORT SHORT Signal in Runner phase (TP1_HIT)
+    signal = SignalFactory.build(
         signal_id="sig_short_trail_1",
         ds=date(2023, 1, 1),
         strategy_id="strat_1",
@@ -811,24 +897,32 @@ def test_check_exits_short_trail_update_lower(
     mock_analyzer_cls.return_value = mock_analyzer_instance
     mock_analyzer_instance.check_patterns.return_value = df
 
-    # Execution
+    # Act
     result = signal_generator.check_exits(
         [signal], "BTC/USD", AssetClass.CRYPTO, dataframe=df
     )
 
-    # Verification
-    assert len(result) == 1
-    assert result[0].take_profit_3 == 88.0  # Updated to new (lower) Chandelier Exit Short
-    assert result[0]._trail_updated is True
-    assert result[0]._previous_tp3 == 95.0
+    # Assert
+    assert (
+        len(result) == 1
+    ), f"Expected 1 trail update signal for short position, but got {len(result)}"
+    assert (
+        result[0].take_profit_3 == 88.0
+    ), f"Expected short TP3 to be updated to 88.0, but got {result[0].take_profit_3}"
+    assert (
+        result[0]._trail_updated is True
+    ), "Expected _trail_updated to be True"
+    assert (
+        result[0]._previous_tp3 == 95.0
+    ), f"Expected _previous_tp3 to be 95.0, but got {result[0]._previous_tp3}"
 
 
 def test_check_exits_short_trail_not_updated_when_higher(
     signal_generator, mock_market_provider, mock_analyzer_cls
 ):
     """Test that Short position take_profit_3 is NOT updated when Chandelier Exit is HIGHER."""
-    # Setup Active SHORT Signal in Runner phase (TP2_HIT)
-    signal = Signal(
+    # Arrange: Setup Active SHORT Signal in Runner phase (TP2_HIT)
+    signal = SignalFactory.build(
         signal_id="sig_short_trail_2",
         ds=date(2023, 1, 1),
         strategy_id="strat_1",
@@ -861,22 +955,26 @@ def test_check_exits_short_trail_not_updated_when_higher(
     mock_analyzer_cls.return_value = mock_analyzer_instance
     mock_analyzer_instance.check_patterns.return_value = df
 
-    # Execution
+    # Act
     result = signal_generator.check_exits(
         [signal], "BTC/USD", AssetClass.CRYPTO, dataframe=df
     )
 
-    # Verification
-    assert len(result) == 0
-    assert signal.take_profit_3 == 80.0  # Unchanged
+    # Assert
+    assert (
+        len(result) == 0
+    ), f"Expected 0 results because short trail didn't improve, but got {len(result)}"
+    assert (
+        signal.take_profit_3 == 80.0
+    ), f"Expected TP3 to remain 80.0, but got {signal.take_profit_3}"
 
 
 def test_check_exits_short_tp3_hit(
     signal_generator, mock_market_provider, mock_analyzer_cls
 ):
     """Test detecting a Short position Take Profit 3 hit."""
-    # Setup Active SHORT Signal in Runner phase
-    signal = Signal(
+    # Arrange: Setup Active SHORT Signal in Runner phase
+    signal = SignalFactory.build(
         signal_id="sig_short_tp3",
         ds=date(2023, 1, 1),
         strategy_id="strat_1",
@@ -909,23 +1007,30 @@ def test_check_exits_short_tp3_hit(
     mock_analyzer_cls.return_value = mock_analyzer_instance
     mock_analyzer_instance.check_patterns.return_value = df
 
-    # Execution
+    # Act
     result = signal_generator.check_exits(
         [signal], "BTC/USD", AssetClass.CRYPTO, dataframe=df
     )
 
-    # Verification
-    assert len(result) == 1
-    assert result[0].status == SignalStatus.TP3_HIT
-    assert result[0].exit_reason == ExitReason.TP_HIT
+    # Assert
+    assert (
+        len(result) == 1
+    ), f"Expected 1 short TP3 hit signal, but got {len(result)}"
+    assert (
+        result[0].status == SignalStatus.TP3_HIT
+    ), f"Expected status TP3_HIT but got {result[0].status}"
+    assert (
+        result[0].exit_reason == ExitReason.TP_HIT
+    ), f"Expected exit reason TP_HIT but got {result[0].exit_reason}"
 
 
 def test_check_exits_stale_short_waiting_regression(
     signal_generator, mock_market_provider, mock_analyzer_cls
 ):
     """Regression: 288h-old SHORT WAITING signal does not phantom-trigger TP3."""
+    # Arrange
     now_utc = datetime.now(timezone.utc)
-    signal = Signal(
+    signal = SignalFactory.build(
         signal_id="sig_stale_short",
         ds=date(2023, 1, 1),
         strategy_id="strat_1",
@@ -957,10 +1062,12 @@ def test_check_exits_stale_short_waiting_regression(
     mock_analyzer_cls.return_value = mock_analyzer_instance
     mock_analyzer_instance.check_patterns.return_value = df
 
-    # Execution
+    # Act
     result = signal_generator.check_exits(
         [signal], "BTC/USD", AssetClass.CRYPTO, dataframe=df
     )
 
-    # Verification: Should be empty
-    assert len(result) == 0
+    # Assert: Should be empty
+    assert (
+        len(result) == 0
+    ), f"Expected 0 results for stale short WAITING signal, but got {len(result)}"

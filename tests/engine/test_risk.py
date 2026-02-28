@@ -11,6 +11,7 @@ from crypto_signals.domain.schemas import AssetClass
 from crypto_signals.engine.risk import RiskEngine
 from crypto_signals.market.data_provider import MarketDataProvider
 from crypto_signals.repository.firestore import PositionRepository
+from tests.factories import PositionFactory, SignalFactory
 
 # Ensure AssetClass is available in module scope for test methods
 CRYPTO = AssetClass.CRYPTO
@@ -63,27 +64,33 @@ class TestRiskEngine:
             )
             yield engine
 
-    def test_check_buying_power_crypto_pass(self, risk_engine):
-        # Crypto uses non_marginable_buying_power
-        # Req: 1000, Avail: 5000 -> Pass
-        result = risk_engine.check_buying_power(CRYPTO, 1000.0)
-        assert result.passed is True
+    @pytest.mark.parametrize(
+        "asset_class, required_bp, expected_passed, expected_reason",
+        [
+            (CRYPTO, 1000.0, True, None),
+            (CRYPTO, 6000.0, False, "Insufficient Buying Power"),
+            (EQUITY, 10000.0, True, None),
+        ],
+    )
+    def test_check_buying_power(
+        self, risk_engine, asset_class, required_bp, expected_passed, expected_reason
+    ):
+        """Test buying power check for different asset classes and requirements."""
+        # Act
+        result = risk_engine.check_buying_power(asset_class, required_bp)
 
-    def test_check_buying_power_crypto_fail(self, risk_engine):
-        # Req: 6000, Avail: 5000 -> Fail
-        result = risk_engine.check_buying_power(CRYPTO, 6000.0)
-        assert result.passed is False
-        assert "Insufficient Buying Power" in result.reason
-
-    def test_check_buying_power_equity_pass_regt(self, risk_engine):
-        # Equity uses regt_buying_power
-        # Req: 10000, Avail: 20000 -> Pass
-        result = risk_engine.check_buying_power(EQUITY, 10000.0)
-        assert result.passed is True
+        # Assert
+        assert (
+            result.passed == expected_passed
+        ), f"Expected {expected_passed} for {asset_class} with {required_bp} BP, but got {result.passed}"
+        if expected_reason:
+            assert (
+                expected_reason in result.reason
+            ), f"Expected reason '{expected_reason}' in '{result.reason}'"
 
     def test_check_sector_cap_crypto_fail(self, risk_engine, mock_client):
+        """Test that sector limit is enforced for crypto assets."""
         # Arrange: 4 filled positions + 1 open buy order = 5 (MAX=5)
-        # Mock Positions
         mock_pos = MagicMock()
         mock_pos.asset_class = AlpacaAssetClass.CRYPTO
         mock_client.get_all_positions.return_value = [mock_pos] * 4
@@ -94,13 +101,19 @@ class TestRiskEngine:
         mock_order.side = OrderSide.BUY
         mock_client.get_orders.return_value = [mock_order]
 
+        # Act
         result = risk_engine.check_sector_limit(CRYPTO)
-        assert result.passed is False
-        assert "Max CRYPTO positions reached" in result.reason
+
+        # Assert
+        assert result.passed is False, "Expected sector limit check to fail"
+        assert (
+            "Max CRYPTO positions reached" in result.reason
+        ), f"Expected 'Max CRYPTO positions reached' in reason, but got {result.reason}"
         mock_client.get_all_positions.assert_called_once()
         mock_client.get_orders.assert_called_once()
 
     def test_check_sector_cap_crypto_pass(self, risk_engine, mock_client):
+        """Test that sector limit check passes when under the limit."""
         # Arrange: 4 filled positions + 0 open orders = 4 (MAX=5)
         mock_pos = MagicMock()
         mock_pos.asset_class = AlpacaAssetClass.CRYPTO
@@ -109,31 +122,41 @@ class TestRiskEngine:
         # No open orders
         mock_client.get_orders.return_value = []
 
+        # Act
         result = risk_engine.check_sector_limit(CRYPTO)
-        assert result.passed is True
+
+        # Assert
+        assert result.passed is True, "Expected sector limit check to pass"
 
     def test_daily_drawdown_fail(self, risk_engine, mock_client):
-        # Equity 9000, Last 10000 -> 10% Drop. Max is 5%
+        """Test that daily drawdown limit is enforced."""
+        # Arrange: Equity 9000, Last 10000 -> 10% Drop. Max is 5%
         mock_client.get_account.return_value.equity = "9000.00"
         mock_client.get_account.return_value.last_equity = "10000.00"
 
+        # Act
         result = risk_engine.check_daily_drawdown()
-        assert result.passed is False
-        assert "Daily Drawdown Limit Hit" in result.reason
+
+        # Assert
+        assert result.passed is False, "Expected drawdown check to fail"
+        assert (
+            "Daily Drawdown Limit Hit" in result.reason
+        ), f"Expected 'Daily Drawdown Limit Hit' in reason, but got {result.reason}"
 
     def test_check_duplicate_symbol_fail(self, risk_engine, mock_repo):
-        # Setup: Position exists for BTC/USD
-        from crypto_signals.domain.schemas import Position, Signal
-
-        pos = MagicMock(spec=Position)
-        pos.symbol = "BTC/USD"
-        pos.position_id = "pos_1"
+        """Test that duplicate positions for the same symbol are prevented."""
+        # Arrange: Position exists for BTC/USD
+        pos = PositionFactory.build(symbol="BTC/USD", position_id="pos_1")
         mock_repo.get_open_positions.return_value = [pos]
 
-        # Test: Signal for SAME symbol
-        signal = MagicMock(spec=Signal)
-        signal.symbol = "BTC/USD"
+        # Signal for SAME symbol
+        signal = SignalFactory.build(symbol="BTC/USD")
 
+        # Act
         result = risk_engine.check_duplicate_symbol(signal)
-        assert result.passed is False
-        assert "Duplicate Position" in result.reason
+
+        # Assert
+        assert result.passed is False, "Expected duplicate symbol check to fail"
+        assert (
+            "Duplicate Position" in result.reason
+        ), f"Expected 'Duplicate Position' in reason, but got {result.reason}"

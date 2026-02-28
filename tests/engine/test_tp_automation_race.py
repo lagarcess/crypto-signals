@@ -16,24 +16,24 @@ from crypto_signals.domain.schemas import (
     AssetClass,
     ExitReason,
     OrderSide,
-    Position,
     SignalStatus,
     TradeStatus,
 )
+from tests.factories import PositionFactory, SignalFactory
 
 
 def _make_signal(signal_id, symbol="AAVE/USD", status=SignalStatus.TP3_HIT):
-    """Helper: create a mock Signal with minimal required fields."""
-    sig = MagicMock()
-    sig.signal_id = signal_id
-    sig.symbol = symbol
-    sig.status = status
-    sig.exit_reason = ExitReason.TP_HIT if status == SignalStatus.TP3_HIT else None
-    sig.pattern_name = "ELLIOTT_WAVE_135"
-    sig.discord_thread_id = "thread_old"
-    sig.asset_class = AssetClass.CRYPTO
-    sig.side = OrderSide.BUY
-    return sig
+    """Helper: create a Signal with minimal required fields."""
+    return SignalFactory.build(
+        signal_id=signal_id,
+        symbol=symbol,
+        status=status,
+        exit_reason=ExitReason.TP_HIT if status == SignalStatus.TP3_HIT else None,
+        pattern_name="ELLIOTT_WAVE_135",
+        discord_thread_id="thread_old",
+        asset_class=AssetClass.CRYPTO,
+        side=OrderSide.BUY,
+    )
 
 
 def _make_position(
@@ -43,8 +43,8 @@ def _make_position(
     status=TradeStatus.OPEN,
     qty=10.0,
 ):
-    """Helper: create a real Position object."""
-    return Position(
+    """Helper: create a Position object."""
+    return PositionFactory.build(
         position_id=position_id,
         ds=date(2026, 2, 10),
         account_id="paper",
@@ -69,25 +69,26 @@ class TestTPAutomationSignalGuard:
 
     def test_tp3_closes_own_position_only(self):
         """TP3_HIT should close the position whose signal_id matches."""
+        # Arrange
         old_signal = _make_signal("old-signal-aaa", status=SignalStatus.TP3_HIT)
         old_position = _make_position("old-pos", signal_id="old-signal-aaa")
 
-        # Simulate: get_position_by_signal returns the OLD position (correct match)
         position_repo = MagicMock()
         position_repo.get_position_by_signal.return_value = old_position
 
         execution_engine = MagicMock()
         execution_engine.close_position_emergency.return_value = True
 
-        # Call the logic under test
+        # Act
         pos = position_repo.get_position_by_signal(old_signal.signal_id)
-        assert pos is not None
-        assert pos.signal_id == old_signal.signal_id  # Guard passes
-        assert pos.status == TradeStatus.OPEN
+        assert pos is not None, "Position should be found by signal_id"
+        assert pos.signal_id == old_signal.signal_id, f"Expected signal_id {old_signal.signal_id} but got {pos.signal_id}"
+        assert pos.status == TradeStatus.OPEN, "Expected position to be OPEN"
 
-        # Execute close
         result = execution_engine.close_position_emergency(pos)
-        assert result is True
+
+        # Assert
+        assert result is True, "Expected successful close"
         execution_engine.close_position_emergency.assert_called_once_with(old_position)
 
     def test_tp3_skips_when_position_signal_id_mismatch(self):
