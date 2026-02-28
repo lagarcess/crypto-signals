@@ -29,14 +29,17 @@ class TestExpiredSignalArchivalPipeline(unittest.TestCase):
         self.market_provider_patcher = patch(
             "crypto_signals.pipelines.expired_signal_archival.MarketDataProvider"
         )
+        self.bq_patcher = patch("crypto_signals.pipelines.base.bigquery.Client")
 
         self.mock_get_settings = self.settings_patcher.start()
         self.mock_firestore_client_class = self.firestore_patcher.start()
         self.mock_market_provider_class = self.market_provider_patcher.start()
+        self.mock_bq_client_class = self.bq_patcher.start()
 
         self.addCleanup(self.settings_patcher.stop)
         self.addCleanup(self.firestore_patcher.stop)
         self.addCleanup(self.market_provider_patcher.stop)
+        self.addCleanup(self.bq_patcher.stop)
 
         self.mock_get_settings.return_value.ENVIRONMENT = "TEST"
         self.pipeline = ExpiredSignalArchivalPipeline()

@@ -1,6 +1,5 @@
 """Unit tests for the main application entrypoint."""
 
-from contextlib import ExitStack
 from datetime import date, datetime, timedelta, timezone
 from unittest.mock import ANY, MagicMock, Mock, call, patch
 
@@ -31,150 +30,12 @@ def caplog(caplog):
     logger.remove(handler_id)
 
 
-@pytest.fixture
-def mock_dependencies():
-    """Mock all external dependencies used in main.py."""
-    with ExitStack() as stack:
-        stock_client = stack.enter_context(
-            patch("crypto_signals.main.get_stock_data_client")
-        )
-        crypto_client = stack.enter_context(
-            patch("crypto_signals.main.get_crypto_data_client")
-        )
-        trading_client = stack.enter_context(
-            patch("crypto_signals.main.get_trading_client")
-        )
-        market_provider = stack.enter_context(
-            patch("crypto_signals.main.MarketDataProvider")
-        )
-        generator = stack.enter_context(patch("crypto_signals.main.SignalGenerator"))
-        repo = stack.enter_context(patch("crypto_signals.main.SignalRepository"))
-        discord = stack.enter_context(patch("crypto_signals.main.DiscordClient"))
-        asset_validator = stack.enter_context(
-            patch("crypto_signals.main.AssetValidationService")
-        )
-        mock_settings = stack.enter_context(patch("crypto_signals.main.get_settings"))
-        mock_secrets = stack.enter_context(
-            patch("crypto_signals.main.init_secrets", return_value=True)
-        )
-        mock_firestore_config = stack.enter_context(
-            patch("crypto_signals.main.load_config_from_firestore")
-        )
-        position_repo = stack.enter_context(
-            patch("crypto_signals.main.PositionRepository")
-        )
-        execution_engine = stack.enter_context(
-            patch("crypto_signals.main.ExecutionEngine")
-        )
-        job_lock = stack.enter_context(patch("crypto_signals.main.JobLockRepository"))
-        rejected_repo = stack.enter_context(
-            patch("crypto_signals.main.RejectedSignalRepository")
-        )
-        trade_archival = stack.enter_context(
-            patch("crypto_signals.main.TradeArchivalPipeline")
-        )
-        fee_patch = stack.enter_context(patch("crypto_signals.main.FeePatchPipeline"))
-        price_patch = stack.enter_context(patch("crypto_signals.main.PricePatchPipeline"))
-        reconciler = stack.enter_context(patch("crypto_signals.main.StateReconciler"))
-        job_metadata_repo = stack.enter_context(
-            patch("crypto_signals.main.JobMetadataRepository")
-        )
-        rejected_archival = stack.enter_context(
-            patch("crypto_signals.main.RejectedSignalArchival")
-        )
-        expired_archival = stack.enter_context(
-            patch("crypto_signals.main.ExpiredSignalArchivalPipeline")
-        )
-
-        job_metadata_repo.return_value.get_last_run_date.return_value = None
-        # Configure mock settings
-        mock_settings.return_value.CRYPTO_SYMBOLS = [
-            "BTC/USD",
-            "ETH/USD",
-            "XRP/USD",
-        ]
-        # Simulate Basic Plan: Empty equities by default
-        mock_settings.return_value.EQUITY_SYMBOLS = []
-        mock_settings.return_value.RATE_LIMIT_DELAY = 0.0  # Disable delay for tests
-        mock_settings.return_value.ENABLE_GCP_LOGGING = False
-        mock_settings.return_value.ENABLE_EXECUTION = (
-            False  # Disable execution by default
-        )
-        mock_settings.return_value.SIGNAL_SATURATION_THRESHOLD_PCT = 0.5  # 50% threshold
-        mock_settings.return_value.MAX_WORKERS = 3
-        mock_settings.return_value.DISCORD_BOT_TOKEN = "test_token"
-        mock_settings.return_value.DISCORD_CHANNEL_ID_CRYPTO = "123"
-        mock_settings.return_value.DISCORD_CHANNEL_ID_STOCK = "456"
-
-        # Default: No Firestore config (fallback behavior)
-        mock_firestore_config.return_value = {}
-
-        # Configure MarketDataProvider to return non-empty DataFrame by default
-        # This prevents main.py from skipping processing due to "No data" check
-        # Use side_effect to ensure a fresh clean mock (or consistent one) with empty=False
-        def get_daily_bars_side_effect(*args, **kwargs):
-            m = MagicMock()
-            m.empty = False
-            return m
-
-        market_provider.return_value.get_daily_bars.side_effect = (
-            get_daily_bars_side_effect
-        )
-
-        # Configure AssetValidationService to pass-through all symbols
-        # (validation is tested separately in test_asset_service.py)
-        def get_valid_portfolio_side_effect(symbols, asset_class):
-            return list(symbols)
-
-        asset_validator.return_value.get_valid_portfolio.side_effect = (
-            get_valid_portfolio_side_effect
-        )
-
-        # Configure JobLock to always succeed
-        job_lock.return_value.acquire_lock.return_value = True
-
-        # Configure Discord Thread Recovery to return None by default (not found)
-        # This fixes regression in existing tests that don't expect recovery
-        discord.return_value.find_thread_by_signal_id.return_value = None
-
-        # Configure Pipeline default returns (int) to avoid TypeError in comparisons
-        trade_archival.return_value.run.return_value = 0
-        fee_patch.return_value.run.return_value = 0
-        price_patch.return_value.run.return_value = 0
-        rejected_archival.return_value.run.return_value = 0
-        expired_archival.return_value.run.return_value = 0
-
-        yield {
-            "stock_client": stock_client,
-            "crypto_client": crypto_client,
-            "trading_client": trading_client,
-            "market_provider": market_provider,
-            "generator": generator,
-            "repo": repo,
-            "discord": discord,
-            "asset_validator": asset_validator,
-            "settings": mock_settings,
-            "secrets": mock_secrets,
-            "firestore_config": mock_firestore_config,
-            "position_repo": position_repo,
-            "execution_engine": execution_engine,
-            "job_lock": job_lock,
-            "rejected_repo": rejected_repo,
-            "trade_archival": trade_archival,
-            "fee_patch": fee_patch,
-            "price_patch": price_patch,
-            "reconciler": reconciler,
-            "rejected_archival": rejected_archival,
-            "expired_archival": expired_archival,
-        }
-
-
-def test_main_execution_flow(mock_dependencies):
+def test_main_execution_flow(mock_main_dependencies):
     """Test the normal execution flow of the main function."""
     # Setup mocks
-    mock_gen_instance = mock_dependencies["generator"].return_value
-    mock_repo_instance = mock_dependencies["repo"].return_value
-    mock_discord_instance = mock_dependencies["discord"].return_value
+    mock_gen_instance = mock_main_dependencies["generator"].return_value
+    mock_repo_instance = mock_main_dependencies["repo"].return_value
+    mock_discord_instance = mock_main_dependencies["discord"].return_value
 
     # Mock signal generation to return a signal for BTC/USD only
     mock_signal = MagicMock()
@@ -211,42 +72,42 @@ def test_main_execution_flow(mock_dependencies):
     mock_report.zombies = []
     mock_report.orphans = []
     mock_report.reconciled_count = 0
-    mock_dependencies["reconciler"].return_value.reconcile.return_value = mock_report
+    mock_main_dependencies["reconciler"].return_value.reconcile.return_value = mock_report
 
     # Configure pipeline return values to prevent logging interaction (str/repr calls)
-    mock_dependencies["trade_archival"].return_value.run.return_value = 5
-    mock_dependencies["fee_patch"].return_value.run.return_value = 2
-    mock_dependencies["rejected_archival"].return_value.run.return_value = 3
-    mock_dependencies["expired_archival"].return_value.run.return_value = 4
+    mock_main_dependencies["trade_archival"].return_value.run.return_value = 5
+    mock_main_dependencies["fee_patch"].return_value.run.return_value = 2
+    mock_main_dependencies["rejected_archival"].return_value.run.return_value = 3
+    mock_main_dependencies["expired_archival"].return_value.run.return_value = 4
 
     # Setup tracking for Reconcile -> Archive -> Fee Patch Sequence
     pipeline_manager = Mock()
     pipeline_manager.attach_mock(
-        mock_dependencies["reconciler"].return_value.reconcile, "reconcile"
+        mock_main_dependencies["reconciler"].return_value.reconcile, "reconcile"
     )
     pipeline_manager.attach_mock(
-        mock_dependencies["trade_archival"].return_value.run, "archive"
+        mock_main_dependencies["trade_archival"].return_value.run, "archive"
     )
     pipeline_manager.attach_mock(
-        mock_dependencies["rejected_archival"].return_value.run, "rejected_archive"
+        mock_main_dependencies["rejected_archival"].return_value.run, "rejected_archive"
     )
     pipeline_manager.attach_mock(
-        mock_dependencies["expired_archival"].return_value.run, "expired_archive"
+        mock_main_dependencies["expired_archival"].return_value.run, "expired_archive"
     )
     pipeline_manager.attach_mock(
-        mock_dependencies["fee_patch"].return_value.run, "fee_patch"
+        mock_main_dependencies["fee_patch"].return_value.run, "fee_patch"
     )
 
     # Execute
     main(smoke_test=False)
 
     # Verify Initialization
-    mock_dependencies["stock_client"].assert_called_once()
-    mock_dependencies["crypto_client"].assert_called_once()
-    mock_dependencies["market_provider"].assert_called_once()
-    mock_dependencies["generator"].assert_called_once()
-    mock_dependencies["repo"].assert_called_once()
-    mock_dependencies["discord"].assert_called_once()
+    mock_main_dependencies["stock_client"].assert_called_once()
+    mock_main_dependencies["crypto_client"].assert_called_once()
+    mock_main_dependencies["market_provider"].assert_called_once()
+    mock_main_dependencies["generator"].assert_called_once()
+    mock_main_dependencies["repo"].assert_called_once()
+    mock_main_dependencies["discord"].assert_called_once()
 
     # Verify Thread Recovery Attempted
     # find_thread_by_signal_id should be called before send_signal
@@ -300,11 +161,11 @@ def test_main_execution_flow(mock_dependencies):
     ], f"Actual calls mismatch: {actual_calls}"
 
 
-def test_send_signal_captures_thread_id(mock_dependencies):
+def test_send_signal_captures_thread_id(mock_main_dependencies):
     """Test that thread_id from send_signal is captured and persisted."""
-    mock_gen_instance = mock_dependencies["generator"].return_value
-    mock_repo_instance = mock_dependencies["repo"].return_value
-    mock_discord_instance = mock_dependencies["discord"].return_value
+    mock_gen_instance = mock_main_dependencies["generator"].return_value
+    mock_repo_instance = mock_main_dependencies["repo"].return_value
+    mock_discord_instance = mock_main_dependencies["discord"].return_value
 
     # Setup signal with required attributes for structured logging
     mock_signal = MagicMock()
@@ -340,9 +201,9 @@ def test_send_signal_captures_thread_id(mock_dependencies):
     mock_repo_instance.update_signal.assert_not_called()
 
 
-def test_main_symbol_error_handling(mock_dependencies):
+def test_main_symbol_error_handling(mock_main_dependencies):
     """Test that main continues processing remaining symbols if one fails."""
-    mock_gen_instance = mock_dependencies["generator"].return_value
+    mock_gen_instance = mock_main_dependencies["generator"].return_value
 
     # Make ETH/USD raise an exception
     def side_effect(symbol, asset_class, **kwargs):
@@ -375,10 +236,10 @@ def test_main_fatal_error():
         assert excinfo.value.code == 1
 
 
-def test_main_notification_failure(mock_dependencies, caplog):
+def test_main_notification_failure(mock_main_dependencies, caplog):
     """Test that main logs a warning if notification fails."""
-    mock_gen_instance = mock_dependencies["generator"].return_value
-    mock_discord_instance = mock_dependencies["discord"].return_value
+    mock_gen_instance = mock_main_dependencies["generator"].return_value
+    mock_discord_instance = mock_main_dependencies["discord"].return_value
 
     # Setup signal for BTC/USD only
     mock_signal = MagicMock()
@@ -408,10 +269,10 @@ def test_main_notification_failure(mock_dependencies, caplog):
     assert "marking signal as invalidated" in caplog.text
 
 
-def test_main_repo_failure(mock_dependencies, caplog):
+def test_main_repo_failure(mock_main_dependencies, caplog):
     """Test that main logs an error and continues if repository save fails."""
-    mock_gen_instance = mock_dependencies["generator"].return_value
-    mock_repo_instance = mock_dependencies["repo"].return_value
+    mock_gen_instance = mock_main_dependencies["generator"].return_value
+    mock_repo_instance = mock_main_dependencies["repo"].return_value
 
     # Setup signals with proper signal_id
     def gen_side_effect(symbol, asset_class, **kwargs):
@@ -450,11 +311,11 @@ def test_main_repo_failure(mock_dependencies, caplog):
     assert "ETH/USD" in symbols_processed
 
 
-def test_main_uses_firestore_config(mock_dependencies):
+def test_main_uses_firestore_config(mock_main_dependencies):
     """Test that Firestore configuration overrides .env settings."""
-    mock_gen_instance = mock_dependencies["generator"].return_value
-    mock_firestore_config = mock_dependencies["firestore_config"]
-    mock_settings = mock_dependencies["settings"].return_value
+    mock_gen_instance = mock_main_dependencies["generator"].return_value
+    mock_firestore_config = mock_main_dependencies["firestore_config"]
+    mock_settings = mock_main_dependencies["settings"].return_value
 
     # Setup Firestore returns
     mock_firestore_config.return_value = {
@@ -482,11 +343,11 @@ def test_main_uses_firestore_config(mock_dependencies):
     assert mock_gen_instance.generate_signals.call_count == 1
 
 
-def test_main_fallback_to_env_on_empty(mock_dependencies):
+def test_main_fallback_to_env_on_empty(mock_main_dependencies):
     """Test fallback to .env when Firestore returns empty config."""
-    mock_gen_instance = mock_dependencies["generator"].return_value
-    mock_firestore_config = mock_dependencies["firestore_config"]
-    mock_settings = mock_dependencies["settings"].return_value
+    mock_gen_instance = mock_main_dependencies["generator"].return_value
+    mock_firestore_config = mock_main_dependencies["firestore_config"]
+    mock_settings = mock_main_dependencies["settings"].return_value
 
     # Setup Firestore returns empty
     mock_firestore_config.return_value = {}
@@ -507,14 +368,14 @@ def test_main_fallback_to_env_on_empty(mock_dependencies):
     )
 
 
-def test_guardrail_ignores_firestore_equities(mock_dependencies, caplog):
+def test_guardrail_ignores_firestore_equities(mock_main_dependencies, caplog):
     """
     Risk Verification: Ensure that if Firestore returns equities,
     the system respects the hardcoded restriction and IGNORES them.
     """
-    mock_gen_instance = mock_dependencies["generator"].return_value
-    mock_firestore_config = mock_dependencies["firestore_config"]
-    mock_settings = mock_dependencies["settings"].return_value
+    mock_gen_instance = mock_main_dependencies["generator"].return_value
+    mock_firestore_config = mock_main_dependencies["firestore_config"]
+    mock_settings = mock_main_dependencies["settings"].return_value
 
     # 1. Simulate Firestore returning Equities
     mock_firestore_config.return_value = {
@@ -577,16 +438,16 @@ def _create_test_position(
     )
 
 
-def test_sync_loop_updates_position_on_status_change(mock_dependencies, caplog):
+def test_sync_loop_updates_position_on_status_change(mock_main_dependencies, caplog):
     """Test that positions are updated when status changes (TP/SL hit)."""
-    mock_gen_instance = mock_dependencies["generator"].return_value
+    mock_gen_instance = mock_main_dependencies["generator"].return_value
     mock_gen_instance.generate_signals.return_value = None
 
-    mock_settings = mock_dependencies["settings"].return_value
+    mock_settings = mock_main_dependencies["settings"].return_value
     mock_settings.ENABLE_EXECUTION = True
 
-    mock_position_repo = mock_dependencies["position_repo"].return_value
-    mock_execution_engine = mock_dependencies["execution_engine"].return_value
+    mock_position_repo = mock_main_dependencies["position_repo"].return_value
+    mock_execution_engine = mock_main_dependencies["execution_engine"].return_value
 
     # Create position that will be "closed" by sync
     original_pos = _create_test_position(status=TradeStatus.OPEN)
@@ -605,16 +466,16 @@ def test_sync_loop_updates_position_on_status_change(mock_dependencies, caplog):
     assert "Position pos-1 closed: CLOSED" in caplog.text
 
 
-def test_sync_loop_updates_position_on_leg_id_change(mock_dependencies, caplog):
+def test_sync_loop_updates_position_on_leg_id_change(mock_main_dependencies, caplog):
     """Test that positions are updated when TP/SL leg IDs change."""
-    mock_gen_instance = mock_dependencies["generator"].return_value
+    mock_gen_instance = mock_main_dependencies["generator"].return_value
     mock_gen_instance.generate_signals.return_value = None
 
-    mock_settings = mock_dependencies["settings"].return_value
+    mock_settings = mock_main_dependencies["settings"].return_value
     mock_settings.ENABLE_EXECUTION = True
 
-    mock_position_repo = mock_dependencies["position_repo"].return_value
-    mock_execution_engine = mock_dependencies["execution_engine"].return_value
+    mock_position_repo = mock_main_dependencies["position_repo"].return_value
+    mock_execution_engine = mock_main_dependencies["execution_engine"].return_value
 
     # Create position without leg IDs
     original_pos = _create_test_position(tp_order_id=None, sl_order_id=None)
@@ -636,16 +497,16 @@ def test_sync_loop_updates_position_on_leg_id_change(mock_dependencies, caplog):
     assert "SL=sl-leg-456" in caplog.text
 
 
-def test_sync_loop_handles_exceptions_gracefully(mock_dependencies, caplog):
+def test_sync_loop_handles_exceptions_gracefully(mock_main_dependencies, caplog):
     """Test that sync loop continues after individual position sync failures."""
-    mock_gen_instance = mock_dependencies["generator"].return_value
+    mock_gen_instance = mock_main_dependencies["generator"].return_value
     mock_gen_instance.generate_signals.return_value = None
 
-    mock_settings = mock_dependencies["settings"].return_value
+    mock_settings = mock_main_dependencies["settings"].return_value
     mock_settings.ENABLE_EXECUTION = True
 
-    mock_position_repo = mock_dependencies["position_repo"].return_value
-    mock_execution_engine = mock_dependencies["execution_engine"].return_value
+    mock_position_repo = mock_main_dependencies["position_repo"].return_value
+    mock_execution_engine = mock_main_dependencies["execution_engine"].return_value
 
     # Create two positions
     pos1 = _create_test_position(position_id="pos-1")
@@ -674,15 +535,15 @@ def test_sync_loop_handles_exceptions_gracefully(mock_dependencies, caplog):
     mock_position_repo.update_position.assert_called_once_with(synced_pos2)
 
 
-def test_sync_loop_skipped_when_execution_disabled(mock_dependencies):
+def test_sync_loop_skipped_when_execution_disabled(mock_main_dependencies):
     """Test that sync loop is skipped when ENABLE_EXECUTION is False."""
-    mock_gen_instance = mock_dependencies["generator"].return_value
+    mock_gen_instance = mock_main_dependencies["generator"].return_value
     mock_gen_instance.generate_signals.return_value = None
 
-    mock_settings = mock_dependencies["settings"].return_value
+    mock_settings = mock_main_dependencies["settings"].return_value
     mock_settings.ENABLE_EXECUTION = False
 
-    mock_position_repo = mock_dependencies["position_repo"].return_value
+    mock_position_repo = mock_main_dependencies["position_repo"].return_value
 
     main(smoke_test=False)
 
@@ -690,16 +551,16 @@ def test_sync_loop_skipped_when_execution_disabled(mock_dependencies):
     mock_position_repo.get_open_positions.assert_not_called()
 
 
-def test_sync_loop_no_update_when_position_unchanged(mock_dependencies):
+def test_sync_loop_no_update_when_position_unchanged(mock_main_dependencies):
     """Test that positions are not updated when nothing changed."""
-    mock_gen_instance = mock_dependencies["generator"].return_value
+    mock_gen_instance = mock_main_dependencies["generator"].return_value
     mock_gen_instance.generate_signals.return_value = None
 
-    mock_settings = mock_dependencies["settings"].return_value
+    mock_settings = mock_main_dependencies["settings"].return_value
     mock_settings.ENABLE_EXECUTION = True
 
-    mock_position_repo = mock_dependencies["position_repo"].return_value
-    mock_execution_engine = mock_dependencies["execution_engine"].return_value
+    mock_position_repo = mock_main_dependencies["position_repo"].return_value
+    mock_execution_engine = mock_main_dependencies["execution_engine"].return_value
 
     # Create position
     pos = _create_test_position()
@@ -719,7 +580,7 @@ def test_sync_loop_no_update_when_position_unchanged(mock_dependencies):
 # =============================================================================
 
 
-def test_zombie_signal_prevention_persistence_first(mock_dependencies):
+def test_zombie_signal_prevention_persistence_first(mock_main_dependencies):
     """
     Test that signals are persisted BEFORE Discord notification (two-phase commit).
 
@@ -728,9 +589,9 @@ def test_zombie_signal_prevention_persistence_first(mock_dependencies):
     """
     from crypto_signals.domain.schemas import SignalStatus
 
-    mock_gen_instance = mock_dependencies["generator"].return_value
-    mock_repo_instance = mock_dependencies["repo"].return_value
-    mock_discord_instance = mock_dependencies["discord"].return_value
+    mock_gen_instance = mock_main_dependencies["generator"].return_value
+    mock_repo_instance = mock_main_dependencies["repo"].return_value
+    mock_discord_instance = mock_main_dependencies["discord"].return_value
 
     # Setup signal
     mock_signal = MagicMock()
@@ -789,7 +650,7 @@ def test_zombie_signal_prevention_persistence_first(mock_dependencies):
     mock_repo_instance.update_signal_atomic.assert_called()
 
 
-def test_zombie_signal_compensation_on_discord_failure(mock_dependencies, caplog):
+def test_zombie_signal_compensation_on_discord_failure(mock_main_dependencies, caplog):
     """
     Test that signal is marked INVALIDATED if Discord notification fails.
 
@@ -798,9 +659,9 @@ def test_zombie_signal_compensation_on_discord_failure(mock_dependencies, caplog
     """
     from crypto_signals.domain.schemas import ExitReason, SignalStatus
 
-    mock_gen_instance = mock_dependencies["generator"].return_value
-    _mock_repo_instance = mock_dependencies["repo"].return_value  # noqa: F841
-    mock_discord_instance = mock_dependencies["discord"].return_value
+    mock_gen_instance = mock_main_dependencies["generator"].return_value
+    _mock_repo_instance = mock_main_dependencies["repo"].return_value  # noqa: F841
+    mock_discord_instance = mock_main_dependencies["discord"].return_value
 
     mock_signal = MagicMock()
     mock_signal.symbol = "BTC/USD"
@@ -823,11 +684,11 @@ def test_zombie_signal_compensation_on_discord_failure(mock_dependencies, caplog
         main(smoke_test=False)
 
     # Verify compensation: signal marked as INVALIDATED via atomic update
-    if not mock_dependencies["repo"].return_value.update_signal_atomic.called:
+    if not mock_main_dependencies["repo"].return_value.update_signal_atomic.called:
         pytest.fail(f"Atomic update NOT called. Logs:\n{caplog.text}")
 
     # We check the atomic update call args because checking mock_signal.status can be unreliable if main uses a copy
-    args, _ = mock_dependencies["repo"].return_value.update_signal_atomic.call_args
+    args, _ = mock_main_dependencies["repo"].return_value.update_signal_atomic.call_args
     assert args[0] == "test_signal_discord_fail"
     updates = args[1]
     assert updates["status"] == SignalStatus.INVALIDATED
@@ -838,16 +699,16 @@ def test_zombie_signal_compensation_on_discord_failure(mock_dependencies, caplog
     assert "marking signal as invalidated" in caplog.text
 
 
-def test_signal_skipped_if_initial_persistence_fails(mock_dependencies, caplog):
+def test_signal_skipped_if_initial_persistence_fails(mock_main_dependencies, caplog):
     """
     Test that Discord is NOT called if initial persistence fails.
 
     This is critical to prevent Zombie Signals - if we can't persist,
     we must NOT notify users about a signal we can't track.
     """
-    mock_gen_instance = mock_dependencies["generator"].return_value
-    mock_repo_instance = mock_dependencies["repo"].return_value
-    mock_discord_instance = mock_dependencies["discord"].return_value
+    mock_gen_instance = mock_main_dependencies["generator"].return_value
+    mock_repo_instance = mock_main_dependencies["repo"].return_value
+    mock_discord_instance = mock_main_dependencies["discord"].return_value
 
     mock_signal = MagicMock()
     mock_signal.symbol = "BTC/USD"
@@ -877,11 +738,11 @@ def test_signal_skipped_if_initial_persistence_fails(mock_dependencies, caplog):
     assert "skipping notification to prevent zombie signal" in caplog.text
 
 
-def test_thread_recovery_check(mock_dependencies, caplog):
+def test_thread_recovery_check(mock_main_dependencies, caplog):
     """Test that existing thread is recovered and send_signal is skipped."""
-    mock_gen_instance = mock_dependencies["generator"].return_value
-    mock_discord_instance = mock_dependencies["discord"].return_value
-    mock_repo_instance = mock_dependencies["repo"].return_value
+    mock_gen_instance = mock_main_dependencies["generator"].return_value
+    mock_discord_instance = mock_main_dependencies["discord"].return_value
+    mock_repo_instance = mock_main_dependencies["repo"].return_value
 
     # Setup signal
     # Setup signal
@@ -900,8 +761,8 @@ def test_thread_recovery_check(mock_dependencies, caplog):
     mock_gen_instance.generate_signals.side_effect = side_effect
 
     # Reinforce environment mocks
-    mock_dependencies["job_lock"].return_value.acquire_lock.return_value = True
-    mock_dependencies["secrets"].return_value = True
+    mock_main_dependencies["job_lock"].return_value.acquire_lock.return_value = True
+    mock_main_dependencies["secrets"].return_value = True
 
     # Mock Recovery Success
     mock_discord_instance.find_thread_by_signal_id.return_value = "recovered_thread_123"
@@ -927,12 +788,12 @@ def test_thread_recovery_check(mock_dependencies, caplog):
     assert mock_signal.discord_thread_id == "recovered_thread_123"
 
 
-def test_main_expires_before_check_exits(mock_dependencies):
+def test_main_expires_before_check_exits(mock_main_dependencies):
     """
     Verify that main.py expires stale signals before calling check_exits (Issue #280).
     """
-    repo = mock_dependencies["repo"].return_value
-    generator = mock_dependencies["generator"].return_value
+    repo = mock_main_dependencies["repo"].return_value
+    generator = mock_main_dependencies["generator"].return_value
 
     # 1. Setup a STALE WAITING signal
     now_utc = datetime.now(timezone.utc)
@@ -980,10 +841,10 @@ def test_main_expires_before_check_exits(mock_dependencies):
 
         return wrapper
 
-    # Assuming these are already patched/mocked in mock_dependencies
-    mock_reconcile = mock_dependencies["reconciler"].return_value.reconcile
-    mock_archive = mock_dependencies["trade_archival"].return_value.run
-    mock_fee_patch = mock_dependencies["fee_patch"].return_value.run
+    # Assuming these are already patched/mocked in mock_main_dependencies
+    mock_reconcile = mock_main_dependencies["reconciler"].return_value.reconcile
+    mock_archive = mock_main_dependencies["trade_archival"].return_value.run
+    mock_fee_patch = mock_main_dependencies["fee_patch"].return_value.run
 
     # Attach side effects to track order
     mock_reconcile.side_effect = append_to_call_order(

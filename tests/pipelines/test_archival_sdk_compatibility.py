@@ -10,7 +10,9 @@ from crypto_signals.pipelines.trade_archival import TradeArchivalPipeline
 @patch("crypto_signals.pipelines.trade_archival.get_stock_data_client")
 @patch("crypto_signals.pipelines.trade_archival.get_crypto_data_client")
 @patch("crypto_signals.engine.execution.ExecutionEngine")  # Correct patch path
+@patch("crypto_signals.pipelines.base.bigquery.Client")
 def test_get_actual_fees_uses_public_api(
+    mock_bq_client,
     mock_execution_engine_cls,
     mock_get_crypto,
     mock_get_stock,
