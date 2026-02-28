@@ -171,7 +171,7 @@ crypto-signals/
 │   ├── pr/                        # Pull request drafts
 │   ├── review/                    # Code review outputs
 │   └── verify/                    # Verification outputs
-│
+
 ├── tests/                         # Comprehensive test suite
 ├── Dockerfile                     # Multi-stage production build
 ├── docker-compose.yml             # Local development setup

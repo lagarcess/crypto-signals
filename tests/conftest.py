@@ -6,6 +6,8 @@ avoiding non-thread-safe global MagicMocks that conflict with concurrent executo
 """
 
 import os
+from contextlib import ExitStack
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -37,11 +39,6 @@ def mock_env_vars():
     os.environ["DISCORD_WEBHOOK"] = "https://discord.com/api/webhooks/test"
     os.environ["GOOGLE_CLOUD_PROJECT"] = "test-project-id"
     os.environ["FIRESTORE_EMULATOR_HOST"] = "127.0.0.1:8080"
-
-
-from contextlib import ExitStack
-from unittest.mock import MagicMock, patch
-
 
 @pytest.fixture
 def mock_main_dependencies():
