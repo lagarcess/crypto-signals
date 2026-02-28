@@ -85,6 +85,12 @@ def mock_dependencies():
         expired_archival = stack.enter_context(
             patch("crypto_signals.main.ExpiredSignalArchivalPipeline")
         )
+        account_snapshot = stack.enter_context(
+            patch("crypto_signals.main.AccountSnapshotPipeline")
+        )
+        strategy_sync = stack.enter_context(
+            patch("crypto_signals.main.StrategySyncPipeline")
+        )
 
         job_metadata_repo.return_value.get_last_run_date.return_value = None
         # Configure mock settings
@@ -143,6 +149,8 @@ def mock_dependencies():
         price_patch.return_value.run.return_value = 0
         rejected_archival.return_value.run.return_value = 0
         expired_archival.return_value.run.return_value = 0
+        account_snapshot.return_value.run.return_value = 0
+        strategy_sync.return_value.run.return_value = 0
 
         yield {
             "stock_client": stock_client,
@@ -166,6 +174,8 @@ def mock_dependencies():
             "reconciler": reconciler,
             "rejected_archival": rejected_archival,
             "expired_archival": expired_archival,
+            "account_snapshot": account_snapshot,
+            "strategy_sync": strategy_sync,
         }
 
 

@@ -84,6 +84,18 @@ def test_active_trade_validation_loop(
         mock_price_patch = stack.enter_context(
             patch("crypto_signals.main.PricePatchPipeline")
         )
+        mock_expired_archival = stack.enter_context(
+            patch("crypto_signals.main.ExpiredSignalArchivalPipeline")
+        )
+        mock_rejected_archival = stack.enter_context(
+            patch("crypto_signals.main.RejectedSignalArchival")
+        )
+        mock_account_snapshot = stack.enter_context(
+            patch("crypto_signals.main.AccountSnapshotPipeline")
+        )
+        mock_strategy_sync = stack.enter_context(
+            patch("crypto_signals.main.StrategySyncPipeline")
+        )
         stack.enter_context(patch("crypto_signals.main.ExecutionEngine"))
         mock_reconciler_cls = stack.enter_context(
             patch("crypto_signals.main.StateReconciler")
@@ -108,6 +120,10 @@ def test_active_trade_validation_loop(
         mock_trade_archival.return_value.run.return_value = 0
         mock_fee_patch.return_value.run.return_value = 0
         mock_price_patch.return_value.run.return_value = 0
+        mock_expired_archival.return_value.run.return_value = 0
+        mock_rejected_archival.return_value.run.return_value = 0
+        mock_account_snapshot.return_value.run.return_value = 0
+        mock_strategy_sync.return_value.run.return_value = 0
         mock_reconciler_instance = mock_reconciler_cls.return_value
         mock_reconciler_instance.reconcile.return_value = MagicMock(
             critical_issues=[], zombies=[], orphans=[], reconciled_count=0
