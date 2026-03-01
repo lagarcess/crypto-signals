@@ -178,35 +178,27 @@ class RejectedSignalArchival(BigQueryPipelineBase):
                     total_fees = 0.0
                     exit_time = created_at
                 else:
-                    # Standard Theoretical Simulation Loop
-                    for idx, bar in bars_df.iterrows():
-                        high = float(bar["high"])
-                        low = float(bar["low"])
+                    # Standard Theoretical Simulation Loop (Vectorized)
+                    # O(1) pandas operations instead of O(N) iterrows
+                    if side == OrderSide.BUY.value:
+                        tp_mask = bars_df["high"] >= take_profit_1
+                        sl_mask = bars_df["low"] <= stop_loss
+                    else:
+                        tp_mask = bars_df["low"] <= take_profit_1
+                        sl_mask = bars_df["high"] >= stop_loss
 
-                        if side == OrderSide.BUY.value:
-                            # Long: check if TP1 hit (high >= TP1) or SL hit (low <= SL)
-                            if high >= take_profit_1:
-                                exit_price = take_profit_1
-                                exit_reason = "THEORETICAL_TP1"
-                                exit_time = idx
-                                break
-                            elif low <= stop_loss:
-                                exit_price = stop_loss
-                                exit_reason = "THEORETICAL_SL"
-                                exit_time = idx
-                                break
+                    hit_mask = tp_mask | sl_mask
+
+                    if hit_mask.any():
+                        exit_time = hit_mask.idxmax()
+
+                        # Prioritize TP over SL on the same bar to match original logic
+                        if tp_mask.loc[exit_time]:
+                            exit_price = take_profit_1
+                            exit_reason = "THEORETICAL_TP1"
                         else:
-                            # Short: check if TP1 hit (low <= TP1) or SL hit (high >= SL)
-                            if low <= take_profit_1:
-                                exit_price = take_profit_1
-                                exit_reason = "THEORETICAL_TP1"
-                                exit_time = idx
-                                break
-                            elif high >= stop_loss:
-                                exit_price = stop_loss
-                                exit_reason = "THEORETICAL_SL"
-                                exit_time = idx
-                                break
+                            exit_price = stop_loss
+                            exit_reason = "THEORETICAL_SL"
 
                     # If no exit triggered, use latest close as theoretical exit
                     if exit_price is None and not is_validation_failure:
