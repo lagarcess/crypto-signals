@@ -133,6 +133,14 @@ class RejectedSignalArchival(BigQueryPipelineBase):
                     )
                     continue
 
+                # Default values
+                exit_price = None
+                exit_reason = None
+                exit_time = None
+                pnl_net = 0.0
+                pnl_pct = 0.0
+                total_fees = 0.0
+
                 # Market Data Fetching Bypass for Validation Failures
                 rejection_reason = signal.get("rejection_reason", "")
                 is_validation_failure = (
@@ -158,32 +166,40 @@ class RejectedSignalArchival(BigQueryPipelineBase):
 
                     if bars_df.empty:
                         logger.warning(f"No market data for {symbol}")
-                        continue
+                        exit_price = None
+                        exit_reason = "NO_MARKET_DATA"
+                        pnl_net = 0.0
+                        pnl_pct = 0.0
+                        total_fees = 0.0
+                        exit_time = None
+                        is_validation_failure = True
 
                     # Filter bars after signal creation
-                    if created_at:
+                    elif created_at:
                         bars_df = bars_df[
                             bars_df.index >= pd.Timestamp(created_at).floor("D")
                         ]
 
-                    if bars_df.empty:
-                        logger.warning(
-                            f"No market data after filtering for {symbol} after {created_at}"
-                        )
-                        continue
+                        if bars_df.empty:
+                            logger.warning(
+                                f"No market data after filtering for {symbol} after {created_at}"
+                            )
+                            exit_price = None
+                            exit_reason = "NO_MARKET_DATA"
+                            pnl_net = 0.0
+                            pnl_pct = 0.0
+                            total_fees = 0.0
+                            exit_time = None
+                            is_validation_failure = True
 
-                # Determine theoretical exit
-                exit_price = None
-                exit_reason = None
-                exit_time = None
-
-                if is_validation_failure:
+                # Determine theoretical exit bypass
+                if is_validation_failure and exit_reason != "NO_MARKET_DATA":
                     exit_reason = "VALIDATION_FAILED_NO_EXECUTION"
                     pnl_net = 0.0
                     pnl_pct = 0.0
                     total_fees = 0.0
                     exit_time = created_at
-                else:
+                elif not is_validation_failure:
                     # Standard Theoretical Simulation Loop (Vectorized)
                     # O(1) pandas operations instead of O(N) iterrows
                     if side == OrderSide.BUY.value:
@@ -240,7 +256,7 @@ class RejectedSignalArchival(BigQueryPipelineBase):
                     "symbol": symbol,
                     "asset_class": asset_class,
                     "pattern_name": signal.get("pattern_name"),
-                    "rejection_reason": signal.get("rejection_reason"),
+                    "rejection_reason": signal.get("rejection_reason") or "UNKNOWN",
                     "trade_type": "VALIDATION_FAILED"
                     if is_validation_failure
                     else "FILTERED",
@@ -250,7 +266,11 @@ class RejectedSignalArchival(BigQueryPipelineBase):
                     "take_profit_1": take_profit_1,
                     "theoretical_exit_price": exit_price,
                     "theoretical_exit_reason": exit_reason,
-                    "theoretical_exit_time": exit_time.isoformat()
+                    "theoretical_exit_time": (
+                        exit_time.isoformat()
+                        if hasattr(exit_time, "isoformat")
+                        else str(exit_time)
+                    )
                     if exit_time is not None
                     else None,
                     "theoretical_pnl_usd": round(pnl_net, 4),

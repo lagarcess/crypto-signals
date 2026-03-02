@@ -146,6 +146,93 @@ def test_transform_long_tp_hit(pipeline, mock_market_provider):
     assert record["theoretical_pnl_usd"] > 0
 
 
+def test_transform_open_position(pipeline, mock_market_provider):
+    """Test transforming a signal that hits neither TP nor SL, exiting at the latest close."""
+    created_at = datetime.now(timezone.utc) - timedelta(days=8)
+    raw_data = [
+        {
+            "signal_id": "sig_open",
+            "symbol": "ETH/USD",
+            "asset_class": "CRYPTO",
+            "entry_price": 2000.0,
+            "suggested_stop": 1900.0,
+            "take_profit_1": 2200.0,
+            "side": OrderSide.BUY.value,
+            "created_at": created_at,
+            "pattern_name": "CONSOLIDATION",
+            "rejection_reason": "TEST_REASON",
+        }
+    ]
+
+    # Mock Market Data: Price stays between SL and TP
+    dates = pd.date_range(created_at.date(), periods=3, freq="D", tz="UTC")
+    df = pd.DataFrame(
+        {
+            "high": [2050.0, 2100.0, 2080.0],
+            "low": [1950.0, 1980.0, 1990.0],
+            "close": [2020.0, 2090.0, 2050.0],
+        },
+        index=dates,
+    )
+    mock_market_provider.get_daily_bars.return_value = df
+
+    transformed = pipeline.transform(raw_data)
+
+    assert len(transformed) == 1
+    record = transformed[0]
+    assert record["theoretical_exit_reason"] == "THEORETICAL_OPEN"
+    assert record["theoretical_exit_price"] == 2050.0  # Final close
+    assert record["theoretical_pnl_usd"] > 0
+
+
+def test_transform_missing_fields(pipeline, mock_market_provider):
+    """Test transforming a signal that is missing required fields."""
+    raw_data = [
+        {
+            "signal_id": "sig_missing",
+            "symbol": "BTC/USD",
+            # Missing entry_price, suggested_stop, etc.
+        }
+    ]
+
+    transformed = pipeline.transform(raw_data)
+
+    assert len(transformed) == 0
+
+
+def test_transform_exception_catch(pipeline, mock_market_provider):
+    """Test transforming a signal where Pydantic model validation fails."""
+    created_at = datetime.now(timezone.utc) - timedelta(days=8)
+    raw_data = [
+        {
+            "signal_id": "sig_exception",
+            "symbol": "BTC/USD",
+            "asset_class": "CRYPTO",
+            "entry_price": "NOT_A_FLOAT",  # This will cause a Pydantic validation error or ValueError
+            "suggested_stop": 48000.0,
+            "take_profit_1": 55000.0,
+            "side": OrderSide.BUY.value,
+            "created_at": created_at,
+            "pattern_name": "BULL_FLAG",
+        }
+    ]
+
+    dates = pd.date_range(created_at.date(), periods=3, freq="D", tz="UTC")
+    df = pd.DataFrame(
+        {
+            "high": [51000.0, 56000.0, 52000.0],
+            "low": [49000.0, 50000.0, 51000.0],
+            "close": [50500.0, 54000.0, 52000.0],
+        },
+        index=dates,
+    )
+    mock_market_provider.get_daily_bars.return_value = df
+
+    transformed = pipeline.transform(raw_data)
+
+    assert len(transformed) == 0
+
+
 def test_transform_validation_failure(pipeline, mock_market_provider):
     """Test transforming a signal rejected due to validation failure."""
     created_at = datetime.now(timezone.utc) - timedelta(days=8)
@@ -169,6 +256,101 @@ def test_transform_validation_failure(pipeline, mock_market_provider):
     assert len(transformed) == 1
     record = transformed[0]
     assert record["theoretical_exit_reason"] == "VALIDATION_FAILED_NO_EXECUTION"
+    assert record["theoretical_pnl_usd"] == 0.0
+
+
+def test_transform_validation_failure_empty_data(pipeline, mock_market_provider):
+    """Test transforming a signal rejected due to validation failure that also has no market data."""
+    created_at = datetime.now(timezone.utc) - timedelta(days=8)
+    raw_data = [
+        {
+            "signal_id": "sig_val_fail_empty",
+            "symbol": "BTC/USD",
+            "entry_price": 100.0,
+            "suggested_stop": 90.0,
+            "take_profit_1": 110.0,
+            "asset_class": "CRYPTO",
+            "side": OrderSide.BUY.value,
+            "created_at": created_at,
+            "rejection_reason": "VALIDATION_FAILED: Invalid Stop",
+            "pattern_name": "TEST_PATTERN",
+        }
+    ]
+
+    mock_market_provider.get_daily_bars.return_value = pd.DataFrame()
+
+    transformed = pipeline.transform(raw_data)
+
+    assert len(transformed) == 1
+    record = transformed[0]
+    assert record["theoretical_exit_reason"] == "VALIDATION_FAILED_NO_EXECUTION"
+    assert record["theoretical_pnl_usd"] == 0.0
+
+
+def test_transform_no_market_data(pipeline, mock_market_provider):
+    """Test transforming a signal where fetching market data returns an empty dataframe."""
+    created_at = datetime.now(timezone.utc) - timedelta(days=8)
+    raw_data = [
+        {
+            "signal_id": "sig_no_data",
+            "symbol": "AFAKECOIN/USD",
+            "entry_price": 1.0,
+            "suggested_stop": 0.9,
+            "take_profit_1": 1.1,
+            "asset_class": "CRYPTO",
+            "side": OrderSide.BUY.value,
+            "created_at": created_at,
+            "pattern_name": "TEST_PATTERN",
+        }
+    ]
+
+    # Mock market provider to return empty dataframe
+    mock_market_provider.get_daily_bars.return_value = pd.DataFrame()
+
+    transformed = pipeline.transform(raw_data)
+
+    assert len(transformed) == 1
+    record = transformed[0]
+    assert record["theoretical_exit_reason"] == "NO_MARKET_DATA"
+    assert record["theoretical_pnl_usd"] == 0.0
+
+
+def test_transform_market_data_filtered_out(pipeline, mock_market_provider):
+    """Test transforming a signal where market data is found but filtered out due to dates."""
+    created_at = datetime.now(timezone.utc) - timedelta(days=8)
+    raw_data = [
+        {
+            "signal_id": "sig_filtered_out",
+            "symbol": "BTC/USD",
+            "entry_price": 50000.0,
+            "suggested_stop": 48000.0,
+            "take_profit_1": 52000.0,
+            "asset_class": "CRYPTO",
+            "side": OrderSide.BUY.value,
+            "created_at": created_at,
+            "pattern_name": "TEST_PATTERN",
+        }
+    ]
+
+    # Mock market dates BEFORE the signal creation date
+    dates = pd.date_range(
+        created_at.date() - timedelta(days=10), periods=3, freq="D", tz="UTC"
+    )
+    df = pd.DataFrame(
+        {
+            "high": [51000.0, 56000.0, 52000.0],
+            "low": [49000.0, 50000.0, 51000.0],
+            "close": [50500.0, 54000.0, 52000.0],
+        },
+        index=dates,
+    )
+    mock_market_provider.get_daily_bars.return_value = df
+
+    transformed = pipeline.transform(raw_data)
+
+    assert len(transformed) == 1
+    record = transformed[0]
+    assert record["theoretical_exit_reason"] == "NO_MARKET_DATA"
     assert record["theoretical_pnl_usd"] == 0.0
 
 
