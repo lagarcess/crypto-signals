@@ -166,6 +166,12 @@ class RejectedSignalArchival(BigQueryPipelineBase):
                             bars_df.index >= pd.Timestamp(created_at).floor("D")
                         ]
 
+                    if bars_df.empty:
+                        logger.warning(
+                            f"No market data after filtering for {symbol} after {created_at}"
+                        )
+                        continue
+
                 # Determine theoretical exit
                 exit_price = None
                 exit_reason = None
