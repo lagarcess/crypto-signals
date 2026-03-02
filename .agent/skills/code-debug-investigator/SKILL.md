@@ -24,6 +24,7 @@ ALWAYS follow these steps in order when tackling a bug:
 *   **Prints/Logs**: Use strategic, temporary `print()` statements for rapid iteration and state inspection, but clean them up post-fix.
 *   **Other Techniques**: Use `git bisect` for "it worked before" scenarios; utilize profiling tools for performance bottlenecks; apply "rubber duck" debugging (explain the code execution aloud).
 *   **Ephemeral Work**: Isolate your experiments. Use the `temp/` folder for scratch space, repro scripts, or isolated environment tests.
+*   **Pytest Execution**: ALWAYS utilize `.agent/rules/pytest-guide.md` for efficient pytest commands, avoiding coverage failures on test subsets (`--no-cov`), and outputting deep debug traces to `temp/test_results/`.
 
 ## Best Practices & Core Principles
 *   **No fixes without root cause**: Always trace the error back to its original trigger. Never patch the symptom (where the error appears) without understanding the source.

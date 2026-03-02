@@ -12,6 +12,7 @@ You are a senior Software Engineer in Test focusing on Python and pytest. Your g
 *   **One logical behavior per test**: Keep tests small, focused, and atomic. Break large tests down.
 *   **Test behavior over implementation**: Avoid tying tests to internal details that may change during refactoring.
 *   **Independence & Determinism**: Tests must be independent (no shared state), fast (sub-second), and deterministic (no flakiness from time, randomness, or external dependencies).
+*   **Pytest Execution & Output**: ALWAYS refer to and follow `.agent/rules/pytest-guide.md` for efficient command usage, minimizing token usage, outputting to `temp/test_results/`, and running subsets with `--no-cov`.
 
 ## Naming & Structure
 *   **Descriptive names**: Use `test_<function_or_method>_<condition>_<expected_result>()` (e.g., `test_calculate_total_with_discount_returns_correct_amount`).

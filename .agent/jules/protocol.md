@@ -19,7 +19,11 @@ poetry run mypy src
 ### 3. Logic Verification (The Test Suite)
 *Verify your implementation logic against the specs.*
 ```bash
-poetry run pytest -q --tb=short
+poetry run pytest <FILE PATH TO TEST CREATED> -q --tb=long --no-cov --no-header -rf
+```
+*Verify full test suite passes including coverage.*
+```bash
+poetry run pytest -q --tb=long -rf
 ```
 
 ### 4. Runtime Smoke Test (The Integration)

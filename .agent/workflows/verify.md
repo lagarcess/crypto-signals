@@ -7,6 +7,7 @@ description: strict code review, system verification, and auto-commit
 1. **System Health & Regression Check**
    // turbo
    - **CRITICAL**: Run the **FULL** test suite AND generate coverage: `$env:COVERAGE_FILE="temp/coverage/.coverage"; poetry run pytest --cov=src --cov-report=html:temp/coverage/html --cov-report=xml:temp/coverage/coverage.xml`
+   - *Note*: Always run the full suite at the end to check for overall coverage and regressions, as per `.agent/rules/pytest-guide.md`.
    - **Regression Trap**: Check if the total number of passed tests equals the baseline expectation. If tests fail that previously passed -> **REGRESSION DETECTED**.
    - **Coverage Check**: Ensure coverage meets threshold (63%, ideally higher).
    - **Type Checking**: Run type checking (if applicable): `poetry run mypy src`
