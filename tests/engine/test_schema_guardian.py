@@ -302,3 +302,24 @@ def test_generate_schema_respects_exclude_flag(guardian):
     assert len(schema) == 1
     assert schema[0].name == "included"
     assert "excluded" not in [f.name for f in schema]
+
+
+def test_validate_schema_ignores_excluded_fields(guardian, mock_bq_client):
+    """
+    Test that validate_schema correctly ignores fields marked with exclude=True,
+    even if they are missing from the BigQuery schema.
+    """
+
+    class ExcludeModel(BaseModel):
+        included: str
+        excluded: str = Field(..., exclude=True)
+
+    # Mock BigQuery Table Schema: only contains 'included'
+    mock_table = MagicMock()
+    mock_table.schema = [
+        bigquery.SchemaField("included", "STRING"),
+    ]
+    mock_bq_client.get_table.return_value = mock_table
+
+    # This should NOT raise SchemaMismatchError
+    guardian.validate_schema("project.dataset.table", ExcludeModel)

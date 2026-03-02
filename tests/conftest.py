@@ -40,6 +40,7 @@ def mock_env_vars():
     os.environ["GOOGLE_CLOUD_PROJECT"] = "test-project-id"
     os.environ["FIRESTORE_EMULATOR_HOST"] = "127.0.0.1:8080"
 
+
 @pytest.fixture
 def mock_main_dependencies():
     with ExitStack() as stack:
