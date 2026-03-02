@@ -291,7 +291,7 @@ class SchemaGuardian:
 
         for name, field_info in model_fields:
             # Skip excluded fields (Issue #149: scaled_out_prices, etc.)
-            if getattr(field_info, "exclude", False):
+            if field_info.exclude:
                 continue
 
             full_name = f"{parent_path}.{name}" if parent_path else name
