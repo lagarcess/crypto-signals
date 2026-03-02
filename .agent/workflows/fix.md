@@ -5,7 +5,8 @@ description: Universal TDD and self-correction loop for test failures
 1. **Test Identification & Execution Loop**
    // turbo
    - Identify the specific test file you are working on, or read the output of the failed test/lint command globally.
-   - Run the specific test using poetry (e.g., `poetry run pytest tests/path/to/test_file.py`).
+   - Run the specific test using poetry (e.g., `poetry run pytest tests/path/to/test_file.py --no-cov`).
+   - *Note*: Always refer to `.agent/rules/pytest-guide.md` for proper command formatting (e.g. using `--no-cov` for test subsets, outputting debug info to `temp/test_results/`).
 
 2. **Self-Correction (Max 3 Attempts)**
    // turbo

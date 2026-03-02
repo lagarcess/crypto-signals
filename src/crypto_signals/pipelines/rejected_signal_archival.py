@@ -133,6 +133,14 @@ class RejectedSignalArchival(BigQueryPipelineBase):
                     )
                     continue
 
+                # Default values
+                exit_price = None
+                exit_reason = None
+                exit_time = None
+                pnl_net = 0.0
+                pnl_pct = 0.0
+                total_fees = 0.0
+
                 # Market Data Fetching Bypass for Validation Failures
                 rejection_reason = signal.get("rejection_reason", "")
                 is_validation_failure = (
@@ -158,55 +166,61 @@ class RejectedSignalArchival(BigQueryPipelineBase):
 
                     if bars_df.empty:
                         logger.warning(f"No market data for {symbol}")
-                        continue
+                        exit_price = None
+                        exit_reason = "NO_MARKET_DATA"
+                        pnl_net = 0.0
+                        pnl_pct = 0.0
+                        total_fees = 0.0
+                        exit_time = None
+                        is_validation_failure = True
 
                     # Filter bars after signal creation
-                    if created_at:
+                    elif created_at:
                         bars_df = bars_df[
                             bars_df.index >= pd.Timestamp(created_at).floor("D")
                         ]
 
-                # Determine theoretical exit
-                exit_price = None
-                exit_reason = None
-                exit_time = None
+                        if bars_df.empty:
+                            logger.warning(
+                                f"No market data after filtering for {symbol} after {created_at}"
+                            )
+                            exit_price = None
+                            exit_reason = "NO_MARKET_DATA"
+                            pnl_net = 0.0
+                            pnl_pct = 0.0
+                            total_fees = 0.0
+                            exit_time = None
+                            is_validation_failure = True
 
-                if is_validation_failure:
+                # Determine theoretical exit bypass
+                if is_validation_failure and exit_reason != "NO_MARKET_DATA":
                     exit_reason = "VALIDATION_FAILED_NO_EXECUTION"
                     pnl_net = 0.0
                     pnl_pct = 0.0
                     total_fees = 0.0
                     exit_time = created_at
-                else:
-                    # Standard Theoretical Simulation Loop
-                    for idx, bar in bars_df.iterrows():
-                        high = float(bar["high"])
-                        low = float(bar["low"])
+                elif not is_validation_failure:
+                    # Standard Theoretical Simulation Loop (Vectorized)
+                    # O(1) pandas operations instead of O(N) iterrows
+                    if side == OrderSide.BUY.value:
+                        tp_mask = bars_df["high"] >= take_profit_1
+                        sl_mask = bars_df["low"] <= stop_loss
+                    else:
+                        tp_mask = bars_df["low"] <= take_profit_1
+                        sl_mask = bars_df["high"] >= stop_loss
 
-                        if side == OrderSide.BUY.value:
-                            # Long: check if TP1 hit (high >= TP1) or SL hit (low <= SL)
-                            if high >= take_profit_1:
-                                exit_price = take_profit_1
-                                exit_reason = "THEORETICAL_TP1"
-                                exit_time = idx
-                                break
-                            elif low <= stop_loss:
-                                exit_price = stop_loss
-                                exit_reason = "THEORETICAL_SL"
-                                exit_time = idx
-                                break
+                    hit_mask = tp_mask | sl_mask
+
+                    if hit_mask.any():
+                        exit_time = hit_mask.idxmax()
+
+                        # Prioritize TP over SL on the same bar to match original logic
+                        if tp_mask.loc[exit_time]:
+                            exit_price = take_profit_1
+                            exit_reason = "THEORETICAL_TP1"
                         else:
-                            # Short: check if TP1 hit (low <= TP1) or SL hit (high >= SL)
-                            if low <= take_profit_1:
-                                exit_price = take_profit_1
-                                exit_reason = "THEORETICAL_TP1"
-                                exit_time = idx
-                                break
-                            elif high >= stop_loss:
-                                exit_price = stop_loss
-                                exit_reason = "THEORETICAL_SL"
-                                exit_time = idx
-                                break
+                            exit_price = stop_loss
+                            exit_reason = "THEORETICAL_SL"
 
                     # If no exit triggered, use latest close as theoretical exit
                     if exit_price is None and not is_validation_failure:
@@ -242,7 +256,7 @@ class RejectedSignalArchival(BigQueryPipelineBase):
                     "symbol": symbol,
                     "asset_class": asset_class,
                     "pattern_name": signal.get("pattern_name"),
-                    "rejection_reason": signal.get("rejection_reason"),
+                    "rejection_reason": signal.get("rejection_reason") or "UNKNOWN",
                     "trade_type": "VALIDATION_FAILED"
                     if is_validation_failure
                     else "FILTERED",
@@ -252,7 +266,11 @@ class RejectedSignalArchival(BigQueryPipelineBase):
                     "take_profit_1": take_profit_1,
                     "theoretical_exit_price": exit_price,
                     "theoretical_exit_reason": exit_reason,
-                    "theoretical_exit_time": exit_time.isoformat()
+                    "theoretical_exit_time": (
+                        exit_time.isoformat()
+                        if hasattr(exit_time, "isoformat")
+                        else str(exit_time)
+                    )
                     if exit_time is not None
                     else None,
                     "theoretical_pnl_usd": round(pnl_net, 4),

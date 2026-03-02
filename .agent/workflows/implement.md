@@ -27,6 +27,7 @@ description: Turn issues into working code with a single command
 3. **Iterative Development**
    - Execute the `/fix` workflow for TDD self-correction.
    - Loop: Write minimal code -> Run specific test -> Fix -> Repeat until PASS.
+   - *Note*: Be sure to follow `.agent/rules/pytest-guide.md` when running test subsets (e.g., using `--no-cov` to avoid coverage failures).
 
 4. **Code Coverage Check**
    // turbo

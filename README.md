@@ -346,8 +346,11 @@ poetry run pytest
 # Run with coverage
 poetry run pytest --cov=crypto_signals
 
-# Run specific test file
-poetry run pytest tests/test_main.py
+# Run without coverage
+poetry run pytest --no-cov
+
+# Run specific test file (assumes coverage is enabled)
+poetry run pytest tests/test_main.py --no-cov
 ```
 
 ### Code Quality
