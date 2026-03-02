@@ -1,4 +1,5 @@
 ---
+name: test-writer
 description: Generates high-quality, maintainable pytest unit tests for Python code. Use this skill whenever the user asks to write tests, improve existing tests, or add test coverage. Always follows modern pytest best practices, industry standards, and produces clear, debuggable assertion messages.
 ---
 

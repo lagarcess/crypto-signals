@@ -1,4 +1,5 @@
 ---
+name: code-debug-investigator
 description: Systematically investigates and debugs code issues, errors, and unexpected behavior. Use this skill whenever the user reports a bug, stack trace, failing test, or asks to 'debug this' or 'find why this is broken.' Follows industry-standard debugging methodologies, produces clear root-cause analysis + fix recommendations, and never proposes fixes without full investigation.
 ---
 
