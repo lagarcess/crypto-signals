@@ -67,19 +67,27 @@ class TestRiskEngine:
         # Crypto uses non_marginable_buying_power
         # Req: 1000, Avail: 5000 -> Pass
         result = risk_engine.check_buying_power(CRYPTO, 1000.0)
-        assert result.passed is True, 'Assertion failed'
+        assert (
+            result.passed is True
+        ), f"Expected result.passed to be True, got {result.passed}"
 
     def test_check_buying_power_crypto_fail(self, risk_engine):
         # Req: 6000, Avail: 5000 -> Fail
         result = risk_engine.check_buying_power(CRYPTO, 6000.0)
-        assert result.passed is False, 'Assertion failed'
-        assert "Insufficient Buying Power" in result.reason, 'Assertion failed'
+        assert (
+            result.passed is False
+        ), f"Expected result.passed to be False, got {result.passed}"
+        assert (
+            "Insufficient Buying Power" in result.reason
+        ), 'Assertion condition not met: "Insufficient Buying Power" in result.reason'
 
     def test_check_buying_power_equity_pass_regt(self, risk_engine):
         # Equity uses regt_buying_power
         # Req: 10000, Avail: 20000 -> Pass
         result = risk_engine.check_buying_power(EQUITY, 10000.0)
-        assert result.passed is True, 'Assertion failed'
+        assert (
+            result.passed is True
+        ), f"Expected result.passed to be True, got {result.passed}"
 
     def test_check_sector_cap_crypto_fail(self, risk_engine, mock_client):
         # Arrange: 4 filled positions + 1 open buy order = 5 (MAX=5)
@@ -95,8 +103,12 @@ class TestRiskEngine:
         mock_client.get_orders.return_value = [mock_order]
 
         result = risk_engine.check_sector_limit(CRYPTO)
-        assert result.passed is False, 'Assertion failed'
-        assert "Max CRYPTO positions reached" in result.reason, 'Assertion failed'
+        assert (
+            result.passed is False
+        ), f"Expected result.passed to be False, got {result.passed}"
+        assert (
+            "Max CRYPTO positions reached" in result.reason
+        ), 'Assertion condition not met: "Max CRYPTO positions reached" in result.reason'
         mock_client.get_all_positions.assert_called_once()
         mock_client.get_orders.assert_called_once()
 
@@ -110,7 +122,9 @@ class TestRiskEngine:
         mock_client.get_orders.return_value = []
 
         result = risk_engine.check_sector_limit(CRYPTO)
-        assert result.passed is True, 'Assertion failed'
+        assert (
+            result.passed is True
+        ), f"Expected result.passed to be True, got {result.passed}"
 
     def test_daily_drawdown_fail(self, risk_engine, mock_client):
         # Equity 9000, Last 10000 -> 10% Drop. Max is 5%
@@ -118,8 +132,12 @@ class TestRiskEngine:
         mock_client.get_account.return_value.last_equity = "10000.00"
 
         result = risk_engine.check_daily_drawdown()
-        assert result.passed is False, 'Assertion failed'
-        assert "Daily Drawdown Limit Hit" in result.reason, 'Assertion failed'
+        assert (
+            result.passed is False
+        ), f"Expected result.passed to be False, got {result.passed}"
+        assert (
+            "Daily Drawdown Limit Hit" in result.reason
+        ), 'Assertion condition not met: "Daily Drawdown Limit Hit" in result.reason'
 
     def test_check_duplicate_symbol_fail(self, risk_engine, mock_repo):
         # Setup: Position exists for BTC/USD
@@ -135,5 +153,9 @@ class TestRiskEngine:
         signal.symbol = "BTC/USD"
 
         result = risk_engine.check_duplicate_symbol(signal)
-        assert result.passed is False, 'Assertion failed'
-        assert "Duplicate Position" in result.reason, 'Assertion failed'
+        assert (
+            result.passed is False
+        ), f"Expected result.passed to be False, got {result.passed}"
+        assert (
+            "Duplicate Position" in result.reason
+        ), 'Assertion condition not met: "Duplicate Position" in result.reason'

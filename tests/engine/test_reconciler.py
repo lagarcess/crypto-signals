@@ -103,10 +103,18 @@ class TestStateReconcilerInitialization:
             settings=mock_settings,
         )
 
-        assert reconciler.alpaca == mock_trading_client, 'Assertion failed'
-        assert reconciler.position_repo == mock_position_repo, 'Assertion failed'
-        assert reconciler.notifications == mock_notification_service, 'Assertion failed'
-        assert reconciler.settings == mock_settings, 'Assertion failed'
+        assert (
+            reconciler.alpaca == mock_trading_client
+        ), f"Expected reconciler.alpaca == mock_trading_client, got {reconciler.alpaca}"
+        assert (
+            reconciler.position_repo == mock_position_repo
+        ), f"Expected reconciler.position_repo == mock_position_repo, got {reconciler.position_repo}"
+        assert (
+            reconciler.notifications == mock_notification_service
+        ), f"Expected reconciler.notifications == mock_notification_service, got {reconciler.notifications}"
+        assert (
+            reconciler.settings == mock_settings
+        ), f"Expected reconciler.settings == mock_settings, got {reconciler.settings}"
 
 
 class TestDetectZombies:
@@ -138,8 +146,12 @@ class TestDetectZombies:
         report = reconciler.reconcile()
 
         # Zombie detected
-        assert "BTC/USD" in report.zombies, 'Assertion failed'
-        assert len(report.zombies) == 1, 'Assertion failed'
+        assert (
+            "BTC/USD" in report.zombies
+        ), 'Assertion condition not met: "BTC/USD" in report.zombies'
+        assert (
+            len(report.zombies) == 1
+        ), f"Expected len(report.zombies) == 1, got {len(report.zombies)}"
 
     def test_race_condition_young_zombie_skipped(
         self,
@@ -197,9 +209,15 @@ class TestDetectZombies:
 
         report = reconciler.reconcile()
 
-        assert len(report.zombies) == 2, 'Assertion failed'
-        assert "BTC/USD" in report.zombies, 'Assertion failed'
-        assert "ETH/USD" in report.zombies, 'Assertion failed'
+        assert (
+            len(report.zombies) == 2
+        ), f"Expected len(report.zombies) == 2, got {len(report.zombies)}"
+        assert (
+            "BTC/USD" in report.zombies
+        ), 'Assertion condition not met: "BTC/USD" in report.zombies'
+        assert (
+            "ETH/USD" in report.zombies
+        ), 'Assertion condition not met: "ETH/USD" in report.zombies'
 
 
 class TestDetectOrphans:
@@ -230,8 +248,12 @@ class TestDetectOrphans:
         report = reconciler.reconcile()
 
         # Orphan detected
-        assert "BTC/USD" in report.orphans, 'Assertion failed'
-        assert len(report.orphans) == 1, 'Assertion failed'
+        assert (
+            "BTC/USD" in report.orphans
+        ), 'Assertion condition not met: "BTC/USD" in report.orphans'
+        assert (
+            len(report.orphans) == 1
+        ), f"Expected len(report.orphans) == 1, got {len(report.orphans)}"
 
     def test_reconcile_handles_multiple_orphans(
         self,
@@ -259,9 +281,15 @@ class TestDetectOrphans:
 
         report = reconciler.reconcile()
 
-        assert len(report.orphans) == 2, 'Assertion failed'
-        assert "BTC/USD" in report.orphans, 'Assertion failed'
-        assert "ETH/USD" in report.orphans, 'Assertion failed'
+        assert (
+            len(report.orphans) == 2
+        ), f"Expected len(report.orphans) == 2, got {len(report.orphans)}"
+        assert (
+            "BTC/USD" in report.orphans
+        ), 'Assertion condition not met: "BTC/USD" in report.orphans'
+        assert (
+            "ETH/USD" in report.orphans
+        ), 'Assertion condition not met: "ETH/USD" in report.orphans'
 
     def test_reconcile_reports_critical_issues(
         self,
@@ -284,9 +312,13 @@ class TestDetectOrphans:
 
         report = reconciler.reconcile()
 
-        assert len(report.critical_issues) > 0, 'Assertion failed'
+        assert (
+            len(report.critical_issues) > 0
+        ), f"Expected len(report.critical_issues) > 0, got {len(report.critical_issues)}"
         expected_error = ReconciliationErrors.ORPHAN_POSITION.format(symbol="BTC/USD")
-        assert any(expected_error in issue for issue in report.critical_issues), 'Assertion failed'
+        assert any(
+            expected_error in issue for issue in report.critical_issues
+        ), "Expected any(expected_error in issue for issue in report.critical_issues)"
 
 
 class TestHealingAndAlerts:
@@ -328,8 +360,12 @@ class TestHealingAndAlerts:
 
         # Verify the position was marked CLOSED (reason is now MANUAL_EXIT due to verification)
         called_position = mock_position_repo.update_position.call_args[0][0]
-        assert called_position.status == TradeStatus.CLOSED, 'Assertion failed'
-        assert called_position.exit_reason == ExitReason.MANUAL_EXIT, 'Assertion failed'
+        assert (
+            called_position.status == TradeStatus.CLOSED
+        ), f"Expected called_position.status == TradeStatus.CLOSED, got {called_position.status}"
+        assert (
+            called_position.exit_reason == ExitReason.MANUAL_EXIT
+        ), f"Expected called_position.exit_reason == ExitReason.MANUAL_EXIT, got {called_position.exit_reason}"
 
     def test_alert_orphan_sends_discord_message(
         self,
@@ -353,7 +389,7 @@ class TestHealingAndAlerts:
         reconciler.reconcile()
 
         # Verify notification service was called for orphan alert
-        assert mock_notification_service.notify_orphan.called, 'Assertion failed'
+        assert mock_notification_service.notify_orphan.called, f"Expected mock_notification_service.notify_orphan.called to be truthy, got {mock_notification_service.notify_orphan.called}"
 
     def test_manual_verification_failure_does_not_close(
         self,
@@ -380,8 +416,12 @@ class TestHealingAndAlerts:
 
             mock_verify.assert_called_once_with(pos)
             mock_position_repo.update_position.assert_not_called()
-            assert len(report.critical_issues) > 0, 'Assertion failed'
-            assert "CRITICAL SYNC ISSUE" in report.critical_issues[0], 'Assertion failed'
+            assert (
+                len(report.critical_issues) > 0
+            ), f"Expected len(report.critical_issues) > 0, got {len(report.critical_issues)}"
+            assert (
+                "CRITICAL SYNC ISSUE" in report.critical_issues[0]
+            ), 'Assertion condition not met: "CRITICAL SYNC ISSUE" in report.critical_issues[0]'
 
     def test_manual_verification_success_updates_position(
         self,
@@ -434,12 +474,22 @@ class TestReconciliationBehavior:
 
         report = reconciler.reconcile()
 
-        assert report is not None, 'Assertion failed'
-        assert hasattr(report, "zombies"), 'Assertion failed'
-        assert hasattr(report, "orphans"), 'Assertion failed'
-        assert hasattr(report, "reconciled_count"), 'Assertion failed'
-        assert hasattr(report, "timestamp"), 'Assertion failed'
-        assert hasattr(report, "duration_seconds"), 'Assertion failed'
+        assert report is not None, "report should not be None"
+        assert hasattr(
+            report, "zombies"
+        ), 'Assertion condition not met: hasattr(report, "zombies")'
+        assert hasattr(
+            report, "orphans"
+        ), 'Assertion condition not met: hasattr(report, "orphans")'
+        assert hasattr(
+            report, "reconciled_count"
+        ), 'Assertion condition not met: hasattr(report, "reconciled_count")'
+        assert hasattr(
+            report, "timestamp"
+        ), 'Assertion condition not met: hasattr(report, "timestamp")'
+        assert hasattr(
+            report, "duration_seconds"
+        ), 'Assertion condition not met: hasattr(report, "duration_seconds")'
 
     def test_reconcile_idempotent(
         self,
@@ -463,8 +513,12 @@ class TestReconciliationBehavior:
         report1 = reconciler.reconcile()
         report2 = reconciler.reconcile()
 
-        assert len(report1.zombies) == len(report2.zombies), 'Assertion failed'
-        assert len(report1.orphans) == len(report2.orphans), 'Assertion failed'
+        assert (
+            len(report1.zombies) == len(report2.zombies)
+        ), f"Expected len(report1.zombies) == len(report2.zombies), got {len(report1.zombies)}"
+        assert (
+            len(report1.orphans) == len(report2.orphans)
+        ), f"Expected len(report1.orphans) == len(report2.orphans), got {len(report1.orphans)}"
 
     def test_reconcile_reports_duration(
         self,
@@ -486,8 +540,12 @@ class TestReconciliationBehavior:
 
         report = reconciler.reconcile()
 
-        assert report.duration_seconds >= 0.0, 'Assertion failed'
-        assert isinstance(report.duration_seconds, float), 'Assertion failed'
+        assert (
+            report.duration_seconds >= 0.0
+        ), f"Expected report.duration_seconds >= 0.0, got {report.duration_seconds}"
+        assert isinstance(
+            report.duration_seconds, float
+        ), f"Expected report.duration_seconds to be instance of float, got {type(report.duration_seconds).__name__}"
 
 
 class TestEnvironmentGating:
@@ -542,7 +600,9 @@ class TestErrorHandling:
         # Should not raise, should return error report
         report = reconciler.reconcile()
 
-        assert len(report.critical_issues) > 0, 'Assertion failed'
+        assert (
+            len(report.critical_issues) > 0
+        ), f"Expected len(report.critical_issues) > 0, got {len(report.critical_issues)}"
 
     def test_reconcile_error_handling_firestore_fails(
         self,
@@ -565,7 +625,9 @@ class TestErrorHandling:
         # Should not raise, should return error report
         report = reconciler.reconcile()
 
-        assert len(report.critical_issues) > 0, 'Assertion failed'
+        assert (
+            len(report.critical_issues) > 0
+        ), f"Expected len(report.critical_issues) > 0, got {len(report.critical_issues)}"
 
 
 class TestReconcilerEdgeCases:
@@ -591,9 +653,15 @@ class TestReconcilerEdgeCases:
 
         report = reconciler.reconcile()
 
-        assert len(report.zombies) == 0, 'Assertion failed'
-        assert len(report.orphans) == 0, 'Assertion failed'
-        assert report.reconciled_count == 0, 'Assertion failed'
+        assert (
+            len(report.zombies) == 0
+        ), f"Expected len(report.zombies) == 0, got {len(report.zombies)}"
+        assert (
+            len(report.orphans) == 0
+        ), f"Expected len(report.orphans) == 0, got {len(report.orphans)}"
+        assert (
+            report.reconciled_count == 0
+        ), f"Expected report.reconciled_count == 0, got {report.reconciled_count}"
 
     def test_reconcile_zombie_update_failure_not_blocking(
         self,
@@ -620,8 +688,12 @@ class TestReconcilerEdgeCases:
         # Should still return report with critical issues
         report = reconciler.reconcile()
 
-        assert len(report.critical_issues) > 0, 'Assertion failed'
-        assert "BTC/USD" in report.zombies, 'Assertion failed' # Zombie still detected
+        assert (
+            len(report.critical_issues) > 0
+        ), f"Expected len(report.critical_issues) > 0, got {len(report.critical_issues)}"
+        assert (
+            "BTC/USD" in report.zombies
+        ), 'Assertion condition not met: "BTC/USD" in report.zombies'
 
     def test_reconcile_notification_failure_not_blocking(
         self,
@@ -649,9 +721,13 @@ class TestReconcilerEdgeCases:
         # Should still return report
         report = reconciler.reconcile()
 
-        assert len(report.orphans) > 0, 'Assertion failed' # Orphan still detected
+        assert (
+            len(report.orphans) > 0
+        ), f"Orphan still detected: expected len(report.orphans) > 0, got {len(report.orphans)}"
         expected_error = ReconciliationErrors.ORPHAN_POSITION.format(symbol="BTC/USD")
-        assert any(expected_error in issue for issue in report.critical_issues), 'Assertion failed'
+        assert any(
+            expected_error in issue for issue in report.critical_issues
+        ), "Expected any(expected_error in issue for issue in report.critical_issues)"
 
     def test_reconcile_report_timestamp_is_set(
         self,
@@ -677,7 +753,9 @@ class TestReconcilerEdgeCases:
         report = reconciler.reconcile()
         after = datetime.now(datetime.now().astimezone().tzinfo)
 
-        assert before <= report.timestamp <= after, 'Assertion failed'
+        assert (
+            before <= report.timestamp <= after
+        ), f"Expected before <= report.timestamp <= after, got {before}"
 
     def test_reconcile_only_processes_open_positions(
         self,
@@ -705,8 +783,12 @@ class TestReconcilerEdgeCases:
         report = reconciler.reconcile()
 
         # Only BTC/USD should be detected as zombie
-        assert "BTC/USD" in report.zombies, 'Assertion failed'
-        assert len(report.zombies) == 1, 'Assertion failed'
+        assert (
+            "BTC/USD" in report.zombies
+        ), 'Assertion condition not met: "BTC/USD" in report.zombies'
+        assert (
+            len(report.zombies) == 1
+        ), f"Expected len(report.zombies) == 1, got {len(report.zombies)}"
 
     def test_reconcile_with_same_symbols_in_both_states(
         self,
@@ -735,9 +817,15 @@ class TestReconcilerEdgeCases:
         report = reconciler.reconcile()
 
         # No zombies or orphans when in sync
-        assert len(report.zombies) == 0, 'Assertion failed'
-        assert len(report.orphans) == 0, 'Assertion failed'
-        assert report.reconciled_count == 0, 'Assertion failed'
+        assert (
+            len(report.zombies) == 0
+        ), f"Expected len(report.zombies) == 0, got {len(report.zombies)}"
+        assert (
+            len(report.orphans) == 0
+        ), f"Expected len(report.orphans) == 0, got {len(report.orphans)}"
+        assert (
+            report.reconciled_count == 0
+        ), f"Expected report.reconciled_count == 0, got {report.reconciled_count}"
 
 
 class TestReconcilerSettings:
@@ -760,8 +848,12 @@ class TestReconcilerSettings:
             settings=custom_settings,
         )
 
-        assert reconciler.settings == custom_settings, 'Assertion failed'
-        assert reconciler.settings.ENVIRONMENT == "STAGING", 'Assertion failed'
+        assert (
+            reconciler.settings == custom_settings
+        ), f"Expected reconciler.settings == custom_settings, got {reconciler.settings}"
+        assert (
+            reconciler.settings.ENVIRONMENT == "STAGING"
+        ), 'Expected reconciler.settings.ENVIRONMENT == "STAGING"'
 
     def test_reconcile_defaults_to_get_settings_when_none(
         self,
@@ -785,7 +877,9 @@ class TestReconcilerSettings:
                 settings=None,
             )
 
-            assert reconciler.settings == mock_settings, 'Assertion failed'
+            assert (
+                reconciler.settings == mock_settings
+            ), f"Expected reconciler.settings == mock_settings, got {reconciler.settings}"
             mock_get_settings.assert_called_once()
 
 
@@ -827,12 +921,16 @@ class TestSafetyMechanisms:
         mock_position_repo.update_position.assert_not_called()
 
         # Should not be in critical issues (it's skipped intentionaly)
-        assert len(report.critical_issues) == 0, 'Assertion failed'
+        assert (
+            len(report.critical_issues) == 0
+        ), f"Expected len(report.critical_issues) == 0, got {len(report.critical_issues)}"
         # Should not be counted as a processed zombie in the final report lists
         # (implementation detail: logic creates zombies list first, then loops.
         # Check if code removes it from list or just skips actions.
         # Based on code: it iterates zombies but `continue`. So it IS in report.zombies list but NO action taken)
-        assert "BTC/USD" in report.zombies, 'Assertion failed'
+        assert (
+            "BTC/USD" in report.zombies
+        ), 'Assertion condition not met: "BTC/USD" in report.zombies'
 
     def test_reconcile_refuses_to_close_unverified_zombie(
         self,
@@ -869,12 +967,16 @@ class TestSafetyMechanisms:
         mock_position_repo.update_position.assert_not_called()
 
         # Should log critical issue
-        assert len(report.critical_issues) > 0, 'Assertion failed'
+        assert (
+            len(report.critical_issues) > 0
+        ), f"Expected len(report.critical_issues) > 0, got {len(report.critical_issues)}"
         expected_error = ReconciliationErrors.ZOMBIE_EXIT_GAP.format(symbol="BTC/USD")
-        assert any(expected_error in i for i in report.critical_issues), 'Assertion failed'
+        assert any(
+            expected_error in i for i in report.critical_issues
+        ), "Expected any(expected_error in i for i in report.critical_issues)"
 
         # Should alert notification service
-        assert mock_notification_service.notify_critical_sync_failure.called, 'Assertion failed'
+        assert mock_notification_service.notify_critical_sync_failure.called, f"Expected mock_notification_service.notify_critical_sync_failure.called to be truthy, got {mock_notification_service.notify_critical_sync_failure.called}"
 
 
 class TestReconcilerRaceConditions:
@@ -918,10 +1020,14 @@ class TestReconcilerRaceConditions:
         mock_position_repo.update_position.assert_not_called()
 
         # Should NOT be in critical issues (it's skipped intentionally)
-        assert len(report.critical_issues) == 0, 'Assertion failed'
+        assert (
+            len(report.critical_issues) == 0
+        ), f"Expected len(report.critical_issues) == 0, got {len(report.critical_issues)}"
 
         # Should be in zombies list but skipped
-        assert "BTC/USD" in report.zombies, 'Assertion failed'
+        assert (
+            "BTC/USD" in report.zombies
+        ), 'Assertion condition not met: "BTC/USD" in report.zombies'
 
     def test_manual_exit_verification_used(
         self,
@@ -998,11 +1104,17 @@ class TestTheoreticalPositions:
         report = reconciler.reconcile()
 
         # Should be NO zombies because theoretical trades are filtered out
-        assert len(report.zombies) == 0, 'Assertion failed'
-        assert "BTC/USD" not in report.zombies, 'Assertion failed'
+        assert (
+            len(report.zombies) == 0
+        ), f"Expected len(report.zombies) == 0, got {len(report.zombies)}"
+        assert (
+            "BTC/USD" not in report.zombies
+        ), 'Assertion condition not met: "BTC/USD" not in report.zombies'
 
         # Should be NO orphans
-        assert len(report.orphans) == 0, 'Assertion failed'
+        assert (
+            len(report.orphans) == 0
+        ), f"Expected len(report.orphans) == 0, got {len(report.orphans)}"
 
     def test_reconcile_detects_normal_zombies(
         self,
@@ -1044,8 +1156,14 @@ class TestTheoreticalPositions:
         report = reconciler.reconcile()
 
         # The normal position should be a zombie
-        assert len(report.zombies) == 1, 'Assertion failed'
-        assert "ETH/USD" in report.zombies, 'Assertion failed'
+        assert (
+            len(report.zombies) == 1
+        ), f"Expected len(report.zombies) == 1, got {len(report.zombies)}"
+        assert (
+            "ETH/USD" in report.zombies
+        ), 'Assertion condition not met: "ETH/USD" in report.zombies'
 
         # The theoretical position (BTC/USD) should be ignored
-        assert "BTC/USD" not in report.zombies, 'Assertion failed'
+        assert (
+            "BTC/USD" not in report.zombies
+        ), 'Assertion condition not met: "BTC/USD" not in report.zombies'

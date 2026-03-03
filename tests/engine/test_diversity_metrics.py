@@ -31,9 +31,15 @@ def test_diversity_metrics_single_pattern(generator):
     signals = [_make_signal("BULL_FLAG") for _ in range(5)]
     metrics = SignalGenerator.compute_diversity_metrics(signals)
 
-    assert metrics["total_signals"] == 5, 'Assertion failed'
-    assert metrics["pattern_distribution"]["BULL_FLAG"] == {"count": 5, "pct": 100.0}, 'Assertion failed'
-    assert metrics["shannon_entropy"] == 0.0, 'Assertion failed'
+    assert (
+        metrics["total_signals"] == 5
+    ), f'Expected total_signals == 5, got {metrics["total_signals"]}'
+    assert (
+        metrics["pattern_distribution"]["BULL_FLAG"] == {"count": 5, "pct": 100.0}
+    ), f'Expected BULL_FLAG distribution == {{"count": 5, "pct": 100.0}}, got {metrics["pattern_distribution"]["BULL_FLAG"]}'
+    assert (
+        metrics["shannon_entropy"] == 0.0
+    ), f'Expected shannon_entropy == 0.0 for single repeated pattern, got {metrics["shannon_entropy"]}'
 
 
 def test_diversity_metrics_uniform_distribution(generator):
@@ -42,13 +48,21 @@ def test_diversity_metrics_uniform_distribution(generator):
     signals = [_make_signal(p) for p in patterns]
     metrics = SignalGenerator.compute_diversity_metrics(signals)
 
-    assert metrics["total_signals"] == 4, 'Assertion failed'
-    assert len(metrics["pattern_distribution"]) == 4, 'Assertion failed'
+    assert (
+        metrics["total_signals"] == 4
+    ), f'Expected total_signals == 4, got {metrics["total_signals"]}'
+    assert (
+        len(metrics["pattern_distribution"]) == 4
+    ), f'Expected 4 pattern distributions, got {len(metrics["pattern_distribution"])}'
     for p in patterns:
-        assert metrics["pattern_distribution"][p] == {"count": 1, "pct": 25.0}, 'Assertion failed'
+        assert (
+            metrics["pattern_distribution"][p] == {"count": 1, "pct": 25.0}
+        ), f'Expected {p} distribution == {{"count": 1, "pct": 25.0}}, got {metrics["pattern_distribution"][p]}'
 
     # Shannon entropy of uniform distribution of 4 items = log2(4) = 2.0
-    assert abs(metrics["shannon_entropy"] - 2.0) < 0.01, 'Assertion failed'
+    assert (
+        abs(metrics["shannon_entropy"] - 2.0) < 0.01
+    ), f'Expected shannon_entropy ≈ 2.0 for uniform distribution, got {metrics["shannon_entropy"]}'
 
 
 def test_diversity_metrics_with_structural_context(generator):
@@ -61,18 +75,36 @@ def test_diversity_metrics_with_structural_context(generator):
     ]
     metrics = SignalGenerator.compute_diversity_metrics(signals)
 
-    assert metrics["structural_context_distribution"]["GARTLEY"] == 2, 'Assertion failed'
-    assert metrics["structural_context_distribution"]["ABCD"] == 1, 'Assertion failed'
-    assert metrics["conviction_distribution"]["HIGH"] == 3, 'Assertion failed'
-    assert metrics["conviction_distribution"].get(None, 0) == 1, 'Assertion failed'
+    assert (
+        metrics["structural_context_distribution"]["GARTLEY"] == 2
+    ), f'Expected GARTLEY count == 2, got {metrics["structural_context_distribution"]["GARTLEY"]}'
+    assert (
+        metrics["structural_context_distribution"]["ABCD"] == 1
+    ), f'Expected ABCD count == 1, got {metrics["structural_context_distribution"]["ABCD"]}'
+    assert (
+        metrics["conviction_distribution"]["HIGH"] == 3
+    ), f'Expected HIGH conviction count == 3, got {metrics["conviction_distribution"]["HIGH"]}'
+    assert (
+        metrics["conviction_distribution"].get(None, 0) == 1
+    ), f'Expected None conviction count == 1, got {metrics["conviction_distribution"].get(None, 0)}'
 
 
 def test_diversity_metrics_empty_signals(generator):
     """Empty list should return zero metrics gracefully."""
     metrics = SignalGenerator.compute_diversity_metrics([])
 
-    assert metrics["total_signals"] == 0, 'Assertion failed'
-    assert metrics["pattern_distribution"] == {}, 'Assertion failed'
-    assert metrics["structural_context_distribution"] == {}, 'Assertion failed'
-    assert metrics["conviction_distribution"] == {}, 'Assertion failed'
-    assert metrics["shannon_entropy"] == 0.0, 'Assertion failed'
+    assert (
+        metrics["total_signals"] == 0
+    ), f'Expected total_signals == 0, got {metrics["total_signals"]}'
+    assert (
+        metrics["pattern_distribution"] == {}
+    ), f'Expected empty pattern_distribution, got {metrics["pattern_distribution"]}'
+    assert (
+        metrics["structural_context_distribution"] == {}
+    ), f'Expected empty structural_context_distribution, got {metrics["structural_context_distribution"]}'
+    assert (
+        metrics["conviction_distribution"] == {}
+    ), f'Expected empty conviction_distribution, got {metrics["conviction_distribution"]}'
+    assert (
+        metrics["shannon_entropy"] == 0.0
+    ), f'Expected shannon_entropy == 0.0 for empty signals, got {metrics["shannon_entropy"]}'

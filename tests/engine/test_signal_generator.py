@@ -120,15 +120,25 @@ def test_generate_signal_bullish_engulfing(
     signal = signal_generator.generate_signals("BTC/USD", AssetClass.CRYPTO)
 
     # Verification
-    assert signal is not None, 'Assertion failed'
-    assert signal.symbol == "BTC/USD", 'Assertion failed'
-    assert signal.pattern_name == "BULLISH_ENGULFING", 'Assertion failed'
-    assert signal.ds == today, 'Assertion failed'
-    assert signal.strategy_id == "BULLISH_ENGULFING", 'Assertion failed'
+    assert signal is not None, "signal should not be None"
+    assert signal.symbol == "BTC/USD", 'Expected signal.symbol == "BTC/USD"'
+    assert (
+        signal.pattern_name == "BULLISH_ENGULFING"
+    ), 'Expected signal.pattern_name == "BULLISH_ENGULFING"'
+    assert signal.ds == today, f"Expected signal.ds == today, got {signal.ds}"
+    assert (
+        signal.strategy_id == "BULLISH_ENGULFING"
+    ), 'Expected signal.strategy_id == "BULLISH_ENGULFING"'
     # Engulfing invalidation is Open (100.0). Stop is 100.0 * 0.99 = 99.0
-    assert signal.suggested_stop == 100.0 * 0.99, 'Assertion failed'
-    assert signal.asset_class == AssetClass.CRYPTO, 'Assertion failed'
-    assert signal.entry_price == 105.0, 'Assertion failed' # Close price from df
+    assert (
+        signal.suggested_stop == 100.0 * 0.99
+    ), f"Expected signal.suggested_stop == 100.0 * 0.99, got {signal.suggested_stop}"
+    assert (
+        signal.asset_class == AssetClass.CRYPTO
+    ), f"Expected signal.asset_class == AssetClass.CRYPTO, got {signal.asset_class}"
+    assert (
+        signal.entry_price == 105.0
+    ), f"Close price from df: expected 105.0, got {signal.entry_price}"
 
 
 def test_generate_signal_bullish_hammer(
@@ -163,14 +173,24 @@ def test_generate_signal_bullish_hammer(
     signal = signal_generator.generate_signals("AAPL", AssetClass.EQUITY)
 
     # Verification
-    assert signal is not None, 'Assertion failed'
-    assert signal.symbol == "AAPL", 'Assertion failed'
-    assert signal.pattern_name == "BULLISH_HAMMER", 'Assertion failed'
-    assert signal.strategy_id == "BULLISH_HAMMER", 'Assertion failed'
-    assert signal.ds == today, 'Assertion failed'
-    assert signal.suggested_stop == 90.0 * 0.99, 'Assertion failed'
-    assert signal.asset_class == AssetClass.EQUITY, 'Assertion failed'
-    assert signal.entry_price == 105.0, 'Assertion failed'
+    assert signal is not None, "signal should not be None"
+    assert signal.symbol == "AAPL", 'Expected signal.symbol == "AAPL"'
+    assert (
+        signal.pattern_name == "BULLISH_HAMMER"
+    ), 'Expected signal.pattern_name == "BULLISH_HAMMER"'
+    assert (
+        signal.strategy_id == "BULLISH_HAMMER"
+    ), 'Expected signal.strategy_id == "BULLISH_HAMMER"'
+    assert signal.ds == today, f"Expected signal.ds == today, got {signal.ds}"
+    assert (
+        signal.suggested_stop == 90.0 * 0.99
+    ), f"Expected signal.suggested_stop == 90.0 * 0.99, got {signal.suggested_stop}"
+    assert (
+        signal.asset_class == AssetClass.EQUITY
+    ), f"Expected signal.asset_class == AssetClass.EQUITY, got {signal.asset_class}"
+    assert (
+        signal.entry_price == 105.0
+    ), f"Expected signal.entry_price == 105.0, got {signal.entry_price}"
 
 
 def test_generate_signal_priority(
@@ -202,8 +222,10 @@ def test_generate_signal_priority(
     signal = signal_generator.generate_signals("BTC/USD", AssetClass.CRYPTO)
 
     # Verification: Engulfing should win
-    assert signal is not None, 'Assertion failed'
-    assert signal.pattern_name == "BULLISH_ENGULFING", 'Assertion failed'
+    assert signal is not None, "signal should not be None"
+    assert (
+        signal.pattern_name == "BULLISH_ENGULFING"
+    ), 'Expected signal.pattern_name == "BULLISH_ENGULFING"'
 
 
 def test_generate_signal_none(signal_generator, mock_market_provider, mock_analyzer_cls):
@@ -226,7 +248,7 @@ def test_generate_signal_none(signal_generator, mock_market_provider, mock_analy
     signal = signal_generator.generate_signals("BTC/USD", AssetClass.CRYPTO)
 
     # Verification
-    assert signal is None, 'Assertion failed'
+    assert signal is None, f"signal should be None, got {signal}"
 
 
 def test_generate_signal_empty_data(signal_generator, mock_market_provider):
@@ -238,7 +260,7 @@ def test_generate_signal_empty_data(signal_generator, mock_market_provider):
     signal = signal_generator.generate_signals("BTC/USD", AssetClass.CRYPTO)
 
     # Verification
-    assert signal is None, 'Assertion failed'
+    assert signal is None, f"signal should be None, got {signal}"
 
 
 def test_check_exits_profit_hit_tp1_scaling(
@@ -286,11 +308,17 @@ def test_check_exits_profit_hit_tp1_scaling(
     )
 
     # Verification
-    assert len(exited) == 1, 'Assertion failed'
-    assert exited[0].status == SignalStatus.TP1_HIT, 'Assertion failed'
+    assert len(exited) == 1, f"Expected len(exited) == 1, got {len(exited)}"
+    assert (
+        exited[0].status == SignalStatus.TP1_HIT
+    ), f"Expected exited[0].status == SignalStatus.TP1_HIT, got {exited[0].status}"
     # Stop should be moved to Breakeven
-    assert exited[0].suggested_stop == 100.0, 'Assertion failed'
-    assert exited[0].exit_reason == ExitReason.TP1, 'Assertion failed'
+    assert (
+        exited[0].suggested_stop == 100.0
+    ), f"Expected exited[0].suggested_stop == 100.0, got {exited[0].suggested_stop}"
+    assert (
+        exited[0].exit_reason == ExitReason.TP1
+    ), f"Expected exited[0].exit_reason == ExitReason.TP1, got {exited[0].exit_reason}"
 
     # Ensure provider was NOT called because we passed dataframe
     mock_market_provider.get_daily_bars.assert_not_called()
@@ -333,8 +361,10 @@ def test_check_exits_invalidation(
     exited = signal_generator.check_exits([signal], "BTC/USD", AssetClass.CRYPTO)
 
     # Verification
-    assert len(exited) == 1, 'Assertion failed'
-    assert exited[0].status == SignalStatus.INVALIDATED, 'Assertion failed'
+    assert len(exited) == 1, f"Expected len(exited) == 1, got {len(exited)}"
+    assert (
+        exited[0].status == SignalStatus.INVALIDATED
+    ), f"Expected exited[0].status == SignalStatus.INVALIDATED, got {exited[0].status}"
 
 
 def test_check_exits_none(signal_generator, mock_market_provider, mock_analyzer_cls):
@@ -372,7 +402,7 @@ def test_check_exits_none(signal_generator, mock_market_provider, mock_analyzer_
     exited = signal_generator.check_exits([signal], "BTC/USD", AssetClass.CRYPTO)
 
     # Verification
-    assert len(exited) == 0, 'Assertion failed'
+    assert len(exited) == 0, f"Expected len(exited) == 0, got {len(exited)}"
 
 
 def test_check_exits_runner_exit(
@@ -421,9 +451,13 @@ def test_check_exits_runner_exit(
     )
 
     # Verification
-    assert len(exited) == 1, 'Assertion failed'
-    assert exited[0].status == SignalStatus.TP3_HIT, 'Assertion failed'
-    assert exited[0].exit_reason == ExitReason.TP_HIT, 'Assertion failed'
+    assert len(exited) == 1, f"Expected len(exited) == 1, got {len(exited)}"
+    assert (
+        exited[0].status == SignalStatus.TP3_HIT
+    ), f"Expected exited[0].status == SignalStatus.TP3_HIT, got {exited[0].status}"
+    assert (
+        exited[0].exit_reason == ExitReason.TP_HIT
+    ), f"Expected exited[0].exit_reason == ExitReason.TP_HIT, got {exited[0].exit_reason}"
 
     signal.take_profit_1 = 104.0
     signal.take_profit_2 = 110.0
@@ -457,10 +491,16 @@ def test_check_exits_runner_exit(
     )
 
     # Verification
-    assert len(exited) == 1, 'Assertion failed'
-    assert exited[0].status == SignalStatus.TP1_HIT, 'Assertion failed'
-    assert exited[0].suggested_stop == 100.0, 'Assertion failed' # Breakeven
-    assert exited[0].exit_reason == ExitReason.TP1, 'Assertion failed'
+    assert len(exited) == 1, f"Expected len(exited) == 1, got {len(exited)}"
+    assert (
+        exited[0].status == SignalStatus.TP1_HIT
+    ), f"Expected exited[0].status == SignalStatus.TP1_HIT, got {exited[0].status}"
+    assert (
+        exited[0].suggested_stop == 100.0
+    ), f"Breakeven: expected 100.0, got {exited[0].suggested_stop}"
+    assert (
+        exited[0].exit_reason == ExitReason.TP1
+    ), f"Expected exited[0].exit_reason == ExitReason.TP1, got {exited[0].exit_reason}"
 
 
 def test_check_exits_no_waiting_tp3_jump(
@@ -492,7 +532,7 @@ def test_check_exits_no_waiting_tp3_jump(
 
     # Verification: Currently BUGGY, it will return TP3_HIT.
     # We want it to be empty (no exit triggered).
-    assert len(exited) == 0, 'Assertion failed'
+    assert len(exited) == 0, f"Expected len(exited) == 0, got {len(exited)}"
 
 
 def test_check_exits_tp1_to_tp3_hit(
@@ -523,8 +563,10 @@ def test_check_exits_tp1_to_tp3_hit(
     )
 
     # Verification
-    assert len(exited) == 1, 'Assertion failed'
-    assert exited[0].status == SignalStatus.TP3_HIT, 'Assertion failed'
+    assert len(exited) == 1, f"Expected len(exited) == 1, got {len(exited)}"
+    assert (
+        exited[0].status == SignalStatus.TP3_HIT
+    ), f"Expected exited[0].status == SignalStatus.TP3_HIT, got {exited[0].status}"
 
 
 def test_check_exits_tp2_to_tp3_hit(
@@ -555,8 +597,10 @@ def test_check_exits_tp2_to_tp3_hit(
     )
 
     # Verification
-    assert len(exited) == 1, 'Assertion failed'
-    assert exited[0].status == SignalStatus.TP3_HIT, 'Assertion failed'
+    assert len(exited) == 1, f"Expected len(exited) == 1, got {len(exited)}"
+    assert (
+        exited[0].status == SignalStatus.TP3_HIT
+    ), f"Expected exited[0].status == SignalStatus.TP3_HIT, got {exited[0].status}"
 
 
 def test_check_exits_stale_waiting_signal_regression(
@@ -588,7 +632,7 @@ def test_check_exits_stale_waiting_signal_regression(
     )
 
     # Verification: Should be empty
-    assert len(exited) == 0, 'Assertion failed'
+    assert len(exited) == 0, f"Expected len(exited) == 0, got {len(exited)}"
 
 
 def test_check_exits_trail_update_higher(
@@ -641,14 +685,26 @@ def test_check_exits_trail_update_higher(
     )
 
     # Verification
-    assert len(result) == 1, 'Assertion failed'
-    assert result[0].take_profit_3 == 117.0, 'Assertion failed' # Updated to new Chandelier Exit
-    assert hasattr(result[0], "_trail_updated"), 'Assertion failed'
-    assert result[0]._trail_updated is True, 'Assertion failed'
-    assert hasattr(result[0], "_previous_tp3"), 'Assertion failed'
-    assert result[0]._previous_tp3 == 115.0, 'Assertion failed' # Previous value stored
+    assert len(result) == 1, f"Expected len(result) == 1, got {len(result)}"
+    assert (
+        result[0].take_profit_3 == 117.0
+    ), f"Updated to new Chandelier Exit: expected 117.0, got {result[0].take_profit_3}"
+    assert hasattr(
+        result[0], "_trail_updated"
+    ), 'Assertion condition not met: hasattr(result[0], "_trail_updated")'
+    assert (
+        result[0]._trail_updated is True
+    ), f"Expected result[0]._trail_updated to be True, got {result[0]._trail_updated}"
+    assert hasattr(
+        result[0], "_previous_tp3"
+    ), 'Assertion condition not met: hasattr(result[0], "_previous_tp3")'
+    assert (
+        result[0]._previous_tp3 == 115.0
+    ), f"Previous value stored: expected 115.0, got {result[0]._previous_tp3}"
     # Status should NOT have changed
-    assert result[0].status == SignalStatus.TP1_HIT, 'Assertion failed'
+    assert (
+        result[0].status == SignalStatus.TP1_HIT
+    ), f"Expected result[0].status == SignalStatus.TP1_HIT, got {result[0].status}"
 
 
 def test_check_exits_trail_not_updated_when_lower(
@@ -697,9 +753,11 @@ def test_check_exits_trail_not_updated_when_lower(
     )
 
     # Verification: No signals should be returned (no exit, no trail update)
-    assert len(result) == 0, 'Assertion failed'
+    assert len(result) == 0, f"Expected len(result) == 0, got {len(result)}"
     # Original signal should still have original TP3
-    assert signal.take_profit_3 == 125.0, 'Assertion failed'
+    assert (
+        signal.take_profit_3 == 125.0
+    ), f"Expected signal.take_profit_3 == 125.0, got {signal.take_profit_3}"
 
 
 def test_check_exits_trail_not_updated_for_waiting_status(
@@ -750,8 +808,10 @@ def test_check_exits_trail_not_updated_for_waiting_status(
     )
 
     # Verification: No exit, no trail update (WAITING status doesn't get trailing)
-    assert len(result) == 0, 'Assertion failed'
-    assert signal.take_profit_3 == 105.0, 'Assertion failed' # Unchanged
+    assert len(result) == 0, f"Expected len(result) == 0, got {len(result)}"
+    assert (
+        signal.take_profit_3 == 105.0
+    ), f"Unchanged: expected 105.0, got {signal.take_profit_3}"
 
 
 # =============================================================================
@@ -806,10 +866,16 @@ def test_check_exits_short_trail_update_lower(
     )
 
     # Verification
-    assert len(result) == 1, 'Assertion failed'
-    assert result[0].take_profit_3 == 88.0, 'Assertion failed' # Updated to new (lower) Chandelier Exit Short
-    assert result[0]._trail_updated is True, 'Assertion failed'
-    assert result[0]._previous_tp3 == 95.0, 'Assertion failed'
+    assert len(result) == 1, f"Expected len(result) == 1, got {len(result)}"
+    assert (
+        result[0].take_profit_3 == 88.0
+    ), f"Updated to new (lower) Chandelier Exit Short: expected 88.0, got {result[0].take_profit_3}"
+    assert (
+        result[0]._trail_updated is True
+    ), f"Expected result[0]._trail_updated to be True, got {result[0]._trail_updated}"
+    assert (
+        result[0]._previous_tp3 == 95.0
+    ), f"Expected result[0]._previous_tp3 == 95.0, got {result[0]._previous_tp3}"
 
 
 def test_check_exits_short_trail_not_updated_when_higher(
@@ -855,8 +921,10 @@ def test_check_exits_short_trail_not_updated_when_higher(
     )
 
     # Verification
-    assert len(result) == 0, 'Assertion failed'
-    assert signal.take_profit_3 == 80.0, 'Assertion failed' # Unchanged
+    assert len(result) == 0, f"Expected len(result) == 0, got {len(result)}"
+    assert (
+        signal.take_profit_3 == 80.0
+    ), f"Unchanged: expected 80.0, got {signal.take_profit_3}"
 
 
 def test_check_exits_short_tp3_hit(
@@ -902,9 +970,13 @@ def test_check_exits_short_tp3_hit(
     )
 
     # Verification
-    assert len(result) == 1, 'Assertion failed'
-    assert result[0].status == SignalStatus.TP3_HIT, 'Assertion failed'
-    assert result[0].exit_reason == ExitReason.TP_HIT, 'Assertion failed'
+    assert len(result) == 1, f"Expected len(result) == 1, got {len(result)}"
+    assert (
+        result[0].status == SignalStatus.TP3_HIT
+    ), f"Expected result[0].status == SignalStatus.TP3_HIT, got {result[0].status}"
+    assert (
+        result[0].exit_reason == ExitReason.TP_HIT
+    ), f"Expected result[0].exit_reason == ExitReason.TP_HIT, got {result[0].exit_reason}"
 
 
 def test_check_exits_stale_short_waiting_regression(
@@ -949,4 +1021,4 @@ def test_check_exits_stale_short_waiting_regression(
     )
 
     # Verification: Should be empty
-    assert len(result) == 0, 'Assertion failed'
+    assert len(result) == 0, f"Expected len(result) == 0, got {len(result)}"
