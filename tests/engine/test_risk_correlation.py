@@ -139,9 +139,8 @@ class TestRiskCorrelation:
         ), f"Expected result.passed to be False, got {result.passed}"
         assert (
             "highly correlated" in result.reason.lower()
-            or "correlation" in result.reason.lower(),
-            f"Expected risk gate reason to contain relevant keyword, got {result.reason}",
-        )
+            or "correlation" in result.reason.lower()
+        ), f"Expected risk gate reason to contain relevant keyword, got {result.reason}"
 
     def test_check_correlation_low(self, risk_engine, mock_repo, mock_market_provider):
         # Setup: Open position in ETH
@@ -211,6 +210,5 @@ class TestRiskCorrelation:
         ), f"Expected result.passed to be False, got {result.passed}"
         assert (
             "error checking correlation" in result.reason.lower()
-            or "market data missing" in result.reason.lower(),
-            f"Expected risk gate reason to contain relevant keyword, got {result.reason}",
-        )
+            or "market data missing" in result.reason.lower()
+        ), f"Expected risk gate reason to contain relevant keyword, got {result.reason}"
