@@ -80,10 +80,16 @@ class TestTPAutomationSignalGuard:
         result = execution_engine.close_position_emergency(pos)
 
         # Assert
-        assert pos is not None
-        assert pos.signal_id == old_signal.signal_id
-        assert pos.status == TradeStatus.OPEN
-        assert result is True
+        assert pos is not None, "Position should exist for matching signal_id"
+        assert (
+            pos.signal_id == old_signal.signal_id
+        ), f"Expected signal_id == {old_signal.signal_id}, got {pos.signal_id}"
+        assert (
+            pos.status == TradeStatus.OPEN
+        ), f"Expected status == OPEN, got {pos.status}"
+        assert (
+            result is True
+        ), "close_position_emergency should return True for own position"
         execution_engine.close_position_emergency.assert_called_once_with(old_position)
 
     def test_tp3_skips_when_position_signal_id_mismatch(self):
@@ -208,7 +214,9 @@ class TestAlpacaQtyValidation:
         alpaca_qty = float(alpaca_position.qty)
 
         # Assert
-        assert alpaca_qty >= pos.qty
+        assert (
+            alpaca_qty >= pos.qty
+        ), f"Alpaca qty ({alpaca_qty}) should be >= Firestore qty ({pos.qty})"
 
     def test_adjusts_qty_when_alpaca_has_less(self):
         """If Alpaca has fewer shares, adjust close qty to prevent overselling."""
@@ -227,7 +235,9 @@ class TestAlpacaQtyValidation:
             pos.qty = alpaca_qty
 
         # Assert
-        assert pos.qty == 5.0
+        assert (
+            pos.qty == 5.0
+        ), f"Position qty should be adjusted to Alpaca qty 5.0, got {pos.qty}"
 
     def test_marks_closed_externally_when_alpaca_position_gone(self):
         """If position doesn't exist on Alpaca (404), mark CLOSED_EXTERNALLY."""
@@ -249,8 +259,12 @@ class TestAlpacaQtyValidation:
                 pos.exit_reason = ExitReason.CLOSED_EXTERNALLY
 
         # Assert
-        assert pos.status == TradeStatus.CLOSED
-        assert pos.exit_reason == ExitReason.CLOSED_EXTERNALLY
+        assert (
+            pos.status == TradeStatus.CLOSED
+        ), f"Expected status == CLOSED after 404, got {pos.status}"
+        assert (
+            pos.exit_reason == ExitReason.CLOSED_EXTERNALLY
+        ), f"Expected exit_reason == CLOSED_EXTERNALLY, got {pos.exit_reason}"
 
     def test_skips_close_on_alpaca_api_error_not_404(self):
         """If API returns non-404 error (e.g. 500), do NOT mark closed."""
@@ -273,8 +287,12 @@ class TestAlpacaQtyValidation:
                 pass
 
         # Assert
-        assert pos.status == TradeStatus.OPEN
-        assert pos.exit_reason is None
+        assert (
+            pos.status == TradeStatus.OPEN
+        ), f"Status should remain OPEN on non-404 error, got {pos.status}"
+        assert (
+            pos.exit_reason is None
+        ), f"exit_reason should remain None on non-404 error, got {pos.exit_reason}"
 
 
 # =============================================================================
@@ -306,7 +324,9 @@ class TestDuplicateSymbolPrevention:
             pass
 
         # Assert
-        assert should_skip is True
+        assert (
+            should_skip is True
+        ), "Signal should be skipped when Alpaca position already exists"
 
     def test_proceeds_when_no_alpaca_position(self):
         """Should proceed with signal generation when no Alpaca position exists."""
@@ -330,4 +350,6 @@ class TestDuplicateSymbolPrevention:
             pass
 
         # Assert
-        assert should_skip is False
+        assert (
+            should_skip is False
+        ), "Signal should proceed when no Alpaca position exists (404)"

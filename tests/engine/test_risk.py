@@ -88,9 +88,13 @@ class TestRiskEngine:
         result = risk_engine.check_buying_power(asset_class, required_bp)
 
         # Assert
-        assert result.passed == expected_passed
+        assert (
+            result.passed == expected_passed
+        ), f"Expected passed == {expected_passed} for {asset_class}, got {result.passed}"
         if expected_reason_snippet:
-            assert expected_reason_snippet in result.reason
+            assert (
+                expected_reason_snippet in result.reason
+            ), f'Expected "{expected_reason_snippet}" in reason, got "{result.reason}"'
 
     @pytest.mark.parametrize(
         "num_positions,num_orders,expected_passed",
@@ -117,9 +121,13 @@ class TestRiskEngine:
         result = risk_engine.check_sector_limit(CRYPTO)
 
         # Assert
-        assert result.passed == expected_passed
+        assert (
+            result.passed == expected_passed
+        ), f"Expected passed == {expected_passed} with {num_positions} positions and {num_orders} orders, got {result.passed}"
         if not expected_passed:
-            assert "Max CRYPTO positions reached" in result.reason
+            assert (
+                "Max CRYPTO positions reached" in result.reason
+            ), f'Expected "Max CRYPTO positions reached" in reason, got "{result.reason}"'
 
     def test_daily_drawdown_fail(self, risk_engine, mock_client):
         """Verify daily drawdown limit hit."""
