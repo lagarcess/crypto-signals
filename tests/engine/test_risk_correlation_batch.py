@@ -61,6 +61,7 @@ class TestRiskCorrelationBatching:
         )
 
     def test_check_correlation_batches_calls(self, mock_components):
+        """Verify that multiple crypto symbols are batched into a single market data request."""
         risk_engine, mock_repo, mock_market = mock_components
 
         # Arrange: 1 open position (ETH) + 1 Candidate (BTC) -> Both Crypto
@@ -107,6 +108,7 @@ class TestRiskCorrelationBatching:
         ), f"Expected args[1] == AssetClass.CRYPTO, got {args[1]}"
 
     def test_check_correlation_mixed_assets(self, mock_components):
+        """Verify that market data requests are correctly split by asset class (Crypto vs Equity)."""
         risk_engine, mock_repo, mock_market = mock_components
 
         # Arrange: 1 Crypto Position, Candidate is Equity
