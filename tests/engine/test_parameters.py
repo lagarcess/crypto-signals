@@ -133,38 +133,58 @@ def test_elliott_wave_normal(factory, mock_analyzer):
     assert params["suggested_stop"] == 87.5, 'Expected params["suggested_stop"] == 87.5'
 
 
-def test_bullish_hammer(factory, mock_analyzer):
-    """Test Bullish Hammer parameters."""
-    latest = pd.Series(
-        {
-            "close": 100.0,
-            "low": 90.0,
-            "high": 110.0,
-            "open": 95.0,
-            "ATRr_14": 5.0,
-        }
-    )
+@pytest.mark.parametrize(
+    "pattern_name,ohlc,expected",
+    [
+        pytest.param(
+            "BULLISH_HAMMER",
+            {"close": 100.0, "low": 90.0, "high": 110.0, "open": 95.0, "ATRr_14": 5.0},
+            {"invalidation": 90.0, "stop": 89.1, "tp1": 110.0},
+            id="bullish_hammer"
+        ),
+        pytest.param(
+            "MORNING_STAR",
+            {"close": 100.0, "low": 90.0, "high": 110.0, "open": 95.0, "ATRr_14": 5.0},
+            {"invalidation": 90.0, "stop": 89.1, "tp1": 110.0},
+            id="morning_star"
+        ),
+        pytest.param(
+            "BULLISH_ENGULFING",
+            {"close": 105.0, "low": 90.0, "high": 110.0, "open": 95.0, "ATRr_14": 5.0},
+            {"invalidation": 95.0, "stop": 94.05, "tp1": 115.0},
+            id="bullish_engulfing"
+        ),
+        pytest.param(
+            "BULLISH_MARUBOZU",
+            {"close": 110.0, "low": 90.0, "high": 110.0, "open": 90.0, "ATRr_14": 5.0},
+            {"invalidation": 100.0, "stop": 99.0, "tp1": 120.0},
+            id="bullish_marubozu"
+        ),
+        pytest.param(
+            "INVERSE_HEAD_SHOULDERS",
+            {"close": 100.0, "low": 90.0, "high": 110.0, "open": 95.0, "ATRr_14": 5.0},
+            {"invalidation": None, "stop": 89.1, "tp1": 110.0},
+            id="fallthrough_pattern"
+        ),
+    ],
+)
+def test_pattern_parameters(factory, mock_analyzer, pattern_name, ohlc, expected):
+    """Test parameter calculation for various patterns."""
+    latest = pd.Series(ohlc)
     latest.name = pd.Timestamp("2023-01-01")
 
     params = factory.get_parameters(
         symbol="BTC/USD",
         asset_class=AssetClass.CRYPTO,
-        pattern_name="BULLISH_HAMMER",
+        pattern_name=pattern_name,
         latest=latest,
         sig_id="test_id",
         analyzer=mock_analyzer,
     )
 
-    # invalidation = low = 90
-    # stop = 90 * 0.99 = 89.1
-    # TPs (default ATR based):
-    # tp1 = 100 + 2*5 = 110
-
-    assert (
-        params["invalidation_price"] == 90.0
-    ), 'Expected params["invalidation_price"] == 90.0'
-    assert params["suggested_stop"] == 89.1, 'Expected params["suggested_stop"] == 89.1'
-    assert params["take_profit_1"] == 110.0, 'Expected params["take_profit_1"] == 110.0'
+    assert params["invalidation_price"] == expected["invalidation"]
+    assert params["suggested_stop"] == pytest.approx(expected["stop"])
+    assert params["take_profit_1"] == pytest.approx(expected["tp1"])
 
 
 def test_hydrate_safe_values(factory):
@@ -276,124 +296,3 @@ def test_harmonic_metadata(factory, mock_analyzer):
     ), 'Expected params["valid_until"] == expected_ts'
 
 
-def test_morning_star(factory, mock_analyzer):
-    """Test Morning Star parameters."""
-    latest = pd.Series(
-        {
-            "close": 100.0,
-            "low": 90.0,
-            "high": 110.0,
-            "open": 95.0,
-            "ATRr_14": 5.0,
-        }
-    )
-    latest.name = pd.Timestamp("2023-01-01")
-
-    params = factory.get_parameters(
-        symbol="BTC/USD",
-        asset_class=AssetClass.CRYPTO,
-        pattern_name="MORNING_STAR",
-        latest=latest,
-        sig_id="test_id",
-        analyzer=mock_analyzer,
-    )
-
-    # invalidation = low = 90
-    # stop = 90 * 0.99 = 89.1
-    # TPs (default ATR based)
-    assert (
-        params["invalidation_price"] == 90.0
-    ), 'Expected params["invalidation_price"] == 90.0'
-    assert params["suggested_stop"] == 89.1, 'Expected params["suggested_stop"] == 89.1'
-
-
-def test_bullish_engulfing(factory, mock_analyzer):
-    """Test Bullish Engulfing parameters."""
-    latest = pd.Series(
-        {
-            "close": 105.0,
-            "low": 90.0,
-            "high": 110.0,
-            "open": 95.0,
-            "ATRr_14": 5.0,
-        }
-    )
-    latest.name = pd.Timestamp("2023-01-01")
-
-    params = factory.get_parameters(
-        symbol="BTC/USD",
-        asset_class=AssetClass.CRYPTO,
-        pattern_name="BULLISH_ENGULFING",
-        latest=latest,
-        sig_id="test_id",
-        analyzer=mock_analyzer,
-    )
-
-    # invalidation = open = 95.0
-    # stop = 95.0 * 0.99 = 94.05
-    assert (
-        params["invalidation_price"] == 95.0
-    ), 'Expected params["invalidation_price"] == 95.0'
-    assert params["suggested_stop"] == 94.05, 'Expected params["suggested_stop"] == 94.05'
-
-
-def test_bullish_marubozu(factory, mock_analyzer):
-    """Test Bullish Marubozu parameters."""
-    latest = pd.Series(
-        {
-            "close": 110.0,
-            "low": 90.0,
-            "high": 110.0,
-            "open": 90.0,
-            "ATRr_14": 5.0,
-        }
-    )
-    latest.name = pd.Timestamp("2023-01-01")
-
-    params = factory.get_parameters(
-        symbol="BTC/USD",
-        asset_class=AssetClass.CRYPTO,
-        pattern_name="BULLISH_MARUBOZU",
-        latest=latest,
-        sig_id="test_id",
-        analyzer=mock_analyzer,
-    )
-
-    # midpoint = (90+110)/2 = 100
-    # invalidation = 100
-    # stop = 100 * 0.99 = 99.0
-    assert (
-        params["invalidation_price"] == 100.0
-    ), 'Expected params["invalidation_price"] == 100.0'
-    assert params["suggested_stop"] == 99.0, 'Expected params["suggested_stop"] == 99.0'
-
-
-def test_fallthrough_pattern(factory, mock_analyzer):
-    """Test standard fallback logic for generic patterns."""
-    latest = pd.Series(
-        {
-            "close": 100.0,
-            "low": 90.0,
-            "high": 110.0,
-            "open": 95.0,
-            "ATRr_14": 5.0,
-        }
-    )
-    latest.name = pd.Timestamp("2023-01-01")
-
-    params = factory.get_parameters(
-        symbol="BTC/USD",
-        asset_class=AssetClass.CRYPTO,
-        pattern_name="INVERSE_HEAD_SHOULDERS",
-        latest=latest,
-        sig_id="test_id",
-        analyzer=mock_analyzer,
-    )
-
-    # Default stop: low * 0.99 = 89.1
-    # Default TP1: close + 2*ATR = 100 + 10 = 110
-    assert params["suggested_stop"] == 89.1, 'Expected params["suggested_stop"] == 89.1'
-    assert params["take_profit_1"] == 110.0, 'Expected params["take_profit_1"] == 110.0'
-    assert (
-        params["invalidation_price"] is None
-    ), 'Assertion condition not met: params["invalidation_price"] is None'
