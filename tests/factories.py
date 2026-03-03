@@ -83,7 +83,13 @@ class PositionFactory(ModelFactory[Position]):
     account_id = "paper"
     symbol = "BTC/USD"
     asset_class = AssetClass.CRYPTO
-    signal_id = "test-signal-123"
+
+    @post_generated
+    @classmethod
+    def signal_id(cls, ds: date, symbol: str) -> str:
+        # Default strategy for PositionFactory if none provided
+        return get_deterministic_id(f"{ds}|BULLISH_ENGULFING|{symbol}")
+
     status = TradeStatus.OPEN
     entry_fill_price = 50000.0
     current_stop_loss = 48000.0

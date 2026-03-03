@@ -15,7 +15,12 @@ def test_send_signal_includes_thread_name_for_forum_channels():
     """
     from datetime import date
 
-    from crypto_signals.domain.schemas import AssetClass, Signal, SignalStatus
+    from crypto_signals.domain.schemas import (
+        AssetClass,
+        Signal,
+        SignalStatus,
+        get_deterministic_id,
+    )
     from crypto_signals.notifications.discord import DiscordClient
 
     # Create a mock settings object
@@ -30,12 +35,17 @@ def test_send_signal_includes_thread_name_for_forum_channels():
         # Create Discord client
         client = DiscordClient(settings=settings_instance)
 
+        test_ds = date(2025, 1, 15)
+        test_strategy = "test-strategy"
+        test_symbol = "BTC/USD"
+        test_id = get_deterministic_id(f"{test_ds}|{test_strategy}|{test_symbol}")
+
         # Create a test signal
         signal = Signal(
-            signal_id="test-signal-123",
-            ds=date(2025, 1, 15),
-            strategy_id="test-strategy",
-            symbol="BTC/USD",
+            signal_id=test_id,
+            ds=test_ds,
+            strategy_id=test_strategy,
+            symbol=test_symbol,
             asset_class=AssetClass.CRYPTO,
             pattern_name="inverse_head_shoulders",
             entry_price=50000.0,
