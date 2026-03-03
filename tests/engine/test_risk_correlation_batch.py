@@ -7,14 +7,14 @@ import pytest
 from alpaca.trading.client import TradingClient
 from crypto_signals.domain.schemas import (
     AssetClass,
-    Position,
-    Signal,
     SignalStatus,
     TradeStatus,
 )
 from crypto_signals.engine.risk import RiskEngine
 from crypto_signals.market.data_provider import MarketDataProvider
 from crypto_signals.repository.firestore import PositionRepository
+
+from tests.factories import PositionFactory, SignalFactory
 
 
 class TestRiskCorrelationBatching:
@@ -37,36 +37,25 @@ class TestRiskCorrelationBatching:
             return risk, repo, market
 
     def create_signal(self, symbol="BTC/USD"):
-        return Signal(
+        return SignalFactory.build(
             signal_id="sig_1",
-            ds=datetime.now().date(),
             strategy_id="strat",
             symbol=symbol,
-            asset_class=AssetClass.CRYPTO,
             pattern_name="p",
-            pattern_classification="Bullish",
-            pattern_duration_days=1,
-            pattern_quality_score=1,
-            confidence=0.9,
             status=SignalStatus.WAITING,
             entry_price=100,
             take_profit_1=110,
             suggested_stop=90,
-            timestamp=datetime.now(),
         )
 
     def create_position(self, symbol="ETH/USD"):
-        return Position(
+        return PositionFactory.build(
             position_id="p1",
-            ds=datetime.now().date(),
-            account_id="a1",
             signal_id="s1",
             symbol=symbol,
-            asset_class=AssetClass.CRYPTO,
             status=TradeStatus.OPEN,
             entry_fill_price=100,
             qty=1,
-            side="buy",
             current_stop_loss=90,
             alpaca_order_id="o1",
         )

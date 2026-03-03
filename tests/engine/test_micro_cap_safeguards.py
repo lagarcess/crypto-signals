@@ -1,11 +1,12 @@
 """Tests for micro-cap safeguards and edge cases (Issue #136)."""
 
-from datetime import date
 from unittest.mock import MagicMock, patch
 
 import pytest
-from crypto_signals.domain.schemas import AssetClass, OrderSide, Signal, SignalStatus
+from crypto_signals.domain.schemas import AssetClass, OrderSide
 from crypto_signals.engine.execution import ExecutionEngine
+
+from tests.factories import SignalFactory
 
 
 @pytest.fixture
@@ -51,9 +52,8 @@ class TestMicroCapEdgeCases:
     ):
         """Ensure qty doesn't explode when stop is at SAFE_STOP_VAL."""
         # Arrange: Signal with micro-cap params (very tight stop)
-        signal = Signal(
+        signal = SignalFactory.build(
             signal_id="micro-cap-test",
-            ds=date(2026, 1, 24),
             strategy_id="TEST",
             symbol="PEPE/USD",
             asset_class=AssetClass.CRYPTO,
@@ -61,7 +61,6 @@ class TestMicroCapEdgeCases:
             pattern_name="ELLIOTT_WAVE_135",
             # suggested_stop very close to entry
             suggested_stop=0.00000999,
-            status=SignalStatus.WAITING,
             take_profit_1=0.00001200,
             take_profit_2=0.00001500,
             side=OrderSide.BUY,

@@ -1,14 +1,13 @@
-from datetime import date
 from unittest.mock import MagicMock, patch
 
 import pytest
 from crypto_signals.domain.schemas import (
-    AssetClass,
     OrderSide,
-    Signal,
     TradeType,
 )
 from crypto_signals.engine.execution import ExecutionEngine
+
+from tests.factories import SignalFactory
 
 
 @pytest.fixture
@@ -51,12 +50,10 @@ def test_theoretical_execution_long(execution_engine, mock_settings, mock_tradin
     mock_settings.ENVIRONMENT = "DEV"
     mock_settings.ENABLE_EXECUTION = False  # Should trigger theoretical path
 
-    signal = Signal(
+    signal = SignalFactory.build(
         signal_id="test_sig_001",
-        ds=date.today(),
         strategy_id="strat_1",
         symbol="BTC/USD",
-        asset_class=AssetClass.CRYPTO,
         entry_price=100.0,
         suggested_stop=95.0,  # Risk = 5.0
         pattern_name="TEST_PATTERN",
@@ -88,12 +85,10 @@ def test_theoretical_execution_short(
     mock_settings.ENVIRONMENT = "DEV"
     mock_settings.ENABLE_EXECUTION = False
 
-    signal = Signal(
+    signal = SignalFactory.build(
         signal_id="test_sig_002",
-        ds=date.today(),
         strategy_id="strat_1",
         symbol="ETH/USD",
-        asset_class=AssetClass.CRYPTO,
         entry_price=100.0,
         suggested_stop=105.0,
         pattern_name="TEST_PATTERN",
@@ -135,12 +130,10 @@ def test_execution_gating_prod_live(execution_engine, mock_settings, mock_tradin
     mock_order.status = "new"
     mock_trading_client.submit_order.return_value = mock_order
 
-    signal = Signal(
+    signal = SignalFactory.build(
         signal_id="test_sig_003",
-        ds=date.today(),
         strategy_id="strat_1",
         symbol="BTC/USD",
-        asset_class=AssetClass.CRYPTO,
         entry_price=100.0,
         suggested_stop=95.0,
         pattern_name="TEST_PATTERN",

@@ -1,20 +1,20 @@
 """Unit tests for the StateReconciler module."""
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
 from crypto_signals.domain.enums import ReconciliationErrors
 from crypto_signals.domain.schemas import (
     ExitReason,
-    OrderSide,
-    Position,
     TradeStatus,
     TradeType,
 )
 from crypto_signals.engine.reconciler import StateReconciler
 from crypto_signals.engine.reconciler_notifications import ReconcilerNotificationService
 from crypto_signals.repository.firestore import PositionRepository
+
+from tests.factories import PositionFactory
 
 
 @pytest.fixture
@@ -48,19 +48,11 @@ def mock_settings():
 @pytest.fixture
 def sample_open_position():
     """Create a sample OPEN position."""
-    return Position(
+    return PositionFactory.build(
         position_id="signal-123",
-        ds=date(2025, 1, 15),
-        account_id="paper",
-        symbol="BTC/USD",
         signal_id="signal-123",
         alpaca_order_id="order-123",
-        status=TradeStatus.OPEN,
-        entry_fill_price=50000.0,
-        current_stop_loss=48000.0,
         qty=0.01,
-        side=OrderSide.BUY,
-        target_entry_price=50000.0,
     )
 
 
@@ -157,12 +149,12 @@ class TestDetectZombies:
     ):
         """A position created < 5 mins ago is skipped to prevent race conditions (Issue #244)."""
         now = datetime.now(timezone.utc)
-        pos = MagicMock(spec=Position)
-        pos.symbol = "BTC/USD"
-        pos.status = TradeStatus.OPEN
-        pos.position_id = "pos-123"
-        pos.trade_type = "EXECUTED"
-        pos.created_at = now - timedelta(seconds=10)  # 10 seconds old
+        pos = PositionFactory.build(
+            symbol="BTC/USD",
+            position_id="pos-123",
+            trade_type="EXECUTED",
+            created_at=now - timedelta(seconds=10),  # 10 seconds old
+        )
 
         mock_trading_client.get_all_positions.return_value = []
         mock_position_repo.get_open_positions.return_value = [pos]
@@ -181,17 +173,17 @@ class TestDetectZombies:
     ):
         """Reconciliation handles multiple zombies."""
         # Create two open positions in Firestore
-        pos1 = MagicMock(spec=Position)
-        pos1.symbol = "BTC/USD"
-        pos1.status = TradeStatus.OPEN
-        pos1.position_id = "signal-1"
-        pos1.trade_type = "EXECUTED"
+        pos1 = PositionFactory.build(
+            symbol="BTC/USD",
+            position_id="signal-1",
+            trade_type="EXECUTED",
+        )
 
-        pos2 = MagicMock(spec=Position)
-        pos2.symbol = "ETH/USD"
-        pos2.status = TradeStatus.OPEN
-        pos2.position_id = "signal-2"
-        pos2.trade_type = "EXECUTED"
+        pos2 = PositionFactory.build(
+            symbol="ETH/USD",
+            position_id="signal-2",
+            trade_type="EXECUTED",
+        )
 
         mock_trading_client.get_all_positions.return_value = []
         mock_position_repo.get_open_positions.return_value = [pos1, pos2]
@@ -371,12 +363,12 @@ class TestHealingAndAlerts:
     ):
         """If manual exit verification fails, position is NOT closed (Issue #244)."""
         now = datetime.now(timezone.utc)
-        pos = MagicMock(spec=Position)
-        pos.symbol = "ETH/USD"
-        pos.status = TradeStatus.OPEN
-        pos.position_id = "pos-456"
-        pos.trade_type = "EXECUTED"
-        pos.created_at = now - timedelta(minutes=10)
+        pos = PositionFactory.build(
+            symbol="ETH/USD",
+            position_id="pos-456",
+            trade_type="EXECUTED",
+            created_at=now - timedelta(minutes=10),
+        )
 
         mock_trading_client.get_all_positions.return_value = []
         mock_position_repo.get_open_positions.return_value = [pos]
@@ -399,12 +391,12 @@ class TestHealingAndAlerts:
     ):
         """If manual exit verification succeeds, position IS updated (Issue #244)."""
         now = datetime.now(timezone.utc)
-        pos = MagicMock(spec=Position)
-        pos.symbol = "ETH/USD"
-        pos.status = TradeStatus.OPEN
-        pos.position_id = "pos-789"
-        pos.trade_type = "EXECUTED"
-        pos.created_at = now - timedelta(minutes=10)
+        pos = PositionFactory.build(
+            symbol="ETH/USD",
+            position_id="pos-789",
+            trade_type="EXECUTED",
+            created_at=now - timedelta(minutes=10),
+        )
 
         mock_trading_client.get_all_positions.return_value = []
         mock_position_repo.get_open_positions.return_value = [pos]
@@ -972,18 +964,12 @@ class TestTheoreticalPositions:
 
     @pytest.fixture
     def theoretical_position(self):
-        return Position(
+        return PositionFactory.build(
             position_id="theo-123",
-            ds=date(2025, 1, 15),
             account_id="theoretical",
-            symbol="BTC/USD",
             signal_id="sig-123",
             alpaca_order_id="theo-order-1",
-            status=TradeStatus.OPEN,
-            entry_fill_price=50000.0,
-            current_stop_loss=48000.0,
             qty=0.01,
-            side=OrderSide.BUY,
             trade_type=TradeType.THEORETICAL.value,  # Key field
         )
 
@@ -1028,18 +1014,14 @@ class TestTheoreticalPositions:
     ):
         """Verify that normal OPEN positions ARE flagged as zombies, even if mixed with theoreticals."""
         # Create a normal executed position
-        normal_position = Position(
+        normal_position = PositionFactory.build(
             position_id="real-123",
-            ds=date(2025, 1, 15),
-            account_id="paper",
             symbol="ETH/USD",
             signal_id="sig-456",
             alpaca_order_id="alpaca-order-1",
-            status=TradeStatus.OPEN,
             entry_fill_price=2000.0,
             current_stop_loss=1900.0,
             qty=1.0,
-            side=OrderSide.BUY,
             trade_type=TradeType.EXECUTED.value,  # Normal trade
         )
 

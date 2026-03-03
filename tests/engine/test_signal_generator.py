@@ -9,10 +9,11 @@ from crypto_signals.domain.schemas import (
     AssetClass,
     ExitReason,
     OrderSide,
-    Signal,
     SignalStatus,
 )
 from crypto_signals.engine.signal_generator import SignalGenerator
+
+from tests.factories import SignalFactory
 
 
 @pytest.fixture
@@ -245,12 +246,11 @@ def test_check_exits_profit_hit_tp1_scaling(
 ):
     """Test detecting a Take Profit 1 hit (Scaling)."""
     # Setup Active Signal
-    signal = Signal(
+    signal = SignalFactory.build(
         signal_id="sig_1",
         ds=date(2023, 1, 1),
         strategy_id="strat_1",
         symbol="BTC/USD",
-        asset_class=AssetClass.CRYPTO,
         entry_price=100.0,
         pattern_name="TEST",
         suggested_stop=90.0,
@@ -258,7 +258,6 @@ def test_check_exits_profit_hit_tp1_scaling(
         take_profit_1=110.0,
         take_profit_2=120.0,
         invalidation_price=90.0,
-        valid_until=datetime.now(timezone.utc) + timedelta(hours=24),
     )
 
     # Setup Market Data (Hit TP1)
@@ -381,12 +380,11 @@ def test_check_exits_runner_exit(
 ):
     """Test detecting a Runner Exit (Chandelier Exit)."""
     # Setup Active Signal (TP2 already hit, now in Runner mode)
-    signal = Signal(
+    signal = SignalFactory.build(
         signal_id="sig_2",
         ds=date(2023, 1, 1),
         strategy_id="strat_1",
         symbol="BTC/USD",
-        asset_class=AssetClass.CRYPTO,
         entry_price=100.0,
         pattern_name="TEST",
         suggested_stop=110.0,
@@ -470,12 +468,11 @@ def test_check_exits_no_waiting_tp3_jump(
 ):
     """Verify WAITING signal is NOT marked TP3_HIT when close < chandelier (Issue 123)."""
     # Setup Active Signal in WAITING status
-    signal = Signal(
+    signal = SignalFactory.build(
         signal_id="sig_waiting",
         ds=date(2023, 1, 1),
         strategy_id="strat_1",
         symbol="BTC/USD",
-        asset_class=AssetClass.CRYPTO,
         entry_price=100.0,
         pattern_name="TEST",
         suggested_stop=90.0,
@@ -503,12 +500,11 @@ def test_check_exits_tp1_to_tp3_hit(
 ):
     """Verify TP1_HIT signal correctly transitions to TP3_HIT (Issue 123)."""
     # Setup Active Signal in TP1_HIT status
-    signal = Signal(
+    signal = SignalFactory.build(
         signal_id="sig_tp1",
         ds=date(2023, 1, 1),
         strategy_id="strat_1",
         symbol="BTC/USD",
-        asset_class=AssetClass.CRYPTO,
         entry_price=100.0,
         pattern_name="TEST",
         suggested_stop=100.0,
@@ -536,12 +532,11 @@ def test_check_exits_tp2_to_tp3_hit(
 ):
     """Verify TP2_HIT signal correctly transitions to TP3_HIT (Issue 123)."""
     # Setup Active Signal in TP2_HIT status
-    signal = Signal(
+    signal = SignalFactory.build(
         signal_id="sig_tp2",
         ds=date(2023, 1, 1),
         strategy_id="strat_1",
         symbol="BTC/USD",
-        asset_class=AssetClass.CRYPTO,
         entry_price=100.0,
         pattern_name="TEST",
         suggested_stop=110.0,
@@ -570,12 +565,11 @@ def test_check_exits_stale_waiting_signal_regression(
     """Regression: 288h-old WAITING signal does not phantom-trigger TP3 (Issue 123)."""
     # Setup Active Signal in WAITING status, created 288 hours ago
     now_utc = datetime.now(timezone.utc)
-    signal = Signal(
+    signal = SignalFactory.build(
         signal_id="sig_stale",
         ds=date(2023, 1, 1),
         strategy_id="strat_1",
         symbol="BTC/USD",
-        asset_class=AssetClass.CRYPTO,
         entry_price=100.0,
         pattern_name="TEST",
         suggested_stop=90.0,
@@ -602,12 +596,11 @@ def test_check_exits_trail_update_higher(
 ):
     """Test that take_profit_3 is updated when Chandelier Exit moves higher."""
     # Setup Active Signal in Runner phase (TP1_HIT)
-    signal = Signal(
+    signal = SignalFactory.build(
         signal_id="sig_trail_1",
         ds=date(2023, 1, 1),
         strategy_id="strat_1",
         symbol="BTC/USD",
-        asset_class=AssetClass.CRYPTO,
         entry_price=100.0,
         pattern_name="TEST",
         suggested_stop=100.0,  # At breakeven
@@ -663,12 +656,11 @@ def test_check_exits_trail_not_updated_when_lower(
 ):
     """Test that take_profit_3 is NOT updated when Chandelier Exit is lower."""
     # Setup Active Signal in Runner phase (TP2_HIT)
-    signal = Signal(
+    signal = SignalFactory.build(
         signal_id="sig_trail_2",
         ds=date(2023, 1, 1),
         strategy_id="strat_1",
         symbol="BTC/USD",
-        asset_class=AssetClass.CRYPTO,
         entry_price=100.0,
         pattern_name="TEST",
         suggested_stop=100.0,
@@ -715,12 +707,11 @@ def test_check_exits_trail_not_updated_for_waiting_status(
 ):
     """Test that trailing updates only apply to TP1_HIT and TP2_HIT statuses."""
     # Setup Active Signal in WAITING status (not in Runner phase yet)
-    signal = Signal(
+    signal = SignalFactory.build(
         signal_id="sig_trail_3",
         ds=date(2023, 1, 1),
         strategy_id="strat_1",
         symbol="BTC/USD",
-        asset_class=AssetClass.CRYPTO,
         entry_price=100.0,
         pattern_name="TEST",
         suggested_stop=90.0,
@@ -729,7 +720,6 @@ def test_check_exits_trail_not_updated_for_waiting_status(
         take_profit_2=120.0,
         take_profit_3=105.0,  # Initial TP3
         invalidation_price=90.0,
-        valid_until=datetime.now(timezone.utc) + timedelta(hours=24),
     )
 
     # Setup Market Data: Chandelier Exit is higher but status is WAITING
@@ -774,12 +764,11 @@ def test_check_exits_short_trail_update_lower(
 ):
     """Test that Short position take_profit_3 is updated when Chandelier Exit moves LOWER."""
     # Setup Active SHORT SHORT Signal in Runner phase (TP1_HIT)
-    signal = Signal(
+    signal = SignalFactory.build(
         signal_id="sig_short_trail_1",
         ds=date(2023, 1, 1),
         strategy_id="strat_1",
         symbol="BTC/USD",
-        asset_class=AssetClass.CRYPTO,
         entry_price=100.0,  # Shorted at $100
         pattern_name="TEST",
         suggested_stop=110.0,  # Stop loss ABOVE entry for short
@@ -828,12 +817,11 @@ def test_check_exits_short_trail_not_updated_when_higher(
 ):
     """Test that Short position take_profit_3 is NOT updated when Chandelier Exit is HIGHER."""
     # Setup Active SHORT Signal in Runner phase (TP2_HIT)
-    signal = Signal(
+    signal = SignalFactory.build(
         signal_id="sig_short_trail_2",
         ds=date(2023, 1, 1),
         strategy_id="strat_1",
         symbol="BTC/USD",
-        asset_class=AssetClass.CRYPTO,
         side=OrderSide.SELL,
         entry_price=100.0,
         status=SignalStatus.TP2_HIT,
@@ -876,12 +864,11 @@ def test_check_exits_short_tp3_hit(
 ):
     """Test detecting a Short position Take Profit 3 hit."""
     # Setup Active SHORT Signal in Runner phase
-    signal = Signal(
+    signal = SignalFactory.build(
         signal_id="sig_short_tp3",
         ds=date(2023, 1, 1),
         strategy_id="strat_1",
         symbol="BTC/USD",
-        asset_class=AssetClass.CRYPTO,
         side=OrderSide.SELL,
         entry_price=100.0,
         status=SignalStatus.TP2_HIT,
@@ -925,12 +912,11 @@ def test_check_exits_stale_short_waiting_regression(
 ):
     """Regression: 288h-old SHORT WAITING signal does not phantom-trigger TP3."""
     now_utc = datetime.now(timezone.utc)
-    signal = Signal(
+    signal = SignalFactory.build(
         signal_id="sig_stale_short",
         ds=date(2023, 1, 1),
         strategy_id="strat_1",
         symbol="BTC/USD",
-        asset_class=AssetClass.CRYPTO,
         side=OrderSide.SELL,
         entry_price=100.0,
         status=SignalStatus.WAITING,

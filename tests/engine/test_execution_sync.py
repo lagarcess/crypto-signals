@@ -1,15 +1,14 @@
 """Unit tests for the ExecutionEngine position sync logic (Issue #139)."""
 
-from datetime import date
 from unittest.mock import MagicMock, patch
 
 import pytest
 from crypto_signals.domain.schemas import (
-    OrderSide,
-    Position,
     TradeStatus,
 )
 from crypto_signals.engine.execution import ExecutionEngine
+
+from tests.factories import PositionFactory
 
 
 @pytest.fixture
@@ -55,20 +54,13 @@ def execution_engine(mock_settings, mock_trading_client, mock_reconciler):
 @pytest.fixture
 def sample_position():
     """Create a sample OPEN position."""
-    return Position(
+    return PositionFactory.build(
         position_id="test-pos-sync-1",
-        ds=date(2025, 1, 15),
-        account_id="paper",
-        symbol="BTC/USD",
         signal_id="test-signal-sync-1",
         alpaca_order_id="entry-order-1",
         tp_order_id="tp-order-1",
         sl_order_id="sl-order-1",
-        status=TradeStatus.OPEN,
-        entry_fill_price=50000.0,
-        current_stop_loss=48000.0,
         qty=0.05,
-        side=OrderSide.BUY,
     )
 
 

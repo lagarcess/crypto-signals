@@ -7,10 +7,10 @@ import pytest
 from crypto_signals.domain.schemas import (
     AssetClass,
     OrderSide,
-    Signal,
-    SignalStatus,
 )
 from crypto_signals.engine.execution import ExecutionEngine
+
+from tests.factories import PositionFactory, SignalFactory
 
 
 @pytest.fixture
@@ -35,35 +35,17 @@ def mock_trading_client():
 @pytest.fixture
 def sample_signal():
     """Create a sample BUY signal for testing."""
-    return Signal(
-        signal_id="test-signal-123",
-        ds=date(2025, 1, 15),
-        strategy_id="BULLISH_ENGULFING",
-        symbol="BTC/USD",
-        asset_class=AssetClass.CRYPTO,
-        entry_price=50000.0,
-        pattern_name="BULLISH_ENGULFING",
-        suggested_stop=48000.0,
-        status=SignalStatus.WAITING,
-        take_profit_1=55000.0,
-        take_profit_2=60000.0,
-        side=OrderSide.BUY,
-    )
+    return SignalFactory.build()
 
 
 @pytest.fixture
 def sample_sell_signal():
     """Create a sample SELL signal for testing short positions."""
-    return Signal(
+    return SignalFactory.build(
         signal_id="test-signal-sell-456",
-        ds=date(2025, 1, 15),
         strategy_id="BEARISH_ENGULFING",
-        symbol="BTC/USD",
-        asset_class=AssetClass.CRYPTO,
-        entry_price=50000.0,
         pattern_name="BEARISH_ENGULFING",
         suggested_stop=52000.0,  # Stop ABOVE entry for short
-        status=SignalStatus.WAITING,
         take_profit_1=45000.0,  # TP BELOW entry for short
         take_profit_2=40000.0,
         side=OrderSide.SELL,
@@ -76,19 +58,14 @@ def sample_equity_signal():
 
     Bracket orders (OTOCO) are only supported for equities, not crypto.
     """
-    return Signal(
+    return SignalFactory.build(
         signal_id="test-signal-equity-789",
-        ds=date(2025, 1, 15),
-        strategy_id="BULLISH_ENGULFING",
         symbol="AAPL",
         asset_class=AssetClass.EQUITY,
         entry_price=150.0,
-        pattern_name="BULLISH_ENGULFING",
         suggested_stop=145.0,
-        status=SignalStatus.WAITING,
         take_profit_1=160.0,
         take_profit_2=170.0,
-        side=OrderSide.BUY,
     )
 
 
@@ -515,15 +492,10 @@ class TestValidateSignal:
 
     def test_missing_take_profit_fails(self, execution_engine):
         """Verify validation fails when take_profit_1 is missing."""
-        signal = Signal(
+        signal = SignalFactory.build(
             signal_id="test-signal",
-            ds=date(2025, 1, 15),
             strategy_id="TEST",
-            symbol="BTC/USD",
-            asset_class=AssetClass.CRYPTO,
-            entry_price=50000.0,
             pattern_name="TEST",
-            suggested_stop=48000.0,
             take_profit_1=None,  # Missing!
         )
 
@@ -533,16 +505,11 @@ class TestValidateSignal:
 
     def test_missing_stop_fails(self, execution_engine):
         """Verify validation fails when suggested_stop is missing."""
-        signal = Signal(
+        signal = SignalFactory.build(
             signal_id="test-signal",
-            ds=date(2025, 1, 15),
             strategy_id="TEST",
-            symbol="BTC/USD",
-            asset_class=AssetClass.CRYPTO,
-            entry_price=50000.0,
             pattern_name="TEST",
             suggested_stop=0,  # Invalid!
-            take_profit_1=55000.0,
         )
 
         assert (
@@ -551,16 +518,11 @@ class TestValidateSignal:
 
     def test_negative_stop_fails(self, execution_engine):
         """Verify validation fails when suggested_stop is negative."""
-        signal = Signal(
+        signal = SignalFactory.build(
             signal_id="test-signal",
-            ds=date(2025, 1, 15),
             strategy_id="TEST",
-            symbol="BTC/USD",
-            asset_class=AssetClass.CRYPTO,
-            entry_price=50000.0,
             pattern_name="TEST",
             suggested_stop=-100.0,  # Negative is invalid
-            take_profit_1=55000.0,
         )
 
         assert (
@@ -581,9 +543,8 @@ class TestCalculateQty:
 
     def test_equity_fractional_shares(self, execution_engine):
         """Verify equity uses 4 decimal precision."""
-        signal = Signal(
+        signal = SignalFactory.build(
             signal_id="test-signal",
-            ds=date(2025, 1, 15),
             strategy_id="TEST",
             symbol="AAPL",
             asset_class=AssetClass.EQUITY,
@@ -654,7 +615,6 @@ class TestSyncPositionStatus:
 
     def test_sync_extracts_leg_ids(self, execution_engine, mock_trading_client):
         """Verify TP and SL leg IDs are extracted from filled parent order."""
-        from crypto_signals.domain.schemas import Position, TradeStatus
 
         # Setup parent order with legs
         mock_tp_leg = MagicMock()
@@ -680,18 +640,11 @@ class TestSyncPositionStatus:
         mock_trading_client.get_order_by_id.return_value = mock_order
 
         # Create position
-        position = Position(
+        position = PositionFactory.build(
             position_id="test-pos-1",
-            ds=date(2025, 1, 15),
-            account_id="paper",
-            symbol="BTC/USD",
             signal_id="test-signal-1",
             alpaca_order_id="parent-order-123",
-            status=TradeStatus.OPEN,
-            entry_fill_price=50000.0,
-            current_stop_loss=48000.0,
             qty=0.05,
-            side=OrderSide.BUY,
         )
 
         # Execute
@@ -706,7 +659,7 @@ class TestSyncPositionStatus:
         self, execution_engine, mock_trading_client
     ):
         """Verify position marked CLOSED when TP order is filled."""
-        from crypto_signals.domain.schemas import Position, TradeStatus
+        from crypto_signals.domain.schemas import TradeStatus
 
         # Setup - parent and TP orders, TP is filled
         mock_parent = MagicMock()
@@ -728,19 +681,12 @@ class TestSyncPositionStatus:
         mock_trading_client.get_order_by_id.side_effect = side_effect
 
         # Create position with TP order ID already set
-        position = Position(
+        position = PositionFactory.build(
             position_id="test-pos-2",
-            ds=date(2025, 1, 15),
-            account_id="paper",
-            symbol="BTC/USD",
             signal_id="test-signal-2",
             alpaca_order_id="parent-id",
             tp_order_id="tp-order-id",
-            status=TradeStatus.OPEN,
-            entry_fill_price=50000.0,
-            current_stop_loss=48000.0,
             qty=0.05,
-            side=OrderSide.BUY,
         )
 
         # Execute
@@ -757,7 +703,7 @@ class TestSyncPositionStatus:
         """Verify exit_fill_price is captured when TP order is filled."""
         from datetime import datetime, timezone
 
-        from crypto_signals.domain.schemas import Position, TradeStatus
+        from crypto_signals.domain.schemas import TradeStatus
 
         # Setup - parent and TP orders, TP is filled with price
         mock_parent = MagicMock()
@@ -780,19 +726,12 @@ class TestSyncPositionStatus:
 
         mock_trading_client.get_order_by_id.side_effect = side_effect
 
-        position = Position(
+        position = PositionFactory.build(
             position_id="test-pos-exit",
-            ds=date(2025, 1, 15),
-            account_id="paper",
-            symbol="BTC/USD",
             signal_id="test-signal-exit",
             alpaca_order_id="parent-id",
             tp_order_id="tp-order-id",
-            status=TradeStatus.OPEN,
-            entry_fill_price=50000.0,
-            current_stop_loss=48000.0,
             qty=0.05,
-            side=OrderSide.BUY,
         )
 
         # Execute
@@ -813,7 +752,7 @@ class TestSyncPositionStatus:
         """Verify exit_fill_price is captured when SL order is filled."""
         from datetime import datetime, timezone
 
-        from crypto_signals.domain.schemas import Position, TradeStatus
+        from crypto_signals.domain.schemas import TradeStatus
 
         # Setup - parent and SL orders, SL is filled with price
         mock_parent = MagicMock()
@@ -841,20 +780,13 @@ class TestSyncPositionStatus:
 
         mock_trading_client.get_order_by_id.side_effect = side_effect
 
-        position = Position(
+        position = PositionFactory.build(
             position_id="test-pos-sl-exit",
-            ds=date(2025, 1, 15),
-            account_id="paper",
-            symbol="BTC/USD",
             signal_id="test-signal-sl-exit",
             alpaca_order_id="parent-id",
             tp_order_id="tp-order-id",
             sl_order_id="sl-order-id",
-            status=TradeStatus.OPEN,
-            entry_fill_price=50000.0,
-            current_stop_loss=48000.0,
             qty=0.05,
-            side=OrderSide.BUY,
         )
 
         # Execute
@@ -875,7 +807,7 @@ class TestSyncPositionStatus:
         """Verify position marked CLOSED (Manual Exit) when not found on Alpaca."""
         from datetime import datetime, timezone
 
-        from crypto_signals.domain.schemas import ExitReason, Position, TradeStatus
+        from crypto_signals.domain.schemas import ExitReason, TradeStatus
 
         # Setup - parent order is filled (Entry)
         mock_parent = MagicMock()
@@ -899,18 +831,11 @@ class TestSyncPositionStatus:
         # Setup get_order_by_id for parent
         mock_trading_client.get_order_by_id.return_value = mock_parent
 
-        position = Position(
+        position = PositionFactory.build(
             position_id="test-pos-manual",
-            ds=date(2025, 1, 15),
-            account_id="paper",
-            symbol="BTC/USD",
             signal_id="test-signal-manual",
             alpaca_order_id="parent-id",
-            status=TradeStatus.OPEN,
-            entry_fill_price=50000.0,
-            current_stop_loss=48000.0,
             qty=0.05,
-            side=OrderSide.BUY,
         )
 
         # Setup Reconciler Mock
@@ -950,7 +875,6 @@ class TestModifyStopLoss:
 
     def test_modify_stop_loss_success(self, execution_engine, mock_trading_client):
         """Verify stop loss can be replaced when in replaceable state."""
-        from crypto_signals.domain.schemas import Position, TradeStatus
 
         # Setup - SL order in "new" state
         mock_sl_order = MagicMock()
@@ -962,19 +886,12 @@ class TestModifyStopLoss:
         mock_trading_client.get_order_by_id.return_value = mock_sl_order
         mock_trading_client.replace_order_by_id.return_value = mock_replaced_order
 
-        position = Position(
+        position = PositionFactory.build(
             position_id="test-pos-3",
-            ds=date(2025, 1, 15),
-            account_id="paper",
-            symbol="BTC/USD",
             signal_id="test-signal-3",
             alpaca_order_id="parent-id",
             sl_order_id="old-sl-order-id",
-            status=TradeStatus.OPEN,
-            entry_fill_price=50000.0,
-            current_stop_loss=48000.0,
             qty=0.05,
-            side=OrderSide.BUY,
         )
 
         # Execute
@@ -988,26 +905,18 @@ class TestModifyStopLoss:
 
     def test_modify_stop_loss_pending_fails(self, execution_engine, mock_trading_client):
         """Verify replacement fails when order is in pending state."""
-        from crypto_signals.domain.schemas import Position, TradeStatus
 
         # Setup - SL order in "pending_replace" state
         mock_sl_order = MagicMock()
         mock_sl_order.status = "pending_replace"
         mock_trading_client.get_order_by_id.return_value = mock_sl_order
 
-        position = Position(
+        position = PositionFactory.build(
             position_id="test-pos-4",
-            ds=date(2025, 1, 15),
-            account_id="paper",
-            symbol="BTC/USD",
             signal_id="test-signal-4",
             alpaca_order_id="parent-id",
             sl_order_id="sl-order-id",
-            status=TradeStatus.OPEN,
-            entry_fill_price=50000.0,
-            current_stop_loss=48000.0,
             qty=0.05,
-            side=OrderSide.BUY,
         )
 
         # Execute
@@ -1025,7 +934,7 @@ class TestClosePositionEmergency:
         self, execution_engine, mock_trading_client
     ):
         """Verify all legs are canceled and market close order submitted."""
-        from crypto_signals.domain.schemas import Position, TradeStatus
+        from crypto_signals.domain.schemas import TradeStatus
 
         # Setup
         mock_close_order = MagicMock()
@@ -1036,20 +945,13 @@ class TestClosePositionEmergency:
         mock_parent_order.symbol = "BTC/USD"
         mock_trading_client.get_order_by_id.return_value = mock_parent_order
 
-        position = Position(
+        position = PositionFactory.build(
             position_id="test-pos-5",
-            ds=date(2025, 1, 15),
-            account_id="paper",
-            symbol="BTC/USD",
             signal_id="test-signal-5",
             alpaca_order_id="parent-id",
             tp_order_id="tp-order-id",
             sl_order_id="sl-order-id",
-            status=TradeStatus.OPEN,
-            entry_fill_price=50000.0,
-            current_stop_loss=48000.0,
             qty=0.05,
-            side=OrderSide.BUY,
         )
 
         # Execute
@@ -1076,7 +978,6 @@ class TestScaleOutPosition:
         self, execution_engine, mock_trading_client
     ):
         """Verify 50% scale-out calculates the correct quantity."""
-        from crypto_signals.domain.schemas import Position, TradeStatus
 
         # Setup
         mock_close_order = MagicMock()
@@ -1084,18 +985,11 @@ class TestScaleOutPosition:
         mock_close_order.filled_avg_price = "55000.0"
         mock_trading_client.submit_order.return_value = mock_close_order
 
-        position = Position(
+        position = PositionFactory.build(
             position_id="test-scale-1",
-            ds=date(2025, 1, 15),
-            account_id="paper",
-            symbol="BTC/USD",
             signal_id="test-signal-scale",
             alpaca_order_id="parent-id",
-            status=TradeStatus.OPEN,
-            entry_fill_price=50000.0,
-            current_stop_loss=48000.0,
             qty=0.10,
-            side=OrderSide.BUY,
         )
 
         # Execute
@@ -1110,25 +1004,17 @@ class TestScaleOutPosition:
 
     def test_scale_out_updates_remaining_qty(self, execution_engine, mock_trading_client):
         """Verify position.qty is reduced after scale-out."""
-        from crypto_signals.domain.schemas import Position, TradeStatus
 
         mock_close_order = MagicMock()
         mock_close_order.id = "scale-order-123"
         mock_close_order.filled_avg_price = "55000.0"
         mock_trading_client.submit_order.return_value = mock_close_order
 
-        position = Position(
+        position = PositionFactory.build(
             position_id="test-scale-2",
-            ds=date(2025, 1, 15),
-            account_id="paper",
-            symbol="BTC/USD",
             signal_id="test-signal-scale",
             alpaca_order_id="parent-id",
-            status=TradeStatus.OPEN,
-            entry_fill_price=50000.0,
-            current_stop_loss=48000.0,
             qty=0.10,
-            side=OrderSide.BUY,
         )
 
         execution_engine.scale_out_position(position, scale_pct=0.5)
@@ -1142,25 +1028,17 @@ class TestScaleOutPosition:
         self, execution_engine, mock_trading_client
     ):
         """Verify original_qty is set only on first scale-out, not overwritten."""
-        from crypto_signals.domain.schemas import Position, TradeStatus
 
         mock_close_order = MagicMock()
         mock_close_order.id = "scale-order-123"
         mock_close_order.filled_avg_price = "55000.0"
         mock_trading_client.submit_order.return_value = mock_close_order
 
-        position = Position(
+        position = PositionFactory.build(
             position_id="test-scale-orig",
-            ds=date(2025, 1, 15),
-            account_id="paper",
-            symbol="BTC/USD",
             signal_id="test-signal-scale",
             alpaca_order_id="parent-id",
-            status=TradeStatus.OPEN,
-            entry_fill_price=50000.0,
-            current_stop_loss=48000.0,
             qty=1.0,  # Start with 1.0
-            side=OrderSide.BUY,
         )
 
         # First scale-out (50%): 1.0 -> 0.5
@@ -1179,7 +1057,6 @@ class TestScaleOutPosition:
         self, execution_engine, mock_trading_client
     ):
         """Verify scaled_out_prices list accumulates for multi-stage exits."""
-        from crypto_signals.domain.schemas import Position, TradeStatus
 
         # First scale-out at $55,000
         mock_order_1 = MagicMock()
@@ -1193,18 +1070,11 @@ class TestScaleOutPosition:
 
         mock_trading_client.submit_order.side_effect = [mock_order_1, mock_order_2]
 
-        position = Position(
+        position = PositionFactory.build(
             position_id="test-scale-prices",
-            ds=date(2025, 1, 15),
-            account_id="paper",
-            symbol="BTC/USD",
             signal_id="test-signal-scale",
             alpaca_order_id="parent-id",
-            status=TradeStatus.OPEN,
-            entry_fill_price=50000.0,
-            current_stop_loss=48000.0,
             qty=1.0,
-            side=OrderSide.BUY,
         )
 
         # First scale-out
@@ -1229,20 +1099,12 @@ class TestScaleOutPosition:
 
     def test_scale_out_fails_with_no_qty(self, execution_engine, mock_trading_client):
         """Verify returns False when position has no quantity."""
-        from crypto_signals.domain.schemas import Position, TradeStatus
 
-        position = Position(
+        position = PositionFactory.build(
             position_id="test-scale-zero",
-            ds=date(2025, 1, 15),
-            account_id="paper",
-            symbol="BTC/USD",
             signal_id="test-signal-scale",
             alpaca_order_id="parent-id",
-            status=TradeStatus.OPEN,
-            entry_fill_price=50000.0,
-            current_stop_loss=48000.0,
             qty=0,  # Zero qty!
-            side=OrderSide.BUY,
         )
 
         result = execution_engine.scale_out_position(position, scale_pct=0.5)
@@ -1252,22 +1114,14 @@ class TestScaleOutPosition:
 
     def test_scale_out_handles_order_failure(self, execution_engine, mock_trading_client):
         """Verify failed_reason is set when order submission fails."""
-        from crypto_signals.domain.schemas import Position, TradeStatus
 
         mock_trading_client.submit_order.side_effect = Exception("Insufficient funds")
 
-        position = Position(
+        position = PositionFactory.build(
             position_id="test-scale-fail",
-            ds=date(2025, 1, 15),
-            account_id="paper",
-            symbol="BTC/USD",
             signal_id="test-signal-scale",
             alpaca_order_id="parent-id",
-            status=TradeStatus.OPEN,
-            entry_fill_price=50000.0,
-            current_stop_loss=48000.0,
             qty=0.10,
-            side=OrderSide.BUY,
         )
 
         result = execution_engine.scale_out_position(position, scale_pct=0.5)
@@ -1283,7 +1137,6 @@ class TestMoveStopToBreakeven:
 
     def test_breakeven_moves_stop_to_entry(self, execution_engine, mock_trading_client):
         """Verify stop is moved to entry price (with buffer)."""
-        from crypto_signals.domain.schemas import Position, TradeStatus
 
         # Setup - SL order in replaceable state
         mock_sl_order = MagicMock()
@@ -1295,19 +1148,12 @@ class TestMoveStopToBreakeven:
         mock_trading_client.get_order_by_id.return_value = mock_sl_order
         mock_trading_client.replace_order_by_id.return_value = mock_replaced_order
 
-        position = Position(
+        position = PositionFactory.build(
             position_id="test-breakeven-1",
-            ds=date(2025, 1, 15),
-            account_id="paper",
-            symbol="BTC/USD",
             signal_id="test-signal-be",
             alpaca_order_id="parent-id",
             sl_order_id="old-sl-order-id",
-            status=TradeStatus.OPEN,
-            entry_fill_price=50000.0,
-            current_stop_loss=48000.0,
             qty=0.05,
-            side=OrderSide.BUY,
         )
 
         result = execution_engine.move_stop_to_breakeven(position)
@@ -1322,7 +1168,6 @@ class TestMoveStopToBreakeven:
         self, execution_engine, mock_trading_client
     ):
         """Verify 0.1% buffer is above entry for long positions."""
-        from crypto_signals.domain.schemas import Position, TradeStatus
 
         mock_sl_order = MagicMock()
         mock_sl_order.status = "new"
@@ -1332,19 +1177,14 @@ class TestMoveStopToBreakeven:
         mock_trading_client.get_order_by_id.return_value = mock_sl_order
         mock_trading_client.replace_order_by_id.return_value = mock_replaced
 
-        position = Position(
+        position = PositionFactory.build(
             position_id="test-be-long",
-            ds=date(2025, 1, 15),
-            account_id="paper",
-            symbol="BTC/USD",
             signal_id="test-signal-be",
             alpaca_order_id="parent-id",
             sl_order_id="sl-id",
-            status=TradeStatus.OPEN,
             entry_fill_price=100.0,
             current_stop_loss=95.0,
             qty=1.0,
-            side=OrderSide.BUY,
         )
 
         execution_engine.move_stop_to_breakeven(position)
@@ -1358,7 +1198,6 @@ class TestMoveStopToBreakeven:
         self, execution_engine, mock_trading_client
     ):
         """Verify 0.1% buffer is below entry for short positions."""
-        from crypto_signals.domain.schemas import Position, TradeStatus
 
         mock_sl_order = MagicMock()
         mock_sl_order.status = "new"
@@ -1368,15 +1207,11 @@ class TestMoveStopToBreakeven:
         mock_trading_client.get_order_by_id.return_value = mock_sl_order
         mock_trading_client.replace_order_by_id.return_value = mock_replaced
 
-        position = Position(
+        position = PositionFactory.build(
             position_id="test-be-short",
-            ds=date(2025, 1, 15),
-            account_id="paper",
-            symbol="BTC/USD",
             signal_id="test-signal-be",
             alpaca_order_id="parent-id",
             sl_order_id="sl-id",
-            status=TradeStatus.OPEN,
             entry_fill_price=100.0,
             current_stop_loss=105.0,
             qty=1.0,
@@ -1392,7 +1227,6 @@ class TestMoveStopToBreakeven:
 
     def test_breakeven_sets_flag(self, execution_engine, mock_trading_client):
         """Verify breakeven_applied flag is set to True on success."""
-        from crypto_signals.domain.schemas import Position, TradeStatus
 
         mock_sl_order = MagicMock()
         mock_sl_order.status = "new"
@@ -1402,19 +1236,12 @@ class TestMoveStopToBreakeven:
         mock_trading_client.get_order_by_id.return_value = mock_sl_order
         mock_trading_client.replace_order_by_id.return_value = mock_replaced
 
-        position = Position(
+        position = PositionFactory.build(
             position_id="test-be-flag",
-            ds=date(2025, 1, 15),
-            account_id="paper",
-            symbol="BTC/USD",
             signal_id="test-signal-be",
             alpaca_order_id="parent-id",
             sl_order_id="sl-id",
-            status=TradeStatus.OPEN,
-            entry_fill_price=50000.0,
-            current_stop_loss=48000.0,
             qty=0.05,
-            side=OrderSide.BUY,
         )
 
         assert (
@@ -1429,22 +1256,14 @@ class TestMoveStopToBreakeven:
         self, execution_engine, mock_trading_client
     ):
         """Verify returns False when entry_fill_price is missing."""
-        from crypto_signals.domain.schemas import Position, TradeStatus
 
         # Create valid position first, then set entry_fill_price to None
-        position = Position(
+        position = PositionFactory.build(
             position_id="test-be-no-entry",
-            ds=date(2025, 1, 15),
-            account_id="paper",
-            symbol="BTC/USD",
             signal_id="test-signal-be",
             alpaca_order_id="parent-id",
             sl_order_id="sl-id",
-            status=TradeStatus.OPEN,
-            entry_fill_price=50000.0,  # Required for model validation
-            current_stop_loss=48000.0,
             qty=0.05,
-            side=OrderSide.BUY,
         )
         # Simulate edge case where entry_fill_price might be cleared
         position.entry_fill_price = None
@@ -1663,16 +1482,13 @@ class TestMicroCapEdgeCases:
     @pytest.fixture
     def pepe_usdt_signal_micro_cap(self):
         """PEPE/USD signal with extremely small prices (micro-cap edge case)."""
-        return Signal(
+        return SignalFactory.build(
             signal_id="pepe-micro-cap-001",
-            ds=date(2025, 1, 15),
             strategy_id="ELLIOTT_IMPULSE_WAVE",
             symbol="PEPE/USD",
-            asset_class=AssetClass.CRYPTO,
             entry_price=0.00001200,  # ~$0.000012
             pattern_name="ELLIOTT_IMPULSE_WAVE",
             suggested_stop=0.00000080,  # Will be tested against floor
-            status=SignalStatus.WAITING,
             take_profit_1=0.00001800,
             take_profit_2=0.00002400,
             side=OrderSide.BUY,
@@ -1681,16 +1497,13 @@ class TestMicroCapEdgeCases:
     @pytest.fixture
     def shib_usdt_signal_micro_cap(self):
         """SHIB/USD signal with extreme volatility (high ATR)."""
-        return Signal(
+        return SignalFactory.build(
             signal_id="shib-micro-cap-002",
-            ds=date(2025, 1, 15),
             strategy_id="ELLIOTT_IMPULSE_WAVE",
             symbol="SHIB/USD",
-            asset_class=AssetClass.CRYPTO,
             entry_price=0.00000950,  # ~$0.000010
             pattern_name="ELLIOTT_IMPULSE_WAVE",
             suggested_stop=0.00000001,  # SAFE_STOP_VAL (1e-8)
-            status=SignalStatus.WAITING,
             take_profit_1=0.00001400,
             take_profit_2=0.00001900,
             side=OrderSide.BUY,
@@ -1718,16 +1531,13 @@ class TestMicroCapEdgeCases:
                 repository=MagicMock(),
             )
 
-            signal = Signal(
+            signal = SignalFactory.build(
                 signal_id="micro-qty-test",
-                ds=date(2025, 1, 15),
                 strategy_id="TEST",
                 symbol="PEPE/USD",
-                asset_class=AssetClass.CRYPTO,
                 entry_price=0.00001200,
                 pattern_name="TEST",
                 suggested_stop=0.00000001,  # SAFE_STOP_VAL
-                status=SignalStatus.WAITING,
                 take_profit_1=0.00001800,
                 side=OrderSide.BUY,
             )
@@ -1760,16 +1570,13 @@ class TestMicroCapEdgeCases:
             )
 
             # Extreme case: entry and stop almost equal
-            signal = Signal(
+            signal = SignalFactory.build(
                 signal_id="extreme-qty-test",
-                ds=date(2025, 1, 15),
                 strategy_id="TEST",
                 symbol="PEPE/USD",
-                asset_class=AssetClass.CRYPTO,
                 entry_price=0.00001200,
                 pattern_name="TEST",
                 suggested_stop=0.00001199,  # Extremely tight
-                status=SignalStatus.WAITING,
                 take_profit_1=0.00001800,
                 side=OrderSide.BUY,
             )
@@ -1963,16 +1770,14 @@ class TestCostBasisValidation:
         mock_settings.RISK_PER_TRADE = 1.0
 
         # Create equity signal
-        equity_signal = Signal(
+        equity_signal = SignalFactory.build(
             signal_id="equity-notional-test",
-            ds=date(2025, 1, 15),
             strategy_id="TEST",
             symbol="AAPL",
             asset_class=AssetClass.EQUITY,  # Equity path
             entry_price=150.0,
             pattern_name="TEST",
             suggested_stop=100.0,  # risk = 50
-            status=SignalStatus.WAITING,
             take_profit_1=200.0,
             side=OrderSide.BUY,
         )
@@ -1989,16 +1794,12 @@ class TestCostBasisValidation:
         self, execution_engine, mock_settings
     ):
         """Verify helper method returns True for sufficient notional value."""
-        signal = Signal(
+        signal = SignalFactory.build(
             signal_id="notional-helper-test",
-            ds=date(2025, 1, 15),
             strategy_id="TEST",
-            symbol="BTC/USD",
-            asset_class=AssetClass.CRYPTO,
             entry_price=100.0,
             pattern_name="TEST",
             suggested_stop=90.0,
-            status=SignalStatus.WAITING,
             take_profit_1=120.0,
             side=OrderSide.BUY,
         )
@@ -2011,16 +1812,12 @@ class TestCostBasisValidation:
         self, execution_engine, mock_settings
     ):
         """Verify helper method returns False for insufficient notional value."""
-        signal = Signal(
+        signal = SignalFactory.build(
             signal_id="notional-helper-test-2",
-            ds=date(2025, 1, 15),
             strategy_id="TEST",
-            symbol="BTC/USD",
-            asset_class=AssetClass.CRYPTO,
             entry_price=100.0,
             pattern_name="TEST",
             suggested_stop=90.0,
-            status=SignalStatus.WAITING,
             take_profit_1=120.0,
             side=OrderSide.BUY,
         )

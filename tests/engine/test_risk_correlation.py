@@ -5,15 +5,14 @@ import pandas as pd
 import pytest
 from alpaca.trading.client import TradingClient
 from crypto_signals.domain.schemas import (
-    AssetClass,
-    Position,
-    Signal,
     SignalStatus,
     TradeStatus,
 )
 from crypto_signals.engine.risk import RiskEngine
 from crypto_signals.market.data_provider import MarketDataProvider
 from crypto_signals.repository.firestore import PositionRepository
+
+from tests.factories import PositionFactory, SignalFactory
 
 
 class TestRiskCorrelation:
@@ -46,36 +45,25 @@ class TestRiskCorrelation:
             )
 
     def create_signal(self, symbol="BTC/USD"):
-        return Signal(
+        return SignalFactory.build(
             signal_id="sig_1",
-            ds=datetime.now().date(),
             strategy_id="test_strat",
             symbol=symbol,
-            asset_class=AssetClass.CRYPTO,
             pattern_name="TestPattern",
-            pattern_classification="Bullish",
-            pattern_duration_days=10,
-            pattern_quality_score=90,
-            confidence=0.9,
             status=SignalStatus.WAITING,
             entry_price=50000.0,
             take_profit_1=55000.0,
             suggested_stop=45000.0,
-            timestamp=datetime.now(),
         )
 
     def create_position(self, symbol="ETH/USD"):
-        return Position(
+        return PositionFactory.build(
             position_id="pos_1",
-            ds=datetime.now().date(),
-            account_id="paper",
             signal_id="sig_old",
             symbol=symbol,
-            asset_class=AssetClass.CRYPTO,
             status=TradeStatus.OPEN,
             entry_fill_price=3000.0,
             qty=1.0,
-            side="buy",
             current_stop_loss=2500.0,
             alpaca_order_id="order_1",
         )
