@@ -541,7 +541,12 @@ def test_check_exits_status_transitions_to_tp3(
     ],
 )
 def test_check_exits_stale_waiting_signal_regression(
-    signal_generator, mock_market_provider, side, chandelier_col, close_price
+    signal_generator,
+    mock_market_provider,
+    mock_analyzer_cls,
+    side,
+    chandelier_col,
+    close_price,
 ):
     """Regression: 288h-old WAITING signal does not phantom-trigger TP3 (Issue 123)."""
     now_utc = datetime.now(timezone.utc)
@@ -560,7 +565,11 @@ def test_check_exits_stale_waiting_signal_regression(
 
     df = pd.DataFrame(
         {
+            "open": [close_price],
+            "high": [close_price + 2.0],
+            "low": [close_price - 2.0],
             "close": [close_price],
+            "volume": [1000.0],
             chandelier_col: [112.0 if side == OrderSide.BUY else 98.0],
             "bearish_engulfing": [False],
             "RSI_14": [50.0],
@@ -570,15 +579,12 @@ def test_check_exits_stale_waiting_signal_regression(
     )
 
     mock_analyzer_instance = MagicMock()
-    with patch(
-        "crypto_signals.engine.signal_generator.PatternAnalyzer"
-    ) as mock_analyzer_cls_patch:
-        mock_analyzer_cls_patch.return_value = mock_analyzer_instance
-        mock_analyzer_instance.check_patterns.return_value = df
+    mock_analyzer_cls.return_value = mock_analyzer_instance
+    mock_analyzer_instance.check_patterns.return_value = df
 
-        exited = signal_generator.check_exits(
-            [signal], "BTC/USD", AssetClass.CRYPTO, dataframe=df
-        )
+    exited = signal_generator.check_exits(
+        [signal], "BTC/USD", AssetClass.CRYPTO, dataframe=df
+    )
 
     assert len(exited) == 0
 
@@ -586,13 +592,28 @@ def test_check_exits_stale_waiting_signal_regression(
 @pytest.mark.parametrize(
     "side,initial_tp3,chandelier_col,chandelier_val,expected_tp3",
     [
-        pytest.param(OrderSide.BUY, 115.0, "CHANDELIER_EXIT_LONG", 117.0, 117.0, id="long_trail_up"),
-        pytest.param(OrderSide.SELL, 95.0, "CHANDELIER_EXIT_SHORT", 88.0, 88.0, id="short_trail_down"),
+        pytest.param(
+            OrderSide.BUY, 115.0, "CHANDELIER_EXIT_LONG", 117.0, 117.0, id="long_trail_up"
+        ),
+        pytest.param(
+            OrderSide.SELL,
+            95.0,
+            "CHANDELIER_EXIT_SHORT",
+            88.0,
+            88.0,
+            id="short_trail_down",
+        ),
     ],
 )
 def test_check_exits_trail_update(
-    signal_generator, mock_market_provider, mock_analyzer_cls,
-    side, initial_tp3, chandelier_col, chandelier_val, expected_tp3
+    signal_generator,
+    mock_market_provider,
+    mock_analyzer_cls,
+    side,
+    initial_tp3,
+    chandelier_col,
+    chandelier_val,
+    expected_tp3,
 ):
     """Test that take_profit_3 is updated when Chandelier Exit moves favorably."""
     signal = SignalFactory.build(
@@ -648,13 +669,22 @@ def test_check_exits_trail_update(
 @pytest.mark.parametrize(
     "side,initial_tp3,chandelier_col,chandelier_val",
     [
-        pytest.param(OrderSide.BUY, 125.0, "CHANDELIER_EXIT_LONG", 120.0, id="long_no_trail_down"),
-        pytest.param(OrderSide.SELL, 80.0, "CHANDELIER_EXIT_SHORT", 85.0, id="short_no_trail_up"),
+        pytest.param(
+            OrderSide.BUY, 125.0, "CHANDELIER_EXIT_LONG", 120.0, id="long_no_trail_down"
+        ),
+        pytest.param(
+            OrderSide.SELL, 80.0, "CHANDELIER_EXIT_SHORT", 85.0, id="short_no_trail_up"
+        ),
     ],
 )
 def test_check_exits_trail_not_updated_unfavorable(
-    signal_generator, mock_market_provider, mock_analyzer_cls,
-    side, initial_tp3, chandelier_col, chandelier_val
+    signal_generator,
+    mock_market_provider,
+    mock_analyzer_cls,
+    side,
+    initial_tp3,
+    chandelier_col,
+    chandelier_val,
 ):
     """Test that take_profit_3 is NOT updated when Chandelier Exit moves unfavorably."""
     signal = SignalFactory.build(
@@ -916,5 +946,3 @@ def test_check_exits_short_tp3_hit(
     assert (
         result[0].exit_reason == ExitReason.TP_HIT
     ), f"Expected result[0].exit_reason == ExitReason.TP_HIT, got {result[0].exit_reason}"
-
-

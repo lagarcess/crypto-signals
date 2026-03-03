@@ -39,7 +39,10 @@ class TestDeterministicIds:
             pytest.param("A", "A", True, id="same_input"),
             pytest.param("A", "B", False, id="different_input"),
             pytest.param(
-                "2024-01-15|momentum|BTC/USD", "2024-01-15|momentum|BTC/USD", True, id="complex_key"
+                "2024-01-15|momentum|BTC/USD",
+                "2024-01-15|momentum|BTC/USD",
+                True,
+                id="complex_key",
             ),
         ],
     )
@@ -48,10 +51,7 @@ class TestDeterministicIds:
         id_1 = get_deterministic_id(input_a)
         id_2 = get_deterministic_id(input_b)
 
-        if expected_equal:
-            assert id_1 == id_2
-        else:
-            assert id_1 != id_2
+        assert (id_1 == id_2) is expected_equal
 
     def test_returns_valid_uuid_string(self):
         """Output must be a valid UUID string format."""
@@ -73,8 +73,12 @@ class TestAssetClassValidation:
     @pytest.mark.parametrize(
         "asset_class,expected_enum,expected_value",
         [
-            pytest.param(AssetClass.CRYPTO, AssetClass.CRYPTO, "CRYPTO", id="crypto_enum"),
-            pytest.param(AssetClass.EQUITY, AssetClass.EQUITY, "EQUITY", id="equity_enum"),
+            pytest.param(
+                AssetClass.CRYPTO, AssetClass.CRYPTO, "CRYPTO", id="crypto_enum"
+            ),
+            pytest.param(
+                AssetClass.EQUITY, AssetClass.EQUITY, "EQUITY", id="equity_enum"
+            ),
             pytest.param("CRYPTO", AssetClass.CRYPTO, "CRYPTO", id="crypto_string"),
         ],
     )
@@ -255,7 +259,9 @@ class TestSignalModel:
             pytest.param(None, 120, id="none_fallback"),
         ],
     )
-    def test_signal_legacy_fallback_created_at(self, classification, expected_delta_hours):
+    def test_signal_legacy_fallback_created_at(
+        self, classification, expected_delta_hours
+    ):
         """Signal must populate created_at from valid_until for legacy data (Issue 99)."""
         valid_until = datetime(2024, 1, 16, 12, 0, tzinfo=timezone.utc)
         signal = Signal(
@@ -298,7 +304,9 @@ class TestTradeExecutionModel:
         assert missing_pnl_field in str(exc_info.value).lower()
 
     @pytest.mark.parametrize("exit_order_id", [None, "exit-order-123"])
-    def test_trade_execution_exit_order_id(self, exit_order_id, trade_execution_base_data):
+    def test_trade_execution_exit_order_id(
+        self, exit_order_id, trade_execution_base_data
+    ):
         """TradeExecution must handle exit_order_id (optional)."""
         data = trade_execution_base_data.copy()
         if exit_order_id:
