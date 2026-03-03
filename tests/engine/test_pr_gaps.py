@@ -89,9 +89,9 @@ class TestInvalidationPath:
         updated = execution_engine.sync_position_status(position)
 
         # Verify
-        assert updated.status == TradeStatus.CLOSED
+        assert updated.status == TradeStatus.CLOSED, 'Assertion failed'
         # This is the Critical Gap: exit_order_id MUST be set to the SL order ID
-        assert updated.exit_order_id == "sl-order-uuid-123"
+        assert updated.exit_order_id == "sl-order-uuid-123", 'Assertion failed'
 
     def test_tp_exit_captures_exit_order_id(self, execution_engine, mock_trading_client):
         """Verify exit_order_id is set when Position closes via Take Profit."""
@@ -128,6 +128,6 @@ class TestInvalidationPath:
         updated = execution_engine.sync_position_status(position)
 
         # Verify
-        assert updated.status == TradeStatus.CLOSED
+        assert updated.status == TradeStatus.CLOSED, 'Assertion failed'
         # This is the Critical Gap: exit_order_id MUST be set to the TP order ID
-        assert updated.exit_order_id == "tp-order-uuid-456"
+        assert updated.exit_order_id == "tp-order-uuid-456", 'Assertion failed'

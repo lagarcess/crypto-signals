@@ -71,8 +71,8 @@ def test_validate_schema_missing_column(guardian, mock_bq_client):
     with pytest.raises(SchemaMismatchError) as exc:
         guardian.validate_schema("project.dataset.table", SimpleModel)
 
-    assert "Missing columns" in str(exc.value)
-    assert "age" in str(exc.value)
+    assert "Missing columns" in str(exc.value), 'Assertion failed'
+    assert "age" in str(exc.value), 'Assertion failed'
 
 
 def test_validate_schema_type_mismatch(guardian, mock_bq_client):
@@ -90,8 +90,8 @@ def test_validate_schema_type_mismatch(guardian, mock_bq_client):
     with pytest.raises(SchemaMismatchError) as exc:
         guardian.validate_schema("project.dataset.table", SimpleModel)
 
-    assert "Type mismatch" in str(exc.value)
-    assert "age" in str(exc.value)
+    assert "Type mismatch" in str(exc.value), 'Assertion failed'
+    assert "age" in str(exc.value), 'Assertion failed'
 
 
 def test_validate_schema_compatible_types_float_numeric(guardian, mock_bq_client):
@@ -197,7 +197,7 @@ def test_validate_schema_partitioning_missing(guardian, mock_bq_client):
             "project.dataset.table", PartitionModel, require_partitioning=True
         )
 
-    assert "Table is not partitioned" in str(exc.value)
+    assert "Table is not partitioned" in str(exc.value), 'Assertion failed'
 
 
 def test_validate_schema_clustering_success(guardian, mock_bq_client):
@@ -233,7 +233,7 @@ def test_validate_schema_clustering_mismatch(guardian, mock_bq_client):
             "project.dataset.table", PartitionModel, clustering_fields=["name"]
         )
 
-    assert "Clustering mismatch" in str(exc.value)
+    assert "Clustering mismatch" in str(exc.value), 'Assertion failed'
 
 
 def test_create_table_race_condition(guardian, mock_bq_client):
@@ -264,7 +264,7 @@ def test_validate_schema_clustering_missing_on_table(guardian, mock_bq_client):
             "project.dataset.table", PartitionModel, clustering_fields=["name"]
         )
 
-    assert "Clustering mismatch" in str(exc.value)
+    assert "Clustering mismatch" in str(exc.value), 'Assertion failed'
 
 
 def test_migrate_schema_detects_type_mismatch(guardian, mock_bq_client):
@@ -285,8 +285,8 @@ def test_migrate_schema_detects_type_mismatch(guardian, mock_bq_client):
     with pytest.raises(SchemaMismatchError) as exc:
         guardian.migrate_schema("project.dataset.table", SimpleModel)
 
-    assert "Type mismatch for column 'age'" in str(exc.value)
-    assert "Expected INTEGER, Found STRING" in str(exc.value)
+    assert "Type mismatch for column 'age'" in str(exc.value), 'Assertion failed'
+    assert "Expected INTEGER, Found STRING" in str(exc.value), 'Assertion failed'
 
 
 def test_generate_schema_respects_exclude_flag(guardian):
@@ -299,9 +299,9 @@ def test_generate_schema_respects_exclude_flag(guardian):
     schema = guardian.generate_schema(ExcludeModel)
 
     # Should only have one field
-    assert len(schema) == 1
-    assert schema[0].name == "included"
-    assert "excluded" not in [f.name for f in schema]
+    assert len(schema) == 1, 'Assertion failed'
+    assert schema[0].name == "included", 'Assertion failed'
+    assert "excluded" not in [f.name for f in schema], 'Assertion failed'
 
 
 def test_validate_schema_ignores_excluded_fields(guardian, mock_bq_client):

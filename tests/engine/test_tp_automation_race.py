@@ -77,13 +77,13 @@ class TestTPAutomationSignalGuard:
 
         # Call the logic under test
         pos = position_repo.get_position_by_signal(old_signal.signal_id)
-        assert pos is not None
-        assert pos.signal_id == old_signal.signal_id  # Guard passes
-        assert pos.status == TradeStatus.OPEN
+        assert pos is not None, 'Assertion failed'
+        assert pos.signal_id == old_signal.signal_id, 'Assertion failed' # Guard passes
+        assert pos.status == TradeStatus.OPEN, 'Assertion failed'
 
         # Execute close
         result = execution_engine.close_position_emergency(pos)
-        assert result is True
+        assert result is True, 'Assertion failed'
         execution_engine.close_position_emergency.assert_called_once_with(old_position)
 
     def test_tp3_skips_when_position_signal_id_mismatch(self):
@@ -196,7 +196,7 @@ class TestAlpacaQtyValidation:
 
         # Verify qty matches
         alpaca_qty = float(alpaca_position.qty)
-        assert alpaca_qty >= pos.qty
+        assert alpaca_qty >= pos.qty, 'Assertion failed'
 
     def test_adjusts_qty_when_alpaca_has_less(self):
         """If Alpaca has fewer shares, adjust close qty to prevent overselling."""
@@ -213,7 +213,7 @@ class TestAlpacaQtyValidation:
         if alpaca_qty < pos.qty:
             pos.qty = alpaca_qty
 
-        assert pos.qty == 5.0
+        assert pos.qty == 5.0, 'Assertion failed'
 
     def test_marks_closed_externally_when_alpaca_position_gone(self):
         """If position doesn't exist on Alpaca (404), mark CLOSED_EXTERNALLY."""
@@ -234,8 +234,8 @@ class TestAlpacaQtyValidation:
                 pos.status = TradeStatus.CLOSED
                 pos.exit_reason = ExitReason.CLOSED_EXTERNALLY
 
-        assert pos.status == TradeStatus.CLOSED
-        assert pos.exit_reason == ExitReason.CLOSED_EXTERNALLY
+        assert pos.status == TradeStatus.CLOSED, 'Assertion failed'
+        assert pos.exit_reason == ExitReason.CLOSED_EXTERNALLY, 'Assertion failed'
 
     def test_skips_close_on_alpaca_api_error_not_404(self):
         """If API returns non-404 error (e.g. 500), do NOT mark closed."""
@@ -257,8 +257,8 @@ class TestAlpacaQtyValidation:
             else:
                 pass  # Should log and continue
 
-        assert pos.status == TradeStatus.OPEN
-        assert pos.exit_reason is None
+        assert pos.status == TradeStatus.OPEN, 'Assertion failed'
+        assert pos.exit_reason is None, 'Assertion failed'
 
 
 # =============================================================================
@@ -287,7 +287,7 @@ class TestDuplicateSymbolPrevention:
         except APIError:
             pass
 
-        assert should_skip is True
+        assert should_skip is True, 'Assertion failed'
 
     def test_proceeds_when_no_alpaca_position(self):
         """Should proceed with signal generation when no Alpaca position exists."""
@@ -307,4 +307,4 @@ class TestDuplicateSymbolPrevention:
         except APIError:
             pass
 
-        assert should_skip is False
+        assert should_skip is False, 'Assertion failed'

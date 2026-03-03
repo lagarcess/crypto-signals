@@ -79,15 +79,15 @@ class TestHandleManualExitVerification:
         result = reconciler.handle_manual_exit_verification(sample_position)
 
         # Verify
-        assert isinstance(result, Position)
-        assert sample_position.status == TradeStatus.CLOSED
-        assert sample_position.exit_reason == ExitReason.MANUAL_EXIT
-        assert sample_position.exit_fill_price == 55000.0
-        assert sample_position.exit_order_id == "manual-sell-order-123"
+        assert isinstance(result, Position), 'Assertion failed'
+        assert sample_position.status == TradeStatus.CLOSED, 'Assertion failed'
+        assert sample_position.exit_reason == ExitReason.MANUAL_EXIT, 'Assertion failed'
+        assert sample_position.exit_fill_price == 55000.0, 'Assertion failed'
+        assert sample_position.exit_order_id == "manual-sell-order-123", 'Assertion failed'
 
         # Verify Discord notification sent
         mock_discord.send_message.assert_called_once()
-        assert "MANUAL EXIT DETECTED" in mock_discord.send_message.call_args[0][0]
+        assert "MANUAL EXIT DETECTED" in mock_discord.send_message.call_args[0][0], 'Assertion failed'
 
     def test_verify_manual_exit_failed_no_orders(
         self, reconciler, mock_alpaca, sample_position
@@ -100,9 +100,9 @@ class TestHandleManualExitVerification:
         result = reconciler.handle_manual_exit_verification(sample_position)
 
         # Verify
-        assert result is None
-        assert sample_position.status == TradeStatus.OPEN
-        assert sample_position.exit_reason is None
+        assert result is None, 'Assertion failed'
+        assert sample_position.status == TradeStatus.OPEN, 'Assertion failed'
+        assert sample_position.exit_reason is None, 'Assertion failed'
 
     def test_verify_manual_exit_ignores_tp_sl_legs(
         self, reconciler, mock_alpaca, sample_position
@@ -119,5 +119,5 @@ class TestHandleManualExitVerification:
         result = reconciler.handle_manual_exit_verification(sample_position)
 
         # Verify
-        assert result is None
-        assert sample_position.status == TradeStatus.OPEN
+        assert result is None, 'Assertion failed'
+        assert sample_position.status == TradeStatus.OPEN, 'Assertion failed'

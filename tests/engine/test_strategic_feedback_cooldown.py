@@ -56,7 +56,7 @@ class TestInvalidatedStatusCooldown:
         signal_generator_with_mocks._is_in_cooldown("BTC/USD", 45000.0)
 
         # Verify the repository was called (it will be in implementation)
-        assert signal_generator_with_mocks.signal_repo.get_most_recent_exit.called
+        assert signal_generator_with_mocks.signal_repo.get_most_recent_exit.called, 'Assertion failed'
 
     def test_cooldown_blocks_after_stop_loss_hit(self, signal_generator_with_mocks):
         """Verify cooldown blocks trading after INVALIDATED (stop-loss) status."""
@@ -128,7 +128,7 @@ class TestInvalidatedStatusCooldown:
         result = signal_generator_with_mocks._is_in_cooldown("BTC/USD", 50500.0)
 
         # Should be blocked (1% move < 10% threshold)
-        assert result is True
+        assert result is True, 'Assertion failed'
 
     def test_firestore_query_includes_invalidated_status(self, mock_repository):
         """Verify repository.get_most_recent_exit() will query for INVALIDATED."""
@@ -181,7 +181,7 @@ class TestCooldownScopeConfig:
                 )
 
                 # With SYMBOL scope, should be blocked regardless of pattern
-                assert result is True
+                assert result is True, 'Assertion failed'
 
     def test_cooldown_scope_pattern_blocks_same_pattern_only(
         self, signal_generator_with_mocks
@@ -210,7 +210,7 @@ class TestCooldownScopeConfig:
                 )
 
                 # With PATTERN scope and different pattern, should be allowed
-                assert result is False
+                assert result is False, 'Assertion failed'
 
     def test_config_setting_exists_in_config_py(self):
         """Verify COOLDOWN_SCOPE setting can be read from config."""
@@ -315,7 +315,7 @@ class TestStrategicFeedbackIntegration:
         )
 
         # Should be True (blocked by stop-loss)
-        assert result_symbol_scope is True
+        assert result_symbol_scope is True, 'Assertion failed'
 
     def test_all_exit_statuses_trigger_cooldown(self, signal_generator_with_mocks):
         """Verify all exit statuses (TP1/2/3 + INVALIDATED) trigger cooldown."""
@@ -373,7 +373,7 @@ class TestCooldownEdgeCases:
 
         # Should return False (allow trade) for unexpected status
         result = signal_generator_with_mocks._is_in_cooldown("BTC/USD", 50000.0)
-        assert result is False
+        assert result is False, 'Assertion failed'
 
     def test_cooldown_with_exact_10pct_threshold_allows_trade(
         self, signal_generator_with_mocks
@@ -393,7 +393,7 @@ class TestCooldownEdgeCases:
 
         # Exactly 10% move should allow trade
         result = signal_generator_with_mocks._is_in_cooldown("BTC/USD", 110.0)
-        assert result is False
+        assert result is False, 'Assertion failed'
 
     def test_cooldown_with_zero_price_handles_gracefully(
         self, signal_generator_with_mocks
@@ -413,7 +413,7 @@ class TestCooldownEdgeCases:
 
         # Should not crash
         result = signal_generator_with_mocks._is_in_cooldown("BTC/USD", 110.0)
-        assert isinstance(result, bool)
+        assert isinstance(result, bool), 'Assertion failed'
 
     def test_cooldown_respects_pattern_scope_filter(self, signal_generator_with_mocks):
         """Test that pattern_name parameter is passed to repository query."""
@@ -441,14 +441,14 @@ class TestCooldownEdgeCases:
 
         # Should call repository with pattern filter
         signal_generator_with_mocks.signal_repo.get_most_recent_exit.assert_called()
-        assert isinstance(result, bool)
+        assert isinstance(result, bool), 'Assertion failed'
 
     def test_cooldown_with_no_recent_exit_allows_trade(self, signal_generator_with_mocks):
         """Test that no recent exit returns False (allow trade)."""
         signal_generator_with_mocks.signal_repo.get_most_recent_exit.return_value = None
 
         result = signal_generator_with_mocks._is_in_cooldown("BTC/USD", 50000.0)
-        assert result is False
+        assert result is False, 'Assertion failed'
 
     def test_cooldown_with_very_old_exit_blocks_trade(self, signal_generator_with_mocks):
         """Test that old exits within 48h window still block (time-based)."""
@@ -467,4 +467,4 @@ class TestCooldownEdgeCases:
 
         # Price close to exit, within 48h → blocked
         result = signal_generator_with_mocks._is_in_cooldown("BTC/USD", 45500.0)
-        assert result is True
+        assert result is True, 'Assertion failed'

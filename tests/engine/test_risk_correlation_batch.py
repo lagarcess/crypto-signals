@@ -81,18 +81,18 @@ class TestRiskCorrelationBatching:
 
         result = risk_engine.check_correlation(signal)
 
-        assert result.passed is True
+        assert result.passed is True, 'Assertion failed'
 
         mock_market.get_daily_bars.assert_called_once()
         args, kwargs = mock_market.get_daily_bars.call_args
 
         # Check first arg is list
         fetched_symbols = args[0]
-        assert isinstance(fetched_symbols, list)
-        assert len(fetched_symbols) == 2
-        assert "BTC/USD" in fetched_symbols
-        assert "ETH/USD" in fetched_symbols
-        assert args[1] == AssetClass.CRYPTO
+        assert isinstance(fetched_symbols, list), 'Assertion failed'
+        assert len(fetched_symbols) == 2, 'Assertion failed'
+        assert "BTC/USD" in fetched_symbols, 'Assertion failed'
+        assert "ETH/USD" in fetched_symbols, 'Assertion failed'
+        assert args[1] == AssetClass.CRYPTO, 'Assertion failed'
 
     def test_check_correlation_mixed_assets(self, mock_components):
         risk_engine, mock_repo, mock_market = mock_components
@@ -129,4 +129,4 @@ class TestRiskCorrelationBatching:
 
         risk_engine.check_correlation(signal)
 
-        assert mock_market.get_daily_bars.call_count == 2
+        assert mock_market.get_daily_bars.call_count == 2, 'Assertion failed'

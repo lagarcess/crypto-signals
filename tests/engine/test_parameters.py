@@ -56,14 +56,14 @@ def test_bull_flag_parameters(factory, mock_analyzer):
     # tp3 = 100 + 1.5 * 20 = 130
     # stop = 90 * 0.99 = 89.1
 
-    assert params["symbol"] == "BTC/USD"
-    assert params["pattern_name"] == "BULL_FLAG"
-    assert params["take_profit_1"] == 110.0
-    assert params["take_profit_2"] == 120.0
-    assert params["take_profit_3"] == 130.0
-    assert params["suggested_stop"] == 89.1
-    assert params["pattern_duration_days"] == 10
-    assert params["pattern_classification"] == "STANDARD"
+    assert params["symbol"] == "BTC/USD", 'Assertion failed'
+    assert params["pattern_name"] == "BULL_FLAG", 'Assertion failed'
+    assert params["take_profit_1"] == 110.0, 'Assertion failed'
+    assert params["take_profit_2"] == 120.0, 'Assertion failed'
+    assert params["take_profit_3"] == 130.0, 'Assertion failed'
+    assert params["suggested_stop"] == 89.1, 'Assertion failed'
+    assert params["pattern_duration_days"] == 10, 'Assertion failed'
+    assert params["pattern_classification"] == "STANDARD", 'Assertion failed'
 
 
 def test_elliott_wave_micro_cap_safety(factory, mock_analyzer):
@@ -93,8 +93,8 @@ def test_elliott_wave_micro_cap_safety(factory, mock_analyzer):
     # stop = low - (0.5 * atr) = 0.8e-6 - 1.0e-6 = -0.2e-6
     # Should be capped at SAFE_STOP_VAL = 1e-8
 
-    assert params["suggested_stop"] == factory.SAFE_STOP_VAL
-    assert params["suggested_stop"] > 0
+    assert params["suggested_stop"] == factory.SAFE_STOP_VAL, 'Assertion failed'
+    assert params["suggested_stop"] > 0, 'Assertion failed'
 
 
 def test_elliott_wave_normal(factory, mock_analyzer):
@@ -120,7 +120,7 @@ def test_elliott_wave_normal(factory, mock_analyzer):
     )
 
     # stop = 90 - 2.5 = 87.5
-    assert params["suggested_stop"] == 87.5
+    assert params["suggested_stop"] == 87.5, 'Assertion failed'
 
 
 def test_bullish_hammer(factory, mock_analyzer):
@@ -150,9 +150,9 @@ def test_bullish_hammer(factory, mock_analyzer):
     # TPs (default ATR based):
     # tp1 = 100 + 2*5 = 110
 
-    assert params["invalidation_price"] == 90.0
-    assert params["suggested_stop"] == 89.1
-    assert params["take_profit_1"] == 110.0
+    assert params["invalidation_price"] == 90.0, 'Assertion failed'
+    assert params["suggested_stop"] == 89.1, 'Assertion failed'
+    assert params["take_profit_1"] == 110.0, 'Assertion failed'
 
 
 def test_hydrate_safe_values(factory):
@@ -166,10 +166,10 @@ def test_hydrate_safe_values(factory):
 
     safe = factory.hydrate_safe_values(bad_params)
 
-    assert safe["suggested_stop"] == factory.SAFE_STOP_VAL
-    assert safe["take_profit_1"] == factory.SAFE_TP1_VAL
-    assert safe["take_profit_2"] == factory.SAFE_TP2_VAL
-    assert safe["take_profit_3"] == factory.SAFE_TP3_VAL
+    assert safe["suggested_stop"] == factory.SAFE_STOP_VAL, 'Assertion failed'
+    assert safe["take_profit_1"] == factory.SAFE_TP1_VAL, 'Assertion failed'
+    assert safe["take_profit_2"] == factory.SAFE_TP2_VAL, 'Assertion failed'
+    assert safe["take_profit_3"] == factory.SAFE_TP3_VAL, 'Assertion failed'
 
 
 def test_confluence_factors(factory, mock_analyzer):
@@ -196,12 +196,12 @@ def test_confluence_factors(factory, mock_analyzer):
         geometric_pattern_name="BULL_FLAG",
     )
 
-    assert "rsi_bullish_divergence" in params["confluence_factors"]
-    assert "volume_expansion" in params["confluence_factors"]
-    assert "trend_bullish" not in params["confluence_factors"]
+    assert "rsi_bullish_divergence" in params["confluence_factors"], 'Assertion failed'
+    assert "volume_expansion" in params["confluence_factors"], 'Assertion failed'
+    assert "trend_bullish" not in params["confluence_factors"], 'Assertion failed'
     # If harmonic_pattern is provided, geometric_pattern_name is appended,
     # but here harmonic_pattern is None, so check logic again.
-    assert "BULL_FLAG" not in params["confluence_factors"]
+    assert "BULL_FLAG" not in params["confluence_factors"], 'Assertion failed'
 
 
 def test_harmonic_metadata(factory, mock_analyzer):
@@ -226,16 +226,16 @@ def test_harmonic_metadata(factory, mock_analyzer):
 
     assert (
         params["strategy_id"] == "GARTLEY"
-    )  # Multi-Layer: strategy stays as pattern_name
-    assert params["pattern_classification"] == "MACRO_PATTERN"
-    assert params["harmonic_metadata"] == {"XA": 0.618}
-    assert params["structural_context"] == "GARTLEY"  # Harmonic type stored as context
-    assert params["conviction_tier"] == "HIGH"  # Tactical + structural
+    ), 'Assertion failed' # Multi-Layer: strategy stays as pattern_name
+    assert params["pattern_classification"] == "MACRO_PATTERN", 'Assertion failed'
+    assert params["harmonic_metadata"] == {"XA": 0.618}, 'Assertion failed'
+    assert params["structural_context"] == "GARTLEY", 'Assertion failed' # Harmonic type stored as context
+    assert params["conviction_tier"] == "HIGH", 'Assertion failed' # Tactical + structural
 
     expected_ts = pd.Timestamp("2023-01-01").to_pydatetime().replace(
         tzinfo=timezone.utc
     ) + timedelta(hours=120)
-    assert params["valid_until"] == expected_ts
+    assert params["valid_until"] == expected_ts, 'Assertion failed'
 
 
 def test_morning_star(factory, mock_analyzer):
@@ -263,8 +263,8 @@ def test_morning_star(factory, mock_analyzer):
     # invalidation = low = 90
     # stop = 90 * 0.99 = 89.1
     # TPs (default ATR based)
-    assert params["invalidation_price"] == 90.0
-    assert params["suggested_stop"] == 89.1
+    assert params["invalidation_price"] == 90.0, 'Assertion failed'
+    assert params["suggested_stop"] == 89.1, 'Assertion failed'
 
 
 def test_bullish_engulfing(factory, mock_analyzer):
@@ -291,8 +291,8 @@ def test_bullish_engulfing(factory, mock_analyzer):
 
     # invalidation = open = 95.0
     # stop = 95.0 * 0.99 = 94.05
-    assert params["invalidation_price"] == 95.0
-    assert params["suggested_stop"] == 94.05
+    assert params["invalidation_price"] == 95.0, 'Assertion failed'
+    assert params["suggested_stop"] == 94.05, 'Assertion failed'
 
 
 def test_bullish_marubozu(factory, mock_analyzer):
@@ -320,8 +320,8 @@ def test_bullish_marubozu(factory, mock_analyzer):
     # midpoint = (90+110)/2 = 100
     # invalidation = 100
     # stop = 100 * 0.99 = 99.0
-    assert params["invalidation_price"] == 100.0
-    assert params["suggested_stop"] == 99.0
+    assert params["invalidation_price"] == 100.0, 'Assertion failed'
+    assert params["suggested_stop"] == 99.0, 'Assertion failed'
 
 
 def test_fallthrough_pattern(factory, mock_analyzer):
@@ -348,6 +348,6 @@ def test_fallthrough_pattern(factory, mock_analyzer):
 
     # Default stop: low * 0.99 = 89.1
     # Default TP1: close + 2*ATR = 100 + 10 = 110
-    assert params["suggested_stop"] == 89.1
-    assert params["take_profit_1"] == 110.0
-    assert params["invalidation_price"] is None
+    assert params["suggested_stop"] == 89.1, 'Assertion failed'
+    assert params["take_profit_1"] == 110.0, 'Assertion failed'
+    assert params["invalidation_price"] is None, 'Assertion failed'

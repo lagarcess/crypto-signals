@@ -52,11 +52,11 @@ class TestEmergencyCloseRetryBudget:
             result = engine.close_position_emergency(position)
 
         # Assert
-        assert result is True
-        assert position.exit_order_id == "order-123"
-        assert position.exit_fill_price == 51000.0
-        assert position.exit_time == mock_order.filled_at
-        assert position.awaiting_backfill is False
+        assert result is True, 'Assertion failed'
+        assert position.exit_order_id == "order-123", 'Assertion failed'
+        assert position.exit_fill_price == 51000.0, 'Assertion failed'
+        assert position.exit_time == mock_order.filled_at, 'Assertion failed'
+        assert position.awaiting_backfill is False, 'Assertion failed'
 
     def test_retry_budget_success(self, mock_trading_client):
         """Test emergency close with retry budget (fills on retry 2)."""
@@ -107,12 +107,12 @@ class TestEmergencyCloseRetryBudget:
                 result = engine.close_position_emergency(position)
 
         # Assert
-        assert result is True
-        assert position.exit_order_id == "order-456"
-        assert position.exit_fill_price == 3100.0
-        assert position.exit_time == mock_order_retry2.filled_at
-        assert position.awaiting_backfill is False
-        assert engine.get_order_details.call_count == 2  # Stopped after retry 2
+        assert result is True, 'Assertion failed'
+        assert position.exit_order_id == "order-456", 'Assertion failed'
+        assert position.exit_fill_price == 3100.0, 'Assertion failed'
+        assert position.exit_time == mock_order_retry2.filled_at, 'Assertion failed'
+        assert position.awaiting_backfill is False, 'Assertion failed'
+        assert engine.get_order_details.call_count == 2, 'Assertion failed' # Stopped after retry 2
 
     def test_retry_budget_exhausted(self, mock_trading_client):
         """Test emergency close with retry budget exhausted (awaiting backfill)."""
@@ -154,11 +154,11 @@ class TestEmergencyCloseRetryBudget:
                 result = engine.close_position_emergency(position)
 
         # Assert
-        assert result is True  # Order submitted successfully
-        assert position.exit_order_id == "order-789"
-        assert position.exit_fill_price is None  # Not filled yet
-        assert position.awaiting_backfill is True  # Marked for backfill
-        assert engine.get_order_details.call_count == 3  # All 3 retries exhausted
+        assert result is True, 'Assertion failed' # Order submitted successfully
+        assert position.exit_order_id == "order-789", 'Assertion failed'
+        assert position.exit_fill_price is None, 'Assertion failed' # Not filled yet
+        assert position.awaiting_backfill is True, 'Assertion failed' # Marked for backfill
+        assert engine.get_order_details.call_count == 3, 'Assertion failed' # All 3 retries exhausted
 
 
 class TestRetryFillPriceHelper:
@@ -182,11 +182,11 @@ class TestRetryFillPriceHelper:
             result = engine._retry_fill_price_capture("order-123", "test-pos-1")
 
         # Assert
-        assert result is not None
+        assert result is not None, 'Assertion failed'
         fill_price, filled_at = result
-        assert fill_price == 50000.0
-        assert filled_at == mock_order.filled_at
-        assert engine.get_order_details.call_count == 1
+        assert fill_price == 50000.0, 'Assertion failed'
+        assert filled_at == mock_order.filled_at, 'Assertion failed'
+        assert engine.get_order_details.call_count == 1, 'Assertion failed'
 
     def test_retry_helper_exhausted(self, mock_trading_client):
         """Test helper returns None when retries exhausted."""
@@ -207,8 +207,8 @@ class TestRetryFillPriceHelper:
             )
 
         # Assert
-        assert result is None
-        assert engine.get_order_details.call_count == 2
+        assert result is None, 'Assertion failed'
+        assert engine.get_order_details.call_count == 2, 'Assertion failed'
 
 
 class TestScaleOutWeightedAverage:
@@ -243,14 +243,14 @@ class TestScaleOutWeightedAverage:
             result = engine.scale_out_position(position, scale_pct=0.5)
 
         # Assert
-        assert result is True
-        assert position.scaled_out_qty == 0.5
-        assert position.scaled_out_price == 52000.0  # No averaging needed
-        assert position.exit_fill_price == 52000.0  # Set for archival
-        assert position.qty == 0.5  # Remaining
-        assert len(position.scaled_out_prices) == 1
-        assert position.scaled_out_prices[0]["price"] == 52000.0
-        assert position.scaled_out_prices[0]["order_id"] == "scale-order-1"
+        assert result is True, 'Assertion failed'
+        assert position.scaled_out_qty == 0.5, 'Assertion failed'
+        assert position.scaled_out_price == 52000.0, 'Assertion failed' # No averaging needed
+        assert position.exit_fill_price == 52000.0, 'Assertion failed' # Set for archival
+        assert position.qty == 0.5, 'Assertion failed' # Remaining
+        assert len(position.scaled_out_prices) == 1, 'Assertion failed'
+        assert position.scaled_out_prices[0]["price"] == 52000.0, 'Assertion failed'
+        assert position.scaled_out_prices[0]["order_id"] == "scale-order-1", 'Assertion failed'
 
     def test_multi_stage_weighted_average(self, mock_trading_client):
         """Test multi-stage scale-out with weighted average (TP1 + TP2)."""
@@ -283,11 +283,11 @@ class TestScaleOutWeightedAverage:
             result_tp1 = engine.scale_out_position(position, scale_pct=0.5)
 
         # Assert TP1
-        assert result_tp1 is True
-        assert position.scaled_out_qty == 0.5
-        assert position.scaled_out_price == 3200.0
-        assert position.exit_fill_price == 3200.0
-        assert position.qty == 0.5
+        assert result_tp1 is True, 'Assertion failed'
+        assert position.scaled_out_qty == 0.5, 'Assertion failed'
+        assert position.scaled_out_price == 3200.0, 'Assertion failed'
+        assert position.exit_fill_price == 3200.0, 'Assertion failed'
+        assert position.qty == 0.5, 'Assertion failed'
 
         # Arrange TP2
         # Mock TP2 scale-out @ $3400
@@ -305,13 +305,13 @@ class TestScaleOutWeightedAverage:
             result_tp2 = engine.scale_out_position(position, scale_pct=0.5)
 
         # Assert TP2 - Weighted Average
-        assert result_tp2 is True
-        assert position.scaled_out_qty == 0.75  # 0.5 + 0.25
+        assert result_tp2 is True, 'Assertion failed'
+        assert position.scaled_out_qty == 0.75, 'Assertion failed' # 0.5 + 0.25
         # Weighted avg: (0.5 * 3200 + 0.25 * 3400) / 0.75 = (1600 + 850) / 0.75 = 3266.67
-        assert position.scaled_out_price == pytest.approx(3266.67, rel=0.01)
-        assert position.exit_fill_price == pytest.approx(3266.67, rel=0.01)
-        assert position.qty == 0.25  # Remaining
-        assert len(position.scaled_out_prices) == 2
+        assert position.scaled_out_price == pytest.approx(3266.67, rel=0.01), 'Assertion failed'
+        assert position.exit_fill_price == pytest.approx(3266.67, rel=0.01), 'Assertion failed'
+        assert position.qty == 0.25, 'Assertion failed' # Remaining
+        assert len(position.scaled_out_prices) == 2, 'Assertion failed'
 
     def test_scale_out_retry_budget(self, mock_trading_client):
         """Test scale-out with retry budget."""
@@ -353,11 +353,11 @@ class TestScaleOutWeightedAverage:
                 result = engine.scale_out_position(position, scale_pct=0.5)
 
         # Assert
-        assert result is True
-        assert position.scaled_out_price == 105.0
-        assert position.exit_fill_price == 105.0
-        assert position.awaiting_backfill is False
-        assert engine.get_order_details.call_count == 1  # Stopped after retry 1
+        assert result is True, 'Assertion failed'
+        assert position.scaled_out_price == 105.0, 'Assertion failed'
+        assert position.exit_fill_price == 105.0, 'Assertion failed'
+        assert position.awaiting_backfill is False, 'Assertion failed'
+        assert engine.get_order_details.call_count == 1, 'Assertion failed' # Stopped after retry 1
 
 
 @pytest.fixture

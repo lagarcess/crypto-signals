@@ -77,7 +77,7 @@ class TestRiskCorrelation:
             pytest.fail("RiskEngine.check_correlation not implemented")
 
         result = risk_engine.check_correlation(signal)
-        assert result.passed is True
+        assert result.passed is True, 'Assertion failed'
 
     def test_check_correlation_high(self, risk_engine, mock_repo, mock_market_provider):
         # Setup: Open position in ETH
@@ -132,10 +132,10 @@ class TestRiskCorrelation:
             pytest.fail("RiskEngine.check_correlation not implemented")
 
         result = risk_engine.check_correlation(signal)
-        assert result.passed is False
+        assert result.passed is False, 'Assertion failed'
         assert (
             "highly correlated" in result.reason.lower()
-            or "correlation" in result.reason.lower()
+            or "correlation" in result.reason.lower(), 'Assertion failed'
         )
 
     def test_check_correlation_low(self, risk_engine, mock_repo, mock_market_provider):
@@ -181,7 +181,7 @@ class TestRiskCorrelation:
             pytest.fail("RiskEngine.check_correlation not implemented")
 
         result = risk_engine.check_correlation(signal)
-        assert result.passed is True
+        assert result.passed is True, 'Assertion failed'
 
     def test_check_correlation_market_data_failure(
         self, risk_engine, mock_repo, mock_market_provider
@@ -199,8 +199,8 @@ class TestRiskCorrelation:
 
         result = risk_engine.check_correlation(signal)
         # Should fail safe (block)
-        assert result.passed is False
+        assert result.passed is False, 'Assertion failed'
         assert (
             "error checking correlation" in result.reason.lower()
-            or "market data missing" in result.reason.lower()
+            or "market data missing" in result.reason.lower(), 'Assertion failed'
         )

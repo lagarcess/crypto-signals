@@ -108,4 +108,4 @@ class TestSyncPositionStatusIssue139:
         updated_pos = standalone_engine.sync_position_status(sample_position)
 
         # Verify
-        assert updated_pos.status == TradeStatus.OPEN
+        assert updated_pos.status == TradeStatus.OPEN, 'Assertion failed'

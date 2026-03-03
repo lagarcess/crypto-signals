@@ -85,7 +85,7 @@ def test_generate_signal_with_negative_stop(signal_generator):
         assert signal is not None, "Signal should not be None"
         # Since we now proactively fix negative stops for Elliott patterns,
         # the signal should be valid (WAITING), not REJECTED.
-        assert signal.status == SignalStatus.WAITING
+        assert signal.status == SignalStatus.WAITING, 'Assertion failed'
         assert (
             signal.suggested_stop == SignalParameterFactory.SAFE_STOP_VAL
-        )  # Safe hydration check
+        ), 'Assertion failed' # Safe hydration check

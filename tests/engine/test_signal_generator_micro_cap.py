@@ -97,15 +97,15 @@ def test_elliott_pattern_negative_stop_prevention(
     signal = signal_generator.generate_signals("PEPE/USD", AssetClass.CRYPTO)
 
     # Verification
-    assert signal is not None
-    assert signal.pattern_name == "ELLIOTT_IMPULSE_WAVE"
+    assert signal is not None, 'Assertion failed'
+    assert signal.pattern_name == "ELLIOTT_IMPULSE_WAVE", 'Assertion failed'
 
     # Check stop loss floor
     SAFE_STOP_VAL = 1e-8
     expected_stop = SAFE_STOP_VAL
 
-    assert signal.suggested_stop == expected_stop
-    assert signal.suggested_stop > 0
+    assert signal.suggested_stop == expected_stop, 'Assertion failed'
+    assert signal.suggested_stop > 0, 'Assertion failed'
 
 
 def test_elliott_pattern_normal_stop(
@@ -146,7 +146,7 @@ def test_elliott_pattern_normal_stop(
     signal = signal_generator.generate_signals("BTC/USD", AssetClass.CRYPTO)
 
     # Verification
-    assert signal is not None
+    assert signal is not None, 'Assertion failed'
     # Standard calc: low - 0.5 * ATR
     expected_stop = low_price - (0.5 * atr)  # 50000 - 500 = 49500
-    assert signal.suggested_stop == expected_stop
+    assert signal.suggested_stop == expected_stop, 'Assertion failed'

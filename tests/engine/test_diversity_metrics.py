@@ -31,9 +31,9 @@ def test_diversity_metrics_single_pattern(generator):
     signals = [_make_signal("BULL_FLAG") for _ in range(5)]
     metrics = SignalGenerator.compute_diversity_metrics(signals)
 
-    assert metrics["total_signals"] == 5
-    assert metrics["pattern_distribution"]["BULL_FLAG"] == {"count": 5, "pct": 100.0}
-    assert metrics["shannon_entropy"] == 0.0
+    assert metrics["total_signals"] == 5, 'Assertion failed'
+    assert metrics["pattern_distribution"]["BULL_FLAG"] == {"count": 5, "pct": 100.0}, 'Assertion failed'
+    assert metrics["shannon_entropy"] == 0.0, 'Assertion failed'
 
 
 def test_diversity_metrics_uniform_distribution(generator):
@@ -42,13 +42,13 @@ def test_diversity_metrics_uniform_distribution(generator):
     signals = [_make_signal(p) for p in patterns]
     metrics = SignalGenerator.compute_diversity_metrics(signals)
 
-    assert metrics["total_signals"] == 4
-    assert len(metrics["pattern_distribution"]) == 4
+    assert metrics["total_signals"] == 4, 'Assertion failed'
+    assert len(metrics["pattern_distribution"]) == 4, 'Assertion failed'
     for p in patterns:
-        assert metrics["pattern_distribution"][p] == {"count": 1, "pct": 25.0}
+        assert metrics["pattern_distribution"][p] == {"count": 1, "pct": 25.0}, 'Assertion failed'
 
     # Shannon entropy of uniform distribution of 4 items = log2(4) = 2.0
-    assert abs(metrics["shannon_entropy"] - 2.0) < 0.01
+    assert abs(metrics["shannon_entropy"] - 2.0) < 0.01, 'Assertion failed'
 
 
 def test_diversity_metrics_with_structural_context(generator):
@@ -61,18 +61,18 @@ def test_diversity_metrics_with_structural_context(generator):
     ]
     metrics = SignalGenerator.compute_diversity_metrics(signals)
 
-    assert metrics["structural_context_distribution"]["GARTLEY"] == 2
-    assert metrics["structural_context_distribution"]["ABCD"] == 1
-    assert metrics["conviction_distribution"]["HIGH"] == 3
-    assert metrics["conviction_distribution"].get(None, 0) == 1
+    assert metrics["structural_context_distribution"]["GARTLEY"] == 2, 'Assertion failed'
+    assert metrics["structural_context_distribution"]["ABCD"] == 1, 'Assertion failed'
+    assert metrics["conviction_distribution"]["HIGH"] == 3, 'Assertion failed'
+    assert metrics["conviction_distribution"].get(None, 0) == 1, 'Assertion failed'
 
 
 def test_diversity_metrics_empty_signals(generator):
     """Empty list should return zero metrics gracefully."""
     metrics = SignalGenerator.compute_diversity_metrics([])
 
-    assert metrics["total_signals"] == 0
-    assert metrics["pattern_distribution"] == {}
-    assert metrics["structural_context_distribution"] == {}
-    assert metrics["conviction_distribution"] == {}
-    assert metrics["shannon_entropy"] == 0.0
+    assert metrics["total_signals"] == 0, 'Assertion failed'
+    assert metrics["pattern_distribution"] == {}, 'Assertion failed'
+    assert metrics["structural_context_distribution"] == {}, 'Assertion failed'
+    assert metrics["conviction_distribution"] == {}, 'Assertion failed'
+    assert metrics["shannon_entropy"] == 0.0, 'Assertion failed'

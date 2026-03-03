@@ -74,11 +74,11 @@ def test_reconcile_ignores_theoretical_positions(
     report = reconciler.reconcile()
 
     # Should be NO zombies because theoretical trades are filtered out
-    assert len(report.zombies) == 0
-    assert "BTC/USD" not in report.zombies
+    assert len(report.zombies) == 0, 'Assertion failed'
+    assert "BTC/USD" not in report.zombies, 'Assertion failed'
 
     # Should be NO orphans
-    assert len(report.orphans) == 0
+    assert len(report.orphans) == 0, 'Assertion failed'
 
 
 def test_reconcile_detects_normal_zombies(
@@ -120,8 +120,8 @@ def test_reconcile_detects_normal_zombies(
     report = reconciler.reconcile()
 
     # The normal position should be a zombie
-    assert len(report.zombies) == 1
-    assert "ETH/USD" in report.zombies
+    assert len(report.zombies) == 1, 'Assertion failed'
+    assert "ETH/USD" in report.zombies, 'Assertion failed'
 
     # The theoretical position (BTC/USD) should be ignored
-    assert "BTC/USD" not in report.zombies
+    assert "BTC/USD" not in report.zombies, 'Assertion failed'

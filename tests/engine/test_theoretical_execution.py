@@ -65,14 +65,14 @@ def test_theoretical_execution_long(execution_engine, mock_settings, mock_tradin
     position = execution_engine.execute_signal(signal)
 
     # Verify
-    assert position is not None
-    assert position.trade_type == TradeType.THEORETICAL.value
-    assert position.status == "OPEN"
+    assert position is not None, 'Assertion failed'
+    assert position.trade_type == TradeType.THEORETICAL.value, 'Assertion failed'
+    assert position.status == "OPEN", 'Assertion failed'
 
     # Check synthetic slippage (1% of 100 = 1.0)
     # Long: Fill Price = Entry + Slippage = 101.0
-    assert position.entry_fill_price == 101.0
-    assert position.entry_slippage_pct == 1.0
+    assert position.entry_fill_price == 101.0, 'Assertion failed'
+    assert position.entry_slippage_pct == 1.0, 'Assertion failed'
 
     # Check that NO broker order was submitted
     mock_trading_client.submit_order.assert_not_called()
@@ -100,8 +100,8 @@ def test_theoretical_execution_short(
     position = execution_engine.execute_signal(signal)
 
     # Verify
-    assert position is not None
-    assert position.trade_type == TradeType.THEORETICAL.value
+    assert position is not None, 'Assertion failed'
+    assert position.trade_type == TradeType.THEORETICAL.value, 'Assertion failed'
 
     # Check synthetic slippage (1% of 100 = 1.0)
     # Short: Fill Price = Entry * (1 - Slippage) = 99.0
@@ -110,8 +110,8 @@ def test_theoretical_execution_short(
     # Long: Worse price is HIGHER (Buy High). Correct: 100 -> 101.
     # Short: Worse price is LOWER (Sell Low). Correct: 100 -> 99.
 
-    assert position.entry_fill_price == 99.0
-    assert position.entry_slippage_pct == -1.0
+    assert position.entry_fill_price == 99.0, 'Assertion failed'
+    assert position.entry_slippage_pct == -1.0, 'Assertion failed'
     # Logic in code: (fill - entry) / entry * 100
     # (99 - 100) / 100 * 100 = -1.0. Correct.
 
@@ -145,11 +145,11 @@ def test_execution_gating_prod_live(execution_engine, mock_settings, mock_tradin
     position = execution_engine.execute_signal(signal)
 
     # Verify
-    assert position is not None
+    assert position is not None, 'Assertion failed'
     # Default is EXECUTED (or whatever the default in Base model, currently EXECUTED)
     # The code doesn't explicitly set trade_type for live orders (it uses default),
     # but for Theoretical it sets it explicitly.
-    assert position.trade_type != TradeType.THEORETICAL.value
+    assert position.trade_type != TradeType.THEORETICAL.value, 'Assertion failed'
 
     # Check that broker order WAS submitted
     mock_trading_client.submit_order.assert_called_once()

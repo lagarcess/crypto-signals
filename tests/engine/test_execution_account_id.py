@@ -65,7 +65,7 @@ class TestExecutionAccountID:
             position = engine.execute_signal(signal)
 
             # Verification
-            assert position is not None
+            assert position is not None, 'Assertion failed'
             # THIS ASSERTION SHOULD FAIL until the fix is implemented
             # Currently it returns "paper"
             assert (
@@ -92,4 +92,4 @@ class TestExecutionAccountID:
                 trading_client=mock_trading_client, repository=MagicMock()
             )
 
-            assert engine.account_id == "unknown"
+            assert engine.account_id == "unknown", 'Assertion failed'
