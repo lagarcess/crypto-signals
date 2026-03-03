@@ -63,7 +63,7 @@ class TestRiskCorrelationBatching:
     def test_check_correlation_batches_calls(self, mock_components):
         risk_engine, mock_repo, mock_market = mock_components
 
-        # Setup: 1 open position (ETH) + 1 Candidate (BTC) -> Both Crypto
+        # Arrange: 1 open position (ETH) + 1 Candidate (BTC) -> Both Crypto
         # Should result in 1 call to get_daily_bars with list ["BTC/USD", "ETH/USD"] (order doesn't matter)
 
         mock_repo.get_open_positions.return_value = [self.create_position("ETH/USD")]
@@ -109,7 +109,7 @@ class TestRiskCorrelationBatching:
     def test_check_correlation_mixed_assets(self, mock_components):
         risk_engine, mock_repo, mock_market = mock_components
 
-        # Setup: 1 Crypto Position, Candidate is Equity
+        # Arrange: 1 Crypto Position, Candidate is Equity
         # Should batch separately?
         # Candidate = AAPL (Equity)
         # Position = ETH/USD (Crypto)

@@ -65,29 +65,31 @@ class TestTPAutomationSignalGuard:
 
     def test_tp3_closes_own_position_only(self):
         """TP3_HIT should close the position whose signal_id matches."""
+        # Arrange
         old_signal = _make_signal("old-signal-aaa", status=SignalStatus.TP3_HIT)
         old_position = _make_position("old-pos", signal_id="old-signal-aaa")
 
-        # Simulate: get_position_by_signal returns the OLD position (correct match)
         position_repo = MagicMock()
         position_repo.get_position_by_signal.return_value = old_position
 
         execution_engine = MagicMock()
         execution_engine.close_position_emergency.return_value = True
 
-        # Call the logic under test
+        # Act
         pos = position_repo.get_position_by_signal(old_signal.signal_id)
-        assert pos is not None, "pos should not be None"
+        result = execution_engine.close_position_emergency(pos)
+
+        # Assert
+        assert pos is not None, "Position should exist for matching signal_id"
         assert (
             pos.signal_id == old_signal.signal_id
-        ), f"Guard passes: expected old_signal.signal_id, got {pos.signal_id}"
+        ), f"Expected signal_id == {old_signal.signal_id}, got {pos.signal_id}"
         assert (
             pos.status == TradeStatus.OPEN
-        ), f"Expected pos.status == TradeStatus.OPEN, got {pos.status}"
-
-        # Execute close
-        result = execution_engine.close_position_emergency(pos)
-        assert result is True, f"Expected result to be True, got {result}"
+        ), f"Expected status == OPEN, got {pos.status}"
+        assert (
+            result is True
+        ), "close_position_emergency should return True for own position"
         execution_engine.close_position_emergency.assert_called_once_with(old_position)
 
     def test_tp3_skips_when_position_signal_id_mismatch(self):
@@ -97,16 +99,16 @@ class TestTPAutomationSignalGuard:
         Scenario: Old signal hits TP3, but get_position_by_signal returns
         a position linked to a DIFFERENT signal (the new one).
         """
+        # Arrange
         old_signal = _make_signal("old-signal-aaa", status=SignalStatus.TP3_HIT)
         new_position = _make_position("new-pos", signal_id="new-signal-bbb")
 
-        # BUG SCENARIO: get_position_by_signal incorrectly returns new position
         position_repo = MagicMock()
         position_repo.get_position_by_signal.return_value = new_position
 
         execution_engine = MagicMock()
 
-        # Apply the guard: signal_id must match
+        # Act
         pos = position_repo.get_position_by_signal(old_signal.signal_id)
         if (
             pos
@@ -115,11 +117,12 @@ class TestTPAutomationSignalGuard:
         ):
             execution_engine.close_position_emergency(pos)
 
-        # The guard BLOCKS the close because signal IDs don't match
+        # Assert
         execution_engine.close_position_emergency.assert_not_called()
 
     def test_tp3_skips_when_position_already_closed(self):
         """TP3_HIT must not act on already-closed positions."""
+        # Arrange
         old_signal = _make_signal("old-signal-aaa", status=SignalStatus.TP3_HIT)
         closed_position = _make_position(
             "old-pos", signal_id="old-signal-aaa", status=TradeStatus.CLOSED
@@ -130,6 +133,7 @@ class TestTPAutomationSignalGuard:
 
         execution_engine = MagicMock()
 
+        # Act
         pos = position_repo.get_position_by_signal(old_signal.signal_id)
         if (
             pos
@@ -138,10 +142,12 @@ class TestTPAutomationSignalGuard:
         ):
             execution_engine.close_position_emergency(pos)
 
+        # Assert
         execution_engine.close_position_emergency.assert_not_called()
 
     def test_tp3_skips_when_no_position_found(self):
         """TP3_HIT must handle None position gracefully."""
+        # Arrange
         old_signal = _make_signal("old-signal-aaa", status=SignalStatus.TP3_HIT)
 
         position_repo = MagicMock()
@@ -149,6 +155,7 @@ class TestTPAutomationSignalGuard:
 
         execution_engine = MagicMock()
 
+        # Act
         pos = position_repo.get_position_by_signal(old_signal.signal_id)
         if (
             pos
@@ -157,10 +164,12 @@ class TestTPAutomationSignalGuard:
         ):
             execution_engine.close_position_emergency(pos)
 
+        # Assert
         execution_engine.close_position_emergency.assert_not_called()
 
     def test_invalidated_signal_also_uses_guard(self):
         """INVALIDATED exits must also be guarded by signal_id match."""
+        # Arrange
         inv_signal = _make_signal("old-signal-ccc", status=SignalStatus.INVALIDATED)
         new_position = _make_position("new-pos", signal_id="new-signal-ddd")
 
@@ -169,6 +178,7 @@ class TestTPAutomationSignalGuard:
 
         execution_engine = MagicMock()
 
+        # Act
         pos = position_repo.get_position_by_signal(inv_signal.signal_id)
         if (
             pos
@@ -177,6 +187,7 @@ class TestTPAutomationSignalGuard:
         ):
             execution_engine.close_position_emergency(pos)
 
+        # Assert
         execution_engine.close_position_emergency.assert_not_called()
 
 
@@ -190,47 +201,56 @@ class TestAlpacaQtyValidation:
 
     def test_closes_normally_when_qty_matches(self):
         """Normal case: Alpaca and Firestore qty match, close proceeds."""
+        # Arrange
         pos = _make_position("pos-1", signal_id="sig-1", qty=10.0)
 
         alpaca_position = MagicMock()
-        alpaca_position.qty = "10.0"  # Alpaca returns strings
+        alpaca_position.qty = "10.0"
 
         alpaca_client = MagicMock()
         alpaca_client.get_open_position.return_value = alpaca_position
 
-        # Verify qty matches
+        # Act
         alpaca_qty = float(alpaca_position.qty)
-        assert alpaca_qty >= pos.qty, f"Expected alpaca_qty >= pos.qty, got {alpaca_qty}"
+
+        # Assert
+        assert (
+            alpaca_qty >= pos.qty
+        ), f"Alpaca qty ({alpaca_qty}) should be >= Firestore qty ({pos.qty})"
 
     def test_adjusts_qty_when_alpaca_has_less(self):
         """If Alpaca has fewer shares, adjust close qty to prevent overselling."""
+        # Arrange
         pos = _make_position("pos-1", signal_id="sig-1", qty=10.0)
 
         alpaca_position = MagicMock()
-        alpaca_position.qty = "5.0"  # Only 5 shares left on Alpaca
+        alpaca_position.qty = "5.0"
 
         alpaca_client = MagicMock()
         alpaca_client.get_open_position.return_value = alpaca_position
 
-        # The guard should adjust qty
+        # Act
         alpaca_qty = float(alpaca_position.qty)
         if alpaca_qty < pos.qty:
             pos.qty = alpaca_qty
 
-        assert pos.qty == 5.0, f"Expected pos.qty == 5.0, got {pos.qty}"
+        # Assert
+        assert (
+            pos.qty == 5.0
+        ), f"Position qty should be adjusted to Alpaca qty 5.0, got {pos.qty}"
 
     def test_marks_closed_externally_when_alpaca_position_gone(self):
         """If position doesn't exist on Alpaca (404), mark CLOSED_EXTERNALLY."""
+        # Arrange
         pos = _make_position("pos-1", signal_id="sig-1", qty=10.0)
 
         alpaca_client = MagicMock()
-        # Mock APIError with status_code 404 (via http_error)
         mock_http_error = MagicMock()
         mock_http_error.response.status_code = 404
         error_404 = APIError("position not found", http_error=mock_http_error)
         alpaca_client.get_open_position.side_effect = error_404
 
-        # The guard should mark position as closed externally
+        # Act
         try:
             alpaca_client.get_open_position(pos.symbol)
         except APIError as e:
@@ -238,39 +258,41 @@ class TestAlpacaQtyValidation:
                 pos.status = TradeStatus.CLOSED
                 pos.exit_reason = ExitReason.CLOSED_EXTERNALLY
 
+        # Assert
         assert (
             pos.status == TradeStatus.CLOSED
-        ), f"Expected pos.status == TradeStatus.CLOSED, got {pos.status}"
+        ), f"Expected status == CLOSED after 404, got {pos.status}"
         assert (
             pos.exit_reason == ExitReason.CLOSED_EXTERNALLY
-        ), f"Expected pos.exit_reason == ExitReason.CLOSED_EXTERNALLY, got {pos.exit_reason}"
+        ), f"Expected exit_reason == CLOSED_EXTERNALLY, got {pos.exit_reason}"
 
     def test_skips_close_on_alpaca_api_error_not_404(self):
         """If API returns non-404 error (e.g. 500), do NOT mark closed."""
+        # Arrange
         pos = _make_position("pos-1", signal_id="sig-1", qty=10.0)
 
         alpaca_client = MagicMock()
-        # Mock APIError with status_code 500
         mock_http_error = MagicMock()
         mock_http_error.response.status_code = 500
         error_500 = APIError("internal server error", http_error=mock_http_error)
         alpaca_client.get_open_position.side_effect = error_500
 
-        # The guard should NOT mark position as closed
+        # Act
         try:
             alpaca_client.get_open_position(pos.symbol)
         except APIError as e:
             if e.status_code == 404:
                 pos.status = TradeStatus.CLOSED
             else:
-                pass  # Should log and continue
+                pass
 
+        # Assert
         assert (
             pos.status == TradeStatus.OPEN
-        ), f"Expected pos.status == TradeStatus.OPEN, got {pos.status}"
+        ), f"Status should remain OPEN on non-404 error, got {pos.status}"
         assert (
             pos.exit_reason is None
-        ), f"pos.exit_reason should be None, got {pos.exit_reason}"
+        ), f"exit_reason should remain None on non-404 error, got {pos.exit_reason}"
 
 
 # =============================================================================
@@ -283,15 +305,17 @@ class TestDuplicateSymbolPrevention:
 
     def test_skips_signal_when_alpaca_position_exists(self):
         """Should skip signal generation if symbol already has an Alpaca position."""
+        # Arrange
         alpaca_client = MagicMock()
         alpaca_position = MagicMock()
         alpaca_position.symbol = "AAVEUSD"
         alpaca_client.get_open_position.return_value = alpaca_position
 
-        # Simulate the guard
         symbol = "AAVE/USD"
         alpaca_symbol = symbol.replace("/", "")
         should_skip = False
+
+        # Act
         try:
             existing = alpaca_client.get_open_position(alpaca_symbol)
             if existing:
@@ -299,10 +323,14 @@ class TestDuplicateSymbolPrevention:
         except APIError:
             pass
 
-        assert should_skip is True, f"Expected should_skip to be True, got {should_skip}"
+        # Assert
+        assert (
+            should_skip is True
+        ), "Signal should be skipped when Alpaca position already exists"
 
     def test_proceeds_when_no_alpaca_position(self):
         """Should proceed with signal generation when no Alpaca position exists."""
+        # Arrange
         alpaca_client = MagicMock()
         mock_http_error = MagicMock()
         mock_http_error.response.status_code = 404
@@ -312,6 +340,8 @@ class TestDuplicateSymbolPrevention:
         symbol = "AAVE/USD"
         alpaca_symbol = symbol.replace("/", "")
         should_skip = False
+
+        # Act
         try:
             existing = alpaca_client.get_open_position(alpaca_symbol)
             if existing:
@@ -319,6 +349,7 @@ class TestDuplicateSymbolPrevention:
         except APIError:
             pass
 
+        # Assert
         assert (
             should_skip is False
-        ), f"Expected should_skip to be False, got {should_skip}"
+        ), "Signal should proceed when no Alpaca position exists (404)"

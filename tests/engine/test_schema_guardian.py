@@ -252,7 +252,7 @@ def test_create_table_race_condition(guardian, mock_bq_client):
     # Should not raise exception
     guardian._create_table("project.dataset.table", SimpleModel)
 
-    # Verify create_table was attempted
+    # Assert create_table was attempted
     mock_bq_client.create_table.assert_called_once()
 
 
@@ -279,7 +279,7 @@ def test_validate_schema_clustering_missing_on_table(guardian, mock_bq_client):
 
 def test_migrate_schema_detects_type_mismatch(guardian, mock_bq_client):
     """Test that migrate_schema raises SchemaMismatchError on type conflict (Issue #266)."""
-    # 1. Setup Table with incompatible column
+    # Arrange Table with incompatible column
     mock_table = MagicMock()
     mock_table.schema = [
         bigquery.SchemaField("name", "STRING"),

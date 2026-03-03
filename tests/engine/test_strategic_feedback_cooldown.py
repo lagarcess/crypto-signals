@@ -55,12 +55,12 @@ class TestInvalidatedStatusCooldown:
         # Call cooldown check
         signal_generator_with_mocks._is_in_cooldown("BTC/USD", 45000.0)
 
-        # Verify the repository was called (it will be in implementation)
+        # Assert the repository was called (it will be in implementation)
         assert signal_generator_with_mocks.signal_repo.get_most_recent_exit.called, f"Expected signal_generator_with_mocks.signal_repo.get_most_recent_exit.called to be truthy, got {signal_generator_with_mocks.signal_repo.get_most_recent_exit.called}"
 
     def test_cooldown_blocks_after_stop_loss_hit(self, signal_generator_with_mocks):
         """Verify cooldown blocks trading after INVALIDATED (stop-loss) status."""
-        # Setup: Recent exit with INVALIDATED status (stop-loss hit)
+        # Arrange: Recent exit with INVALIDATED status (stop-loss hit)
         recent_exit = MagicMock(spec=Signal)
         recent_exit.status = SignalStatus.INVALIDATED
         recent_exit.suggested_stop = 44000.0  # Stop level (should map to this)
@@ -85,7 +85,7 @@ class TestInvalidatedStatusCooldown:
         self, signal_generator_with_mocks
     ):
         """Verify escape valve works after INVALIDATED (large price move)."""
-        # Setup: Recent stop-loss hit, but price has moved 15%
+        # Arrange: Recent stop-loss hit, but price has moved 15%
         recent_exit = MagicMock(spec=Signal)
         recent_exit.status = SignalStatus.INVALIDATED
         recent_exit.suggested_stop = 40000.0  # Stop level
@@ -249,13 +249,13 @@ class TestCooldownScopeConfig:
 
     def test_cooldown_respects_scope_setting_in_logic(self, signal_generator_with_mocks):
         """Verify _is_in_cooldown respects COOLDOWN_SCOPE setting."""
-        # Setup: Config scope to PATTERN
+        # Arrange: Config scope to PATTERN
         with patch(
             "crypto_signals.engine.signal_generator.get_settings"
         ) as mock_settings:
             mock_settings.return_value.COOLDOWN_SCOPE = "PATTERN"
 
-            # Setup repo to return an exit for the specific pattern
+            # Arrange repo to return an exit for the specific pattern
             recent_exit = MagicMock(spec=Signal)
             recent_exit.status = SignalStatus.TP1_HIT
             recent_exit.take_profit_1 = 45000.0
@@ -275,7 +275,7 @@ class TestCooldownScopeConfig:
                 "BTC/USD", 45000.0, pattern_name="BULL_FLAG"
             )
 
-            # Verify repository was called using pattern scope logic
+            # Assert repository was called using pattern scope logic
             # (passed pattern_name="BULL_FLAG" instead of None)
             args, kwargs = (
                 signal_generator_with_mocks.signal_repo.get_most_recent_exit.call_args
@@ -295,7 +295,7 @@ class TestStrategicFeedbackIntegration:
 
     def test_revenge_trading_and_config_scope_together(self, signal_generator_with_mocks):
         """Verify INVALIDATED status works with COOLDOWN_SCOPE config."""
-        # Setup: Stop-loss hit on BULL_FLAG pattern
+        # Arrange: Stop-loss hit on BULL_FLAG pattern
         recent_exit = MagicMock(spec=Signal)
         recent_exit.status = SignalStatus.INVALIDATED
         recent_exit.suggested_stop = 44000.0

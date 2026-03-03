@@ -49,7 +49,7 @@ def execution_engine(mock_settings, mock_trading_client):
 class TestInvalidationPath:
     def test_sl_exit_captures_exit_order_id(self, execution_engine, mock_trading_client):
         """Verify exit_order_id is set when Position closes via Stop Loss."""
-        # Setup
+        # Arrange
         mock_parent = MagicMock()
         mock_parent.status = "filled"
         mock_parent.filled_at = None
@@ -85,10 +85,10 @@ class TestInvalidationPath:
             qty=0.05,
         )
 
-        # Execute
+        # Act
         updated = execution_engine.sync_position_status(position)
 
-        # Verify
+        # Assert
         assert (
             updated.status == TradeStatus.CLOSED
         ), f"Expected updated.status == TradeStatus.CLOSED, got {updated.status}"
@@ -99,7 +99,7 @@ class TestInvalidationPath:
 
     def test_tp_exit_captures_exit_order_id(self, execution_engine, mock_trading_client):
         """Verify exit_order_id is set when Position closes via Take Profit."""
-        # Setup
+        # Arrange
         mock_parent = MagicMock()
         mock_parent.status = "filled"
         mock_parent.legs = []
@@ -128,10 +128,10 @@ class TestInvalidationPath:
             qty=0.05,
         )
 
-        # Execute
+        # Act
         updated = execution_engine.sync_position_status(position)
 
-        # Verify
+        # Assert
         assert (
             updated.status == TradeStatus.CLOSED
         ), f"Expected updated.status == TradeStatus.CLOSED, got {updated.status}"

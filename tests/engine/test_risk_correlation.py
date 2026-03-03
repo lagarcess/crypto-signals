@@ -82,7 +82,7 @@ class TestRiskCorrelation:
         ), f"Expected result.passed to be True, got {result.passed}"
 
     def test_check_correlation_high(self, risk_engine, mock_repo, mock_market_provider):
-        # Setup: Open position in ETH
+        # Arrange: Open position in ETH
         mock_repo.get_open_positions.return_value = [
             self.create_position(symbol="ETH/USD")
         ]
@@ -143,7 +143,7 @@ class TestRiskCorrelation:
         ), f"Expected risk gate reason to contain relevant keyword, got {result.reason}"
 
     def test_check_correlation_low(self, risk_engine, mock_repo, mock_market_provider):
-        # Setup: Open position in ETH
+        # Arrange: Open position in ETH
         mock_repo.get_open_positions.return_value = [
             self.create_position(symbol="ETH/USD")
         ]

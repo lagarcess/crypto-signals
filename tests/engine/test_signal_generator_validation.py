@@ -43,7 +43,7 @@ def test_generate_signal_with_negative_stop(signal_generator):
     Test that a signal with a negative stop (due to volatility or bad math)
     returns a REJECTED_BY_FILTER signal instead of None.
     """
-    # 1. Mock Data
+    # Arrange
     symbol = "BTC/USD"
     asset_class = AssetClass.CRYPTO
 
@@ -68,20 +68,13 @@ def test_generate_signal_with_negative_stop(signal_generator):
         mock_instance.check_patterns.return_value = df
         mock_instance.pivots = []  # No pivots for now
 
-        # 2. Run generate_signals
-        # Validate logic selection (ELLIOTT vs standard)
-        # that uses ATR for stops.
-        # Let's force a pattern that uses generic ATR stop logic if possible,
-        # or mock the logic inside generate_signals.
-        # Actually, in the current code, ELLIOTT_IMPULSE_WAVE uses ATR-based stop.
-        # Or we can rely on standard logic if we modify the dataframe inject "elliott_impulse_wave": True
-
         df["elliott_impulse_wave"] = True
         df["bullish_engulfing"] = False
 
+        # Act
         signal = signal_generator.generate_signals(symbol, asset_class, dataframe=df)
 
-        # 3. Assertions
+        # Assert
         assert signal is not None, "Signal should not be None"
         # Since we now proactively fix negative stops for Elliott patterns,
         # the signal should be valid (WAITING), not REJECTED.

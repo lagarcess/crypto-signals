@@ -46,7 +46,7 @@ def execution_engine(mock_trading_client):
 
 def test_theoretical_execution_long(execution_engine, mock_settings, mock_trading_client):
     """Verify that a LONG signal creates a THEORETICAL position with positive slippage."""
-    # Setup
+    # Arrange
     mock_settings.ENVIRONMENT = "DEV"
     mock_settings.ENABLE_EXECUTION = False  # Should trigger theoretical path
 
@@ -61,10 +61,10 @@ def test_theoretical_execution_long(execution_engine, mock_settings, mock_tradin
         side=OrderSide.BUY,
     )
 
-    # Execute
+    # Act
     position = execution_engine.execute_signal(signal)
 
-    # Verify
+    # Assert
     assert position is not None, "position should not be None"
     assert (
         position.trade_type == TradeType.THEORETICAL.value
@@ -102,10 +102,10 @@ def test_theoretical_execution_short(
         side=OrderSide.SELL,
     )
 
-    # Execute
+    # Act
     position = execution_engine.execute_signal(signal)
 
-    # Verify
+    # Assert
     assert position is not None, "position should not be None"
     assert (
         position.trade_type == TradeType.THEORETICAL.value
@@ -153,10 +153,10 @@ def test_execution_gating_prod_live(execution_engine, mock_settings, mock_tradin
         side=OrderSide.BUY,
     )
 
-    # Execute
+    # Act
     position = execution_engine.execute_signal(signal)
 
-    # Verify
+    # Assert
     assert position is not None, "position should not be None"
     # Default is EXECUTED (or whatever the default in Base model, currently EXECUTED)
     # The code doesn't explicitly set trade_type for live orders (it uses default),

@@ -65,7 +65,7 @@ class TestHandleManualExitVerification:
         self, reconciler, mock_alpaca, sample_position, mock_discord
     ):
         """Verify that a filled sell order marks the position as CLOSED/MANUAL_EXIT."""
-        # 1. Mock get_orders to return a FILLED SELL order
+        # Arrange get_orders to return a FILLED SELL order
         mock_sell_order = MagicMock(spec=Order)
         mock_sell_order.id = "manual-sell-order-123"
         mock_sell_order.status = "filled"
@@ -75,10 +75,10 @@ class TestHandleManualExitVerification:
 
         mock_alpaca.get_orders.return_value = [mock_sell_order]
 
-        # Execute
+        # Act
         result = reconciler.handle_manual_exit_verification(sample_position)
 
-        # Verify
+        # Assert
         assert isinstance(
             result, Position
         ), f"Expected result to be instance of Position, got {type(result).__name__}"
@@ -95,7 +95,7 @@ class TestHandleManualExitVerification:
             sample_position.exit_order_id == "manual-sell-order-123"
         ), 'Expected sample_position.exit_order_id == "manual-sell-order-123"'
 
-        # Verify Discord notification sent
+        # Assert Discord notification sent
         mock_discord.send_message.assert_called_once()
         assert (
             "MANUAL EXIT DETECTED" in mock_discord.send_message.call_args[0][0]
@@ -105,13 +105,13 @@ class TestHandleManualExitVerification:
         self, reconciler, mock_alpaca, sample_position
     ):
         """Verify that if no orders are found, it returns False and keeps position OPEN."""
-        # 1. Mock get_orders to return empty list
+        # Arrange get_orders to return empty list
         mock_alpaca.get_orders.return_value = []
 
-        # Execute
+        # Act
         result = reconciler.handle_manual_exit_verification(sample_position)
 
-        # Verify
+        # Assert
         assert result is None, f"result should be None, got {result}"
         assert (
             sample_position.status == TradeStatus.OPEN
@@ -131,10 +131,10 @@ class TestHandleManualExitVerification:
 
         mock_alpaca.get_orders.return_value = [mock_tp_order]
 
-        # Execute
+        # Act
         result = reconciler.handle_manual_exit_verification(sample_position)
 
-        # Verify
+        # Assert
         assert result is None, f"result should be None, got {result}"
         assert (
             sample_position.status == TradeStatus.OPEN
