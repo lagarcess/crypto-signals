@@ -1,6 +1,14 @@
 from datetime import date, datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
-from crypto_signals.domain.schemas import AssetClass, OrderSide, Position, Signal, SignalStatus, TradeStatus
+from typing import Any, Dict, List
+
+from crypto_signals.domain.schemas import (
+    AssetClass,
+    OrderSide,
+    Position,
+    Signal,
+    SignalStatus,
+    TradeStatus,
+)
 from polyfactory.factories.pydantic_factory import ModelFactory
 
 
