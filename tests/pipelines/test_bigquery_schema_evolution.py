@@ -37,7 +37,7 @@ def mock_settings():
 
 
 def test_pipeline_fails_strict_validation(mock_bq_client, mock_settings):
-    """Verify that the pipeline raises SchemaMismatchError when strict mode is on and auto-migration is off."""
+    """Verify strict mode without auto-migration raises SchemaMismatchError."""
     # Disable migration to test strict failure
     mock_settings.return_value.SCHEMA_MIGRATION_AUTO = False
 
@@ -67,7 +67,7 @@ def test_pipeline_fails_strict_validation(mock_bq_client, mock_settings):
 
 
 def test_pipeline_migrates_schema_and_succeeds(mock_bq_client, mock_settings):
-    """Verify that the pipeline automatically migrates BigQuery schema when fields are missing from the table."""
+    """Verify the pipeline auto-migrates BigQuery schema for missing fields."""
     # Ensure migration is enabled
     mock_settings.return_value.SCHEMA_MIGRATION_AUTO = True
 

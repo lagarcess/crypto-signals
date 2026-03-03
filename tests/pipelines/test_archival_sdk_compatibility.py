@@ -20,7 +20,7 @@ def test_get_actual_fees_uses_public_api(
     mock_firestore,
     mock_settings,
 ):
-    """Verify that fee archival uses the public Alpaca Activity API instead of legacy private methods."""
+    """Verify fee archival uses the public Alpaca Activity API."""
     # Setup
     mock_settings.return_value.ENVIRONMENT = "PROD"
     mock_settings.return_value.GOOGLE_CLOUD_PROJECT = "test-project"
