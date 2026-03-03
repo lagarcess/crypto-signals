@@ -33,28 +33,25 @@ from pydantic import ValidationError
 class TestDeterministicIds:
     """Test get_deterministic_id for idempotency guarantees."""
 
-    def test_same_input_produces_same_output(self):
-        """Identical inputs MUST produce identical UUIDs."""
-        id_1 = get_deterministic_id("A")
-        id_2 = get_deterministic_id("A")
+    @pytest.mark.parametrize(
+        "input_a,input_b,expected_equal",
+        [
+            pytest.param("A", "A", True, id="same_input"),
+            pytest.param("A", "B", False, id="different_input"),
+            pytest.param(
+                "2024-01-15|momentum|BTC/USD",
+                "2024-01-15|momentum|BTC/USD",
+                True,
+                id="complex_key",
+            ),
+        ],
+    )
+    def test_deterministic_id_idempotency(self, input_a, input_b, expected_equal):
+        """Verify that get_deterministic_id is deterministic or different based on input."""
+        id_1 = get_deterministic_id(input_a)
+        id_2 = get_deterministic_id(input_b)
 
-        assert id_1 == id_2, "Same input must produce same UUID"
-
-    def test_different_inputs_produce_different_outputs(self):
-        """Different inputs MUST produce different UUIDs."""
-        id_a = get_deterministic_id("A")
-        id_b = get_deterministic_id("B")
-
-        assert id_a != id_b, "Different inputs must produce different UUIDs"
-
-    def test_complex_key_is_deterministic(self):
-        """Real-world signal key pattern must be deterministic."""
-        key = "2024-01-15|momentum|BTC/USD"
-
-        id_1 = get_deterministic_id(key)
-        id_2 = get_deterministic_id(key)
-
-        assert id_1 == id_2
+        assert (id_1 == id_2) is expected_equal
 
     def test_returns_valid_uuid_string(self):
         """Output must be a valid UUID string format."""
@@ -73,46 +70,32 @@ class TestDeterministicIds:
 class TestAssetClassValidation:
     """Test AssetClass enum validation in StrategyConfig."""
 
-    def test_accepts_crypto_asset_class(self):
-        """Ensure StrategyConfig accepts AssetClass.CRYPTO."""
+    @pytest.mark.parametrize(
+        "asset_class,expected_enum,expected_value",
+        [
+            pytest.param(
+                AssetClass.CRYPTO, AssetClass.CRYPTO, "CRYPTO", id="crypto_enum"
+            ),
+            pytest.param(
+                AssetClass.EQUITY, AssetClass.EQUITY, "EQUITY", id="equity_enum"
+            ),
+            pytest.param("CRYPTO", AssetClass.CRYPTO, "CRYPTO", id="crypto_string"),
+        ],
+    )
+    def test_strategy_config_accepts_valid_asset_classes(
+        self, asset_class, expected_enum, expected_value
+    ):
+        """Ensure StrategyConfig accepts valid AssetClass values."""
         config = StrategyConfig(
             strategy_id="test_strategy",
             active=True,
             timeframe="1D",
-            asset_class=AssetClass.CRYPTO,
-            assets=["BTC/USD", "ETH/USD"],
-            risk_params={"stop_loss_pct": 0.02},
-        )
-
-        assert config.asset_class == AssetClass.CRYPTO
-        assert config.asset_class.value == "CRYPTO"
-
-    def test_accepts_equity_asset_class(self):
-        """Ensure StrategyConfig accepts AssetClass.EQUITY."""
-        config = StrategyConfig(
-            strategy_id="equity_strategy",
-            active=True,
-            timeframe="1D",
-            asset_class=AssetClass.EQUITY,
-            assets=["AAPL", "GOOGL"],
-            risk_params={},
-        )
-
-        assert config.asset_class == AssetClass.EQUITY
-        assert config.asset_class.value == "EQUITY"
-
-    def test_accepts_string_value_for_asset_class(self):
-        """Ensure StrategyConfig accepts valid string values for asset_class."""
-        config = StrategyConfig(
-            strategy_id="test_strategy",
-            active=True,
-            timeframe="1D",
-            asset_class="CRYPTO",  # String instead of enum
+            asset_class=asset_class,
             assets=["BTC/USD"],
             risk_params={},
         )
-
-        assert config.asset_class == AssetClass.CRYPTO
+        assert config.asset_class == expected_enum
+        assert config.asset_class.value == expected_value
 
     def test_rejects_invalid_asset_class(self):
         """Ensure StrategyConfig rejects invalid asset class like 'FOREX'."""
@@ -139,7 +122,14 @@ class TestAssetClassValidation:
 class TestPositionModel:
     """Test Position model for required fields and validation."""
 
-    def test_position_with_qty_and_side(self):
+    @pytest.mark.parametrize(
+        "side,qty,expected_side_value",
+        [
+            pytest.param(OrderSide.BUY, 0.5, "buy", id="buy_side"),
+            pytest.param(OrderSide.SELL, 1.0, "sell", id="sell_side"),
+        ],
+    )
+    def test_position_valid_qty_and_side(self, side, qty, expected_side_value):
         """Position must accept qty and side fields."""
         position = Position(
             position_id="order_123",
@@ -150,71 +140,39 @@ class TestPositionModel:
             status=TradeStatus.OPEN,
             entry_fill_price=50000.00,
             current_stop_loss=48000.00,
-            qty=0.5,
-            side=OrderSide.BUY,
+            qty=qty,
+            side=side,
         )
 
-        assert position.qty == 0.5
-        assert position.side == OrderSide.BUY
+        assert position.qty == qty
+        assert position.side == side
+        assert position.side.value == expected_side_value
 
-    def test_position_accepts_sell_side(self):
-        """Position must accept OrderSide.SELL."""
-        position = Position(
-            position_id="order_456",
-            ds=date(2024, 1, 15),
-            account_id="account_abc",
-            symbol="BTC/USD",
-            signal_id="signal_xyz",
-            status=TradeStatus.OPEN,
-            entry_fill_price=50000.00,
-            current_stop_loss=52000.00,
-            qty=1.0,
-            side=OrderSide.SELL,
-        )
+    @pytest.mark.parametrize("missing_field", ["qty", "side"])
+    def test_position_fails_missing_required_fields(self, missing_field):
+        """Position must fail validation if required fields are missing."""
+        base_data = {
+            "position_id": "order_789",
+            "ds": date(2024, 1, 15),
+            "account_id": "account_abc",
+            "symbol": "BTC/USD",
+            "signal_id": "signal_xyz",
+            "status": TradeStatus.OPEN,
+            "entry_fill_price": 50000.00,
+            "current_stop_loss": 48000.00,
+            "qty": 0.5,
+            "side": OrderSide.BUY,
+        }
+        del base_data[missing_field]
 
-        assert position.side == OrderSide.SELL
-        assert position.side.value == "sell"
-
-    def test_position_fails_without_qty(self):
-        """Position must fail validation if qty is missing."""
         with pytest.raises(ValidationError) as exc_info:
-            Position(
-                position_id="order_789",
-                ds=date(2024, 1, 15),
-                account_id="account_abc",
-                symbol="BTC/USD",
-                signal_id="signal_xyz",
-                status=TradeStatus.OPEN,
-                entry_fill_price=50000.00,
-                current_stop_loss=48000.00,
-                # qty is missing!
-                side=OrderSide.BUY,
-            )
+            Position(**base_data)
 
-        error_str = str(exc_info.value)
-        assert "qty" in error_str.lower()
+        assert missing_field in str(exc_info.value).lower()
 
-    def test_position_fails_without_side(self):
-        """Position must fail validation if side is missing."""
-        with pytest.raises(ValidationError) as exc_info:
-            Position(
-                position_id="order_789",
-                ds=date(2024, 1, 15),
-                account_id="account_abc",
-                symbol="BTC/USD",
-                signal_id="signal_xyz",
-                status=TradeStatus.OPEN,
-                entry_fill_price=50000.00,
-                current_stop_loss=48000.00,
-                qty=0.5,
-                # side is missing!
-            )
-
-        error_str = str(exc_info.value)
-        assert "side" in error_str.lower()
-
-    def test_position_discord_thread_id_optional(self):
-        """Position must allow discord_thread_id to be None."""
+    @pytest.mark.parametrize("discord_id", [None, "1234567890"])
+    def test_position_discord_thread_id(self, discord_id):
+        """Position must handle discord_thread_id (optional)."""
         position = Position(
             position_id="order_123",
             ds=date(2024, 1, 15),
@@ -226,28 +184,10 @@ class TestPositionModel:
             current_stop_loss=48000.00,
             qty=0.5,
             side=OrderSide.BUY,
-            discord_thread_id=None,  # Explicitly None
+            discord_thread_id=discord_id,
         )
 
-        assert position.discord_thread_id is None
-
-    def test_position_accepts_discord_thread_id(self):
-        """Position must accept a valid discord_thread_id."""
-        position = Position(
-            position_id="order_123",
-            ds=date(2024, 1, 15),
-            account_id="account_abc",
-            symbol="BTC/USD",
-            signal_id="signal_xyz",
-            status=TradeStatus.OPEN,
-            entry_fill_price=50000.00,
-            current_stop_loss=48000.00,
-            qty=0.5,
-            side=OrderSide.BUY,
-            discord_thread_id="1234567890",
-        )
-
-        assert position.discord_thread_id == "1234567890"
+        assert position.discord_thread_id == discord_id
 
 
 # =============================================================================
@@ -291,8 +231,9 @@ class TestSignalModel:
 
         assert signal.status == SignalStatus.WAITING
 
-    def test_signal_discord_thread_id_optional(self):
-        """Signal must allow discord_thread_id to be None (default)."""
+    @pytest.mark.parametrize("discord_id", [None, "1234567890"])
+    def test_signal_discord_thread_id(self, discord_id):
+        """Signal must handle discord_thread_id (optional)."""
         signal = Signal(
             signal_id="test_signal",
             ds=date(2024, 1, 15),
@@ -302,47 +243,26 @@ class TestSignalModel:
             entry_price=50000.0,
             pattern_name="bullish_engulfing",
             suggested_stop=48000.00,
+            discord_thread_id=discord_id,
         )
 
-        assert signal.discord_thread_id is None
-
-    def test_signal_accepts_discord_thread_id(self):
-        """Signal must accept a valid discord_thread_id for lifecycle threading."""
-        signal = Signal(
-            signal_id="test_signal",
-            ds=date(2024, 1, 15),
-            strategy_id="momentum",
-            symbol="BTC/USD",
-            asset_class=AssetClass.CRYPTO,
-            entry_price=50000.0,
-            pattern_name="bullish_engulfing",
-            suggested_stop=48000.00,
-            discord_thread_id="1234567890123456789",
-        )
-
-        assert signal.discord_thread_id == "1234567890123456789"
-
-    def test_signal_discord_thread_id_serializes_to_json(self):
-        """Signal discord_thread_id must be included in JSON serialization."""
-        signal = Signal(
-            signal_id="test_signal",
-            ds=date(2024, 1, 15),
-            strategy_id="momentum",
-            symbol="BTC/USD",
-            asset_class=AssetClass.CRYPTO,
-            entry_price=50000.0,
-            pattern_name="bullish_engulfing",
-            suggested_stop=48000.00,
-            discord_thread_id="9876543210987654321",
-        )
+        assert signal.discord_thread_id == discord_id
 
         serialized = signal.model_dump(mode="json")
+        assert serialized["discord_thread_id"] == discord_id
 
-        assert "discord_thread_id" in serialized
-        assert serialized["discord_thread_id"] == "9876543210987654321"
-
-    def test_signal_legacy_fallback_created_at_standard_pattern(self):
-        """Signal must populate created_at from valid_until for STANDARD patterns (Issue 99)."""
+    @pytest.mark.parametrize(
+        "classification,expected_delta_hours",
+        [
+            pytest.param("STANDARD_PATTERN", 48, id="standard"),
+            pytest.param("MACRO_PATTERN", 120, id="macro"),
+            pytest.param(None, 120, id="none_fallback"),
+        ],
+    )
+    def test_signal_legacy_fallback_created_at(
+        self, classification, expected_delta_hours
+    ):
+        """Signal must populate created_at from valid_until for legacy data (Issue 99)."""
         valid_until = datetime(2024, 1, 16, 12, 0, tzinfo=timezone.utc)
         signal = Signal(
             signal_id="legacy_signal",
@@ -354,54 +274,11 @@ class TestSignalModel:
             pattern_name="bullish_engulfing",
             suggested_stop=48000.00,
             valid_until=valid_until,
-            pattern_classification="STANDARD_PATTERN",
-            created_at=None,  # Missing (simulating legacy data)
+            pattern_classification=classification,
+            created_at=None,
         )
 
-        # Fallback: created_at = valid_until - 48h for STANDARD patterns
-        expected_created_at = valid_until - timedelta(hours=48)
-        assert signal.created_at == expected_created_at
-
-    def test_signal_legacy_fallback_created_at_macro_pattern(self):
-        """Signal must populate created_at from valid_until for MACRO patterns (Issue 99)."""
-        valid_until = datetime(2024, 1, 16, 12, 0, tzinfo=timezone.utc)
-        signal = Signal(
-            signal_id="legacy_signal_macro",
-            ds=date(2024, 1, 15),
-            strategy_id="momentum",
-            symbol="BTC/USD",
-            asset_class=AssetClass.CRYPTO,
-            entry_price=50000.0,
-            pattern_name="ABCD",
-            suggested_stop=48000.00,
-            valid_until=valid_until,
-            pattern_classification="MACRO_PATTERN",
-            created_at=None,  # Missing (simulating legacy data)
-        )
-
-        # Fallback: created_at = valid_until - 120h for MACRO patterns
-        expected_created_at = valid_until - timedelta(hours=120)
-        assert signal.created_at == expected_created_at
-
-    def test_signal_legacy_fallback_created_at_no_classification(self):
-        """Signal must use conservative 120h TTL for legacy signals without classification (Issue 99)."""
-        valid_until = datetime(2024, 1, 16, 12, 0, tzinfo=timezone.utc)
-        signal = Signal(
-            signal_id="legacy_signal_no_class",
-            ds=date(2024, 1, 15),
-            strategy_id="momentum",
-            symbol="BTC/USD",
-            asset_class=AssetClass.CRYPTO,
-            entry_price=50000.0,
-            pattern_name="bullish_hammer",
-            suggested_stop=48000.00,
-            valid_until=valid_until,
-            pattern_classification=None,  # No classification (legacy)
-            created_at=None,  # Missing (simulating legacy data)
-        )
-
-        # Fallback: created_at = valid_until - 120h for safety (conservative)
-        expected_created_at = valid_until - timedelta(hours=120)
+        expected_created_at = valid_until - timedelta(hours=expected_delta_hours)
         assert signal.created_at == expected_created_at
 
 
@@ -413,167 +290,33 @@ class TestSignalModel:
 class TestTradeExecutionModel:
     """Test TradeExecution model for pnl_usd field validation."""
 
-    def test_trade_execution_requires_pnl_usd(self):
-        """TradeExecution must require pnl_usd field."""
+    @pytest.mark.parametrize("missing_pnl_field", ["pnl_pct", "pnl_usd"])
+    def test_trade_execution_pnl_fields_required(
+        self, missing_pnl_field, trade_execution_base_data
+    ):
+        """TradeExecution must require both pnl_pct and pnl_usd."""
+        data = trade_execution_base_data.copy()
+        del data[missing_pnl_field]
+
         with pytest.raises(ValidationError) as exc_info:
-            TradeExecution(
-                ds=date(2024, 1, 15),
-                trade_id="trade_123",
-                account_id="account_abc",
-                strategy_id="momentum",
-                asset_class=AssetClass.CRYPTO,
-                symbol="BTC/USD",
-                side=OrderSide.BUY,
-                qty=1.0,
-                entry_price=50000.0,
-                exit_price=52000.0,
-                entry_time=datetime(2024, 1, 15, 10, 0, tzinfo=timezone.utc),
-                exit_time=datetime(2024, 1, 16, 10, 0, tzinfo=timezone.utc),
-                exit_reason=ExitReason.TP1,
-                pnl_pct=4.0,
-                # pnl_usd is missing!
-                fees_usd=10.0,
-                slippage_pct=0.1,
-                trade_duration=86400,
-            )
+            TradeExecution(**data)
 
-        error_str = str(exc_info.value)
-        assert "pnl_usd" in error_str.lower()
+        assert missing_pnl_field in str(exc_info.value).lower()
 
-    def test_trade_execution_accepts_pnl_usd(self):
-        """TradeExecution must accept pnl_usd alongside pnl_pct."""
-        trade = TradeExecution(
-            ds=date(2024, 1, 15),
-            trade_id="trade_123",
-            account_id="account_abc",
-            strategy_id="momentum",
-            asset_class=AssetClass.CRYPTO,
-            symbol="BTC/USD",
-            side=OrderSide.BUY,
-            qty=1.0,
-            entry_price=50000.0,
-            exit_price=52000.0,
-            entry_time=datetime(2024, 1, 15, 10, 0, tzinfo=timezone.utc),
-            exit_time=datetime(2024, 1, 16, 10, 0, tzinfo=timezone.utc),
-            exit_reason=ExitReason.TP1,
-            pnl_pct=4.0,
-            pnl_usd=2000.0,
-            fees_usd=10.0,
-            slippage_pct=0.1,
-            trade_duration=86400,
-        )
+    @pytest.mark.parametrize("exit_order_id", [None, "exit-order-123"])
+    def test_trade_execution_exit_order_id(
+        self, exit_order_id, trade_execution_base_data
+    ):
+        """TradeExecution must handle exit_order_id (optional)."""
+        data = trade_execution_base_data.copy()
+        if exit_order_id:
+            data["exit_order_id"] = exit_order_id
 
-        assert trade.pnl_usd == 2000.0
-        assert trade.pnl_pct == 4.0
-
-    def test_trade_execution_both_pnl_fields_required(self):
-        """TradeExecution must have both pnl_pct and pnl_usd."""
-        # Missing pnl_pct
-        with pytest.raises(ValidationError) as exc_info:
-            TradeExecution(
-                ds=date(2024, 1, 15),
-                trade_id="trade_123",
-                account_id="account_abc",
-                strategy_id="momentum",
-                asset_class=AssetClass.CRYPTO,
-                symbol="BTC/USD",
-                side=OrderSide.BUY,
-                qty=1.0,
-                entry_price=50000.0,
-                exit_price=52000.0,
-                entry_time=datetime(2024, 1, 15, 10, 0, tzinfo=timezone.utc),
-                exit_time=datetime(2024, 1, 16, 10, 0, tzinfo=timezone.utc),
-                exit_reason=ExitReason.TP1,
-                # pnl_pct is missing!
-                pnl_usd=2000.0,
-                fees_usd=10.0,
-                slippage_pct=0.1,
-                trade_duration=86400,
-            )
-
-        error_str = str(exc_info.value)
-        assert "pnl_pct" in error_str.lower()
-
-    def test_trade_execution_accepts_exit_order_id(self):
-        """TradeExecution must accept exit_order_id for exit order tracking."""
-        trade = TradeExecution(
-            ds=date(2024, 1, 15),
-            trade_id="trade_123",
-            account_id="account_abc",
-            strategy_id="momentum",
-            asset_class=AssetClass.CRYPTO,
-            symbol="BTC/USD",
-            side=OrderSide.BUY,
-            qty=1.0,
-            entry_price=50000.0,
-            exit_price=52000.0,
-            entry_time=datetime(2024, 1, 15, 10, 0, tzinfo=timezone.utc),
-            exit_time=datetime(2024, 1, 16, 10, 0, tzinfo=timezone.utc),
-            exit_reason=ExitReason.TP1,
-            pnl_pct=4.0,
-            pnl_usd=2000.0,
-            fees_usd=10.0,
-            slippage_pct=0.1,
-            trade_duration=86400,
-            exit_order_id="exit-order-uuid-12345",
-        )
-
-        assert trade.exit_order_id == "exit-order-uuid-12345"
-
-    def test_trade_execution_exit_order_id_optional(self):
-        """TradeExecution exit_order_id must default to None (backward compatible)."""
-        trade = TradeExecution(
-            ds=date(2024, 1, 15),
-            trade_id="trade_456",
-            account_id="account_abc",
-            strategy_id="momentum",
-            asset_class=AssetClass.CRYPTO,
-            symbol="BTC/USD",
-            side=OrderSide.BUY,
-            qty=1.0,
-            entry_price=50000.0,
-            exit_price=52000.0,
-            entry_time=datetime(2024, 1, 15, 10, 0, tzinfo=timezone.utc),
-            exit_time=datetime(2024, 1, 16, 10, 0, tzinfo=timezone.utc),
-            exit_reason=ExitReason.TP1,
-            pnl_pct=4.0,
-            pnl_usd=2000.0,
-            fees_usd=10.0,
-            slippage_pct=0.1,
-            trade_duration=86400,
-            # exit_order_id not provided (should default to None)
-        )
-
-        assert trade.exit_order_id is None
-
-    def test_trade_execution_exit_order_id_serializes_to_json(self):
-        """TradeExecution exit_order_id must be included in JSON serialization."""
-        trade = TradeExecution(
-            ds=date(2024, 1, 15),
-            trade_id="trade_789",
-            account_id="account_abc",
-            strategy_id="momentum",
-            asset_class=AssetClass.CRYPTO,
-            symbol="BTC/USD",
-            side=OrderSide.BUY,
-            qty=1.0,
-            entry_price=50000.0,
-            exit_price=52000.0,
-            entry_time=datetime(2024, 1, 15, 10, 0, tzinfo=timezone.utc),
-            exit_time=datetime(2024, 1, 16, 10, 0, tzinfo=timezone.utc),
-            exit_reason=ExitReason.TP1,
-            pnl_pct=4.0,
-            pnl_usd=2000.0,
-            fees_usd=10.0,
-            slippage_pct=0.1,
-            trade_duration=86400,
-            exit_order_id="serialized-exit-order-id",
-        )
+        trade = TradeExecution(**data)
+        assert trade.exit_order_id == exit_order_id
 
         serialized = trade.model_dump(mode="json")
-
-        assert "exit_order_id" in serialized
-        assert serialized["exit_order_id"] == "serialized-exit-order-id"
+        assert serialized.get("exit_order_id") == exit_order_id
 
     @pytest.fixture
     def trade_execution_base_data(self):

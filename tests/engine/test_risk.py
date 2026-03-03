@@ -63,68 +63,47 @@ class TestRiskEngine:
             )
             yield engine
 
-    def test_check_buying_power_crypto_pass(self, risk_engine):
-        # Crypto uses non_marginable_buying_power
-        # Req: 1000, Avail: 5000 -> Pass
-        result = risk_engine.check_buying_power(CRYPTO, 1000.0)
-        assert (
-            result.passed is True
-        ), f"Expected result.passed to be True, got {result.passed}"
+    @pytest.mark.parametrize(
+        "asset_class,required_bp,expected_passed,expected_reason_snippet",
+        [
+            pytest.param(CRYPTO, 1000.0, True, None, id="crypto_pass"),
+            pytest.param(CRYPTO, 6000.0, False, "Insufficient Buying Power", id="crypto_fail"),
+            pytest.param(EQUITY, 10000.0, True, None, id="equity_pass"),
+        ],
+    )
+    def test_check_buying_power(
+        self, risk_engine, asset_class, required_bp, expected_passed, expected_reason_snippet
+    ):
+        """Verify buying power checks for different asset classes."""
+        result = risk_engine.check_buying_power(asset_class, required_bp)
+        assert result.passed == expected_passed
+        if expected_reason_snippet:
+            assert expected_reason_snippet in result.reason
 
-    def test_check_buying_power_crypto_fail(self, risk_engine):
-        # Req: 6000, Avail: 5000 -> Fail
-        result = risk_engine.check_buying_power(CRYPTO, 6000.0)
-        assert (
-            result.passed is False
-        ), f"Expected result.passed to be False, got {result.passed}"
-        assert (
-            "Insufficient Buying Power" in result.reason
-        ), 'Assertion condition not met: "Insufficient Buying Power" in result.reason'
-
-    def test_check_buying_power_equity_pass_regt(self, risk_engine):
-        # Equity uses regt_buying_power
-        # Req: 10000, Avail: 20000 -> Pass
-        result = risk_engine.check_buying_power(EQUITY, 10000.0)
-        assert (
-            result.passed is True
-        ), f"Expected result.passed to be True, got {result.passed}"
-
-    def test_check_sector_cap_crypto_fail(self, risk_engine, mock_client):
-        # Arrange: 4 filled positions + 1 open buy order = 5 (MAX=5)
-        # Mock Positions
+    @pytest.mark.parametrize(
+        "num_positions,num_orders,expected_passed",
+        [
+            pytest.param(4, 1, False, id="sector_cap_fail"),
+            pytest.param(4, 0, True, id="sector_cap_pass"),
+        ],
+    )
+    def test_check_sector_cap_crypto(
+        self, risk_engine, mock_client, num_positions, num_orders, expected_passed
+    ):
+        """Verify sector cap limits including open orders."""
         mock_pos = MagicMock()
         mock_pos.asset_class = AlpacaAssetClass.CRYPTO
-        mock_client.get_all_positions.return_value = [mock_pos] * 4
+        mock_client.get_all_positions.return_value = [mock_pos] * num_positions
 
-        # Mock Open Orders
         mock_order = MagicMock(spec=Order)
         mock_order.asset_class = AlpacaAssetClass.CRYPTO
         mock_order.side = OrderSide.BUY
-        mock_client.get_orders.return_value = [mock_order]
+        mock_client.get_orders.return_value = [mock_order] * num_orders
 
         result = risk_engine.check_sector_limit(CRYPTO)
-        assert (
-            result.passed is False
-        ), f"Expected result.passed to be False, got {result.passed}"
-        assert (
-            "Max CRYPTO positions reached" in result.reason
-        ), 'Assertion condition not met: "Max CRYPTO positions reached" in result.reason'
-        mock_client.get_all_positions.assert_called_once()
-        mock_client.get_orders.assert_called_once()
-
-    def test_check_sector_cap_crypto_pass(self, risk_engine, mock_client):
-        # Arrange: 4 filled positions + 0 open orders = 4 (MAX=5)
-        mock_pos = MagicMock()
-        mock_pos.asset_class = AlpacaAssetClass.CRYPTO
-        mock_client.get_all_positions.return_value = [mock_pos] * 4
-
-        # No open orders
-        mock_client.get_orders.return_value = []
-
-        result = risk_engine.check_sector_limit(CRYPTO)
-        assert (
-            result.passed is True
-        ), f"Expected result.passed to be True, got {result.passed}"
+        assert result.passed == expected_passed
+        if not expected_passed:
+            assert "Max CRYPTO positions reached" in result.reason
 
     def test_daily_drawdown_fail(self, risk_engine, mock_client):
         # Equity 9000, Last 10000 -> 10% Drop. Max is 5%
