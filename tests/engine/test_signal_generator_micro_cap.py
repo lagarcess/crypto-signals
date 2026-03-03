@@ -60,7 +60,7 @@ def test_elliott_pattern_negative_stop_prevention(
     - Standard calc: 0.00000080 - (0.5 * 0.000002) = -0.00000020
     - Expected: max(SAFE_STOP_VAL, ...) = 1e-8
     """
-    # Setup Data
+    # Arrange Data
     today = date(2026, 1, 24)
     low_price = 0.00000080
     atr = 0.000002
@@ -83,7 +83,7 @@ def test_elliott_pattern_negative_stop_prevention(
     )
     mock_market_provider.get_daily_bars.return_value = df
 
-    # Setup Pattern Analysis Result
+    # Arrange Pattern Analysis Result
     mock_analyzer_instance = MagicMock()
     mock_analyzer_cls.return_value = mock_analyzer_instance
 
@@ -93,10 +93,10 @@ def test_elliott_pattern_negative_stop_prevention(
 
     mock_analyzer_instance.check_patterns.return_value = result_df
 
-    # Execution
+    # Act
     signal = signal_generator.generate_signals("PEPE/USD", AssetClass.CRYPTO)
 
-    # Verification
+    # Assert
     assert signal is not None, "signal should not be None"
     assert (
         signal.pattern_name == "ELLIOTT_IMPULSE_WAVE"
@@ -118,7 +118,7 @@ def test_elliott_pattern_normal_stop(
     signal_generator, mock_market_provider, mock_analyzer_cls
 ):
     """Verify normal ATR calculation still works for non-micro-cap prices."""
-    # Setup Data
+    # Arrange Data
     today = date(2026, 1, 24)
     low_price = 50000.0
     atr = 1000.0
@@ -148,10 +148,10 @@ def test_elliott_pattern_normal_stop(
 
     mock_analyzer_instance.check_patterns.return_value = result_df
 
-    # Execution
+    # Act
     signal = signal_generator.generate_signals("BTC/USD", AssetClass.CRYPTO)
 
-    # Verification
+    # Assert
     assert signal is not None, "signal should not be None"
     # Standard calc: low - 0.5 * ATR
     expected_stop = low_price - (0.5 * atr)  # 50000 - 500 = 49500

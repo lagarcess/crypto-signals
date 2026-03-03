@@ -74,15 +74,15 @@ class TestSyncPositionStatusIssue139:
         Verify that if get_open_position fails (404), ExecutionEngine delegats to
         the reconciler for verification.
         """
-        # 1. Mock get_open_position to raise 404
+        # Arrange
         mock_trading_client.get_open_position.side_effect = Exception(
             "position not found (404)"
         )
 
-        # Execute
+        # Act
         execution_engine.sync_position_status(sample_position)
 
-        # Verify delegation
+        # Assert
         mock_reconciler.handle_manual_exit_verification.assert_called_once_with(
             sample_position
         )
@@ -93,10 +93,9 @@ class TestSyncPositionStatusIssue139:
         """
         Verify safety fallback: if no reconciler is provided, position stays OPEN.
         """
-        # 1. Mock get_open_position to raise 404
+        # Arrange
         mock_trading_client.get_open_position.side_effect = Exception("404")
 
-        # 2. Use an engine WITHOUT a reconciler
         from crypto_signals.engine.execution import ExecutionEngine
 
         standalone_engine = ExecutionEngine(
@@ -104,10 +103,10 @@ class TestSyncPositionStatusIssue139:
             repository=MagicMock(),  # Fix: Inject mock repo to avoid real Firestore init
         )
 
-        # Execute
+        # Act
         updated_pos = standalone_engine.sync_position_status(sample_position)
 
-        # Verify
+        # Assert
         assert (
             updated_pos.status == TradeStatus.OPEN
         ), f"Expected updated_pos.status == TradeStatus.OPEN, got {updated_pos.status}"

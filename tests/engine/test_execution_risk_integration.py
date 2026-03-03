@@ -52,7 +52,7 @@ class TestExecutionRiskIntegration(unittest.TestCase):
 
     def test_risk_block_creates_shadow_position(self):
         """Verify that a blocked trade returns a valid Position with RISK_BLOCKED type."""
-        # 1. Setup Signal
+        # Arrange Signal
         signal = MagicMock(spec=Signal)
         signal.symbol = "BTC/USD"
         signal.signal_id = "sig_risk_test"
@@ -64,21 +64,21 @@ class TestExecutionRiskIntegration(unittest.TestCase):
         signal.discord_thread_id = "12345"
         signal.side = OrderSide.BUY
 
-        # 2. Setup Risk Rejection
+        # Arrange Risk Rejection
         self.mock_risk_engine.validate_signal.return_value = RiskCheckResult(
             passed=False, reason="Max Sector Positions"
         )
 
-        # 3. Execute
+        # Act
         position = self.engine.execute_signal(signal)
 
-        # 4. Verify
+        # Assert
         self.assertIsNotNone(position)
         self.assertEqual(position.trade_type, TradeType.RISK_BLOCKED.value)
         self.assertEqual(position.status, TradeStatus.CLOSED)
         self.assertIn("Max Sector Positions", position.failed_reason)
 
-        # Verify Hydration (Synthesized Fields)
+        # Assert Hydration (Synthesized Fields)
         # Risk = 100, Dist = 1000 -> Qty = 0.1
         self.assertAlmostEqual(position.qty, 0.1, places=2)
         self.assertEqual(position.entry_fill_price, 50000.0)
@@ -104,8 +104,8 @@ class TestExecutionRiskIntegration(unittest.TestCase):
 
         self.mock_risk_engine.validate_signal.return_value = RiskCheckResult(passed=True)
 
-        # Execute
+        # Act
         self.engine.execute_signal(signal)
 
-        # Verify call execution (for Crypto it calls submit_order)
+        # Assert call execution (for Crypto it calls submit_order)
         self.mock_client.submit_order.assert_called_once()

@@ -96,6 +96,9 @@ class TestStateReconcilerInitialization:
         mock_settings,
     ):
         """StateReconciler stores injected dependencies."""
+        # Arrange
+
+        # Act
         reconciler = StateReconciler(
             alpaca_client=mock_trading_client,
             position_repo=mock_position_repo,
@@ -103,6 +106,7 @@ class TestStateReconcilerInitialization:
             settings=mock_settings,
         )
 
+        # Assert
         assert (
             reconciler.alpaca == mock_trading_client
         ), f"Expected reconciler.alpaca == mock_trading_client, got {reconciler.alpaca}"
@@ -130,6 +134,7 @@ class TestDetectZombies:
         sample_alpaca_position,
     ):
         """Zombies are detected: Firestore OPEN, Alpaca closed."""
+        # Arrange
         # Alpaca has NO position
         mock_trading_client.get_all_positions.return_value = []
 
@@ -143,8 +148,10 @@ class TestDetectZombies:
             settings=mock_settings,
         )
 
+        # Act
         report = reconciler.reconcile()
 
+        # Assert
         # Zombie detected
         assert (
             "BTC/USD" in report.zombies
@@ -160,6 +167,7 @@ class TestDetectZombies:
         reconciler,
     ):
         """A position created < 5 mins ago is skipped to prevent race conditions (Issue #244)."""
+        # Arrange
         now = datetime.now(timezone.utc)
         pos = PositionFactory.build(
             symbol="BTC/USD",
@@ -171,8 +179,10 @@ class TestDetectZombies:
         mock_trading_client.get_all_positions.return_value = []
         mock_position_repo.get_open_positions.return_value = [pos]
 
+        # Act
         reconciler.reconcile(min_age_minutes=5)
 
+        # Assert
         # Young position should NOT be closed
         mock_position_repo.update_position.assert_not_called()
 
@@ -184,6 +194,7 @@ class TestDetectZombies:
         mock_settings,
     ):
         """Reconciliation handles multiple zombies."""
+        # Arrange
         # Create two open positions in Firestore
         pos1 = PositionFactory.build(
             symbol="BTC/USD",
@@ -207,8 +218,10 @@ class TestDetectZombies:
             settings=mock_settings,
         )
 
+        # Act
         report = reconciler.reconcile()
 
+        # Assert
         assert (
             len(report.zombies) == 2
         ), f"Expected len(report.zombies) == 2, got {len(report.zombies)}"
@@ -232,6 +245,7 @@ class TestDetectOrphans:
         sample_alpaca_position,
     ):
         """Orphans are detected: Alpaca OPEN, Firestore missing."""
+        # Arrange
         # Alpaca has open position
         mock_trading_client.get_all_positions.return_value = [sample_alpaca_position]
 
@@ -245,8 +259,10 @@ class TestDetectOrphans:
             settings=mock_settings,
         )
 
+        # Act
         report = reconciler.reconcile()
 
+        # Assert
         # Orphan detected
         assert (
             "BTC/USD" in report.orphans
@@ -263,6 +279,7 @@ class TestDetectOrphans:
         mock_settings,
     ):
         """Reconciliation handles multiple orphans."""
+        # Arrange
         pos1 = MagicMock()
         pos1.symbol = "BTCUSD"
 
@@ -279,8 +296,10 @@ class TestDetectOrphans:
             settings=mock_settings,
         )
 
+        # Act
         report = reconciler.reconcile()
 
+        # Assert
         assert (
             len(report.orphans) == 2
         ), f"Expected len(report.orphans) == 2, got {len(report.orphans)}"
@@ -300,6 +319,7 @@ class TestDetectOrphans:
         sample_alpaca_position,
     ):
         """Orphan positions are reported as critical issues."""
+        # Arrange
         mock_trading_client.get_all_positions.return_value = [sample_alpaca_position]
         mock_position_repo.get_open_positions.return_value = []
 
@@ -310,8 +330,10 @@ class TestDetectOrphans:
             settings=mock_settings,
         )
 
+        # Act
         report = reconciler.reconcile()
 
+        # Assert
         assert (
             len(report.critical_issues) > 0
         ), f"Expected len(report.critical_issues) > 0, got {len(report.critical_issues)}"
@@ -333,6 +355,7 @@ class TestHealingAndAlerts:
         sample_open_position,
     ):
         """Healing zombie marks position CLOSED_EXTERNALLY."""
+        # Arrange
         mock_trading_client.get_all_positions.return_value = []
         mock_position_repo.get_open_positions.return_value = [sample_open_position]
 
@@ -343,6 +366,7 @@ class TestHealingAndAlerts:
             settings=mock_settings,
         )
 
+        # Act
         # Mock verification to succeed so that update_position is called
         # We need to simulate the side effect of updating the position object
         def verify_side_effect(pos):
@@ -355,10 +379,10 @@ class TestHealingAndAlerts:
         ):
             reconciler.reconcile()
 
-        # Verify update was called
+        # Assert
         mock_position_repo.update_position.assert_called()
 
-        # Verify the position was marked CLOSED (reason is now MANUAL_EXIT due to verification)
+        # Assert the position was marked CLOSED (reason is now MANUAL_EXIT due to verification)
         called_position = mock_position_repo.update_position.call_args[0][0]
         assert (
             called_position.status == TradeStatus.CLOSED
@@ -376,6 +400,7 @@ class TestHealingAndAlerts:
         sample_alpaca_position,
     ):
         """Orphan detection sends Discord message."""
+        # Arrange
         mock_trading_client.get_all_positions.return_value = [sample_alpaca_position]
         mock_position_repo.get_open_positions.return_value = []
 
@@ -386,9 +411,10 @@ class TestHealingAndAlerts:
             settings=mock_settings,
         )
 
+        # Act
         reconciler.reconcile()
 
-        # Verify notification service was called for orphan alert
+        # Assert
         assert mock_notification_service.notify_orphan.called, f"Expected mock_notification_service.notify_orphan.called to be truthy, got {mock_notification_service.notify_orphan.called}"
 
     def test_manual_verification_failure_does_not_close(
@@ -398,6 +424,7 @@ class TestHealingAndAlerts:
         reconciler,
     ):
         """If manual exit verification fails, position is NOT closed (Issue #244)."""
+        # Arrange
         now = datetime.now(timezone.utc)
         pos = PositionFactory.build(
             symbol="ETH/USD",
@@ -409,11 +436,13 @@ class TestHealingAndAlerts:
         mock_trading_client.get_all_positions.return_value = []
         mock_position_repo.get_open_positions.return_value = [pos]
 
+        # Act
         with patch.object(
             reconciler, "handle_manual_exit_verification", return_value=None
         ) as mock_verify:
             report = reconciler.reconcile()
 
+            # Assert
             mock_verify.assert_called_once_with(pos)
             mock_position_repo.update_position.assert_not_called()
             assert (
@@ -430,6 +459,7 @@ class TestHealingAndAlerts:
         reconciler,
     ):
         """If manual exit verification succeeds, position IS updated (Issue #244)."""
+        # Arrange
         now = datetime.now(timezone.utc)
         pos = PositionFactory.build(
             symbol="ETH/USD",
@@ -441,11 +471,13 @@ class TestHealingAndAlerts:
         mock_trading_client.get_all_positions.return_value = []
         mock_position_repo.get_open_positions.return_value = [pos]
 
+        # Act
         with patch.object(
             reconciler, "handle_manual_exit_verification", return_value=pos
         ) as mock_verify:
             reconciler.reconcile()
 
+            # Assert
             mock_verify.assert_called_once_with(pos)
             mock_position_repo.update_position.assert_called_once_with(pos)
 
@@ -461,6 +493,7 @@ class TestReconciliationBehavior:
         mock_settings,
     ):
         """reconcile() returns a ReconciliationReport."""
+        # Arrange
         # Mock empty positions (no zombies, no orphans)
         mock_trading_client.get_all_positions.return_value = []
         mock_position_repo.get_open_positions.return_value = []
@@ -472,8 +505,10 @@ class TestReconciliationBehavior:
             settings=mock_settings,
         )
 
+        # Act
         report = reconciler.reconcile()
 
+        # Assert
         assert report is not None, "report should not be None"
         assert hasattr(
             report, "zombies"
@@ -500,6 +535,7 @@ class TestReconciliationBehavior:
         sample_open_position,
     ):
         """Running reconciliation twice produces consistent results."""
+        # Arrange
         mock_trading_client.get_all_positions.return_value = []
         mock_position_repo.get_open_positions.return_value = [sample_open_position]
 
@@ -510,9 +546,11 @@ class TestReconciliationBehavior:
             settings=mock_settings,
         )
 
+        # Act
         report1 = reconciler.reconcile()
         report2 = reconciler.reconcile()
 
+        # Assert
         assert (
             len(report1.zombies) == len(report2.zombies)
         ), f"Expected len(report1.zombies) == len(report2.zombies), got {len(report1.zombies)}"
@@ -528,6 +566,7 @@ class TestReconciliationBehavior:
         mock_settings,
     ):
         """Reconciliation report includes execution duration."""
+        # Arrange
         mock_trading_client.get_all_positions.return_value = []
         mock_position_repo.get_open_positions.return_value = []
 
@@ -538,8 +577,10 @@ class TestReconciliationBehavior:
             settings=mock_settings,
         )
 
+        # Act
         report = reconciler.reconcile()
 
+        # Assert
         assert (
             report.duration_seconds >= 0.0
         ), f"Expected report.duration_seconds >= 0.0, got {report.duration_seconds}"
@@ -559,6 +600,7 @@ class TestEnvironmentGating:
         mock_settings,
     ):
         """Reconciliation respects ENVIRONMENT != PROD."""
+        # Arrange
         mock_settings.ENVIRONMENT = "DEV"
         mock_trading_client.get_all_positions.return_value = []
         mock_position_repo.get_open_positions.return_value = []
@@ -570,9 +612,10 @@ class TestEnvironmentGating:
             settings=mock_settings,
         )
 
+        # Act
         reconciler.reconcile()
 
-        # Execution should be skipped
+        # Assert
         mock_trading_client.get_all_positions.assert_not_called()
 
 
@@ -587,6 +630,7 @@ class TestErrorHandling:
         mock_settings,
     ):
         """Reconciliation handles Alpaca API errors gracefully."""
+        # Arrange
         mock_trading_client.get_all_positions.side_effect = Exception("API Error")
         mock_position_repo.get_open_positions.return_value = []
 
@@ -597,9 +641,11 @@ class TestErrorHandling:
             settings=mock_settings,
         )
 
+        # Act
         # Should not raise, should return error report
         report = reconciler.reconcile()
 
+        # Assert
         assert (
             len(report.critical_issues) > 0
         ), f"Expected len(report.critical_issues) > 0, got {len(report.critical_issues)}"
@@ -612,6 +658,7 @@ class TestErrorHandling:
         mock_settings,
     ):
         """Reconciliation handles Firestore errors gracefully."""
+        # Arrange
         mock_trading_client.get_all_positions.return_value = []
         mock_position_repo.get_open_positions.side_effect = Exception("DB Error")
 
@@ -622,9 +669,11 @@ class TestErrorHandling:
             settings=mock_settings,
         )
 
+        # Act
         # Should not raise, should return error report
         report = reconciler.reconcile()
 
+        # Assert
         assert (
             len(report.critical_issues) > 0
         ), f"Expected len(report.critical_issues) > 0, got {len(report.critical_issues)}"
@@ -641,6 +690,7 @@ class TestReconcilerEdgeCases:
         mock_settings,
     ):
         """Reconciliation handles empty symbol sets gracefully."""
+        # Arrange
         mock_trading_client.get_all_positions.return_value = []
         mock_position_repo.get_open_positions.return_value = []
 
@@ -651,8 +701,10 @@ class TestReconcilerEdgeCases:
             settings=mock_settings,
         )
 
+        # Act
         report = reconciler.reconcile()
 
+        # Assert
         assert (
             len(report.zombies) == 0
         ), f"Expected len(report.zombies) == 0, got {len(report.zombies)}"
@@ -672,6 +724,7 @@ class TestReconcilerEdgeCases:
         sample_open_position,
     ):
         """Zombie healing failure doesn't block orphan alerts."""
+        # Arrange
         mock_trading_client.get_all_positions.return_value = []
         mock_position_repo.get_open_positions.return_value = [sample_open_position]
 
@@ -685,9 +738,11 @@ class TestReconcilerEdgeCases:
             settings=mock_settings,
         )
 
+        # Act
         # Should still return report with critical issues
         report = reconciler.reconcile()
 
+        # Assert
         assert (
             len(report.critical_issues) > 0
         ), f"Expected len(report.critical_issues) > 0, got {len(report.critical_issues)}"
@@ -703,6 +758,7 @@ class TestReconcilerEdgeCases:
         sample_alpaca_position,
     ):
         """Notification failure (at service level) doesn't block reconciliation."""
+        # Arrange
         mock_trading_client.get_all_positions.return_value = [sample_alpaca_position]
         mock_position_repo.get_open_positions.return_value = []
 
@@ -718,9 +774,11 @@ class TestReconcilerEdgeCases:
             settings=mock_settings,
         )
 
+        # Act
         # Should still return report
         report = reconciler.reconcile()
 
+        # Assert
         assert (
             len(report.orphans) > 0
         ), f"Orphan still detected: expected len(report.orphans) > 0, got {len(report.orphans)}"
@@ -737,6 +795,7 @@ class TestReconcilerEdgeCases:
         mock_settings,
     ):
         """Reconciliation report includes current timestamp."""
+        # Arrange
         from datetime import datetime
 
         mock_trading_client.get_all_positions.return_value = []
@@ -749,10 +808,12 @@ class TestReconcilerEdgeCases:
             settings=mock_settings,
         )
 
+        # Act
         before = datetime.now(datetime.now().astimezone().tzinfo)
         report = reconciler.reconcile()
         after = datetime.now(datetime.now().astimezone().tzinfo)
 
+        # Assert
         assert (
             before <= report.timestamp <= after
         ), f"Expected before <= report.timestamp <= after, got {before}"
@@ -766,6 +827,7 @@ class TestReconcilerEdgeCases:
         sample_open_position,
     ):
         """Reconciliation only checks open positions from Firestore."""
+        # Arrange
         # Alpaca has nothing
         mock_trading_client.get_all_positions.return_value = []
 
@@ -780,8 +842,10 @@ class TestReconcilerEdgeCases:
             settings=mock_settings,
         )
 
+        # Act
         report = reconciler.reconcile()
 
+        # Assert
         # Only BTC/USD should be detected as zombie
         assert (
             "BTC/USD" in report.zombies
@@ -799,6 +863,7 @@ class TestReconcilerEdgeCases:
         sample_open_position,
     ):
         """Reconciliation detects no issues when symbols match."""
+        # Arrange
         alpaca_pos = MagicMock()
         alpaca_pos.symbol = "BTCUSD"
 
@@ -814,8 +879,10 @@ class TestReconcilerEdgeCases:
             settings=mock_settings,
         )
 
+        # Act
         report = reconciler.reconcile()
 
+        # Assert
         # No zombies or orphans when in sync
         assert (
             len(report.zombies) == 0
@@ -838,9 +905,11 @@ class TestReconcilerSettings:
         mock_notification_service,
     ):
         """Reconciler uses provided settings instead of global defaults."""
+        # Arrange
         custom_settings = MagicMock()
         custom_settings.ENVIRONMENT = "STAGING"
 
+        # Act
         reconciler = StateReconciler(
             alpaca_client=mock_trading_client,
             position_repo=mock_position_repo,
@@ -848,6 +917,7 @@ class TestReconcilerSettings:
             settings=custom_settings,
         )
 
+        # Assert
         assert (
             reconciler.settings == custom_settings
         ), f"Expected reconciler.settings == custom_settings, got {reconciler.settings}"
@@ -862,6 +932,7 @@ class TestReconcilerSettings:
         mock_notification_service,
     ):
         """Reconciler uses get_settings() when settings param is None."""
+        # Arrange
         with patch("crypto_signals.engine.reconciler.get_settings") as mock_get_settings:
             mock_settings = MagicMock()
             mock_settings.ENVIRONMENT = "PROD"
@@ -870,6 +941,7 @@ class TestReconcilerSettings:
             mock_trading_client.get_all_positions.return_value = []
             mock_position_repo.get_open_positions.return_value = []
 
+            # Act
             reconciler = StateReconciler(
                 alpaca_client=mock_trading_client,
                 position_repo=mock_position_repo,
@@ -877,6 +949,7 @@ class TestReconcilerSettings:
                 settings=None,
             )
 
+            # Assert
             assert (
                 reconciler.settings == mock_settings
             ), f"Expected reconciler.settings == mock_settings, got {reconciler.settings}"
@@ -895,12 +968,11 @@ class TestSafetyMechanisms:
         sample_open_position,
     ):
         """Reconciliation ignores zombies created within the grace period (Race Condition protection)."""
-        from datetime import datetime, timedelta, timezone
-
-        # 1. Setup: Zombie Position (Open in DB, Missing in Alpaca)
+        # Arrange
+        # Zombie Position (Open in DB, Missing in Alpaca)
         mock_trading_client.get_all_positions.return_value = []
 
-        # 2. Make it "Young" (created 1 minute ago)
+        # Make it "Young" (created 1 minute ago)
         sample_open_position.created_at = datetime.now(timezone.utc) - timedelta(
             minutes=1
         )
@@ -913,10 +985,10 @@ class TestSafetyMechanisms:
             settings=mock_settings,
         )
 
-        # 3. Execute with default 5 min grace period
+        # Act
         report = reconciler.reconcile(min_age_minutes=5)
 
-        # 4. Assertions
+        # Assert
         # Should NOT be healed/closed
         mock_position_repo.update_position.assert_not_called()
 
@@ -941,9 +1013,8 @@ class TestSafetyMechanisms:
         sample_open_position,
     ):
         """Reconciliation REFUSES to close a zombie if manual verification fails."""
-        from datetime import datetime, timedelta, timezone
-
-        # 1. Setup: Old Zombie (valid age)
+        # Arrange
+        # Old Zombie (valid age)
         mock_trading_client.get_all_positions.return_value = []
         sample_open_position.created_at = datetime.now(timezone.utc) - timedelta(hours=1)
         mock_position_repo.get_open_positions.return_value = [sample_open_position]
@@ -955,14 +1026,15 @@ class TestSafetyMechanisms:
             settings=mock_settings,
         )
 
-        # 2. Mock Verification to FAIL (return False)
+        # Act
+        # Mock Verification to FAIL (return False)
         # using patch object on the specific instance method
         with patch.object(
             reconciler, "handle_manual_exit_verification", return_value=None
         ):
             report = reconciler.reconcile()
 
-        # 3. Assertions
+        # Assert
         # CRITICAL: Database must NOT be updated (Position must remain OPEN)
         mock_position_repo.update_position.assert_not_called()
 
@@ -996,10 +1068,11 @@ class TestReconcilerRaceConditions:
         saves to DB, submits to Alpaca, but Alpaca hasn't indexed it yet
         when Reconciler runs.
         """
-        # 1. Setup: Zombie Position (Open in DB, Missing in Alpaca)
+        # Arrange
+        # Zombie Position (Open in DB, Missing in Alpaca)
         mock_trading_client.get_all_positions.return_value = []
 
-        # 2. Make it "Young" (created 1 minute ago)
+        # Make it "Young" (created 1 minute ago)
         # Using a fixed time for stability
         now = datetime.now(timezone.utc)
         sample_open_position.created_at = now - timedelta(minutes=1)
@@ -1012,10 +1085,10 @@ class TestReconcilerRaceConditions:
             settings=mock_settings,
         )
 
-        # 3. Execute with default 5 min grace period
+        # Act
         report = reconciler.reconcile(min_age_minutes=5)
 
-        # 4. Assertions
+        # Assert
         # Should NOT be healed/closed
         mock_position_repo.update_position.assert_not_called()
 
@@ -1041,7 +1114,8 @@ class TestReconcilerRaceConditions:
         Verify that before closing a zombie, the reconciler calls
         handle_manual_exit_verification.
         """
-        # 1. Setup: Old Zombie (valid age)
+        # Arrange
+        # Old Zombie (valid age)
         mock_trading_client.get_all_positions.return_value = []
         sample_open_position.created_at = datetime.now(timezone.utc) - timedelta(hours=1)
         mock_position_repo.get_open_positions.return_value = [sample_open_position]
@@ -1053,13 +1127,13 @@ class TestReconcilerRaceConditions:
             settings=mock_settings,
         )
 
-        # 2. Mock verification (return True to allow close)
+        # Act
         with patch.object(
             reconciler, "handle_manual_exit_verification", return_value=True
         ) as mock_verify:
             reconciler.reconcile()
 
-            # 3. Verify it was called
+            # Assert
             mock_verify.assert_called_once()
             # And position was updated (closed)
             mock_position_repo.update_position.assert_called()
@@ -1088,6 +1162,7 @@ class TestTheoreticalPositions:
         theoretical_position,
     ):
         """Verify that OPEN theoretical positions are NOT flagged as zombies when missing from Alpaca."""
+        # Arrange
         # Alpaca has NO positions (empty)
         mock_trading_client.get_all_positions.return_value = []
 
@@ -1101,8 +1176,10 @@ class TestTheoreticalPositions:
             settings=mock_settings,
         )
 
+        # Act
         report = reconciler.reconcile()
 
+        # Assert
         # Should be NO zombies because theoretical trades are filtered out
         assert (
             len(report.zombies) == 0
@@ -1125,6 +1202,7 @@ class TestTheoreticalPositions:
         theoretical_position,
     ):
         """Verify that normal OPEN positions ARE flagged as zombies, even if mixed with theoreticals."""
+        # Arrange
         # Create a normal executed position
         normal_position = PositionFactory.build(
             position_id="real-123",
@@ -1153,8 +1231,10 @@ class TestTheoreticalPositions:
             settings=mock_settings,
         )
 
+        # Act
         report = reconciler.reconcile()
 
+        # Assert
         # The normal position should be a zombie
         assert (
             len(report.zombies) == 1

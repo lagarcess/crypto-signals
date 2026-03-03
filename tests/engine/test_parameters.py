@@ -140,31 +140,31 @@ def test_elliott_wave_normal(factory, mock_analyzer):
             "BULLISH_HAMMER",
             {"close": 100.0, "low": 90.0, "high": 110.0, "open": 95.0, "ATRr_14": 5.0},
             {"invalidation": 90.0, "stop": 89.1, "tp1": 110.0},
-            id="bullish_hammer"
+            id="bullish_hammer",
         ),
         pytest.param(
             "MORNING_STAR",
             {"close": 100.0, "low": 90.0, "high": 110.0, "open": 95.0, "ATRr_14": 5.0},
             {"invalidation": 90.0, "stop": 89.1, "tp1": 110.0},
-            id="morning_star"
+            id="morning_star",
         ),
         pytest.param(
             "BULLISH_ENGULFING",
             {"close": 105.0, "low": 90.0, "high": 110.0, "open": 95.0, "ATRr_14": 5.0},
             {"invalidation": 95.0, "stop": 94.05, "tp1": 115.0},
-            id="bullish_engulfing"
+            id="bullish_engulfing",
         ),
         pytest.param(
             "BULLISH_MARUBOZU",
             {"close": 110.0, "low": 90.0, "high": 110.0, "open": 90.0, "ATRr_14": 5.0},
             {"invalidation": 100.0, "stop": 99.0, "tp1": 120.0},
-            id="bullish_marubozu"
+            id="bullish_marubozu",
         ),
         pytest.param(
             "INVERSE_HEAD_SHOULDERS",
             {"close": 100.0, "low": 90.0, "high": 110.0, "open": 95.0, "ATRr_14": 5.0},
             {"invalidation": None, "stop": 89.1, "tp1": 110.0},
-            id="fallthrough_pattern"
+            id="fallthrough_pattern",
         ),
     ],
 )
@@ -294,5 +294,3 @@ def test_harmonic_metadata(factory, mock_analyzer):
     assert (
         params["valid_until"] == expected_ts
     ), 'Expected params["valid_until"] == expected_ts'
-
-

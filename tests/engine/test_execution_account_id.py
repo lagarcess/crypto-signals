@@ -61,10 +61,10 @@ class TestExecutionAccountID:
                 trading_client=mock_trading_client, repository=MagicMock()
             )
 
-            # Execute Signal
+            # Act
             position = engine.execute_signal(signal)
 
-            # Verification
+            # Assert
             assert position is not None, "position should not be None"
             # THIS ASSERTION SHOULD FAIL until the fix is implemented
             # Currently it returns "paper"
