@@ -68,6 +68,7 @@ def mock_dependencies():
 
 
 def test_fetch_ledger_calls_apis(mock_dependencies):
+    """Verify ledger fetching correctly calls necessary APIs."""
     mock_console = mock_dependencies["console"]
     balancer = BookBalancer(console_client=mock_console)
 
@@ -92,6 +93,7 @@ def test_fetch_ledger_calls_apis(mock_dependencies):
 
 
 def test_audit_identifies_reverse_orphan(mock_dependencies):
+    """Ensure the audit identifies reverse orphan positions."""
     mock_console = mock_dependencies["console"]
     balancer = BookBalancer(console_client=mock_console)
 
@@ -131,6 +133,7 @@ def test_audit_identifies_reverse_orphan(mock_dependencies):
 
 
 def test_audit_identifies_zombie(mock_dependencies):
+    """Ensure the audit identifies zombie positions."""
     mock_console = mock_dependencies["console"]
     balancer = BookBalancer(console_client=mock_console)
 
@@ -151,6 +154,7 @@ def test_audit_identifies_zombie(mock_dependencies):
 
 
 def test_audit_balanced(mock_dependencies):
+    """Verify audit passes successfully for a balanced book."""
     mock_console = mock_dependencies["console"]
     balancer = BookBalancer(console_client=mock_console)
 
@@ -184,6 +188,7 @@ def test_audit_balanced(mock_dependencies):
 
 
 def test_audit_detailed_target(mock_dependencies):
+    """Verify audit functions correctly targeting a specific symbol."""
     mock_console = mock_dependencies["console"]
     balancer = BookBalancer(console_client=mock_console)
 

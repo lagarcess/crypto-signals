@@ -319,6 +319,7 @@ class TestMacroPatterns:
 class TestInvertedHammer:
     def test_inverted_hammer_confirmation(self, mock_df):
         # t-1: Inverted Hammer (Index 3)
+        """Verify inverted hammer pattern is confirmed correctly."""
         mock_df["low"] = [100.0, 98.0, 96.0, 94.0, 92.0]  # Downtrend, explicit floats
         mock_df["volume"] = [2000.0] * 5  # High volume
         mock_df["EMA_50"] = 90.0  # Price (93) > 90. Uptrend context satisfied.

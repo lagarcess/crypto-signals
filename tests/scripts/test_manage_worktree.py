@@ -42,6 +42,7 @@ def test_create_local_branch(mock_subprocess, mock_shutil, mock_path):
     # 5. git worktree add
     # 6. poetry install
 
+    """Verify local branch creation via manage_worktree script."""
     mock_subprocess.side_effect = [
         MagicMock(stdout="/repo/crypto-signals\n"),  # get_repo_root
         MagicMock(returncode=0),  # fetch
@@ -64,6 +65,7 @@ def test_create_remote_branch(mock_subprocess, mock_shutil, mock_path):
     # 4. worktree add with tracking
     # 5. poetry install
 
+    """Verify remote branch creation via manage_worktree script."""
     mock_subprocess.side_effect = [
         MagicMock(stdout="/repo/crypto-signals\n"),
         MagicMock(returncode=0),  # fetch
@@ -85,6 +87,7 @@ def test_sync_guardrail_success(mock_subprocess):
     # 2. git fetch
     # 3. git rebase
 
+    """Ensure synchronization proceeds when guardrails pass."""
     gh_response = json.dumps(
         [
             {
@@ -110,6 +113,7 @@ def test_sync_guardrail_success(mock_subprocess):
 def test_sync_guardrail_failure(mock_subprocess):
     # 1. gh run list (failure)
 
+    """Ensure synchronization aborts when guardrails fail."""
     gh_response = json.dumps(
         [
             {
@@ -135,6 +139,7 @@ def test_sync_force_override(mock_subprocess):
     # 2. fetch
     # 3. rebase
 
+    """Verify synchronization succeeds despite failures if force override is used."""
     gh_response = json.dumps(
         [
             {

@@ -12,6 +12,7 @@ class TestDataProviderBatching:
         return Mock(), Mock()
 
     def test_get_daily_bars_single_symbol(self, mock_clients):
+        """Verify fetching daily bars for a single symbol."""
         stock_client, crypto_client = mock_clients
         provider = MarketDataProvider(stock_client, crypto_client)
 
@@ -31,6 +32,7 @@ class TestDataProviderBatching:
             assert kwargs["symbol"] == "AAPL"
 
     def test_get_daily_bars_list_symbols(self, mock_clients):
+        """Verify batch fetching of daily bars for multiple symbols."""
         stock_client, crypto_client = mock_clients
         provider = MarketDataProvider(stock_client, crypto_client)
 

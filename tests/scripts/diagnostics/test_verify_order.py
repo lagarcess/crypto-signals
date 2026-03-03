@@ -37,6 +37,7 @@ class MockAPIError(APIError):
 
 def test_verify_order_not_found(mock_trading_client):
     # Setup
+    """Verify behavior when an order is not found."""
     err = MockAPIError()
     mock_trading_client.get_order_by_id.side_effect = err
 
@@ -54,6 +55,7 @@ def test_verify_order_not_found(mock_trading_client):
 
 def test_verify_order_found(mock_trading_client, mock_position_repo):
     # Setup
+    """Verify order verification succeeds when found."""
     mock_order = MagicMock()
     mock_order.status = "filled"
     mock_order.symbol = "BTC/USD"
@@ -83,6 +85,7 @@ def test_verify_order_found(mock_trading_client, mock_position_repo):
 def test_verify_position_mismatch_alpaca_only(mock_trading_client, mock_position_repo):
     # Setup
     # Mock Alpaca position found
+    """Ensure mismatches are flagged when position only exists in Alpaca."""
     mock_alpaca_pos = MagicMock()
     mock_alpaca_pos.symbol = "BTC/USD"
     mock_alpaca_pos.qty = 1.0
@@ -110,6 +113,7 @@ def test_verify_position_mismatch_alpaca_only(mock_trading_client, mock_position
 def test_verify_position_match(mock_trading_client, mock_position_repo):
     # Setup
     # Mock Alpaca position found
+    """Verify position match is confirmed when systems align."""
     mock_alpaca_pos = MagicMock()
     mock_alpaca_pos.symbol = "BTC/USD"
     mock_alpaca_pos.qty = 1.0
@@ -150,6 +154,7 @@ def test_verify_position_match(mock_trading_client, mock_position_repo):
 
 def test_json_output(mock_trading_client):
     # Setup
+    """Verify diagnostic tools output valid JSON format."""
     err = MockAPIError()
     mock_trading_client.get_order_by_id.side_effect = err
 

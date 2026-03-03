@@ -69,6 +69,7 @@ class TestRiskCorrelation:
         )
 
     def test_check_correlation_no_positions(self, risk_engine, mock_repo):
+        """Verify correlation check passes with no open positions."""
         mock_repo.get_open_positions.return_value = []
         signal = self.create_signal()
 
@@ -82,6 +83,7 @@ class TestRiskCorrelation:
         ), f"Expected result.passed to be True, got {result.passed}"
 
     def test_check_correlation_high(self, risk_engine, mock_repo, mock_market_provider):
+        """Verify signal rejection for high correlation with an open position."""
         # Arrange: Open position in ETH
         mock_repo.get_open_positions.return_value = [
             self.create_position(symbol="ETH/USD")
@@ -143,6 +145,7 @@ class TestRiskCorrelation:
         ), f"Expected risk gate reason to contain relevant keyword, got {result.reason}"
 
     def test_check_correlation_low(self, risk_engine, mock_repo, mock_market_provider):
+        """Verify signal acceptance for low or inverse correlation."""
         # Arrange: Open position in ETH
         mock_repo.get_open_positions.return_value = [
             self.create_position(symbol="ETH/USD")
@@ -192,6 +195,7 @@ class TestRiskCorrelation:
     def test_check_correlation_market_data_failure(
         self, risk_engine, mock_repo, mock_market_provider
     ):
+        """Ensure safe failure (rejection) if correlation data is missing."""
         mock_repo.get_open_positions.return_value = [
             self.create_position(symbol="ETH/USD")
         ]

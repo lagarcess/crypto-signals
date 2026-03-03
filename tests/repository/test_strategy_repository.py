@@ -18,6 +18,7 @@ def repo(mock_firestore):
 
 def test_get_all_strategies(repo, mock_firestore):
     # Mock documents
+    """Verify retrieval of all valid strategies from the repository."""
     doc1 = MagicMock()
     doc1.id = "strat_1"
     doc1.to_dict.return_value = {
@@ -40,6 +41,7 @@ def test_get_all_strategies(repo, mock_firestore):
 
 def test_get_all_strategies_validation_error(repo, mock_firestore):
     # Mock valid and invalid documents
+    """Ensure strategy validation errors are handled correctly."""
     doc1 = MagicMock()
     doc1.id = "valid"
     doc1.to_dict.return_value = {
