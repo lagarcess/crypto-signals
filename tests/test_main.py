@@ -7,13 +7,13 @@ import pytest
 from crypto_signals.domain.schemas import (
     AssetClass,
     OrderSide,
-    Position,
-    Signal,
     SignalStatus,
     TradeStatus,
 )
 from crypto_signals.main import main
 from loguru import logger
+
+from tests.factories import PositionFactory, SignalFactory
 
 
 @pytest.fixture
@@ -419,7 +419,7 @@ def _create_test_position(
     failed_reason=None,
 ):
     """Helper to create a Position for testing."""
-    return Position(
+    return PositionFactory.build(
         position_id=position_id,
         ds=date(2025, 1, 15),
         account_id="paper",
@@ -797,7 +797,7 @@ def test_main_expires_before_check_exits(mock_main_dependencies):
 
     # 1. Setup a STALE WAITING signal
     now_utc = datetime.now(timezone.utc)
-    stale_signal = Signal(
+    stale_signal = SignalFactory.build(
         signal_id="stale_id",
         ds=datetime.now(timezone.utc).date() - timedelta(days=2),
         strategy_id="strat",

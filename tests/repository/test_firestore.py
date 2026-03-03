@@ -7,8 +7,6 @@ import pytest
 from crypto_signals.domain.schemas import (
     AssetClass,
     OrderSide,
-    Position,
-    Signal,
     SignalStatus,
     TradeStatus,
 )
@@ -18,7 +16,7 @@ from crypto_signals.repository.firestore import (
     SignalRepository,
 )
 
-from tests.factories import SignalFactory
+from tests.factories import PositionFactory, SignalFactory
 
 
 @pytest.fixture
@@ -58,7 +56,7 @@ def test_save_signal(mock_settings, mock_firestore_client):
     repo = SignalRepository()
 
     # Create test signal
-    signal = Signal(
+    signal = SignalFactory.build(
         signal_id="test-signal-id",
         ds=date(2025, 1, 1),
         strategy_id="test-strategy",
@@ -111,7 +109,7 @@ def test_save_signal_firestore_error(mock_settings, mock_firestore_client):
     repo = SignalRepository()
 
     # Create dummy signal
-    signal = Signal(
+    signal = SignalFactory.build(
         signal_id="test-error",
         ds=date(2025, 1, 1),
         strategy_id="strat",
@@ -287,7 +285,7 @@ class TestSignalRepositoryAtomicUpdate:
 def sample_position():
     """Create a sample position for testing."""
     test_id = SignalFactory.build().signal_id
-    return Position(
+    return PositionFactory.build(
         position_id="test-position-123",
         ds=date(2025, 1, 15),
         account_id="alpaca-order-456",
