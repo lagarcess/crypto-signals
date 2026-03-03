@@ -79,15 +79,27 @@ class TestHandleManualExitVerification:
         result = reconciler.handle_manual_exit_verification(sample_position)
 
         # Verify
-        assert isinstance(result, Position)
-        assert sample_position.status == TradeStatus.CLOSED
-        assert sample_position.exit_reason == ExitReason.MANUAL_EXIT
-        assert sample_position.exit_fill_price == 55000.0
-        assert sample_position.exit_order_id == "manual-sell-order-123"
+        assert isinstance(
+            result, Position
+        ), f"Expected result to be instance of Position, got {type(result).__name__}"
+        assert (
+            sample_position.status == TradeStatus.CLOSED
+        ), f"Expected sample_position.status == TradeStatus.CLOSED, got {sample_position.status}"
+        assert (
+            sample_position.exit_reason == ExitReason.MANUAL_EXIT
+        ), f"Expected sample_position.exit_reason == ExitReason.MANUAL_EXIT, got {sample_position.exit_reason}"
+        assert (
+            sample_position.exit_fill_price == 55000.0
+        ), f"Expected sample_position.exit_fill_price == 55000.0, got {sample_position.exit_fill_price}"
+        assert (
+            sample_position.exit_order_id == "manual-sell-order-123"
+        ), 'Expected sample_position.exit_order_id == "manual-sell-order-123"'
 
         # Verify Discord notification sent
         mock_discord.send_message.assert_called_once()
-        assert "MANUAL EXIT DETECTED" in mock_discord.send_message.call_args[0][0]
+        assert (
+            "MANUAL EXIT DETECTED" in mock_discord.send_message.call_args[0][0]
+        ), 'Assertion condition not met: "MANUAL EXIT DETECTED" in mock_discord.send_message.call_args[0][0]'
 
     def test_verify_manual_exit_failed_no_orders(
         self, reconciler, mock_alpaca, sample_position
@@ -100,9 +112,13 @@ class TestHandleManualExitVerification:
         result = reconciler.handle_manual_exit_verification(sample_position)
 
         # Verify
-        assert result is None
-        assert sample_position.status == TradeStatus.OPEN
-        assert sample_position.exit_reason is None
+        assert result is None, f"result should be None, got {result}"
+        assert (
+            sample_position.status == TradeStatus.OPEN
+        ), f"Expected sample_position.status == TradeStatus.OPEN, got {sample_position.status}"
+        assert (
+            sample_position.exit_reason is None
+        ), f"sample_position.exit_reason should be None, got {sample_position.exit_reason}"
 
     def test_verify_manual_exit_ignores_tp_sl_legs(
         self, reconciler, mock_alpaca, sample_position
@@ -119,5 +135,7 @@ class TestHandleManualExitVerification:
         result = reconciler.handle_manual_exit_verification(sample_position)
 
         # Verify
-        assert result is None
-        assert sample_position.status == TradeStatus.OPEN
+        assert result is None, f"result should be None, got {result}"
+        assert (
+            sample_position.status == TradeStatus.OPEN
+        ), f"Expected sample_position.status == TradeStatus.OPEN, got {sample_position.status}"

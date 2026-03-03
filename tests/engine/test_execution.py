@@ -289,8 +289,10 @@ class TestExecuteSignal:
             mock_trading_client.submit_order.assert_not_called()
 
             # Verify THEORETICAL position was created (fallback)
-            assert position is not None
-            assert position.trade_type == "THEORETICAL"
+            assert position is not None, "position should not be None"
+            assert (
+                position.trade_type == "THEORETICAL"
+            ), 'Expected position.trade_type == "THEORETICAL"'
 
     def test_position_created_on_success(
         self, execution_engine, sample_signal, mock_trading_client
@@ -376,7 +378,7 @@ class TestCryptoOrderFlow:
         position = execution_engine.execute_signal(sample_signal)
 
         # Verify order was submitted
-        assert position is not None
+        assert position is not None, "position should not be None"
         mock_trading_client.submit_order.assert_called_once()
 
         # Get the order request
