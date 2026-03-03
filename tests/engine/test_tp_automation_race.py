@@ -16,10 +16,11 @@ from crypto_signals.domain.schemas import (
     AssetClass,
     ExitReason,
     OrderSide,
-    Position,
     SignalStatus,
     TradeStatus,
 )
+
+from tests.factories import PositionFactory
 
 
 def _make_signal(signal_id, symbol="AAVE/USD", status=SignalStatus.TP3_HIT):
@@ -44,18 +45,13 @@ def _make_position(
     qty=10.0,
 ):
     """Helper: create a real Position object."""
-    return Position(
+    return PositionFactory.build(
         position_id=position_id,
         ds=date(2026, 2, 10),
-        account_id="paper",
         symbol=symbol,
         signal_id=signal_id,
-        alpaca_order_id="alpaca-order-1",
         status=status,
-        entry_fill_price=150.0,
-        current_stop_loss=140.0,
         qty=qty,
-        side=OrderSide.BUY,
     )
 
 

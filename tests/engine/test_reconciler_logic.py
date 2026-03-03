@@ -1,18 +1,19 @@
 """Unit tests for the StateReconciler logic (migrated from ExecutionEngine)."""
 
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
 import pytest
 from alpaca.trading.models import Order
 from crypto_signals.domain.schemas import (
     ExitReason,
-    OrderSide,
     Position,
     TradeStatus,
 )
 from crypto_signals.engine.reconciler import StateReconciler
 from crypto_signals.engine.reconciler_notifications import ReconcilerNotificationService
+
+from tests.factories import PositionFactory
 
 
 @pytest.fixture
@@ -47,20 +48,13 @@ def reconciler(mock_alpaca, mock_repo, mock_notification_service):
 @pytest.fixture
 def sample_position():
     """Create a sample OPEN position."""
-    return Position(
+    return PositionFactory.build(
         position_id="test-pos-sync-1",
-        ds=date(2025, 1, 15),
-        account_id="paper",
-        symbol="BTC/USD",
         signal_id="test-signal-sync-1",
         alpaca_order_id="entry-order-1",
         tp_order_id="tp-order-1",
         sl_order_id="sl-order-1",
-        status=TradeStatus.OPEN,
-        entry_fill_price=50000.0,
-        current_stop_loss=48000.0,
         qty=0.05,
-        side=OrderSide.BUY,
     )
 
 

@@ -1,15 +1,15 @@
 """Tests for PR Gap Closure: Invalidation Path & Price Patching."""
 
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
 from crypto_signals.domain.schemas import (
-    OrderSide,
-    Position,
     TradeStatus,
 )
 from crypto_signals.engine.execution import ExecutionEngine
+
+from tests.factories import PositionFactory
 
 
 @pytest.fixture
@@ -76,20 +76,13 @@ class TestInvalidationPath:
 
         mock_trading_client.get_order_by_id.side_effect = side_effect
 
-        position = Position(
+        position = PositionFactory.build(
             position_id="test-pos-sl-exit",
-            ds=date(2025, 1, 15),
-            account_id="paper",
-            symbol="BTC/USD",
             signal_id="test-signal-exit",
             alpaca_order_id="parent-id",
             tp_order_id="tp-order-id",
             sl_order_id="sl-order-id",
-            status=TradeStatus.OPEN,
-            entry_fill_price=50000.0,
-            current_stop_loss=48000.0,
             qty=0.05,
-            side=OrderSide.BUY,
         )
 
         # Execute
@@ -122,20 +115,13 @@ class TestInvalidationPath:
 
         mock_trading_client.get_order_by_id.side_effect = side_effect
 
-        position = Position(
+        position = PositionFactory.build(
             position_id="test-pos-tp-exit",
-            ds=date(2025, 1, 15),
-            account_id="paper",
-            symbol="BTC/USD",
             signal_id="test-signal-exit-tp",
             alpaca_order_id="parent-id",
             tp_order_id="tp-order-id",
             sl_order_id="sl-order-id",
-            status=TradeStatus.OPEN,
-            entry_fill_price=50000.0,
-            current_stop_loss=48000.0,
             qty=0.05,
-            side=OrderSide.BUY,
         )
 
         # Execute

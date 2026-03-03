@@ -1,8 +1,9 @@
-from datetime import date
 from unittest.mock import MagicMock, patch
 
-from crypto_signals.domain.schemas import AssetClass, OrderSide, Signal, SignalStatus
+from crypto_signals.domain.schemas import OrderSide
 from crypto_signals.engine.execution import ExecutionEngine
+
+from tests.factories import SignalFactory
 
 
 class TestExecutionAccountID:
@@ -36,17 +37,10 @@ class TestExecutionAccountID:
         mock_trading_client.submit_order.return_value = mock_order
 
         # Sample Signal
-        signal = Signal(
+        signal = SignalFactory.build(
             signal_id="test-signal-uuid",
-            ds=date(2025, 1, 15),
             strategy_id="TEST",
-            symbol="BTC/USD",
-            asset_class=AssetClass.CRYPTO,
-            entry_price=50000.0,
             pattern_name="TEST",
-            suggested_stop=48000.0,
-            status=SignalStatus.WAITING,
-            take_profit_1=55000.0,
             side=OrderSide.BUY,
         )
 

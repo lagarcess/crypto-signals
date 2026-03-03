@@ -13,12 +13,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 from alpaca.trading.models import Order, OrderStatus
 from crypto_signals.domain.schemas import (
-    OrderSide,
-    Position,
-    TradeStatus,
     TradeType,
 )
 from crypto_signals.engine.execution import ExecutionEngine
+
+from tests.factories import PositionFactory
 
 
 class TestEmergencyCloseRetryBudget:
@@ -30,17 +29,11 @@ class TestEmergencyCloseRetryBudget:
         engine = ExecutionEngine(
             trading_client=mock_trading_client, repository=MagicMock()
         )
-        position = Position(
+        position = PositionFactory.build(
             position_id="test-pos-1",
-            ds=datetime.now(timezone.utc).date(),
-            account_id="paper",
             symbol="BTC/USD",
             signal_id="test-signal-1",
-            status=TradeStatus.OPEN,
-            entry_fill_price=50000.0,
-            current_stop_loss=49000.0,
             qty=0.1,
-            side=OrderSide.BUY,
             trade_type=TradeType.EXECUTED.value,
         )
 
@@ -71,17 +64,13 @@ class TestEmergencyCloseRetryBudget:
         engine = ExecutionEngine(
             trading_client=mock_trading_client, repository=MagicMock()
         )
-        position = Position(
+        position = PositionFactory.build(
             position_id="test-pos-2",
-            ds=datetime.now(timezone.utc).date(),
-            account_id="paper",
             symbol="ETH/USD",
             signal_id="test-signal-2",
-            status=TradeStatus.OPEN,
             entry_fill_price=3000.0,
             current_stop_loss=2900.0,
             qty=1.0,
-            side=OrderSide.BUY,
             trade_type=TradeType.EXECUTED.value,
         )
 
@@ -131,17 +120,13 @@ class TestEmergencyCloseRetryBudget:
         engine = ExecutionEngine(
             trading_client=mock_trading_client, repository=MagicMock()
         )
-        position = Position(
+        position = PositionFactory.build(
             position_id="test-pos-3",
-            ds=datetime.now(timezone.utc).date(),
-            account_id="paper",
             symbol="SOL/USD",
             signal_id="test-signal-3",
-            status=TradeStatus.OPEN,
             entry_fill_price=100.0,
             current_stop_loss=95.0,
             qty=10.0,
-            side=OrderSide.BUY,
             trade_type=TradeType.EXECUTED.value,
         )
 
@@ -235,17 +220,11 @@ class TestScaleOutWeightedAverage:
         engine = ExecutionEngine(
             trading_client=mock_trading_client, repository=MagicMock()
         )
-        position = Position(
+        position = PositionFactory.build(
             position_id="test-pos-5",
-            ds=datetime.now(timezone.utc).date(),
-            account_id="paper",
             symbol="BTC/USD",
             signal_id="test-signal-5",
-            status=TradeStatus.OPEN,
-            entry_fill_price=50000.0,
-            current_stop_loss=49000.0,
             qty=1.0,
-            side=OrderSide.BUY,
             trade_type=TradeType.EXECUTED.value,
         )
 
@@ -279,17 +258,13 @@ class TestScaleOutWeightedAverage:
         engine = ExecutionEngine(
             trading_client=mock_trading_client, repository=MagicMock()
         )
-        position = Position(
+        position = PositionFactory.build(
             position_id="test-pos-6",
-            ds=datetime.now(timezone.utc).date(),
-            account_id="paper",
             symbol="ETH/USD",
             signal_id="test-signal-6",
-            status=TradeStatus.OPEN,
             entry_fill_price=3000.0,
             current_stop_loss=2900.0,
             qty=1.0,
-            side=OrderSide.BUY,
             trade_type=TradeType.EXECUTED.value,
         )
 
@@ -344,17 +319,13 @@ class TestScaleOutWeightedAverage:
         engine = ExecutionEngine(
             trading_client=mock_trading_client, repository=MagicMock()
         )
-        position = Position(
+        position = PositionFactory.build(
             position_id="test-pos-7",
-            ds=datetime.now(timezone.utc).date(),
-            account_id="paper",
             symbol="SOL/USD",
             signal_id="test-signal-7",
-            status=TradeStatus.OPEN,
             entry_fill_price=100.0,
             current_stop_loss=95.0,
             qty=10.0,
-            side=OrderSide.BUY,
             trade_type=TradeType.EXECUTED.value,
         )
 
