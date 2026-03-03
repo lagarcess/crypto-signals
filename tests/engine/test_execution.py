@@ -4,6 +4,8 @@ from datetime import date
 from unittest.mock import MagicMock, patch
 
 import pytest
+from alpaca.trading.enums import OrderClass
+from alpaca.trading.enums import OrderSide as AlpacaOrderSide
 from crypto_signals.domain.schemas import (
     AssetClass,
     OrderSide,
@@ -115,8 +117,6 @@ class TestExecuteSignal:
         # Get the order request that was passed
         call_args = mock_trading_client.submit_order.call_args
         order_request = call_args[0][0]  # First positional argument
-
-        from alpaca.trading.enums import OrderClass
 
         assert (
             order_request.order_class == OrderClass.BRACKET
@@ -339,8 +339,6 @@ class TestExecuteSignal:
 
         call_args = mock_trading_client.submit_order.call_args
         order_request = call_args[0][0]
-
-        from alpaca.trading.enums import OrderSide as AlpacaOrderSide
 
         assert (
             order_request.side == AlpacaOrderSide.SELL
@@ -955,13 +953,10 @@ class TestClosePositionEmergency:
         assert result is True, "close_position_emergency failed to return True"
         assert position.status == TradeStatus.CLOSED, "Position status should be CLOSED"
 
-        # Assert cancel calls for TP and SL
         cancel_calls = mock_trading_client.cancel_order_by_id.call_args_list
         canceled_ids = [call[0][0] for call in cancel_calls]
         assert "tp-order-id" in canceled_ids, "TP order was not canceled"
         assert "sl-order-id" in canceled_ids, "SL order was not canceled"
-
-        # Assert market close order submitted
         mock_trading_client.submit_order.assert_called_once()
 
 
@@ -1014,7 +1009,6 @@ class TestScaleOutPosition:
         execution_engine.scale_out_position(position, scale_pct=0.5)
 
         # Assert
-        # Assert remaining qty
         assert (
             position.qty == 0.05
         ), f"Remaining qty mismatch. Expected 0.05, got {position.qty}"
@@ -1085,7 +1079,6 @@ class TestScaleOutPosition:
         execution_engine.scale_out_position(position, scale_pct=0.5)
 
         # Assert
-        # Assert prices list accumulated
         assert (
             len(position.scaled_out_prices) == 2
         ), "scaled_out_prices list length mismatch"

@@ -96,8 +96,6 @@ class TestStateReconcilerInitialization:
         mock_settings,
     ):
         """StateReconciler stores injected dependencies."""
-        # Arrange
-
         # Act
         reconciler = StateReconciler(
             alpaca_client=mock_trading_client,
