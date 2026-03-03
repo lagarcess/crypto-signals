@@ -8,16 +8,19 @@ from crypto_signals.domain.schemas import (
     Signal,
     SignalStatus,
     TradeStatus,
+    get_deterministic_id,
 )
+from polyfactory.decorators import post_generated
 from polyfactory.factories.pydantic_factory import ModelFactory
 
 
 class SignalFactory(ModelFactory[Signal]):
     __model__ = Signal
 
+    @post_generated
     @classmethod
-    def signal_id(cls) -> str:
-        return "test-signal-123"
+    def signal_id(cls, ds: date, strategy_id: str, symbol: str) -> str:
+        return get_deterministic_id(f"{ds}|{strategy_id}|{symbol}")
 
     @classmethod
     def ds(cls) -> date:
@@ -68,9 +71,10 @@ class SignalFactory(ModelFactory[Signal]):
 class PositionFactory(ModelFactory[Position]):
     __model__ = Position
 
+    @post_generated
     @classmethod
-    def position_id(cls) -> str:
-        return "test-signal-123"
+    def position_id(cls, signal_id: str) -> str:
+        return signal_id
 
     @classmethod
     def ds(cls) -> date:
