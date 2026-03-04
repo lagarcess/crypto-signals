@@ -4,11 +4,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 from crypto_signals.domain.schemas import (
     AssetClass,
-    Signal,
     SignalStatus,
     TradeType,
 )
 from crypto_signals.engine.execution import ExecutionEngine
+
+from tests.factories import SignalFactory
 
 
 @pytest.mark.integration
@@ -57,7 +58,7 @@ class TestPaperTradingFlow:
         3. TP1 Hit -> Move Stop to Breakeven
         """
         # 1. Setup Crypto Signal
-        signal = Signal(
+        signal = SignalFactory.build(
             signal_id="test_crypto_sig_001",
             strategy_id="BULL_FLAG",
             pattern_name="BULL_FLAG",
@@ -124,7 +125,7 @@ class TestPaperTradingFlow:
         1. Signal Entry -> Bracket Order
         """
         # 1. Setup Equity Signal
-        signal = Signal(
+        signal = SignalFactory.build(
             signal_id="test_equity_sig_001",
             strategy_id="BULL_FLAG",
             pattern_name="BULL_FLAG",

@@ -3,9 +3,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from alpaca.common.exceptions import APIError
-from crypto_signals.domain.schemas import AssetClass, OrderSide, Position, TradeStatus
+from crypto_signals.domain.schemas import AssetClass, OrderSide, TradeStatus
 from crypto_signals.scripts.diagnostics.verify_order import app
 from typer.testing import CliRunner
+
+from tests.factories import PositionFactory
 
 runner = CliRunner()
 
@@ -121,7 +123,7 @@ def test_verify_position_match(mock_trading_client, mock_position_repo):
     mock_trading_client.get_open_position.return_value = mock_alpaca_pos
 
     # Mock Firestore position found
-    mock_position = Position(
+    mock_position = PositionFactory.build(
         position_id="pos1",
         ds=date(2023, 1, 1),
         account_id="account1",

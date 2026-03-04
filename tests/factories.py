@@ -8,16 +8,19 @@ from crypto_signals.domain.schemas import (
     Signal,
     SignalStatus,
     TradeStatus,
+    get_deterministic_id,
 )
+from polyfactory.decorators import post_generated
 from polyfactory.factories.pydantic_factory import ModelFactory
 
 
 class SignalFactory(ModelFactory[Signal]):
     __model__ = Signal
 
+    @post_generated
     @classmethod
-    def signal_id(cls) -> str:
-        return "test-signal-123"
+    def signal_id(cls, ds: date, strategy_id: str, symbol: str) -> str:
+        return get_deterministic_id(f"{ds}|{strategy_id}|{symbol}")
 
     @classmethod
     def ds(cls) -> date:
@@ -68,9 +71,10 @@ class SignalFactory(ModelFactory[Signal]):
 class PositionFactory(ModelFactory[Position]):
     __model__ = Position
 
+    @post_generated
     @classmethod
-    def position_id(cls) -> str:
-        return "test-signal-123"
+    def position_id(cls, signal_id: str) -> str:
+        return signal_id
 
     @classmethod
     def ds(cls) -> date:
@@ -79,7 +83,13 @@ class PositionFactory(ModelFactory[Position]):
     account_id = "paper"
     symbol = "BTC/USD"
     asset_class = AssetClass.CRYPTO
-    signal_id = "test-signal-123"
+
+    @post_generated
+    @classmethod
+    def signal_id(cls, ds: date, symbol: str) -> str:
+        # Default strategy for PositionFactory if none provided
+        return get_deterministic_id(f"{ds}|BULLISH_ENGULFING|{symbol}")
+
     status = TradeStatus.OPEN
     entry_fill_price = 50000.0
     current_stop_loss = 48000.0

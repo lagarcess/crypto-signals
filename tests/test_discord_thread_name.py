@@ -13,10 +13,14 @@ def test_send_signal_includes_thread_name_for_forum_channels():
     Verifies that send_signal() includes thread_name in the Discord API
     payload to prevent 220001 error (Forum channels require thread_name).
     """
-    from datetime import date
 
-    from crypto_signals.domain.schemas import AssetClass, Signal, SignalStatus
+    from crypto_signals.domain.schemas import (
+        SignalStatus,
+        get_deterministic_id,
+    )
     from crypto_signals.notifications.discord import DiscordClient
+
+    from tests.factories import SignalFactory
 
     # Create a mock settings object
     with patch("crypto_signals.notifications.discord.get_settings") as mock_settings:
@@ -30,12 +34,17 @@ def test_send_signal_includes_thread_name_for_forum_channels():
         # Create Discord client
         client = DiscordClient(settings=settings_instance)
 
+        test_ds = date(2025, 1, 15)
+        test_strategy = "test-strategy"
+        test_symbol = "BTC/USD"
+        test_id = get_deterministic_id(f"{test_ds}|{test_strategy}|{test_symbol}")
+
         # Create a test signal
-        signal = Signal(
-            signal_id="test-signal-123",
-            ds=date(2025, 1, 15),
-            strategy_id="test-strategy",
-            symbol="BTC/USD",
+        signal = SignalFactory.build(
+            signal_id=test_id,
+            ds=test_ds,
+            strategy_id=test_strategy,
+            symbol=test_symbol,
             asset_class=AssetClass.CRYPTO,
             pattern_name="inverse_head_shoulders",
             entry_price=50000.0,
@@ -85,10 +94,11 @@ def test_send_signal_without_forum_mode_omits_thread_name():
     Verifies that send_signal() does NOT include thread_name in the payload
     when DISCORD_USE_FORUMS=False.
     """
-    from datetime import date
 
-    from crypto_signals.domain.schemas import AssetClass, Signal, SignalStatus
+    from crypto_signals.domain.schemas import SignalStatus
     from crypto_signals.notifications.discord import DiscordClient
+
+    from tests.factories import SignalFactory
 
     with patch("crypto_signals.notifications.discord.get_settings") as mock_settings:
         settings_instance = MagicMock()
@@ -102,7 +112,7 @@ def test_send_signal_without_forum_mode_omits_thread_name():
 
         client = DiscordClient(settings=settings_instance)
 
-        signal = Signal(
+        signal = SignalFactory.build(
             signal_id="test-signal-456",
             ds=date(2025, 1, 16),
             strategy_id="test-strategy",
@@ -230,8 +240,10 @@ def test_send_shadow_signal_includes_thread_name_in_forum_mode():
     Verifies send_shadow_signal() includes a thread_name in the payload
     when DISCORD_SHADOW_USE_FORUMS=True.
     """
-    from crypto_signals.domain.schemas import Signal, SignalStatus
+    from crypto_signals.domain.schemas import SignalStatus
     from crypto_signals.notifications.discord import DiscordClient
+
+    from tests.factories import SignalFactory
 
     with patch("crypto_signals.notifications.discord.get_settings") as mock_settings:
         settings_instance = MagicMock()
@@ -245,18 +257,11 @@ def test_send_shadow_signal_includes_thread_name_in_forum_mode():
 
         client = DiscordClient(settings=settings_instance)
 
-        shadow_signal = Signal(
+        shadow_signal = SignalFactory.build(
             signal_id="shadow-signal-1",
             symbol="DOGE/USD",
             status=SignalStatus.REJECTED_BY_FILTER,
             rejection_reason="LOW_VOLUME",
-            # Add required fields for Pydantic validation
-            ds=date(2025, 1, 1),
-            strategy_id="test-strategy",
-            asset_class=AssetClass.CRYPTO,
-            entry_price=1.0,
-            pattern_name="test-pattern",
-            suggested_stop=0.9,
         )
 
         with patch("crypto_signals.notifications.discord.requests.post") as mock_post:
@@ -276,8 +281,10 @@ def test_send_shadow_signal_omits_thread_name_in_standard_mode():
     Verifies send_shadow_signal() does NOT include a thread_name
     when DISCORD_SHADOW_USE_FORUMS=False.
     """
-    from crypto_signals.domain.schemas import Signal, SignalStatus
+    from crypto_signals.domain.schemas import SignalStatus
     from crypto_signals.notifications.discord import DiscordClient
+
+    from tests.factories import SignalFactory
 
     with patch("crypto_signals.notifications.discord.get_settings") as mock_settings:
         settings_instance = MagicMock()
@@ -291,18 +298,11 @@ def test_send_shadow_signal_omits_thread_name_in_standard_mode():
 
         client = DiscordClient(settings=settings_instance)
 
-        shadow_signal = Signal(
+        shadow_signal = SignalFactory.build(
             signal_id="shadow-signal-2",
             symbol="SHIB/USD",
             status=SignalStatus.REJECTED_BY_FILTER,
             rejection_reason="HIGH_RISK",
-            # Add required fields for Pydantic validation
-            ds=date(2025, 1, 1),
-            strategy_id="test-strategy",
-            asset_class=AssetClass.CRYPTO,
-            entry_price=1.0,
-            pattern_name="test-pattern",
-            suggested_stop=0.9,
         )
 
         with patch("crypto_signals.notifications.discord.requests.post") as mock_post:

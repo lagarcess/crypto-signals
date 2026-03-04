@@ -7,8 +7,6 @@ import pytest
 from crypto_signals.domain.schemas import (
     AssetClass,
     OrderSide,
-    Position,
-    Signal,
     SignalStatus,
     TradeStatus,
 )
@@ -17,6 +15,8 @@ from crypto_signals.repository.firestore import (
     RejectedSignalRepository,
     SignalRepository,
 )
+
+from tests.factories import PositionFactory, SignalFactory
 
 
 @pytest.fixture
@@ -56,7 +56,7 @@ def test_save_signal(mock_settings, mock_firestore_client):
     repo = SignalRepository()
 
     # Create test signal
-    signal = Signal(
+    signal = SignalFactory.build(
         signal_id="test-signal-id",
         ds=date(2025, 1, 1),
         strategy_id="test-strategy",
@@ -109,7 +109,7 @@ def test_save_signal_firestore_error(mock_settings, mock_firestore_client):
     repo = SignalRepository()
 
     # Create dummy signal
-    signal = Signal(
+    signal = SignalFactory.build(
         signal_id="test-error",
         ds=date(2025, 1, 1),
         strategy_id="strat",
@@ -138,13 +138,15 @@ class TestSignalRepositoryGetById:
         """Test get_by_id returns Signal when found."""
         from unittest.mock import MagicMock
 
+        test_id = SignalFactory.build().signal_id
+
         mock_db = mock_firestore_client.return_value
         mock_collection = mock_db.collection.return_value
         mock_doc_ref = mock_collection.document.return_value
         mock_doc = MagicMock()
         mock_doc.exists = True
         mock_doc.to_dict.return_value = {
-            "signal_id": "test-signal-123",
+            "signal_id": test_id,
             "ds": "2025-01-15",
             "strategy_id": "test-strategy",
             "symbol": "BTC/USD",
@@ -157,12 +159,12 @@ class TestSignalRepositoryGetById:
         mock_doc_ref.get.return_value = mock_doc
 
         repo = SignalRepository()
-        result = repo.get_by_id("test-signal-123")
+        result = repo.get_by_id(test_id)
 
         assert result is not None
-        assert result.signal_id == "test-signal-123"
+        assert result.signal_id == test_id
         assert result.symbol == "BTC/USD"
-        mock_collection.document.assert_called_with("test-signal-123")
+        mock_collection.document.assert_called_with(test_id)
 
     def test_get_by_id_not_found(self, mock_settings, mock_firestore_client):
         """Test get_by_id returns None when not found."""
@@ -206,16 +208,17 @@ class TestSignalRepositoryAtomicUpdate:
         mock_doc_ref.get.return_value = mock_snapshot
 
         repo = SignalRepository()
+        test_id = SignalFactory.build().signal_id
 
         # Execute with actual firestore.transactional decorator behavior
         with patch("google.cloud.firestore.transactional") as mock_transactional:
             # Make transactional decorator pass through and call the function
             mock_transactional.side_effect = lambda fn: fn
 
-            result = repo.update_signal_atomic("test-signal-123", {"status": "TP1_HIT"})
+            result = repo.update_signal_atomic(test_id, {"status": "TP1_HIT"})
 
         assert result is True
-        mock_collection.document.assert_called_with("test-signal-123")
+        mock_collection.document.assert_called_with(test_id)
         mock_transaction.update.assert_called_once_with(
             mock_doc_ref, {"status": "TP1_HIT"}
         )
@@ -266,26 +269,28 @@ class TestSignalRepositoryAtomicUpdate:
         )
 
         repo = SignalRepository()
+        test_id = SignalFactory.build().signal_id
 
         with patch("google.cloud.firestore.transactional") as mock_transactional:
             mock_transactional.side_effect = lambda fn: fn
 
-            result = repo.update_signal_atomic("test-signal-123", {"status": "TP1_HIT"})
+            result = repo.update_signal_atomic(test_id, {"status": "TP1_HIT"})
 
         # Should gracefully return False, not raise
         assert result is False
-        mock_collection.document.assert_called_with("test-signal-123")
+        mock_collection.document.assert_called_with(test_id)
 
 
 @pytest.fixture
 def sample_position():
     """Create a sample position for testing."""
-    return Position(
+    test_id = SignalFactory.build().signal_id
+    return PositionFactory.build(
         position_id="test-position-123",
         ds=date(2025, 1, 15),
         account_id="alpaca-order-456",
         symbol="BTC/USD",
-        signal_id="test-signal-123",
+        signal_id=test_id,
         status=TradeStatus.OPEN,
         entry_fill_price=50000.0,
         current_stop_loss=48000.0,

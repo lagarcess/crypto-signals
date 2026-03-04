@@ -13,28 +13,24 @@ from unittest.mock import MagicMock
 
 from alpaca.common.exceptions import APIError
 from crypto_signals.domain.schemas import (
-    AssetClass,
     ExitReason,
-    OrderSide,
     SignalStatus,
     TradeStatus,
 )
 
-from tests.factories import PositionFactory
+from tests.factories import PositionFactory, SignalFactory
 
 
 def _make_signal(signal_id, symbol="AAVE/USD", status=SignalStatus.TP3_HIT):
-    """Helper: create a mock Signal with minimal required fields."""
-    sig = MagicMock()
-    sig.signal_id = signal_id
-    sig.symbol = symbol
-    sig.status = status
-    sig.exit_reason = ExitReason.TP_HIT if status == SignalStatus.TP3_HIT else None
-    sig.pattern_name = "ELLIOTT_WAVE_135"
-    sig.discord_thread_id = "thread_old"
-    sig.asset_class = AssetClass.CRYPTO
-    sig.side = OrderSide.BUY
-    return sig
+    """Helper: create a Signal object using SignalFactory."""
+    return SignalFactory.build(
+        signal_id=signal_id,
+        symbol=symbol,
+        status=status,
+        exit_reason=ExitReason.TP_HIT if status == SignalStatus.TP3_HIT else None,
+        pattern_name="ELLIOTT_WAVE_135",
+        discord_thread_id="thread_old",
+    )
 
 
 def _make_position(
