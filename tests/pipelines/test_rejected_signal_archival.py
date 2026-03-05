@@ -3,8 +3,11 @@ from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
-from crypto_signals.domain.schemas import FactRejectedSignal, OrderSide
-from crypto_signals.pipelines.rejected_signal_archival import RejectedSignalArchival
+from crypto_signals.domain.schemas import AssetClass, FactRejectedSignal, OrderSide
+from crypto_signals.pipelines.rejected_signal_archival import (
+    TAKER_FEE_PCT_BY_ASSET_CLASS,
+    RejectedSignalArchival,
+)
 
 
 @pytest.fixture
@@ -424,3 +427,60 @@ def test_extract_cutoff_date(pipeline, mock_firestore):
     diff = now - cutoff_arg
 
     assert diff.days >= 7, f"Expected cutoff >= 7 days ago, but got diff: {diff}"
+
+
+@pytest.mark.parametrize(
+    "asset_class, expected_fee_pct",
+    [
+        pytest.param(AssetClass.EQUITY.value, 0.0, id="equity_zero_fee"),
+        pytest.param(AssetClass.CRYPTO.value, 0.0025, id="crypto_taker_fee"),
+    ],
+)
+def test_transform_fees_by_asset_class(
+    pipeline, mock_market_provider, asset_class, expected_fee_pct
+):
+    """Verify that theoretical fees are calculated based on asset class."""
+    created_at = datetime.now(timezone.utc) - timedelta(days=8)
+    entry_price = 100.0
+    exit_price = 110.0  # Take Profit
+    qty = 1.0
+
+    raw_data = [
+        {
+            "signal_id": f"sig_fee_{asset_class}",
+            "symbol": "AAPL" if asset_class == "EQUITY" else "BTC/USD",
+            "asset_class": asset_class,
+            "entry_price": entry_price,
+            "suggested_stop": 90.0,
+            "take_profit_1": exit_price,
+            "side": OrderSide.BUY.value,
+            "created_at": created_at,
+            "pattern_name": "TEST_PATTERN",
+        }
+    ]
+
+    # Mock Market Data to hit TP1 immediately
+    dates = pd.date_range(created_at.date(), periods=1, freq="D", tz="UTC")
+    df = pd.DataFrame(
+        {
+            "high": [exit_price],
+            "low": [entry_price],
+            "close": [exit_price],
+        },
+        index=dates,
+    )
+    mock_market_provider.get_daily_bars.return_value = df
+
+    transformed = pipeline.transform(raw_data)
+
+    assert len(transformed) == 1
+    record = transformed[0]
+
+    # Calculate expected fees
+    expected_fees = (entry_price * qty * expected_fee_pct) + (
+        exit_price * qty * expected_fee_pct
+    )
+
+    assert record["theoretical_fees_usd"] == pytest.approx(
+        expected_fees
+    ), f"Expected fees_usd == {expected_fees} for {asset_class}, got {record['theoretical_fees_usd']}"

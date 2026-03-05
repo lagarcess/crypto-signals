@@ -28,8 +28,11 @@ from crypto_signals.domain.schemas import FactRejectedSignal, OrderSide
 from crypto_signals.market.data_provider import MarketDataProvider
 from crypto_signals.pipelines.base import BigQueryPipelineBase
 
-# Crypto fee constant (0.25% taker fee for base tier)
-CRYPTO_TAKER_FEE_PCT = 0.0025
+# Asset-class-aware fee structure
+TAKER_FEE_PCT_BY_ASSET_CLASS = {
+    "CRYPTO": 0.0025,  # Alpaca crypto taker fee (Tier 0)
+    "EQUITY": 0.0,  # Alpaca commission-free US equities
+}
 
 # Validity window for signals (7 days)
 VALIDITY_WINDOW_DAYS = 7
@@ -236,9 +239,10 @@ class RejectedSignalArchival(BigQueryPipelineBase):
                         else:
                             pnl_gross = (entry_price - exit_price) * qty
 
-                        # Calculate fees (crypto: 0.25% each way)
-                        entry_fee = entry_price * qty * CRYPTO_TAKER_FEE_PCT
-                        exit_fee = exit_price * qty * CRYPTO_TAKER_FEE_PCT
+                        # Calculate fees (asset-class-aware)
+                        fee_pct = TAKER_FEE_PCT_BY_ASSET_CLASS.get(asset_class, 0.0)
+                        entry_fee = entry_price * qty * fee_pct
+                        exit_fee = exit_price * qty * fee_pct
                         total_fees = entry_fee + exit_fee
 
                         pnl_net = pnl_gross - total_fees
