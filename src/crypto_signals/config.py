@@ -188,6 +188,16 @@ class Settings(BaseSettings):
         default=5,
         description="Maximum concurrent open positions for Equity asset class.",
     )
+    MAX_CRYPTO_POSITION_QTY: float = Field(
+        default=1_000_000.0,
+        description="Maximum share quantity for a single crypto order (micro-cap safeguard).",
+        ge=1.0,
+    )
+    MAX_EQUITY_POSITION_QTY: float = Field(
+        default=10_000.0,
+        description="Maximum share quantity for a single equity order (micro-cap safeguard).",
+        ge=1.0,
+    )
     MAX_DAILY_DRAWDOWN_PCT: float = Field(
         default=0.02,
         description="Maximum daily drawdown (2% default). Halts execution if reached.",
