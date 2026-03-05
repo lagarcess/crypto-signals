@@ -43,31 +43,28 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
 
     def __init__(self, execution_engine: Any | None = None):
         """Initialize the pipeline with specific configuration."""
-        # Configure BigQuery settings
-        # Environment-aware table routing
-        settings = get_settings()
-        env_suffix = "" if settings.ENVIRONMENT == "PROD" else "_test"
-
+        # settings is available via self.settings after super().__init__
         super().__init__(
             job_name="trade_archival",
-            staging_table_id=(
-                f"{settings.GOOGLE_CLOUD_PROJECT}.crypto_analytics.stg_trades_import{env_suffix}"
-            ),
-            fact_table_id=(
-                f"{settings.GOOGLE_CLOUD_PROJECT}.crypto_analytics.fact_trades{env_suffix}"
-            ),
+            staging_table_id=None,
+            fact_table_id="",  # Placeholder
             id_column="trade_id",
             partition_column="ds",
             schema_model=TradeExecution,
         )
 
+        env_suffix = "" if self.settings.ENVIRONMENT == "PROD" else "_test"
+        self.fact_table_id = (
+            f"{self.settings.GOOGLE_CLOUD_PROJECT}.crypto_analytics.fact_trades{env_suffix}"
+        )
+
         # Initialize Source Clients
         # Note: We use the project from settings, same as BQ
-        self.firestore_client = firestore.Client(project=settings.GOOGLE_CLOUD_PROJECT)
+        self.firestore_client = firestore.Client(project=self.settings.GOOGLE_CLOUD_PROJECT)
 
         # Environment-aware collection routing
         self.source_collection = (
-            "live_positions" if settings.ENVIRONMENT == "PROD" else "test_positions"
+            "live_positions" if self.settings.ENVIRONMENT == "PROD" else "test_positions"
         )
 
         self.alpaca = get_trading_client()

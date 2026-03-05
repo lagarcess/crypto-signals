@@ -18,8 +18,8 @@ from alpaca.common.exceptions import APIError
 from alpaca.trading.requests import GetPortfolioHistoryRequest
 from loguru import logger
 
-from crypto_signals.config import get_settings, get_trading_client
-from crypto_signals.domain.schemas import StagingAccount
+from crypto_signals.config import get_trading_client
+from crypto_signals.domain.schemas import AccountSnapshot
 from crypto_signals.pipelines.base import BigQueryPipelineBase
 
 
@@ -28,20 +28,18 @@ class AccountSnapshotPipeline(BigQueryPipelineBase):
 
     def __init__(self):
         """Initialize pipeline with configuration."""
-        settings = get_settings()
-        env_suffix = "" if settings.ENVIRONMENT == "PROD" else "_test"
-
         super().__init__(
             job_name="account_snapshot",
-            staging_table_id=(
-                f"{get_settings().GOOGLE_CLOUD_PROJECT}.crypto_analytics.stg_accounts_import{env_suffix}"
-            ),
-            fact_table_id=(
-                f"{get_settings().GOOGLE_CLOUD_PROJECT}.crypto_analytics.snapshot_accounts{env_suffix}"
-            ),
+            staging_table_id=None,
+            fact_table_id="",  # Placeholder
             id_column="account_id",
             partition_column="ds",
-            schema_model=StagingAccount,
+            schema_model=AccountSnapshot,
+        )
+
+        env_suffix = "" if self.settings.ENVIRONMENT == "PROD" else "_test"
+        self.fact_table_id = (
+            f"{self.settings.GOOGLE_CLOUD_PROJECT}.crypto_analytics.snapshot_accounts{env_suffix}"
         )
 
         # Initialize Alpaca Client
@@ -220,7 +218,7 @@ class AccountSnapshotPipeline(BigQueryPipelineBase):
             # -----------------------------------------------------------------
             snapshot_date = datetime.now(timezone.utc).date()
 
-            record = StagingAccount(
+            record = AccountSnapshot(
                 ds=snapshot_date,
                 account_id=account_id,
                 equity=round(current_equity, 2),
@@ -274,48 +272,3 @@ class AccountSnapshotPipeline(BigQueryPipelineBase):
     def cleanup(self, data: List[Any]) -> None:
         """No cleanup required for Account Snapshot (Read-Only API)."""
 
-    def run(self) -> None:
-        """
-        Run the pipeline. Overrides Base to skip cleanup validation.
-
-        Since extract() returns raw Alpaca objects that don't match StagingAccount, and
-        we don't need cleanup (read-only), we strictly perform ELT: Extract -> Transform
-        -> Load -> Merge.
-        """
-        logger.info(f"[{self.job_name}] Starting pipeline execution...")
-
-        try:
-            # 0. Pre-flight Check: Validate Schema
-            logger.info(f"[{self.job_name}] Validating BigQuery Schema...")
-            # The guardian will raise an exception if strict_mode is True and there's a mismatch
-            self.guardian.validate_schema(
-                table_id=self.fact_table_id,
-                model=self.schema_model,
-                require_partitioning=True,
-                clustering_fields=self.clustering_fields,
-            )
-
-            # 1. Extract
-            raw_data = self.extract()
-            if not raw_data:
-                logger.info(f"[{self.job_name}] No data found. Exiting.")
-                return
-
-            # 2. Transform
-            transformed_data = self.transform(raw_data)
-
-            # 3. Truncate Staging
-            self._truncate_staging()
-
-            # 4. Load to Staging
-            self._load_to_staging(transformed_data)
-
-            # 5. Execute Merge
-            self._execute_merge()
-
-            # 6. Cleanup - Skipped for Snapshot
-            logger.info(f"[{self.job_name}] Pipeline finished successfully.")
-
-        except Exception as e:
-            logger.error(f"[{self.job_name}] Pipeline FAILED: {str(e)}", exc_info=True)
-            raise

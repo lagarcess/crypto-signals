@@ -41,25 +41,24 @@ class ExpiredSignalArchivalPipeline(BigQueryPipelineBase):
 
     def __init__(self):
         """Initialize the pipeline with specific configuration."""
-        settings = get_settings()
-        env_suffix = "" if settings.ENVIRONMENT == "PROD" else "_test"
-
+        # settings is available via self.settings after super().__init__
         super().__init__(
             job_name="expired_signal_archival",
-            staging_table_id=(
-                f"{settings.GOOGLE_CLOUD_PROJECT}.crypto_analytics.stg_signals_expired_import{env_suffix}"
-            ),
-            fact_table_id=(
-                f"{settings.GOOGLE_CLOUD_PROJECT}.crypto_analytics.fact_signals_expired{env_suffix}"
-            ),
+            staging_table_id=None,
+            fact_table_id="",  # Placeholder
             id_column="signal_id",
             partition_column="ds",
             schema_model=ExpiredSignal,
         )
 
-        self.firestore_client = firestore.Client(project=settings.GOOGLE_CLOUD_PROJECT)
+        env_suffix = "" if self.settings.ENVIRONMENT == "PROD" else "_test"
+        self.fact_table_id = (
+            f"{self.settings.GOOGLE_CLOUD_PROJECT}.crypto_analytics.fact_signals_expired{env_suffix}"
+        )
+
+        self.firestore_client = firestore.Client(project=self.settings.GOOGLE_CLOUD_PROJECT)
         self.source_collection = (
-            "live_signals" if settings.ENVIRONMENT == "PROD" else "test_signals"
+            "live_signals" if self.settings.ENVIRONMENT == "PROD" else "test_signals"
         )
         stock_client = get_stock_data_client()
         crypto_client = get_crypto_data_client()

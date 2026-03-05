@@ -32,70 +32,23 @@ class DailyStrategyAggregation(BigQueryPipelineBase):
 
     def __init__(self):
         """Initialize the pipeline."""
-        settings = get_settings()
-        project_id = settings.GOOGLE_CLOUD_PROJECT
-        env_suffix = "" if settings.ENVIRONMENT == "PROD" else "_test"
-
-        # Define table IDs
-        self.source_table_id = f"{project_id}.crypto_analytics.fact_trades{env_suffix}"
-        staging_table_id = (
-            f"{project_id}.crypto_analytics.stg_agg_strategy_daily{env_suffix}"
-        )
-        fact_table_id = f"{project_id}.crypto_analytics.agg_strategy_daily{env_suffix}"
-
+        # settings is available via self.settings after super().__init__
         super().__init__(
             job_name="agg_strategy_daily",
-            staging_table_id=staging_table_id,
-            fact_table_id=fact_table_id,
+            staging_table_id=None,
+            fact_table_id="",  # Placeholder
             id_column="agg_id",
             partition_column="ds",
             schema_model=AggStrategyDaily,
         )
 
-    def _create_table_if_not_exists(self, table_id: str) -> None:
-        """
-        Create the BigQuery table if it does not exist.
+        project_id = self.settings.GOOGLE_CLOUD_PROJECT
+        env_suffix = "" if self.settings.ENVIRONMENT == "PROD" else "_test"
 
-        Uses the schema defined in AggStrategyDaily.
-        """
-        try:
-            self.bq_client.get_table(table_id)
-            logger.debug(f"[{self.job_name}] Table {table_id} already exists.")
-            return
-        except NotFound:
-            logger.info(f"[{self.job_name}] Table {table_id} not found. Creating...")
+        # Define table IDs
+        self.source_table_id = f"{project_id}.crypto_analytics.fact_trades{env_suffix}"
+        self.fact_table_id = f"{project_id}.crypto_analytics.agg_strategy_daily{env_suffix}"
 
-        # Construct Schema dynamically using SchemaGuardian
-        guardian = SchemaGuardian(self.bq_client)
-        schema = guardian.generate_schema(self.schema_model)
-
-        table = bigquery.Table(table_id, schema=schema)
-
-        # Configure Partitioning
-        table.time_partitioning = bigquery.TimePartitioning(
-            type_=bigquery.TimePartitioningType.DAY,
-            field="ds",  # Partition by 'ds' column
-        )
-
-        try:
-            self.bq_client.create_table(table)
-            logger.info(f"[{self.job_name}] Created table {table_id}.")
-        except Exception as e:
-            logger.error(
-                f"[{self.job_name}] Failed to create table {table_id}.",
-                extra={"table_id": table_id, "error": str(e)},
-            )
-            raise
-
-    def run(self) -> int:
-        """
-        Override run to ensure tables exist before execution.
-        """
-        # Ensure Fact and Staging tables exist
-        self._create_table_if_not_exists(self.fact_table_id)
-        self._create_table_if_not_exists(self.staging_table_id)
-
-        return super().run()
 
     def extract(self) -> List[Any]:
         """

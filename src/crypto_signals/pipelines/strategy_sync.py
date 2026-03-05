@@ -38,14 +38,16 @@ class StrategySyncPipeline(BigQueryPipelineBase):
     ]
 
     def __init__(self):
+        # settings is available via self.settings after super().__init__
         super().__init__(
             job_name="strategy_sync",
-            staging_table_id=f"{get_settings().GOOGLE_CLOUD_PROJECT}.crypto_analytics.stg_strategies_import",
-            fact_table_id=f"{get_settings().GOOGLE_CLOUD_PROJECT}.crypto_analytics.dim_strategies",
+            staging_table_id=None,
+            fact_table_id="",  # Placeholder
             id_column="strategy_id",  # Not strictly used in custom merge
             partition_column="valid_from",  # Used for partitioning if applicable
             schema_model=StagingStrategy,
         )
+        self.fact_table_id = f"{self.settings.GOOGLE_CLOUD_PROJECT}.crypto_analytics.dim_strategies"
         self.repository = StrategyRepository()
 
     def _calculate_hash(self, config_data: Dict[str, Any]) -> str:
@@ -161,24 +163,22 @@ class StrategySyncPipeline(BigQueryPipelineBase):
         """No-op for strategy sync (we don't delete source)."""
         pass
 
-    def _execute_merge(self) -> None:
+    def _get_merge_sql(self, source_table_id: str) -> str:
         """
         Execute SCD Type 2 Merge.
         1. Close old records (Update valid_to)
         2. Insert new records
         """
-        logger.info(f"[{self.job_name}] Executing SCD Type 2 Merge...")
-
         # 1. Update existing current records that have a new version in staging
         # We join Staging on strategy_id.
         update_query = f"""
-            UPDATE `{self.fact_table_id}` T
+            UPDATE `{self.fact_table_id}` AS T
             SET
                 valid_to = S.valid_from,
                 is_current = FALSE
-            FROM `{self.staging_table_id}` S
+            FROM `{source_table_id}` AS S
             WHERE T.strategy_id = S.strategy_id
-              AND T.valid_to IS NULL
+              AND T.valid_to IS NULL;
         """
 
         # 2. Insert new records
@@ -187,13 +187,12 @@ class StrategySyncPipeline(BigQueryPipelineBase):
             (strategy_id, active, timeframe, asset_class, assets, risk_params, confluence_config, pattern_overrides, config_hash, valid_from, valid_to, is_current)
             SELECT
                 strategy_id, active, timeframe, asset_class, assets, risk_params, confluence_config, pattern_overrides, config_hash, valid_from, valid_to, is_current
-            FROM `{self.staging_table_id}`
+            FROM `{source_table_id}`;
         """
 
-        logger.info("Closing old versions...")
-        self.bq_client.query(update_query).result()
-
-        logger.info("Inserting new versions...")
-        self.bq_client.query(insert_query).result()
-
-        logger.info("SCD Type 2 Merge complete.")
+        return f"""
+            BEGIN TRANSACTION;
+            {update_query}
+            {insert_query}
+            COMMIT TRANSACTION;
+        """

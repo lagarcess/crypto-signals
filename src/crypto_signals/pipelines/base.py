@@ -43,7 +43,7 @@ class BigQueryPipelineBase(ABC):
     def __init__(
         self,
         job_name: str,
-        staging_table_id: str,
+        staging_table_id: Optional[str],
         fact_table_id: str,
         id_column: str,
         partition_column: str,
@@ -51,6 +51,12 @@ class BigQueryPipelineBase(ABC):
         clustering_fields: Optional[List[str]] = None,
     ):
         """Initialize the pipeline with configuration and BigQuery client."""
+        if staging_table_id:
+            logger.warning(
+                f"[{job_name}] DEPRECATION: staging_table_id is no longer required. "
+                "Persistent staging tables are being replaced by BQ Temp Tables."
+            )
+
         self.job_name = job_name
         self.staging_table_id = staging_table_id
         self.fact_table_id = fact_table_id
@@ -116,67 +122,16 @@ class BigQueryPipelineBase(ABC):
         except NotFound:
             return False
 
-    def _truncate_staging(self) -> None:
-        """Truncate the staging table to clear old data."""
-        if not self._check_table_exists(self.staging_table_id):
-            logger.warning(
-                f"[{self.job_name}] Staging table {self.staging_table_id} not found. Skipping truncate."
-            )
-            return
-
-        query = f"TRUNCATE TABLE `{self.staging_table_id}`"
-        logger.info(
-            f"[{self.job_name}] Truncating staging table: {self.staging_table_id}"
-        )
-        query_job = self.bq_client.query(query)
-        query_job.result()  # Wait for job to complete
-
-    def _load_to_staging(self, data: List[Dict[str, Any]]) -> None:
+    def _get_merge_sql(self, source_table_id: str) -> str:
         """
-        Load transformed data into the staging table.
+        Generate the MERGE statement to upsert data from Source to Fact.
 
         Args:
-            data: List of dicts to insert.
+            source_table_id: The table ID to use as the source (S).
+
+        Returns:
+            str: The full MERGE SQL statement.
         """
-        if not data:
-            logger.warning(f"[{self.job_name}] No data to load to staging.")
-            return
-
-        if not self._check_table_exists(self.staging_table_id):
-            logger.error(
-                f"[{self.job_name}] Staging table {self.staging_table_id} not found. Cannot load data."
-            )
-            raise RuntimeError(f"Staging table {self.staging_table_id} not found")
-
-        logger.info(
-            f"[{self.job_name}] Loading {len(data)} rows to {self.staging_table_id}..."
-        )
-
-        # insert_rows_json handles batching automatically
-        # Safe Hydration (Bronze Layer): Ignore unknown values to prevent data loss on schema drift
-        errors = self.bq_client.insert_rows_json(
-            self.staging_table_id, data, ignore_unknown_values=True
-        )
-
-        if errors:
-            error_msg = f"[{self.job_name}] Failed to insert rows to staging: {errors}"
-            logger.error(error_msg)
-            raise RuntimeError(error_msg)
-
-    def _execute_merge(self) -> None:
-        """
-        Execute the MERGE statement to upsert data from Staging to Fact.
-
-        Dynamically constructs the SQL based on the Pydantic model fields.
-        """
-        if not self._check_table_exists(self.fact_table_id):
-            logger.error(
-                f"[{self.job_name}] Fact table {self.fact_table_id} not found. Cannot merge."
-            )
-            raise RuntimeError(f"Fact table {self.fact_table_id} not found")
-
-        logger.info(f"[{self.job_name}] Executing MERGE operation...")
-
         # 1. Get all column names from the model
         columns = sorted(list(self.schema_model.model_fields.keys()))
 
@@ -196,9 +151,9 @@ class BigQueryPipelineBase(ABC):
 
         # 4. Construct the full MERGE query
         # Using `T` for Target (Fact) and `S` for Source (Staging)
-        query = f"""
-            MERGE `{self.fact_table_id}` T
-            USING `{self.staging_table_id}` S
+        return f"""
+            MERGE `{self.fact_table_id}` AS T
+            USING `{source_table_id}` AS S
             ON T.{self.id_column} = S.{self.id_column}
             AND T.{self.partition_column} = S.{self.partition_column}
             WHEN MATCHED THEN
@@ -208,36 +163,194 @@ class BigQueryPipelineBase(ABC):
                 VALUES ({insert_vals})
         """
 
-        # Execute the merge
-        query_job = self.bq_client.query(query)
-        query_job.result()  # Wait for completion
-        logger.info(f"[{self.job_name}] MERGE completed successfully.")
-
-    def cleanup_staging(self) -> None:
+    def _merge_via_temp_table(self, data: List[Dict[str, Any]]) -> None:
         """
-        Delete old partitions from Staging table (> 7 days).
+        Execute MERGE using an in-session BQ Temp Table.
 
-        This serves as Layer 1 of the Dual-Layer Cleanup Strategy.
+        Handles chunking for large datasets (> 10MB).
+
+        Args:
+            data: List of dictionaries to merge.
         """
-        if not self._check_table_exists(self.staging_table_id):
+        import json
+
+        if not data:
+            logger.info(f"[{self.job_name}] No data to merge.")
             return
 
-        query = f"""
-            DELETE FROM `{self.staging_table_id}`
-            WHERE {self.partition_column} < DATE_SUB(CURRENT_DATE(), INTERVAL {self.STAGING_CLEANUP_DAYS} DAY)
-        """
+        # 10MB Chunking Logic
+        # Rough estimate: Each row as JSON string
+        MAX_CHUNK_SIZE = 10 * 1024 * 1024  # 10MB
+        chunks = []
+        current_chunk = []
+        current_size = 0
+
+        for row in data:
+            row_size = len(json.dumps(row))
+            if current_size + row_size > MAX_CHUNK_SIZE and current_chunk:
+                chunks.append(current_chunk)
+                current_chunk = []
+                current_size = 0
+            current_chunk.append(row)
+            current_size += row_size
+
+        if current_chunk:
+            chunks.append(current_chunk)
+
         logger.info(
-            f"[{self.job_name}] Cleaning up old partitions in {self.staging_table_id}"
+            f"[{self.job_name}] Merging {len(data)} rows in {len(chunks)} chunks via temp tables..."
         )
-        query_job = self.bq_client.query(query)
-        query_job.result()  # Wait for job to complete
+
+        for i, chunk in enumerate(chunks):
+            temp_table_name = f"_stg_{self.job_name}_{i}"
+            # Construct UNNEST query with parameters
+            # BigQuery UNNEST(ARRAY<STRUCT<...>>) requires explicit types or we use JSON_QUERY
+            # A simpler way is to use a single JSON string parameter and JSON_RELAXED_MODE
+            # OR better: use UNNEST of JSON array and then parse it.
+            # But wait, UNNEST with ArrayQueryParameter of structs is supported.
+            # However, we need to know the schema for StructQueryParameter.
+
+            # Alternative: Use a single JSON parameter for the chunk
+            json_data = json.dumps(chunk)
+
+            # Using BigQuery's JSON support:
+            # We can use UNNEST(JSON_QUERY_ARRAY(@json_data)) but we need to cast each field.
+            # Actually, standard way for high-perf is to use the generated schema.
+
+            # Let's use the schema we already have from SchemaGuardian or just inferred from model
+            # Actually, using a list of dicts with ArrayQueryParameter(..., sub_type="RECORD")
+            # requires us to specify the fields.
+
+            # Let's use a simpler approach that doesn't require complex param building:
+            # CREATE TEMP TABLE AS SELECT * FROM UNNEST(JSON_QUERY_ARRAY(@json_data))
+            # Wait, BigQuery has 'EXTERNAL_QUERY' or 'LOAD DATA' but those are for files.
+
+            # If we use `bigquery.Client.load_table_from_json`, it uses a temporary table if we don't provide a destination?
+            # No, it needs a destination.
+
+            # The issue suggested:
+            # CREATE TEMP TABLE _stg_{self.job_name} AS (
+            #     SELECT * FROM UNNEST(...)
+            # );
+            # I will use ArrayQueryParameter.
+
+            columns = sorted(list(self.schema_model.model_fields.keys()))
+            merge_sql = self._get_merge_sql(temp_table_name)
+
+            # We need to build the SELECT clause from UNNEST to match the schema
+            # SELECT CAST(json_extract_scalar(x, '$.id') AS STRING) as id, ... FROM UNNEST(JSON_QUERY_ARRAY(@json_data)) x
+            # This is too complex.
+
+            # Let's use the documented pattern for UNNEST with structs:
+            # query_params = [bigquery.ArrayQueryParameter("rows", "RECORD", [ ... ])]
+            # But "RECORD" needs sub_params.
+
+            # Let's try to use `load_table_from_json` to a TEMP table.
+            # Can we load to a TEMP table? Yes, if we use a table ID starting with `_` in a special way?
+            # Actually, `load_table_from_json` to a persistent table was the old way.
+
+            # If I want to use the SQL script approach:
+            # I will use a single JSON string and PARSE_JSON.
+            unnest_query = f"""
+                CREATE TEMP TABLE `{temp_table_name}` AS
+                SELECT
+                    {", ".join([f"item.{col}" for col in columns])}
+                FROM UNNEST(
+                    ARRAY(
+                        SELECT AS STRUCT * FROM UNNEST(
+                            ARRAY(
+                                SELECT {self.schema_model.__name__}
+                                FROM UNNEST([PARSE_JSON(@json_data)]) AS json_root
+                                CROSS JOIN UNNEST(JSON_QUERY_ARRAY(json_root)) AS {self.schema_model.__name__}
+                            )
+                        )
+                    )
+                ) AS item;
+            """
+            # This is still a bit complex.
+
+            # Simpler:
+            # Use JSON_VALUE/JSON_QUERY to extract fields from JSON
+            # But we need types.
+
+            # Let's reconsider `bigquery.ArrayQueryParameter` with `RECORD`.
+            # We can use `SchemaGuardian` to get the BQ types.
+            # But the requirement says "Use structural SQL assertion".
+
+            # Let's use a simpler SQL that uses JSON_VALUE for everything and casts.
+            # But wait, some fields are not strings.
+
+            # Actually, the most robust way to create a temp table from data in Python is
+            # to use `bq_client.load_table_from_json` but how to make it a TEMP table?
+            # BigQuery `load_table_from_json` always creates a persistent table unless it's in a session.
+            # But we want it to be automatically dropped.
+
+            # If I use `CREATE TEMP TABLE` with `SELECT * FROM UNNEST(...)`
+            # I need the `...` to be a valid array of structs.
+
+            # I'll use a single JSON string and `UNNEST(JSON_QUERY_ARRAY(@json_data))`
+            # and then I'll use the model schema to cast.
+
+            field_selects = []
+            for name, field_info in self.schema_model.model_fields.items():
+                if field_info.exclude: continue
+                # Determine BQ type
+                # Simple mapping for now, can be improved
+                from datetime import date, datetime
+                py_type = field_info.annotation
+                # Handle Optional
+                import typing
+                if typing.get_origin(py_type) is typing.Union:
+                    py_type = typing.get_args(py_type)[0]
+
+                if py_type == int: bq_type = "INT64"
+                elif py_type == float: bq_type = "FLOAT64"
+                elif py_type == bool: bq_type = "BOOL"
+                elif py_type == datetime: bq_type = "TIMESTAMP"
+                elif py_type == date: bq_type = "DATE"
+                else: bq_type = "STRING"
+
+                if bq_type == "STRING":
+                    field_selects.append(f"LAX_STRING(item.{name}) AS {name}")
+                elif bq_type == "INT64":
+                    field_selects.append(f"LAX_INT64(item.{name}) AS {name}")
+                elif bq_type == "FLOAT64":
+                    field_selects.append(f"LAX_FLOAT64(item.{name}) AS {name}")
+                elif bq_type == "BOOL":
+                    field_selects.append(f"LAX_BOOL(item.{name}) AS {name}")
+                elif bq_type == "TIMESTAMP":
+                    field_selects.append(f"TIMESTAMP(LAX_STRING(item.{name})) AS {name}")
+                elif bq_type == "DATE":
+                    field_selects.append(f"DATE(LAX_STRING(item.{name})) AS {name}")
+
+            unnest_sql = f"""
+                CREATE TEMP TABLE `{temp_table_name}` AS
+                SELECT
+                    {", ".join(field_selects)}
+                FROM UNNEST(JSON_QUERY_ARRAY(PARSE_JSON(@json_data))) AS item;
+            """
+
+            full_script = f"""
+                {unnest_sql}
+                {merge_sql}
+            """
+
+            job_config = bigquery.QueryJobConfig(
+                query_parameters=[
+                    bigquery.ScalarQueryParameter("json_data", "STRING", json_data),
+                ]
+            )
+
+            logger.info(f"[{self.job_name}] Executing merge chunk {i+1}/{len(chunks)}...")
+            self.bq_client.query(full_script, job_config=job_config).result()
+
+        logger.info(f"[{self.job_name}] MERGE completed successfully.")
 
     def run(self) -> int:
         """
         Orchestrate the full pipeline execution.
 
-        Flow: Validate Schema -> Extract -> Transform -> Truncate Staging -> Load Staging
-              -> Merge -> Cleanup
+        Flow: Validate Schema -> Extract -> Transform -> Merge (via Temp Table) -> Cleanup
 
         Returns:
             int: Number of records processed.
@@ -285,26 +398,6 @@ class BigQueryPipelineBase(ABC):
                 else:
                     raise
 
-            # 0b. Pre-flight Check: Ensure Staging Table exists
-            if self.settings.SCHEMA_MIGRATION_AUTO:
-                try:
-                    self.guardian.validate_schema(
-                        table_id=self.staging_table_id,
-                        model=self.schema_model,
-                        require_partitioning=True,
-                    )
-                except (SchemaMismatchError, NotFound) as e:
-                    logger.warning(
-                        "[{}] Schema issue detected on staging table: {}. Attempting auto-migration/creation...",
-                        self.job_name,
-                        str(e),
-                    )
-                    self.guardian.migrate_schema(
-                        self.staging_table_id,
-                        self.schema_model,
-                        partition_column=self.partition_column,
-                    )
-
             # 1. Extract
             raw_data = self.extract()
             if not raw_data:
@@ -314,19 +407,10 @@ class BigQueryPipelineBase(ABC):
             # 2. Transform
             transformed_data = self.transform(raw_data)
 
-            # 3. Truncate Staging
-            self._truncate_staging()
+            # 3. Execute Merge via Temp Table
+            self._merge_via_temp_table(transformed_data)
 
-            # 4. Load to Staging
-            self._load_to_staging(transformed_data)
-
-            # 5. Execute Merge
-            self._execute_merge()
-
-            # 6. Cleanup Staging (Old Partitions)
-            self.cleanup_staging()
-
-            # 7. Cleanup - Re-validate for type safety (cheap vs BQ/Network ops)
+            # 4. Cleanup - Re-validate for type safety (cheap vs BQ/Network ops)
             # Use transformed_data to ensure all fields required by schema are present
             cleanup_models = [
                 self.schema_model.model_validate(d) for d in transformed_data
