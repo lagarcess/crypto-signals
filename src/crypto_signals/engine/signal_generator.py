@@ -20,6 +20,7 @@ from crypto_signals.domain.schemas import (
     OrderSide,
     Signal,
     SignalStatus,
+    StrategyConfig,
     get_deterministic_id,
 )
 from crypto_signals.engine.parameters import SignalParameterFactory
@@ -44,6 +45,7 @@ class SignalGenerator:
         indicators: Optional[TechnicalIndicators] = None,
         pattern_analyzer_cls: Type[PatternAnalyzer] = PatternAnalyzer,
         signal_repo: Optional[Any] = None,
+        strategy_configs: Optional[List[StrategyConfig]] = None,
     ):
         """
         Initialize the SignalGenerator.
@@ -59,6 +61,7 @@ class SignalGenerator:
         self.indicators = indicators or TechnicalIndicators()
         self.pattern_analyzer_cls = pattern_analyzer_cls
         self.parameter_factory = SignalParameterFactory()
+        self.strategy_configs = strategy_configs or []
 
         if signal_repo:
             self.signal_repo = signal_repo
@@ -72,6 +75,33 @@ class SignalGenerator:
         from crypto_signals.repository.firestore import PositionRepository
 
         self.position_repo = PositionRepository()
+
+    def _resolve_strategy_config(
+        self, symbol: str, asset_class: AssetClass, pattern_name: str
+    ) -> Optional[StrategyConfig]:
+        """Resolve StrategyConfig for a given symbol, asset class, and pattern.
+
+        Logic:
+        1. Find configs where asset_class matches AND symbol is in assets list.
+        2. If multiple found, check for pattern_overrides matching pattern_name.
+        3. If none with specific overrides, return the first matching config.
+        """
+        matching_configs = [
+            cfg
+            for cfg in self.strategy_configs
+            if cfg.asset_class == asset_class and symbol in cfg.assets
+        ]
+
+        if not matching_configs:
+            return None
+
+        # Try to find config with specific pattern override
+        for cfg in matching_configs:
+            if pattern_name in cfg.pattern_overrides:
+                return cfg
+
+        # Fallback to first matching config
+        return matching_configs[0]
 
     def _is_in_cooldown(
         self, symbol: str, current_price: float, pattern_name: str | None = None
@@ -389,6 +419,9 @@ class SignalGenerator:
         # 4. Construct Signal
         sig_id = get_deterministic_id(f"{symbol}|{pattern_name}|{latest.name}")
 
+        # Resolve StrategyConfig for injection
+        strategy_config = self._resolve_strategy_config(symbol, asset_class, pattern_name)
+
         signal = self._create_signal(
             symbol,
             asset_class,
@@ -398,6 +431,7 @@ class SignalGenerator:
             analyzer,
             harmonic_pattern=harmonic_pattern,
             geometric_pattern_name=geometric_pattern_name,
+            strategy_config=strategy_config,
         )
 
         # Early validation failed (negative stop-loss, zero TP, etc.)
@@ -418,6 +452,7 @@ class SignalGenerator:
             harmonic_pattern=harmonic_pattern,
             geometric_pattern_name=geometric_pattern_name,
             confluence_snapshot=confluence_snapshot,  # PASS SNAPSHOT
+            strategy_config=strategy_config,
         )
 
     def _validate_signal_parameters(
@@ -579,6 +614,7 @@ class SignalGenerator:
         geometric_pattern_name: Optional[str] = None,
         confluence_snapshot: Optional[Dict[str, Any]] = None,
         force_rejection_reason: Optional[str] = None,
+        strategy_config: Optional[StrategyConfig] = None,
     ) -> Signal:
         """Orchestrates signal creation: Calculate -> Validate -> Construct."""
 
@@ -592,6 +628,7 @@ class SignalGenerator:
             analyzer=analyzer,
             harmonic_pattern=harmonic_pattern,
             geometric_pattern_name=geometric_pattern_name,
+            strategy_config=strategy_config,
         )
 
         # Manually attach confluence snapshot (removed from factory for cleaner signature)

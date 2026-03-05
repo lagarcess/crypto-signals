@@ -10,6 +10,7 @@ from crypto_signals.domain.schemas import (
     ExitReason,
     OrderSide,
     SignalStatus,
+    StrategyConfig,
 )
 from crypto_signals.engine.signal_generator import SignalGenerator
 
@@ -913,6 +914,44 @@ def test_check_exits_short_trail_not_updated_when_higher(
     assert (
         signal.take_profit_3 == 80.0
     ), f"Unchanged: expected 80.0, got {signal.take_profit_3}"
+
+
+def test_resolve_strategy_config(signal_generator):
+    """Test StrategyConfig resolution logic."""
+    cfg1 = StrategyConfig(
+        strategy_id="strat-crypto-all",
+        active=True,
+        timeframe="1D",
+        asset_class=AssetClass.CRYPTO,
+        assets=["BTC/USD", "ETH/USD"],
+    )
+    cfg2 = StrategyConfig(
+        strategy_id="strat-btc-override",
+        active=True,
+        timeframe="1D",
+        asset_class=AssetClass.CRYPTO,
+        assets=["BTC/USD"],
+        pattern_overrides={"BULLISH_ENGULFING": {}},
+    )
+    signal_generator.strategy_configs = [cfg1, cfg2]
+
+    # 1. Match by asset and symbol (first match)
+    resolved = signal_generator._resolve_strategy_config(
+        "ETH/USD", AssetClass.CRYPTO, "MORNING_STAR"
+    )
+    assert resolved == cfg1
+
+    # 2. Match by pattern override
+    resolved = signal_generator._resolve_strategy_config(
+        "BTC/USD", AssetClass.CRYPTO, "BULLISH_ENGULFING"
+    )
+    assert resolved == cfg2
+
+    # 3. No match
+    resolved = signal_generator._resolve_strategy_config(
+        "AAPL", AssetClass.EQUITY, "BULLISH_ENGULFING"
+    )
+    assert resolved is None
 
 
 def test_check_exits_short_tp3_hit(

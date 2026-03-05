@@ -7,13 +7,40 @@ from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
-from crypto_signals.domain.schemas import AssetClass
+from crypto_signals.domain.schemas import AssetClass, StrategyConfig
 from crypto_signals.engine.parameters import SignalParameterFactory
+from loguru import logger
 
 
 @pytest.fixture
 def factory():
     return SignalParameterFactory()
+
+
+@pytest.fixture
+def caplog(caplog):
+    """Override caplog fixture to capture loguru logs."""
+    handler_id = logger.add(
+        caplog.handler,
+        format="{message}",
+        level=0,
+        filter=lambda record: record["level"].no >= 0,
+        catch=False,
+    )
+    yield caplog
+    logger.remove(handler_id)
+
+
+@pytest.fixture
+def strategy_config():
+    return StrategyConfig(
+        strategy_id="a3b8d1b6-0b3b-4b1a-9c1a-1a2b3c4d5e6f",
+        active=True,
+        timeframe="4H",
+        asset_class=AssetClass.CRYPTO,
+        assets=["BTC/USD"],
+        risk_params={"stop": 0.02},
+    )
 
 
 @pytest.fixture
@@ -294,3 +321,47 @@ def test_harmonic_metadata(factory, mock_analyzer):
     assert (
         params["valid_until"] == expected_ts
     ), 'Expected params["valid_until"] == expected_ts'
+
+
+@pytest.mark.parametrize(
+    "inject_config,expected_id_type",
+    [
+        pytest.param(True, "UUID", id="uuid_when_config_injected"),
+        pytest.param(False, "PATTERN", id="pattern_name_fallback"),
+    ],
+)
+def test_strategy_id_injection(
+    factory, mock_analyzer, strategy_config, caplog, inject_config, expected_id_type
+):
+    """Test injection of real strategy_id UUID vs pattern_name fallback."""
+    latest = pd.Series({"close": 100.0, "low": 90.0, "open": 95.0})
+    latest.name = pd.Timestamp("2023-01-01")
+    pattern_name = "BULLISH_ENGULFING"
+
+    params = factory.get_parameters(
+        symbol="BTC/USD",
+        asset_class=AssetClass.CRYPTO,
+        pattern_name=pattern_name,
+        latest=latest,
+        sig_id="test_id",
+        analyzer=mock_analyzer,
+        strategy_config=strategy_config if inject_config else None,
+    )
+
+    if expected_id_type == "UUID":
+        expected_id = strategy_config.strategy_id
+        assert (
+            params["strategy_id"] == expected_id
+        ), f"Expected strategy_id={expected_id!r}, got {params['strategy_id']!r}"
+        assert (
+            "Falling back to pattern_name" not in caplog.text
+        ), "Did not expect a fallback warning when config is injected"
+    else:
+        expected_id = pattern_name
+        assert (
+            params["strategy_id"] == expected_id
+        ), f"Expected strategy_id={expected_id!r}, got {params['strategy_id']!r}"
+        assert (
+            "No StrategyConfig injected for pattern. Falling back to pattern_name as strategy_id."
+            in caplog.text
+        ), "Expected a fallback warning when config is missing"
