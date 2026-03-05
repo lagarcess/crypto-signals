@@ -21,6 +21,8 @@ def mock_settings():
         settings.TTL_DAYS_POSITION = 90
         settings.RISK_PER_TRADE = 100.0
         settings.MIN_ORDER_NOTIONAL_USD = 15.0
+        settings.MAX_CRYPTO_POSITION_QTY = 1_000_000.0
+        settings.MAX_EQUITY_POSITION_QTY = 10_000.0
         mock_get.return_value = settings
         yield settings
 

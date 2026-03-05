@@ -25,6 +25,8 @@ def mock_settings():
     mock.ENVIRONMENT = "PROD"
     mock.TTL_DAYS_POSITION = 90
     mock.MIN_ORDER_NOTIONAL_USD = 15.0
+    mock.MAX_CRYPTO_POSITION_QTY = 1_000_000.0
+    mock.MAX_EQUITY_POSITION_QTY = 10_000.0
     return mock
 
 
@@ -221,6 +223,8 @@ class TestExecuteSignal:
         mock_settings.is_paper_trading = False
         mock_settings.ENABLE_EXECUTION = True
         mock_settings.TTL_DAYS_POSITION = 90
+        mock_settings.MAX_CRYPTO_POSITION_QTY = 1_000_000.0
+        mock_settings.MAX_EQUITY_POSITION_QTY = 10_000.0
         # Determine environment to test fallback
         mock_settings.ENVIRONMENT = "PROD"
         mock_settings.RISK_PER_TRADE = 100.0
@@ -260,6 +264,8 @@ class TestExecuteSignal:
         mock_settings.ENVIRONMENT = "PROD"
         mock_settings.RISK_PER_TRADE = 100.0
         mock_settings.TTL_DAYS_POSITION = 90
+        mock_settings.MAX_CRYPTO_POSITION_QTY = 1_000_000.0
+        mock_settings.MAX_EQUITY_POSITION_QTY = 10_000.0
 
         with (
             patch(
@@ -1861,3 +1867,73 @@ class TestCostBasisValidation:
 
         # Assert
         assert result is False, "Notional value check passed for insufficient value"
+
+
+class TestAssetAwareCaps:
+    """Tests for asset-aware position size caps (Issue: Asset-Aware Position Size Cap)."""
+
+    @pytest.mark.parametrize(
+        "asset_class, expected_cap",
+        [
+            pytest.param(AssetClass.CRYPTO, 1_000_000.0, id="crypto_default_cap"),
+            pytest.param(AssetClass.EQUITY, 10_000.0, id="equity_default_cap"),
+        ],
+    )
+    def test_default_caps_by_asset_class(
+        self, execution_engine, mock_settings, asset_class, expected_cap
+    ):
+        """Verify default caps are applied correctly based on asset class."""
+        # Arrange: Setup settings with defaults (already in mock_settings but being explicit)
+        mock_settings.MAX_CRYPTO_POSITION_QTY = 1_000_000.0
+        mock_settings.MAX_EQUITY_POSITION_QTY = 10_000.0
+        mock_settings.RISK_PER_TRADE = 100.0
+
+        # Create a signal that would result in an extremely large qty
+        # risk_per_share = 0.00000001
+        # qty = 100 / 0.00000001 = 10,000,000,000
+        signal = SignalFactory.build(
+            asset_class=asset_class,
+            entry_price=100.0,
+            suggested_stop=99.99999999,
+        )
+
+        # Act
+        qty = execution_engine._calculate_qty(signal)
+
+        # Assert
+        assert (
+            qty == expected_cap
+        ), f"Expected qty {expected_cap} for {asset_class}, got {qty}"
+
+    def test_cap_override_via_settings(self, execution_engine, mock_settings):
+        """Verify that caps can be overridden via settings."""
+        # Arrange
+        custom_crypto_cap = 500_000.0
+        custom_equity_cap = 5_000.0
+        mock_settings.MAX_CRYPTO_POSITION_QTY = custom_crypto_cap
+        mock_settings.MAX_EQUITY_POSITION_QTY = custom_equity_cap
+        mock_settings.RISK_PER_TRADE = 100.0
+
+        # Create signals that exceed custom caps
+        crypto_signal = SignalFactory.build(
+            asset_class=AssetClass.CRYPTO,
+            entry_price=100.0,
+            suggested_stop=99.9999999,  # qty = 100 / 0.0000001 = 1,000,000,000
+        )
+        equity_signal = SignalFactory.build(
+            asset_class=AssetClass.EQUITY,
+            entry_price=100.0,
+            suggested_stop=99.9999999,
+        )
+
+        # Act
+        crypto_qty = execution_engine._calculate_qty(crypto_signal)
+        equity_qty = execution_engine._calculate_qty(equity_signal)
+
+        # Assert
+        assert (
+            crypto_qty == custom_crypto_cap
+        ), f"Expected custom crypto cap {custom_crypto_cap}, got {crypto_qty}"
+        assert (
+            equity_qty == custom_equity_cap
+        ), f"Expected custom equity cap {custom_equity_cap}, got {equity_qty}"
