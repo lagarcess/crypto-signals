@@ -28,8 +28,9 @@ description: AI Code Review (Staff Engineer Persona) + Hygiene Pass
    - Analyze against "Staff Engineer" standards, incorporating a mental checklist for correctness, maintainability, and critical thinking.
    - **Readability & Understanding**: Descriptive variable names? No magic numbers (replace with constants/explanations)? Can the code be explained without AI aid? Ensure no over-reliance on AI—flag sections that seem hallucinated or unverified.
    - **Logic & Correctness**: Check for bugs, logic errors, missing error handling (e.g., runtime errors, intermittent failures). Use `code-debug-investigator` skill for reproduction (MRE, hypotheses, root cause). Verify with tests: Run existing pytest suite; suggest additions via `pytest-test-writer` if coverage gaps (e.g., edge cases, invalid inputs).
+     - **Test Fixture Realism**: Do not just check if tests pass. Verify that test fixtures and mocked data accurately represent production data types, especially at serialization and I/O boundaries (e.g., passing real `datetime` objects instead of strings).
+     - **Interactive Hypothesis Validation**: If you suspect a bug based on language quirks or standard library constraints (like JSON serialization), write and execute a quick Minimum Reproducible Example (MRE) using `temp/scratch.py` or inline python execution to verify the crash exists before flagging it.
      - Mental Checklist: "Is it solving the correct problem? Correctly? Any issues/misunderstandings? Missing edge cases (e.g., 'it worked before' dilemmas—use git bisect)? Fully understand the question?"
-     - Handle Specifics: For intermittent failures, add loguru logging; for runtime errors, trace to original trigger (no superficial fixes).
    - **Complexity**: Flag nested loops >3 levels or functions >50 lines; suggest refactors for maintainability (articulate pros/cons of alternatives).
    - **Architecture**: No logic leaks between layers? Domain free of IO? Check race conditions (e.g., multi-threading guidelines).
    - **Performance**: Evaluate implications (e.g., hashmap vs. linear scan for larger data); not critical for small tasks but flag if relevant.

@@ -14,7 +14,7 @@ from crypto_signals.pipelines.account_snapshot import AccountSnapshotPipeline
 @pytest.fixture
 def mock_settings():
     """Mock the settings object."""
-    with patch("crypto_signals.pipelines.account_snapshot.get_settings") as mock:
+    with patch("crypto_signals.pipelines.base.get_settings") as mock:
         mock.return_value.GOOGLE_CLOUD_PROJECT = "test-project"
         mock.return_value.ENVIRONMENT = "PROD"
         yield mock
@@ -48,9 +48,6 @@ def pipeline(mock_settings, mock_alpaca, mock_bq):
 def test_init(pipeline):
     """Test pipeline initialization."""
     assert pipeline.job_name == "account_snapshot"
-    assert (
-        pipeline.staging_table_id == "test-project.crypto_analytics.stg_accounts_import"
-    )
     assert pipeline.fact_table_id == "test-project.crypto_analytics.snapshot_accounts"
 
 
@@ -250,17 +247,16 @@ def test_drawdown_zero_equity(pipeline):
     assert record["equity"] == 0.0
 
 
-def test_pipeline_run_skip_cleanup(pipeline):
-    """Test override: cleanup is NOT called."""
+def test_pipeline_run_calls_cleanup(pipeline):
+    """Test override: cleanup IS called."""
     with (
         patch.object(pipeline, "extract") as mock_ext,
         patch.object(pipeline, "transform") as mock_trans,
-        patch.object(pipeline, "_truncate_staging"),
-        patch.object(pipeline, "_load_to_staging"),
-        patch.object(pipeline, "_execute_merge"),
+        patch.object(pipeline, "_merge_via_temp_table"),
         patch.object(pipeline, "cleanup") as mock_clean,
         # Mock guardian validation to avoid schema errors during test
         patch.object(pipeline.guardian, "validate_schema") as mock_validate,
+        patch.object(pipeline.schema_model, "model_validate"),
     ):
         mock_ext.return_value = ["raw"]
         mock_trans.return_value = ["processed"]
@@ -269,4 +265,4 @@ def test_pipeline_run_skip_cleanup(pipeline):
 
         mock_validate.assert_called_once()
         mock_ext.assert_called_once()
-        mock_clean.assert_not_called()
+        mock_clean.assert_called_once()

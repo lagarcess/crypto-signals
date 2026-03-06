@@ -12,7 +12,6 @@ from typing import Any, Dict, List
 
 from loguru import logger
 
-from crypto_signals.config import get_settings
 from crypto_signals.domain.schemas import StagingStrategy
 from crypto_signals.pipelines.base import BigQueryPipelineBase
 from crypto_signals.repository.firestore import StrategyRepository
@@ -47,7 +46,9 @@ class StrategySyncPipeline(BigQueryPipelineBase):
             partition_column="valid_from",  # Used for partitioning if applicable
             schema_model=StagingStrategy,
         )
-        self.fact_table_id = f"{self.settings.GOOGLE_CLOUD_PROJECT}.crypto_analytics.dim_strategies"
+        self.fact_table_id = (
+            f"{self.settings.GOOGLE_CLOUD_PROJECT}.crypto_analytics.dim_strategies"
+        )
         self.repository = StrategyRepository()
 
     def _calculate_hash(self, config_data: Dict[str, Any]) -> str:

@@ -55,26 +55,16 @@ def test_pipeline_validates_schema_before_running(pipeline):
     pipeline.mock_guardian_instance.validate_schema.return_value = None  # Success
 
     # Mock extract to return empty so we stop early after validation
-    # pipeline.extract = MagicMock(return_value=[])
-    # Actually, let's let it run deeper. We just want to check the CALL order.
-    # But since we didn't fully mock everything (transform, truncate, etc will call real methods or need mocks)
-    # The simplest is to make extract return empty, so run() returns 0 immediately after steps 0 and 1.
     pipeline.extract = MagicMock(return_value=[])
 
     pipeline.run()
 
     # Assert validation was called with correct args
-    # Now called twice (fact and staging)
     pipeline.mock_guardian_instance.validate_schema.assert_any_call(
         table_id="proj.ds.fact",
         model=MockModel,
         require_partitioning=True,
         clustering_fields=None,
-    )
-    pipeline.mock_guardian_instance.validate_schema.assert_any_call(
-        table_id="proj.ds.stg",
-        model=MockModel,
-        require_partitioning=True,
     )
 
 
@@ -125,9 +115,4 @@ def test_pipeline_validates_clustering(pipeline):
         model=MockModel,
         require_partitioning=True,
         clustering_fields=["id"],
-    )
-    instance.validate_schema.assert_any_call(
-        table_id="proj.ds.stg",
-        model=MockModel,
-        require_partitioning=True,
     )

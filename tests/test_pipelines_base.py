@@ -1,6 +1,5 @@
 """Unit tests for the BigQueryPipelineBase class."""
 
-import textwrap
 from datetime import date
 from typing import Any, List
 from unittest.mock import patch
@@ -121,7 +120,9 @@ def test_get_merge_sql_constructs_correct_sql(pipeline):
 
 def test_merge_via_temp_table_executes_queries(pipeline, mock_bq_client):
     """Test that _merge_via_temp_table runs the correct SQL script."""
-    data = [{"id": "1", "ds": "2024-01-01", "value": 100}]
+    from datetime import date
+
+    data = [{"id": "1", "ds": date(2024, 1, 1), "value": 100}]
     pipeline._merge_via_temp_table(data)
 
     call_args = mock_bq_client.query.call_args
@@ -133,10 +134,12 @@ def test_merge_via_temp_table_executes_queries(pipeline, mock_bq_client):
     assert "_stg_test_pipeline_0" in called_sql
 
     # Check for structural SQL assertion as requested
-    assert "CREATE TEMP TABLE" in called_sql, \
-        f"Expected CREATE TEMP TABLE in SQL, got: {called_sql[:200]}"
-    assert "MERGE" in called_sql, \
-        f"Expected MERGE statement in SQL, got: {called_sql[:200]}"
+    assert (
+        "CREATE TEMP TABLE" in called_sql
+    ), f"Expected CREATE TEMP TABLE in SQL, got: {called_sql[:200]}"
+    assert (
+        "MERGE" in called_sql
+    ), f"Expected MERGE statement in SQL, got: {called_sql[:200]}"
 
 
 def test_run_orchestrates_flow(pipeline):

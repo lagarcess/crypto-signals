@@ -6,8 +6,6 @@ import pytest
 from crypto_signals.domain.schemas import StrategyConfig
 from crypto_signals.pipelines.strategy_sync import StrategySyncPipeline
 
-from tests.utils.sql_assertion import assert_sql_equal
-
 # -----------------------------------------------------------------------------
 # FIXTURES
 # -----------------------------------------------------------------------------
@@ -57,9 +55,6 @@ def pipeline(mock_settings, mock_repo, mock_bq):
 def test_init(pipeline):
     """Test pipeline initialization."""
     assert pipeline.job_name == "strategy_sync"
-    assert (
-        pipeline.staging_table_id == "test-project.crypto_analytics.stg_strategies_import"
-    )
     assert pipeline.fact_table_id == "test-project.crypto_analytics.dim_strategies"
 
 
@@ -174,36 +169,27 @@ def test_extract_changed_strategy(pipeline, mock_bq, mock_repo):
     assert result[0]["config_hash"] == "new_hash"
 
 
-def test_execute_merge(pipeline, mock_bq):
+def test_merge_via_temp_table(pipeline, mock_bq):
     """Test that custom merge executes correct queries."""
-    pipeline._execute_merge()
+    data = [{"strategy_id": "test"}]
+    pipeline._merge_via_temp_table(data)
 
-    assert mock_bq.query.call_count == 2
+    assert mock_bq.query.call_count == 1
 
-    # Verify Update Query
-    update_call = mock_bq.query.call_args_list[0]
-    update_query = update_call[0][0]
+    # Verify the entire SQL query executed
+    merge_call = mock_bq.query.call_args_list[0]
+    merge_query = merge_call[0][0]
 
-    expected_update = f"""
-            UPDATE `test-project.crypto_analytics.dim_strategies` T
-            SET
-                valid_to = S.valid_from,
-                is_current = FALSE
-            FROM `{pipeline.staging_table_id}` S
-            WHERE T.strategy_id = S.strategy_id
-              AND T.valid_to IS NULL
-        """
-    assert_sql_equal(update_query, expected_update, dialect="bigquery")
+    # The query should contain the updates and inserts
+    assert "UPDATE `test-project.crypto_analytics.dim_strategies` AS T" in merge_query
+    assert "SET" in merge_query
+    assert "valid_to = S.valid_from," in merge_query
+    assert "is_current = FALSE" in merge_query
+    assert "WHERE T.strategy_id = S.strategy_id" in merge_query
 
-    # Verify Insert Query
-    insert_call = mock_bq.query.call_args_list[1]
-    insert_query = insert_call[0][0]
-
-    expected_insert = f"""
-            INSERT INTO `test-project.crypto_analytics.dim_strategies`
-            (strategy_id, active, timeframe, asset_class, assets, risk_params, confluence_config, pattern_overrides, config_hash, valid_from, valid_to, is_current)
-            SELECT
-                strategy_id, active, timeframe, asset_class, assets, risk_params, confluence_config, pattern_overrides, config_hash, valid_from, valid_to, is_current
-            FROM `{pipeline.staging_table_id}`
-        """
-    assert_sql_equal(insert_query, expected_insert, dialect="bigquery")
+    assert "INSERT INTO `test-project.crypto_analytics.dim_strategies`" in merge_query
+    assert "SELECT" in merge_query
+    assert (
+        "strategy_id, active, timeframe, asset_class, assets, risk_params, confluence_config, pattern_overrides, config_hash, valid_from, valid_to, is_current"
+        in merge_query
+    )

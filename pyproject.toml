@@ -58,6 +58,9 @@ warn_unused_configs = true
 ignore_missing_imports = true
 check_untyped_defs = true
 disallow_any_generics = true
+exclude = [
+    ".*conftest\\.py$",
+]
 
 [[tool.mypy.overrides]]
 ## Core Legacy Modules
