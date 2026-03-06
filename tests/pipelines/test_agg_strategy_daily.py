@@ -7,8 +7,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 from crypto_signals.domain.schemas import AggStrategyDaily
 from crypto_signals.pipelines.agg_strategy_daily import DailyStrategyAggregation
-from google.api_core.exceptions import NotFound
-from google.cloud import bigquery
 
 
 @pytest.fixture

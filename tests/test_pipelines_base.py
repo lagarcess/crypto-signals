@@ -1,6 +1,5 @@
 """Unit tests for the BigQueryPipelineBase class."""
 
-import textwrap
 from datetime import date
 from typing import Any, List
 from unittest.mock import patch

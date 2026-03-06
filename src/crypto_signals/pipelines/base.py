@@ -234,7 +234,6 @@ class BigQueryPipelineBase(ABC):
             # );
             # I will use ArrayQueryParameter.
 
-            columns = sorted(list(self.schema_model.model_fields.keys()))
             merge_sql = self._get_merge_sql(temp_table_name)
 
             # We need to build the SELECT clause from UNNEST to match the schema
@@ -249,27 +248,6 @@ class BigQueryPipelineBase(ABC):
             # Can we load to a TEMP table? Yes, if we use a table ID starting with `_` in a special way?
             # Actually, `load_table_from_json` to a persistent table was the old way.
 
-            # If I want to use the SQL script approach:
-            # I will use a single JSON string and PARSE_JSON.
-            unnest_query = f"""
-                CREATE TEMP TABLE `{temp_table_name}` AS
-                SELECT
-                    {", ".join([f"item.{col}" for col in columns])}
-                FROM UNNEST(
-                    ARRAY(
-                        SELECT AS STRUCT * FROM UNNEST(
-                            ARRAY(
-                                SELECT {self.schema_model.__name__}
-                                FROM UNNEST([PARSE_JSON(@json_data)]) AS json_root
-                                CROSS JOIN UNNEST(JSON_QUERY_ARRAY(json_root)) AS {self.schema_model.__name__}
-                            )
-                        )
-                    )
-                ) AS item;
-            """
-            # This is still a bit complex.
-
-            # Simpler:
             # Use JSON_VALUE/JSON_QUERY to extract fields from JSON
             # But we need types.
 
@@ -293,22 +271,31 @@ class BigQueryPipelineBase(ABC):
 
             field_selects = []
             for name, field_info in self.schema_model.model_fields.items():
-                if field_info.exclude: continue
+                if field_info.exclude:
+                    continue
                 # Determine BQ type
                 # Simple mapping for now, can be improved
                 from datetime import date, datetime
+
                 py_type = field_info.annotation
                 # Handle Optional
                 import typing
+
                 if typing.get_origin(py_type) is typing.Union:
                     py_type = typing.get_args(py_type)[0]
 
-                if py_type == int: bq_type = "INT64"
-                elif py_type == float: bq_type = "FLOAT64"
-                elif py_type == bool: bq_type = "BOOL"
-                elif py_type == datetime: bq_type = "TIMESTAMP"
-                elif py_type == date: bq_type = "DATE"
-                else: bq_type = "STRING"
+                if py_type == int:
+                    bq_type = "INT64"
+                elif py_type == float:
+                    bq_type = "FLOAT64"
+                elif py_type == bool:
+                    bq_type = "BOOL"
+                elif py_type == datetime:
+                    bq_type = "TIMESTAMP"
+                elif py_type == date:
+                    bq_type = "DATE"
+                else:
+                    bq_type = "STRING"
 
                 if bq_type == "STRING":
                     field_selects.append(f"LAX_STRING(item.{name}) AS {name}")

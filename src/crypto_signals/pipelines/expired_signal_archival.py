@@ -26,7 +26,6 @@ from pydantic import BaseModel
 
 from crypto_signals.config import (
     get_crypto_data_client,
-    get_settings,
     get_stock_data_client,
 )
 from crypto_signals.domain.schemas import ExpiredSignal, OrderSide

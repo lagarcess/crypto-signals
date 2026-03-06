@@ -6,8 +6,6 @@ import pytest
 from crypto_signals.domain.schemas import StrategyConfig
 from crypto_signals.pipelines.strategy_sync import StrategySyncPipeline
 
-from tests.utils.sql_assertion import assert_sql_equal
-
 # -----------------------------------------------------------------------------
 # FIXTURES
 # -----------------------------------------------------------------------------
