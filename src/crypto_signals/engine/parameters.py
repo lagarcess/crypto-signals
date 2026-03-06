@@ -11,7 +11,8 @@ import numpy as np
 import pandas as pd
 from crypto_signals.analysis.patterns import PatternAnalyzer
 from crypto_signals.config import get_settings
-from crypto_signals.domain.schemas import AssetClass, OrderSide
+from crypto_signals.domain.schemas import AssetClass, OrderSide, StrategyConfig
+from loguru import logger
 
 
 class SignalParameterFactory:
@@ -50,6 +51,7 @@ class SignalParameterFactory:
         analyzer: PatternAnalyzer,
         harmonic_pattern=None,
         geometric_pattern_name: Optional[str] = None,
+        strategy_config: Optional[StrategyConfig] = None,
         # confluence_snapshot removed as per review comment
     ) -> Dict[str, Any]:
         """
@@ -122,7 +124,14 @@ class SignalParameterFactory:
             take_profit_3 = entry_ref + (6.0 * atr) if atr > 0 else entry_ref * 1.10
 
         # Strategy ID
-        strategy_id = pattern_name
+        if strategy_config and strategy_config.strategy_id:
+            strategy_id = strategy_config.strategy_id
+        else:
+            logger.warning(
+                "No StrategyConfig injected for pattern. Falling back to pattern_name as strategy_id.",
+                extra={"pattern_name": pattern_name},
+            )
+            strategy_id = pattern_name
 
         # DS
         ds = latest.name.date() if hasattr(latest.name, "date") else latest.name
