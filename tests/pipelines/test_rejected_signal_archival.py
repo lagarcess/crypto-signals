@@ -51,9 +51,7 @@ def pipeline(mock_firestore, mock_market_provider):
             "crypto_signals.pipelines.rejected_signal_archival.firestore.Client",
             return_value=mock_firestore,
         ),
-        patch(
-            "crypto_signals.pipelines.rejected_signal_archival.get_settings"
-        ) as mock_get_settings,
+        patch("crypto_signals.pipelines.base.get_settings") as mock_get_settings,
         patch(
             "crypto_signals.pipelines.rejected_signal_archival.MarketDataProvider",
             return_value=mock_market_provider,

@@ -15,13 +15,11 @@ from crypto_signals.pipelines.strategy_sync import StrategySyncPipeline
 def mock_settings():
     """Mock the settings object."""
     with (
-        patch("crypto_signals.pipelines.strategy_sync.get_settings") as mock_sync,
         patch("crypto_signals.pipelines.base.get_settings") as mock_base,
     ):
-        mock_sync.return_value.GOOGLE_CLOUD_PROJECT = "test-project"
         mock_base.return_value.GOOGLE_CLOUD_PROJECT = "test-project"
         # Return one of them (they should be identical for test purposes)
-        yield mock_sync
+        yield mock_base
 
 
 @pytest.fixture

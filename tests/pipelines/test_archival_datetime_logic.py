@@ -12,7 +12,7 @@ class TestArchivalDatetimeLogic(unittest.TestCase):
     instead of datetime.now().
     """
 
-    @patch("crypto_signals.pipelines.trade_archival.get_settings")
+    @patch("crypto_signals.pipelines.base.get_settings")
     @patch("crypto_signals.pipelines.trade_archival.get_trading_client")
     @patch("crypto_signals.pipelines.trade_archival.get_stock_data_client")
     @patch("crypto_signals.pipelines.trade_archival.get_crypto_data_client")
