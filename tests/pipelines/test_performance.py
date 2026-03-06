@@ -12,7 +12,6 @@ class TestPerformancePipelineInit:
     def test_initialization(self, performance_pipeline):
         """Test pipeline initialization and table IDs."""
         assert performance_pipeline.job_name == "performance_pipeline"
-        assert "stg_performance_import_test" in performance_pipeline.staging_table_id
         assert "summary_strategy_performance_test" in performance_pipeline.fact_table_id
         assert performance_pipeline.schema_model == StrategyPerformance
 

@@ -13,7 +13,7 @@ def test_trade_archival_orchestration_flow():
     4. Cleanup of Firestore (mocked).
     """
     with (
-        patch("crypto_signals.pipelines.trade_archival.get_settings") as mock_settings,
+        patch("crypto_signals.pipelines.base.get_settings") as mock_settings,
         patch(
             "crypto_signals.pipelines.trade_archival.get_trading_client"
         ) as mock_alpaca,
@@ -108,10 +108,16 @@ def test_trade_archival_orchestration_flow():
         # Avg Exit Price = 51500
         # PnL Gross = (51500 - 50000) * 1.0 = 1500
 
-        # We can inspect the calls to insert_rows_json to check the data
-        args, _ = mock_bq.insert_rows_json.call_args
-        table_id, rows = args
-        assert "stg_trades_import" in table_id
+        # We can inspect the calls to query to check the data in _merge_via_temp_table
+        # It should have been called once for the temp table creation and merge
+        assert mock_bq.query.called
+        call_args_list = mock_bq.query.call_args_list
+        # The last call should contain our JSON data in the parameters
+        last_call = call_args_list[-1]
+        job_config = last_call[1]["job_config"]
+        json_data = job_config.query_parameters[0].value
+        import json
+        rows = json.loads(json_data)
         row = rows[0]
 
         assert row["trade_id"] == "pos_123"
