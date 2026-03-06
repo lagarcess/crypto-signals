@@ -20,7 +20,7 @@ class SignalFactory(ModelFactory[Signal]):
     @post_generated
     @classmethod
     def signal_id(cls, ds: date, strategy_id: str, symbol: str) -> str:
-        return str(get_deterministic_id(f"{ds}|{strategy_id}|{symbol}"))
+        return get_deterministic_id(f"{ds}|{strategy_id}|{symbol}")
 
     @classmethod
     def ds(cls) -> date:
@@ -88,7 +88,7 @@ class PositionFactory(ModelFactory[Position]):
     @classmethod
     def signal_id(cls, ds: date, symbol: str) -> str:
         # Default strategy for PositionFactory if none provided
-        return str(get_deterministic_id(f"{ds}|BULLISH_ENGULFING|{symbol}"))
+        return get_deterministic_id(f"{ds}|BULLISH_ENGULFING|{symbol}")
 
     status = TradeStatus.OPEN
     entry_fill_price = 50000.0

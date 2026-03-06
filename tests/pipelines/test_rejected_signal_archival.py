@@ -370,14 +370,11 @@ def test_run_calls_schema_guardian(pipeline, mock_firestore, sample_fact_rejecte
     pipeline.transform = MagicMock(return_value=transformed_data)
     pipeline.cleanup = MagicMock()
 
-    # Configure the mock to return no errors
-    pipeline.bq_client.insert_rows_json.return_value = []
-
     # Run the pipeline
     pipeline.run()
 
     # Assert that SchemaGuardian.validate_schema was called
-    # Now called once (fact table only)
+    # Now called once for the fact table (temp table does not need validation)
     assert pipeline.guardian.validate_schema.call_count == 1
 
 

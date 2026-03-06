@@ -44,9 +44,8 @@ class DailyStrategyAggregation(BigQueryPipelineBase):
 
         # Define table IDs
         self.source_table_id = f"{project_id}.crypto_analytics.fact_trades{env_suffix}"
-        self.fact_table_id = (
-            f"{project_id}.crypto_analytics.agg_strategy_daily{env_suffix}"
-        )
+        self.fact_table_id = f"{project_id}.crypto_analytics.agg_strategy_daily{env_suffix}"
+
 
     def extract(self) -> List[Any]:
         """

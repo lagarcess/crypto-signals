@@ -88,6 +88,7 @@ def test_run_flow(pipeline):
     )
 
     # Mock base class methods
+    # We mock the methods called by run() to verify orchestration
     pipeline._merge_via_temp_table = MagicMock()
 
     # Execute

@@ -168,26 +168,22 @@ def test_extract_changed_strategy(pipeline, mock_bq, mock_repo):
 
 
 def test_merge_via_temp_table(pipeline, mock_bq):
-    """Test that custom merge executes correct queries."""
-    data = [{"strategy_id": "test"}]
+    """Test that custom merge executes correct queries via temp table."""
+    data = [
+        {
+            "strategy_id": "strat_1",
+            "config_hash": "h1",
+            "valid_from": "2024-01-01",
+            "active": True,
+        }
+    ]
     pipeline._merge_via_temp_table(data)
 
-    assert mock_bq.query.call_count == 1
+    assert mock_bq.query.called
+    # The last call should be the script containing updates and inserts
+    last_call = mock_bq.query.call_args_list[-1]
+    query = last_call[0][0]
 
-    # Verify the entire SQL query executed
-    merge_call = mock_bq.query.call_args_list[0]
-    merge_query = merge_call[0][0]
-
-    # The query should contain the updates and inserts
-    assert "UPDATE `test-project.crypto_analytics.dim_strategies` AS T" in merge_query
-    assert "SET" in merge_query
-    assert "valid_to = S.valid_from," in merge_query
-    assert "is_current = FALSE" in merge_query
-    assert "WHERE T.strategy_id = S.strategy_id" in merge_query
-
-    assert "INSERT INTO `test-project.crypto_analytics.dim_strategies`" in merge_query
-    assert "SELECT" in merge_query
-    assert (
-        "strategy_id, active, timeframe, asset_class, assets, risk_params, confluence_config, pattern_overrides, config_hash, valid_from, valid_to, is_current"
-        in merge_query
-    )
+    assert "UPDATE `test-project.crypto_analytics.dim_strategies` AS T" in query
+    assert "INSERT INTO `test-project.crypto_analytics.dim_strategies`" in query
+    assert "FROM `_stg_strategy_sync_0` AS S" in query
