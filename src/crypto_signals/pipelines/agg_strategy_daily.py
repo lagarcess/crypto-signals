@@ -10,12 +10,15 @@ It implements the "Aggregation Layer" pattern to support fast dashboards.
 
 from typing import Any, List
 
-from google.api_core.exceptions import GoogleAPICallError
+from google.api_core.exceptions import GoogleAPICallError, NotFound
+from google.cloud import bigquery
 from google.cloud.exceptions import GoogleCloudError
 from loguru import logger
 from pydantic import BaseModel
 
+from crypto_signals.config import get_settings
 from crypto_signals.domain.schemas import AggStrategyDaily
+from crypto_signals.engine.schema_guardian import SchemaGuardian
 from crypto_signals.pipelines.base import BigQueryPipelineBase
 
 
@@ -44,9 +47,8 @@ class DailyStrategyAggregation(BigQueryPipelineBase):
 
         # Define table IDs
         self.source_table_id = f"{project_id}.crypto_analytics.fact_trades{env_suffix}"
-        self.fact_table_id = (
-            f"{project_id}.crypto_analytics.agg_strategy_daily{env_suffix}"
-        )
+        self.fact_table_id = f"{project_id}.crypto_analytics.agg_strategy_daily{env_suffix}"
+
 
     def extract(self) -> List[Any]:
         """

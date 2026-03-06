@@ -33,7 +33,7 @@ def pipeline(mock_alpaca, mock_firestore, mock_market_provider):
             return_value=mock_firestore,
         ),
         patch(
-            "crypto_signals.pipelines.trade_archival.get_settings"
+            "crypto_signals.pipelines.base.get_settings"
         ) as mock_get_settings,
         patch(
             "crypto_signals.pipelines.trade_archival.MarketDataProvider",

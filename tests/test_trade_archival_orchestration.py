@@ -13,7 +13,7 @@ def test_trade_archival_orchestration_flow():
     4. Cleanup of Firestore (mocked).
     """
     with (
-        patch("crypto_signals.pipelines.trade_archival.get_settings") as mock_settings,
+        patch("crypto_signals.pipelines.base.get_settings") as mock_settings,
         patch(
             "crypto_signals.pipelines.trade_archival.get_trading_client"
         ) as mock_alpaca,
@@ -117,7 +117,6 @@ def test_trade_archival_orchestration_flow():
         job_config = last_call[1]["job_config"]
         json_data = job_config.query_parameters[0].value
         import json
-
         rows = json.loads(json_data)
         row = rows[0]
 

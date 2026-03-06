@@ -25,6 +25,7 @@ from pydantic import BaseModel
 
 from crypto_signals.config import (
     get_crypto_data_client,
+    get_settings,
     get_stock_data_client,
     get_trading_client,
 )
@@ -53,13 +54,13 @@ class TradeArchivalPipeline(BigQueryPipelineBase):
         )
 
         env_suffix = "" if self.settings.ENVIRONMENT == "PROD" else "_test"
-        self.fact_table_id = f"{self.settings.GOOGLE_CLOUD_PROJECT}.crypto_analytics.fact_trades{env_suffix}"
+        self.fact_table_id = (
+            f"{self.settings.GOOGLE_CLOUD_PROJECT}.crypto_analytics.fact_trades{env_suffix}"
+        )
 
         # Initialize Source Clients
         # Note: We use the project from settings, same as BQ
-        self.firestore_client = firestore.Client(
-            project=self.settings.GOOGLE_CLOUD_PROJECT
-        )
+        self.firestore_client = firestore.Client(project=self.settings.GOOGLE_CLOUD_PROJECT)
 
         # Environment-aware collection routing
         self.source_collection = (

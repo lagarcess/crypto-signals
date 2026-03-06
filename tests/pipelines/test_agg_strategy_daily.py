@@ -7,6 +7,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from crypto_signals.domain.schemas import AggStrategyDaily
 from crypto_signals.pipelines.agg_strategy_daily import DailyStrategyAggregation
+from google.api_core.exceptions import NotFound
+from google.cloud import bigquery
 
 
 @pytest.fixture
@@ -21,16 +23,11 @@ def pipeline(mock_bq_client):
     # Initialize pipeline with mocked BQ client
     # We need to mock get_settings to ensure project ID is set
     with patch(
-        "crypto_signals.pipelines.agg_strategy_daily.get_settings"
+        "crypto_signals.pipelines.base.get_settings"
     ) as mock_settings:
         mock_settings.return_value.GOOGLE_CLOUD_PROJECT = "test-project"
         mock_settings.return_value.ENVIRONMENT = "TEST"
-        # Also patch base settings used in __init__
-        with patch(
-            "crypto_signals.pipelines.base.get_settings",
-            return_value=mock_settings.return_value,
-        ):
-            return DailyStrategyAggregation()
+        return DailyStrategyAggregation()
 
 
 def test_initialization(pipeline):
@@ -95,6 +92,7 @@ def test_run_flow(pipeline):
     )
 
     # Mock base class methods
+    # We mock the methods called by run() to verify orchestration
     pipeline._merge_via_temp_table = MagicMock()
 
     # Execute

@@ -79,7 +79,13 @@ def test_pipeline_migrates_schema_and_succeeds(mock_bq_client, mock_settings):
     ]
     mock_table.time_partitioning = MagicMock()
 
-    # Mock get_table to consistently return our mock_table which will be mutated in-place by migrate_schema
+    # We need get_table to return the table.
+    # When migrate_schema calls get_table, it gets this table.
+    # Then it updates table.schema in place (on the mock).
+    # Then it calls update_table.
+    # Then validate_schema is called AGAIN. It calls get_table again.
+    # We need to ensure that the SECOND call to get_table returns the updated schema,
+    # OR that our mock table object's schema was mutated in place (which it is in the code).
 
     mock_bq_client.get_table.return_value = mock_table
     mock_bq_client.insert_rows_json.return_value = []  # Success
@@ -103,10 +109,9 @@ def test_pipeline_migrates_schema_and_succeeds(mock_bq_client, mock_settings):
         # 1. update_table called
         mock_bq_client.update_table.assert_called_once()
 
-        # 2. _merge_via_temp_table called (since we moved away from insert_rows_json and staging tables to temp tables)
-        # Note, the bq mock is used in _merge_via_temp_table which executes queries.
-        # We can just verify the query method was called to create/drop the temp table
-        assert mock_bq_client.query.call_count > 0
+        # 2. insert_rows_json called with ignore_unknown_values=True
+        args, kwargs = mock_bq_client.insert_rows_json.call_args
+        assert kwargs.get("ignore_unknown_values") is True
 
         # 3. Check that schema was updated on the mock table
         # The code does: table.schema = updated_schema

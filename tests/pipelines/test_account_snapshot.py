@@ -247,8 +247,9 @@ def test_drawdown_zero_equity(pipeline):
     assert record["equity"] == 0.0
 
 
-def test_pipeline_run_calls_cleanup(pipeline):
-    """Test override: cleanup IS called."""
+def test_pipeline_run_validates_schema(pipeline):
+    """Test that run() calls validation and merge."""
+    from datetime import date
     with (
         patch.object(pipeline, "extract") as mock_ext,
         patch.object(pipeline, "transform") as mock_trans,
@@ -256,13 +257,21 @@ def test_pipeline_run_calls_cleanup(pipeline):
         patch.object(pipeline, "cleanup") as mock_clean,
         # Mock guardian validation to avoid schema errors during test
         patch.object(pipeline.guardian, "validate_schema") as mock_validate,
-        patch.object(pipeline.schema_model, "model_validate"),
     ):
         mock_ext.return_value = ["raw"]
-        mock_trans.return_value = ["processed"]
+        # Must return valid model dicts for base class run() validation
+        mock_trans.return_value = [{
+            "ds": date(2024, 1, 1),
+            "account_id": "acc_123",
+            "equity": 100.0,
+            "cash": 100.0,
+            "calmar_ratio": 1.0,
+            "drawdown_pct": 0.0
+        }]
 
         pipeline.run()
 
         mock_validate.assert_called_once()
         mock_ext.assert_called_once()
+        # cleanup IS called now because we removed the run() override
         mock_clean.assert_called_once()
