@@ -31,7 +31,7 @@ class PerformancePipeline(BigQueryPipelineBase):
         # Initialize base class first — this sets self.settings and self.bq_client
         super().__init__(
             job_name="performance_pipeline",
-            staging_table_id="",  # Placeholder, set below
+            staging_table_id=None,
             fact_table_id="",  # Placeholder, set below
             id_column="strategy_id",
             partition_column="ds",
@@ -44,9 +44,6 @@ class PerformancePipeline(BigQueryPipelineBase):
 
         self.source_table_id = (
             f"{project_id}.crypto_analytics.agg_strategy_daily{env_suffix}"
-        )
-        self.staging_table_id = (
-            f"{project_id}.crypto_analytics.stg_performance_import{env_suffix}"
         )
         self.fact_table_id = (
             f"{project_id}.crypto_analytics.summary_strategy_performance{env_suffix}"
