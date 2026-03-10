@@ -79,29 +79,32 @@ class SignalGenerator:
     def _resolve_strategy_config(
         self, symbol: str, asset_class: AssetClass, pattern_name: str
     ) -> Optional[StrategyConfig]:
-        """Resolve StrategyConfig for a given symbol, asset class, and pattern.
+        """Resolve StrategyConfig for a given symbol and asset class.
 
-        Logic:
-        1. Find configs where asset_class matches AND symbol is in assets list.
-        2. If multiple found, check for pattern_overrides matching pattern_name.
-        3. If none with specific overrides, return the first matching config.
+        Enforces the SCD (Slowly Changing Dimension) constraint:
+        Only ONE strategy is active per asset combination at any time.
+        The database guarantees uniqueness, so the first active match
+        is the only match.
+
+        Args:
+            symbol: Trading symbol (e.g., "BTC/USD").
+            asset_class: Asset class (CRYPTO or EQUITY).
+            pattern_name: Pattern name (kept for future pattern-specific overrides).
+
+        Returns:
+            The unique active StrategyConfig for this asset, or None.
         """
-        matching_configs = [
-            cfg
-            for cfg in self.strategy_configs
-            if cfg.asset_class == asset_class and symbol in cfg.assets
-        ]
+        for cfg in self.strategy_configs:
+            # 1. SCD constraint: Must be the 'current' active record
+            if not cfg.active:
+                continue
 
-        if not matching_configs:
-            return None
-
-        # Try to find config with specific pattern override
-        for cfg in matching_configs:
-            if pattern_name in cfg.pattern_overrides:
+            # 2. Asset constraint: Must explicitly govern the traded instrument
+            if cfg.asset_class == asset_class and symbol in cfg.assets:
                 return cfg
 
-        # Fallback to first matching config
-        return matching_configs[0]
+        # Strict Failure: Only occurs if Cold Start bootstrapper has not run.
+        return None
 
     def _is_in_cooldown(
         self, symbol: str, current_price: float, pattern_name: str | None = None

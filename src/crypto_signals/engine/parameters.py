@@ -127,11 +127,11 @@ class SignalParameterFactory:
         if strategy_config and strategy_config.strategy_id:
             strategy_id = strategy_config.strategy_id
         else:
+            strategy_id = f"{pattern_name}_{asset_class.value}"
             logger.warning(
-                "No StrategyConfig injected for pattern. Falling back to pattern_name as strategy_id.",
-                extra={"pattern_name": pattern_name},
+                "No StrategyConfig injected for pattern. Falling back to structured pattern_name as strategy_id.",
+                extra={"pattern_name": pattern_name, "strategy_id": strategy_id},
             )
-            strategy_id = pattern_name
 
         # DS
         ds = latest.name.date() if hasattr(latest.name, "date") else latest.name

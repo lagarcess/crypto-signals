@@ -34,12 +34,11 @@ def caplog(caplog):
 @pytest.fixture
 def strategy_config():
     return StrategyConfig(
-        strategy_id="a3b8d1b6-0b3b-4b1a-9c1a-1a2b3c4d5e6f",
+        strategy_id="BULLISH_ENGULFING_CRYPTO",
         active=True,
-        timeframe="4H",
+        timeframe="1D",
         asset_class=AssetClass.CRYPTO,
         assets=["BTC/USD"],
-        risk_params={"stop": 0.02},
     )
 
 
@@ -300,8 +299,8 @@ def test_harmonic_metadata(factory, mock_analyzer):
     )
 
     assert (
-        params["strategy_id"] == "GARTLEY"
-    ), "Multi-Layer: strategy stays as pattern_name"
+        params["strategy_id"] == "GARTLEY_CRYPTO"
+    ), "Multi-Layer: fallback uses structured pattern_name format"
     assert (
         params["pattern_classification"] == "MACRO_PATTERN"
     ), 'Expected params["pattern_classification"] == "MACRO_PATTERN"'
@@ -357,11 +356,10 @@ def test_strategy_id_injection(
             "Falling back to pattern_name" not in caplog.text
         ), "Did not expect a fallback warning when config is injected"
     else:
-        expected_id = pattern_name
+        expected_id = f"{pattern_name}_CRYPTO"
         assert (
             params["strategy_id"] == expected_id
         ), f"Expected strategy_id={expected_id!r}, got {params['strategy_id']!r}"
         assert (
-            "No StrategyConfig injected for pattern. Falling back to pattern_name as strategy_id."
-            in caplog.text
+            "Falling back to structured pattern_name as strategy_id" in caplog.text
         ), "Expected a fallback warning when config is missing"
