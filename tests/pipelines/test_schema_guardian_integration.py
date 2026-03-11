@@ -64,17 +64,12 @@ def test_pipeline_validates_schema_before_running(pipeline):
     pipeline.run()
 
     # Assert validation was called with correct args
-    # Now called twice (fact and staging)
-    pipeline.mock_guardian_instance.validate_schema.assert_any_call(
+    # Now called once for the fact table (temp table does not need validation)
+    pipeline.mock_guardian_instance.validate_schema.assert_called_once_with(
         table_id="proj.ds.fact",
         model=MockModel,
         require_partitioning=True,
         clustering_fields=None,
-    )
-    pipeline.mock_guardian_instance.validate_schema.assert_any_call(
-        table_id="proj.ds.stg",
-        model=MockModel,
-        require_partitioning=True,
     )
 
 
@@ -120,14 +115,9 @@ def test_pipeline_validates_clustering(pipeline):
     pipeline.run()
 
     instance = pipeline.mock_guardian_instance
-    instance.validate_schema.assert_any_call(
+    instance.validate_schema.assert_called_once_with(
         table_id="proj.ds.fact",
         model=MockModel,
         require_partitioning=True,
         clustering_fields=["id"],
-    )
-    instance.validate_schema.assert_any_call(
-        table_id="proj.ds.stg",
-        model=MockModel,
-        require_partitioning=True,
     )

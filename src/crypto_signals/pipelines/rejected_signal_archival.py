@@ -21,15 +21,11 @@ from pydantic import BaseModel
 
 from crypto_signals.config import (
     get_crypto_data_client,
-    get_settings,
     get_stock_data_client,
 )
-from crypto_signals.domain.schemas import FactRejectedSignal, OrderSide
+from crypto_signals.domain.schemas import AssetClassFee, FactRejectedSignal, OrderSide
 from crypto_signals.market.data_provider import MarketDataProvider
 from crypto_signals.pipelines.base import BigQueryPipelineBase
-
-# Crypto fee constant (0.25% taker fee for base tier)
-CRYPTO_TAKER_FEE_PCT = 0.0025
 
 # Validity window for signals (7 days)
 VALIDITY_WINDOW_DAYS = 7
@@ -45,27 +41,26 @@ class RejectedSignalArchival(BigQueryPipelineBase):
 
     def __init__(self):
         """Initialize the pipeline with specific configuration."""
-        settings = get_settings()
-        env_suffix = "" if settings.ENVIRONMENT == "PROD" else "_test"
-
+        # settings is available via self.settings after super().__init__
         super().__init__(
             job_name="rejected_signal_archival",
-            staging_table_id=(
-                f"{settings.GOOGLE_CLOUD_PROJECT}.crypto_analytics.stg_rejected_signals{env_suffix}"
-            ),
-            fact_table_id=(
-                f"{settings.GOOGLE_CLOUD_PROJECT}.crypto_analytics.fact_rejected_signals{env_suffix}"
-            ),
+            staging_table_id=None,
+            fact_table_id="",  # Placeholder
             id_column="signal_id",
             partition_column="ds",
             schema_model=FactRejectedSignal,
         )
 
+        env_suffix = "" if self.settings.ENVIRONMENT == "PROD" else "_test"
+        self.fact_table_id = f"{self.settings.GOOGLE_CLOUD_PROJECT}.crypto_analytics.fact_rejected_signals{env_suffix}"
+
         # Initialize Source Clients
-        self.firestore_client = firestore.Client(project=settings.GOOGLE_CLOUD_PROJECT)
+        self.firestore_client = firestore.Client(
+            project=self.settings.GOOGLE_CLOUD_PROJECT
+        )
         self.source_collection = (
             "rejected_signals"
-            if settings.ENVIRONMENT == "PROD"
+            if self.settings.ENVIRONMENT == "PROD"
             else "test_rejected_signals"
         )
 
@@ -236,9 +231,20 @@ class RejectedSignalArchival(BigQueryPipelineBase):
                         else:
                             pnl_gross = (entry_price - exit_price) * qty
 
-                        # Calculate fees (crypto: 0.25% each way)
-                        entry_fee = entry_price * qty * CRYPTO_TAKER_FEE_PCT
-                        exit_fee = exit_price * qty * CRYPTO_TAKER_FEE_PCT
+                        # Calculate fees (asset-class-aware)
+                        # Lookup enum by name (e.g., AssetClassFee.CRYPTO)
+                        fee_enum = getattr(AssetClassFee, asset_class, None)
+                        if fee_enum is None:
+                            logger.warning(
+                                f"No fee percentage found for asset class '{asset_class}'. "
+                                f"Defaulting to 0.0 for signal {signal.get('signal_id')}."
+                            )
+                            fee_pct = 0.0
+                        else:
+                            fee_pct = fee_enum.value
+
+                        entry_fee = entry_price * qty * fee_pct
+                        exit_fee = exit_price * qty * fee_pct
                         total_fees = entry_fee + exit_fee
 
                         pnl_net = pnl_gross - total_fees

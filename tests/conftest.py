@@ -88,6 +88,9 @@ def mock_main_dependencies():
         job_metadata_repo = stack.enter_context(
             patch("crypto_signals.main.JobMetadataRepository")
         )
+        strategy_repo = stack.enter_context(
+            patch("crypto_signals.main.StrategyRepository")
+        )
         rejected_archival = stack.enter_context(
             patch("crypto_signals.main.RejectedSignalArchival")
         )
@@ -161,4 +164,5 @@ def mock_main_dependencies():
             "expired_archival": expired_archival,
             "account_snapshot": account_snapshot,
             "strategy_sync": strategy_sync,
+            "strategy_repo": strategy_repo,
         }

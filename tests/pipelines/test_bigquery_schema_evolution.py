@@ -109,9 +109,11 @@ def test_pipeline_migrates_schema_and_succeeds(mock_bq_client, mock_settings):
         # 1. update_table called
         mock_bq_client.update_table.assert_called_once()
 
-        # 2. insert_rows_json called with ignore_unknown_values=True
-        args, kwargs = mock_bq_client.insert_rows_json.call_args
-        assert kwargs.get("ignore_unknown_values") is True
+        # 2. bq_client.query called (via _merge_via_temp_table)
+        assert mock_bq_client.query.called
+        called_sql = mock_bq_client.query.call_args[0][0]
+        assert "CREATE TEMP TABLE" in called_sql
+        assert "MERGE" in called_sql
 
         # 3. Check that schema was updated on the mock table
         # The code does: table.schema = updated_schema
