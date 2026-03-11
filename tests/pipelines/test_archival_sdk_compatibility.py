@@ -4,7 +4,7 @@ from alpaca.trading.client import TradingClient
 from crypto_signals.pipelines.trade_archival import TradeArchivalPipeline
 
 
-@patch("crypto_signals.pipelines.trade_archival.get_settings")
+@patch("crypto_signals.pipelines.base.get_settings")
 @patch("crypto_signals.pipelines.trade_archival.firestore")
 @patch("crypto_signals.pipelines.trade_archival.get_trading_client")
 @patch("crypto_signals.pipelines.trade_archival.get_stock_data_client")

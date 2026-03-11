@@ -10,6 +10,7 @@ from crypto_signals.domain.schemas import (
     ExitReason,
     OrderSide,
     SignalStatus,
+    StrategyConfig,
 )
 from crypto_signals.engine.signal_generator import SignalGenerator
 
@@ -913,6 +914,52 @@ def test_check_exits_short_trail_not_updated_when_higher(
     assert (
         signal.take_profit_3 == 80.0
     ), f"Unchanged: expected 80.0, got {signal.take_profit_3}"
+
+
+def test_resolve_strategy_config(signal_generator):
+    """Test StrategyConfig resolution enforces SCD: one active per asset."""
+    active_cfg = StrategyConfig(
+        strategy_id="BULLISH_ENGULFING_CRYPTO",
+        active=True,
+        timeframe="1D",
+        asset_class=AssetClass.CRYPTO,
+        assets=["BTC/USD", "ETH/USD"],
+    )
+    inactive_cfg = StrategyConfig(
+        strategy_id="BULLISH_ENGULFING_CRYPTO",
+        active=False,  # Retired SCD version
+        timeframe="1D",
+        asset_class=AssetClass.CRYPTO,
+        assets=["BTC/USD", "ETH/USD"],
+    )
+    signal_generator.strategy_configs = [inactive_cfg, active_cfg]
+
+    # 1. Active config found for matching asset
+    resolved = signal_generator._resolve_strategy_config(
+        "BTC/USD", AssetClass.CRYPTO, "BULLISH_ENGULFING"
+    )
+    assert resolved == active_cfg, f"Expected active config, got {resolved}"
+
+    # 2. Active config found for second asset in same config
+    resolved = signal_generator._resolve_strategy_config(
+        "ETH/USD", AssetClass.CRYPTO, "MORNING_STAR"
+    )
+    assert resolved == active_cfg, f"Expected active config for ETH/USD, got {resolved}"
+
+    # 3. No match for unregistered asset class
+    resolved = signal_generator._resolve_strategy_config(
+        "AAPL", AssetClass.EQUITY, "BULLISH_ENGULFING"
+    )
+    assert resolved is None, f"Expected None for EQUITY, got {resolved}"
+
+    # 4. No match when only inactive configs exist
+    signal_generator.strategy_configs = [inactive_cfg]
+    resolved = signal_generator._resolve_strategy_config(
+        "BTC/USD", AssetClass.CRYPTO, "BULLISH_ENGULFING"
+    )
+    assert (
+        resolved is None
+    ), f"Expected None when only inactive configs exist, got {resolved}"
 
 
 def test_check_exits_short_tp3_hit(

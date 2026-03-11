@@ -65,6 +65,13 @@ class AssetClass(str, Enum):
     EQUITY = "EQUITY"
 
 
+class AssetClassFee(float, Enum):
+    """Base taker fee percentages by asset class."""
+
+    CRYPTO = 0.0025  # Alpaca crypto taker fee (Tier 0)
+    EQUITY = 0.0  # Alpaca commission-free US equities
+
+
 class SignalStatus(str, Enum):
     """Lifecycle status of a trading signal."""
 
@@ -1007,112 +1014,6 @@ class RejectedSignal(BaseModel):
     created_at: datetime
 
 
-class StagingTrade(BaseModel):
-    """
-    Staging model for trade imports to BigQuery.
-
-    Exact mirror of TradeExecution. Validates payloads before loading into the
-    stg_trades_import table.
-    """
-
-    ds: date = Field(
-        ...,
-        description="Partition key - date of trade execution",
-    )
-    trade_id: str = Field(
-        ...,
-        description="Unique identifier for this trade",
-    )
-    account_id: str = Field(
-        ...,
-        description="Alpaca account ID",
-    )
-    strategy_id: str = Field(
-        ...,
-        description="Strategy that executed this trade",
-    )
-    asset_class: AssetClass = Field(
-        ...,
-        description="Asset class traded (CRYPTO or EQUITY)",
-    )
-    symbol: str = Field(
-        ...,
-        description="Asset symbol traded",
-    )
-    side: OrderSide = Field(
-        ...,
-        description="Order side (buy or sell)",
-    )
-    qty: float = Field(
-        ...,
-        description="Quantity traded",
-    )
-    entry_price: float = Field(
-        ...,
-        description="Entry fill price",
-    )
-    exit_price: float = Field(
-        ...,
-        description="Exit fill price",
-    )
-    entry_time: datetime = Field(
-        ...,
-        description="UTC timestamp of entry fill",
-    )
-    exit_time: datetime = Field(
-        ...,
-        description="UTC timestamp of exit fill",
-    )
-    exit_reason: ExitReason = Field(
-        ...,
-        description="Reason for trade exit (e.g., 'TP1', 'COLOR_FLIP')",
-    )
-    max_favorable_excursion: Optional[float] = Field(
-        default=None,
-        description="Highest price reached during trade",
-    )
-    pnl_pct: float = Field(
-        ...,
-        description="Profit/Loss as percentage",
-    )
-    pnl_usd: float = Field(
-        ...,
-        description="Profit/Loss in USD",
-    )
-    fees_usd: float = Field(
-        ...,
-        description="Total fees paid in USD",
-    )
-    slippage_pct: float = Field(
-        ...,
-        description="Slippage as percentage of entry price",
-    )
-    trade_duration: int = Field(
-        ...,
-        description="Trade duration in seconds",
-    )
-    discord_thread_id: Optional[str] = Field(
-        default=None,
-        description="Discord thread ID for social context analytics",
-    )
-    trailing_stop_final: Optional[float] = Field(
-        default=None,
-        description="Final trailing stop value at exit (Chandelier Exit for TP3)",
-    )
-    target_entry_price: Optional[float] = Field(
-        default=None,
-        description="Original signal's entry price (target). Compare against entry_price for slippage.",
-    )
-    alpaca_order_id: Optional[str] = Field(
-        default=None,
-        description="Alpaca broker's UUID for the entry order. Links to Alpaca dashboard for auditability.",
-    )
-    exit_order_id: Optional[str] = Field(
-        default=None,
-        description="Alpaca broker's UUID for the exit order. Used for reconciliation and fill tracking.",
-    )
-
-
 # =============================================================================
 # BIGQUERY: ACCOUNT SNAPSHOTS (Tables: snapshot_accounts, stg_accounts_import)
 # =============================================================================
@@ -1341,110 +1242,6 @@ class StagingAccount(BaseModel):
 
 
 # =============================================================================
-# BIGQUERY: STRATEGY PERFORMANCE
-# (Tables: summary_strategy_performance, stg_performance_import)
-# =============================================================================
-
-
-class StrategyPerformance(BaseModel):
-    """
-    Strategy performance metrics for BigQuery analytics.
-
-    Stored in the summary_strategy_performance table, partitioned by ds (date).
-    Aggregated daily performance metrics per strategy.
-    """
-
-    ds: date = Field(
-        ...,
-        description="Partition key - performance date",
-    )
-    strategy_id: str = Field(
-        ...,
-        description="Strategy identifier",
-    )
-    total_trades: int = Field(
-        ...,
-        description="Total number of trades executed",
-    )
-    win_rate: float = Field(
-        ...,
-        description="Percentage of winning trades",
-    )
-    profit_factor: float = Field(
-        ...,
-        description="Gross profit / gross loss ratio",
-    )
-    sharpe_ratio: float = Field(
-        ...,
-        description="Risk-adjusted return (Sharpe)",
-    )
-    sortino_ratio: float = Field(
-        ...,
-        description="Downside risk-adjusted return (Sortino)",
-    )
-    max_drawdown_pct: float = Field(
-        ...,
-        description="Maximum drawdown percentage",
-    )
-    alpha: float = Field(
-        ...,
-        description="Excess return vs benchmark",
-    )
-    beta: float = Field(
-        ...,
-        description="Sensitivity to market movements",
-    )
-
-
-class StagingPerformance(BaseModel):
-    """
-    Staging model for strategy performance to BigQuery.
-
-    Exact mirror of StrategyPerformance. Validates payloads before loading into the
-    stg_performance_import table.
-    """
-
-    ds: date = Field(
-        ...,
-        description="Partition key - performance date",
-    )
-    strategy_id: str = Field(
-        ...,
-        description="Strategy identifier",
-    )
-    total_trades: int = Field(
-        ...,
-        description="Total number of trades executed",
-    )
-    win_rate: float = Field(
-        ...,
-        description="Percentage of winning trades",
-    )
-    profit_factor: float = Field(
-        ...,
-        description="Gross profit / gross loss ratio",
-    )
-    sharpe_ratio: float = Field(
-        ...,
-        description="Risk-adjusted return (Sharpe)",
-    )
-    sortino_ratio: float = Field(
-        ...,
-        description="Downside risk-adjusted return (Sortino)",
-    )
-    max_drawdown_pct: float = Field(
-        ...,
-        description="Maximum drawdown percentage",
-    )
-    alpha: float = Field(
-        ...,
-        description="Excess return vs benchmark",
-    )
-    beta: float = Field(
-        ...,
-        description="Sensitivity to market movements",
-    )
-
 
 # =============================================================================
 # BIGQUERY: STRATEGY SCD TYPE 2 (Tables: dim_strategies, stg_strategies_import)
@@ -1507,56 +1304,3 @@ class StagingStrategy(BaseModel):
         default=True,
         description="SCD2: Flag for current record",
     )
-
-
-# =============================================================================
-# BIGQUERY: AGG STRATEGY DAILY (Tables: agg_strategy_daily, stg_agg_strategy_daily)
-# =============================================================================
-
-
-class AggStrategyDaily(BaseModel):
-    """
-    Daily aggregated strategy performance metrics.
-
-    Stored in the agg_strategy_daily table.
-    Groups trades by strategy, symbol, and date to provide fast dashboard metrics.
-    """
-
-    ds: date = Field(
-        ...,
-        description="Partition key - aggregation date",
-    )
-    agg_id: str = Field(
-        ...,
-        description="Unique identifier for the aggregation record (ds|strategy_id|symbol)",
-    )
-    strategy_id: str = Field(
-        ...,
-        description="Strategy identifier",
-    )
-    symbol: str = Field(
-        ...,
-        description="Asset symbol",
-    )
-    total_pnl: float = Field(
-        ...,
-        description="Total Profit/Loss in USD for the day",
-    )
-    win_rate: float = Field(
-        ...,
-        description="Win rate for the day (0.0 to 1.0)",
-    )
-    trade_count: int = Field(
-        ...,
-        description="Number of trades included in this aggregation",
-    )
-
-
-class StagingAggStrategyDaily(AggStrategyDaily):
-    """
-    Staging model for daily strategy aggregation.
-
-    Exact mirror of AggStrategyDaily.
-    """
-
-    pass
