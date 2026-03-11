@@ -427,8 +427,16 @@ def test_extract_cutoff_date(pipeline, mock_firestore):
 @pytest.mark.parametrize(
     "asset_class, expected_fee_pct",
     [
-        pytest.param(AssetClass.EQUITY.value, 0.0, id="equity_zero_fee"),
-        pytest.param(AssetClass.CRYPTO.value, 0.0025, id="crypto_taker_fee"),
+        pytest.param(
+            AssetClass.EQUITY.value,
+            TAKER_FEE_PCT_BY_ASSET_CLASS[AssetClass.EQUITY.value],
+            id="equity_zero_fee",
+        ),
+        pytest.param(
+            AssetClass.CRYPTO.value,
+            TAKER_FEE_PCT_BY_ASSET_CLASS[AssetClass.CRYPTO.value],
+            id="crypto_taker_fee",
+        ),
     ],
 )
 def test_transform_fees_by_asset_class(
@@ -476,6 +484,6 @@ def test_transform_fees_by_asset_class(
         exit_price * qty * expected_fee_pct
     )
 
-    assert record["theoretical_fees_usd"] == pytest.approx(
-        expected_fees
+    assert (
+        record["theoretical_fees_usd"] == pytest.approx(expected_fees)
     ), f"Expected fees_usd == {expected_fees} for {asset_class}, got {record['theoretical_fees_usd']}"

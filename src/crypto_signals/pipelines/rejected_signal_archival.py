@@ -58,12 +58,12 @@ class RejectedSignalArchival(BigQueryPipelineBase):
         )
 
         env_suffix = "" if self.settings.ENVIRONMENT == "PROD" else "_test"
-        self.fact_table_id = (
-            f"{self.settings.GOOGLE_CLOUD_PROJECT}.crypto_analytics.fact_rejected_signals{env_suffix}"
-        )
+        self.fact_table_id = f"{self.settings.GOOGLE_CLOUD_PROJECT}.crypto_analytics.fact_rejected_signals{env_suffix}"
 
         # Initialize Source Clients
-        self.firestore_client = firestore.Client(project=self.settings.GOOGLE_CLOUD_PROJECT)
+        self.firestore_client = firestore.Client(
+            project=self.settings.GOOGLE_CLOUD_PROJECT
+        )
         self.source_collection = (
             "rejected_signals"
             if self.settings.ENVIRONMENT == "PROD"
@@ -238,7 +238,13 @@ class RejectedSignalArchival(BigQueryPipelineBase):
                             pnl_gross = (entry_price - exit_price) * qty
 
                         # Calculate fees (asset-class-aware)
-                        fee_pct = TAKER_FEE_PCT_BY_ASSET_CLASS.get(asset_class, 0.0)
+                        fee_pct = TAKER_FEE_PCT_BY_ASSET_CLASS.get(asset_class)
+                        if fee_pct is None:
+                            logger.warning(
+                                f"No fee percentage found for asset class '{asset_class}'. "
+                                f"Defaulting to 0.0 for signal {signal.get('signal_id')}."
+                            )
+                            fee_pct = 0.0
                         entry_fee = entry_price * qty * fee_pct
                         exit_fee = exit_price * qty * fee_pct
                         total_fees = entry_fee + exit_fee
