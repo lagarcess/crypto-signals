@@ -18,6 +18,8 @@ def mock_settings():
     mock.RISK_PER_TRADE = 100.0
     mock.ENVIRONMENT = "PROD"
     mock.TTL_DAYS_POSITION = 90
+    mock.MAX_CRYPTO_POSITION_QTY = 1_000_000.0
+    mock.MAX_EQUITY_POSITION_QTY = 10_000.0
     return mock
 
 

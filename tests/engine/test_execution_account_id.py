@@ -20,6 +20,8 @@ class TestExecutionAccountID:
         mock_settings.RISK_PER_TRADE = 100.0
         mock_settings.TTL_DAYS_POSITION = 90
         mock_settings.MIN_ORDER_NOTIONAL_USD = 10.0
+        mock_settings.MAX_CRYPTO_POSITION_QTY = 1_000_000.0
+        mock_settings.MAX_EQUITY_POSITION_QTY = 10_000.0
 
         # Mock Trading Client
         mock_trading_client = MagicMock()
