@@ -65,6 +65,13 @@ class AssetClass(str, Enum):
     EQUITY = "EQUITY"
 
 
+class AssetClassFee(float, Enum):
+    """Base taker fee percentages by asset class."""
+
+    CRYPTO = 0.0025  # Alpaca crypto taker fee (Tier 0)
+    EQUITY = 0.0  # Alpaca commission-free US equities
+
+
 class SignalStatus(str, Enum):
     """Lifecycle status of a trading signal."""
 
