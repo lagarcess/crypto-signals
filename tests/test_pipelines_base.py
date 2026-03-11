@@ -1,6 +1,5 @@
 """Unit tests for the BigQueryPipelineBase class."""
 
-import textwrap
 from datetime import date
 from typing import Any, List
 from unittest.mock import patch
@@ -51,7 +50,7 @@ def pipeline(mock_bq_client):
         with patch("crypto_signals.pipelines.base.SchemaGuardian"):
             return ConcretePipeline(
                 job_name="test_pipeline",
-                staging_table_id="test-project.dataset.stg_test",
+                staging_table_id=None,
                 fact_table_id="test-project.dataset.fact_test",
                 id_column="id",
                 partition_column="ds",
@@ -75,51 +74,16 @@ def test_transform_validates_and_dumps_json(pipeline):
     assert transformed[0]["id"] == "1"
 
 
-def test_truncate_staging_executes_query(pipeline, mock_bq_client):
-    """Test that _truncate_staging runs the correct SQL."""
-    pipeline._truncate_staging()
-
-    call_args = mock_bq_client.query.call_args
-    assert call_args is not None
-    query = call_args[0][0]
-
-    expected_sql = "TRUNCATE TABLE `test-project.dataset.stg_test`"
-    assert_sql_equal(query, expected_sql)
-
-
-def test_load_to_staging_inserts_rows(pipeline, mock_bq_client):
-    """Test that _load_to_staging calls insert_rows_json."""
-    data = [{"id": "1"}]
-    mock_bq_client.insert_rows_json.return_value = []  # No errors
-
-    pipeline._load_to_staging(data)
-
-    mock_bq_client.insert_rows_json.assert_called_with(
-        "test-project.dataset.stg_test", data, ignore_unknown_values=True
-    )
-
-
-def test_load_to_staging_raises_on_error(pipeline, mock_bq_client):
-    """Test that _load_to_staging raises RuntimeError on insert errors."""
-    mock_bq_client.insert_rows_json.return_value = [{"error": "bad stuff"}]
-
-    with pytest.raises(RuntimeError):
-        pipeline._load_to_staging([{"id": "1"}])
-
-
-def test_execute_merge_constructs_correct_sql(pipeline, mock_bq_client):
+def test_get_merge_sql_constructs_correct_sql(pipeline):
     """Test dynamic SQL generation for MERGE statement."""
-    pipeline._execute_merge()
-
-    call_args = mock_bq_client.query.call_args
-    assert call_args is not None
-    query = call_args[0][0]
+    source_table = "test_source"
+    query = pipeline._get_merge_sql(source_table)
 
     # 1. Verify specific components (robust against order/whitespace)
     assert_merge_query_structure(
         query,
         target_table=f"`{pipeline.fact_table_id}`",
-        source_table=f"`{pipeline.staging_table_id}`",
+        source_table=f"`{source_table}`",
         join_keys=[pipeline.id_column, pipeline.partition_column],
         update_columns=[
             col
@@ -130,7 +94,6 @@ def test_execute_merge_constructs_correct_sql(pipeline, mock_bq_client):
     )
 
     # 2. Verify semantic equality against a canonical expected version
-    # This catches syntax errors that component check might miss.
     cols = sorted(list(pipeline.schema_model.model_fields.keys()))
     update_list = [
         f"T.{c} = S.{c}"
@@ -142,8 +105,8 @@ def test_execute_merge_constructs_correct_sql(pipeline, mock_bq_client):
     insert_vals = ", ".join([f"S.{c}" for c in cols])
 
     expected_sql = f"""
-        MERGE `{pipeline.fact_table_id}` T
-        USING `{pipeline.staging_table_id}` S
+        MERGE `{pipeline.fact_table_id}` AS T
+        USING `{source_table}` AS S
         ON T.{pipeline.id_column} = S.{pipeline.id_column}
         AND T.{pipeline.partition_column} = S.{pipeline.partition_column}
         WHEN MATCHED THEN
@@ -155,20 +118,24 @@ def test_execute_merge_constructs_correct_sql(pipeline, mock_bq_client):
     assert_sql_equal(query, expected_sql)
 
 
-def test_cleanup_staging_executes_correct_sql(pipeline, mock_bq_client):
-    """Test that cleanup_staging runs the correct DELETE SQL."""
-    pipeline.cleanup_staging()
+def test_merge_via_temp_table_executes_queries(pipeline, mock_bq_client):
+    """Test that _merge_via_temp_table runs the correct SQL script."""
+    data = [{"id": "1", "ds": "2024-01-01", "value": 100}]
+    pipeline._merge_via_temp_table(data)
 
     call_args = mock_bq_client.query.call_args
     assert call_args is not None
-    query = call_args[0][0]
+    called_sql = call_args[0][0]
 
-    expected_query = textwrap.dedent(f"""
-            DELETE FROM `test-project.dataset.stg_test`
-            WHERE ds < DATE_SUB(CURRENT_DATE(), INTERVAL {pipeline.STAGING_CLEANUP_DAYS} DAY)
-        """).strip()
+    assert "CREATE TEMP TABLE" in called_sql
+    assert "MERGE" in called_sql
+    assert "_stg_test_pipeline_0" in called_sql
 
-    assert_sql_equal(query, expected_query)
+    # Check for structural SQL assertion as requested
+    assert "CREATE TEMP TABLE" in called_sql, \
+        f"Expected CREATE TEMP TABLE in SQL, got: {called_sql[:200]}"
+    assert "MERGE" in called_sql, \
+        f"Expected MERGE statement in SQL, got: {called_sql[:200]}"
 
 
 def test_run_orchestrates_flow(pipeline):
@@ -177,10 +144,7 @@ def test_run_orchestrates_flow(pipeline):
     with (
         patch.object(pipeline, "extract") as mock_extract,
         patch.object(pipeline, "transform") as mock_transform,
-        patch.object(pipeline, "_truncate_staging") as mock_trunc,
-        patch.object(pipeline, "_load_to_staging") as mock_load,
-        patch.object(pipeline, "_execute_merge") as mock_merge,
-        patch.object(pipeline, "cleanup_staging") as mock_cleanup_staging,
+        patch.object(pipeline, "_merge_via_temp_table") as mock_merge,
         patch.object(pipeline, "cleanup") as mock_cleanup,
     ):
         mock_extract.return_value = [{"id": "1", "ds": date(2024, 1, 1), "value": 100}]
@@ -190,10 +154,7 @@ def test_run_orchestrates_flow(pipeline):
 
         mock_extract.assert_called_once()
         mock_transform.assert_called_once()
-        mock_trunc.assert_called_once()
-        mock_load.assert_called_once()
         mock_merge.assert_called_once()
-        mock_cleanup_staging.assert_called_once()
         mock_cleanup.assert_called_once()
 
 
@@ -207,13 +168,13 @@ def test_run_reraises_exception(pipeline):
 def test_run_skips_if_extract_empty(pipeline):
     """Test that run exits early if extract returns empty list."""
     with patch.object(pipeline, "extract", return_value=[]):
-        with patch.object(pipeline, "_truncate_staging") as mock_trunc:
+        with patch.object(pipeline, "_merge_via_temp_table") as mock_merge:
             pipeline.run()
-            mock_trunc.assert_not_called()
+            mock_merge.assert_not_called()
 
 
-def test_run_ensures_both_tables_exist(pipeline, mock_bq_client):
-    """Test that run ensures both fact and staging tables exist."""
+def test_run_ensures_fact_table_exists(pipeline, mock_bq_client):
+    """Test that run ensures fact table exists."""
     from google.api_core.exceptions import NotFound
 
     with (
@@ -223,27 +184,20 @@ def test_run_ensures_both_tables_exist(pipeline, mock_bq_client):
         mock_settings.return_value.SCHEMA_MIGRATION_AUTO = True
         mock_settings.return_value.SCHEMA_GUARDIAN_STRICT_MODE = True
 
-        # Force NotFound for both tables to trigger migrate_schema
+        # Force NotFound for fact table to trigger migrate_schema
         # 1. Fact Table (first try) -> NotFound
         # 2. Fact Table (retry) -> Success
-        # 3. Staging Table -> NotFound
         pipeline.guardian.validate_schema.side_effect = [
             NotFound("Not Found"),
             None,
-            NotFound("Not Found"),
         ]
 
         pipeline.run()
 
-        # Should be called for both fact and staging
+        # Should be called for fact table
         # migrate_schema is called via guardian
-        pipeline.guardian.migrate_schema.assert_any_call(
+        pipeline.guardian.migrate_schema.assert_called_once_with(
             pipeline.fact_table_id,
-            pipeline.schema_model,
-            partition_column=pipeline.partition_column,
-        )
-        pipeline.guardian.migrate_schema.assert_any_call(
-            pipeline.staging_table_id,
             pipeline.schema_model,
             partition_column=pipeline.partition_column,
         )

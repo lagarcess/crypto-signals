@@ -83,7 +83,9 @@ class FeePatchPipeline:
         Returns:
             List of trade dictionaries
         """
-        # Only reconcile crypto trades (equities have commission in order response)
+        # Reconcile fees for all asset classes.
+        # Crypto: patches estimated fees with actual CFEE data.
+        # Equity: marks fee_finalized=TRUE (fees are $0, no CFEE events).
         query = f"""
         SELECT
             trade_id,
@@ -97,7 +99,6 @@ class FeePatchPipeline:
             ds
         FROM `{self.fact_table_id}`
         WHERE fee_finalized = FALSE
-          AND asset_class = 'CRYPTO'
           AND exit_time < TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {self.CFEE_SETTLEMENT_HOURS} HOUR)
         ORDER BY exit_time ASC
         LIMIT {self.MAX_TRADES_PER_RUN}

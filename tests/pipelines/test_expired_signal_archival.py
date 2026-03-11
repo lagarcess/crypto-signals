@@ -20,9 +20,7 @@ class TestExpiredSignalArchivalPipeline(unittest.TestCase):
         """
         Set up the test environment.
         """
-        self.settings_patcher = patch(
-            "crypto_signals.pipelines.expired_signal_archival.get_settings"
-        )
+        self.settings_patcher = patch("crypto_signals.pipelines.base.get_settings")
         self.firestore_patcher = patch(
             "crypto_signals.pipelines.expired_signal_archival.firestore.Client"
         )
