@@ -3,9 +3,13 @@ from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
-from crypto_signals.domain.schemas import AssetClass, FactRejectedSignal, OrderSide
+from crypto_signals.domain.schemas import (
+    AssetClass,
+    AssetClassFee,
+    FactRejectedSignal,
+    OrderSide,
+)
 from crypto_signals.pipelines.rejected_signal_archival import (
-    TAKER_FEE_PCT_BY_ASSET_CLASS,
     RejectedSignalArchival,
 )
 
@@ -429,12 +433,12 @@ def test_extract_cutoff_date(pipeline, mock_firestore):
     [
         pytest.param(
             AssetClass.EQUITY.value,
-            TAKER_FEE_PCT_BY_ASSET_CLASS[AssetClass.EQUITY.value],
+            AssetClassFee.EQUITY.value,
             id="equity_zero_fee",
         ),
         pytest.param(
             AssetClass.CRYPTO.value,
-            TAKER_FEE_PCT_BY_ASSET_CLASS[AssetClass.CRYPTO.value],
+            AssetClassFee.CRYPTO.value,
             id="crypto_taker_fee",
         ),
     ],

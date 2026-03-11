@@ -23,15 +23,9 @@ from crypto_signals.config import (
     get_crypto_data_client,
     get_stock_data_client,
 )
-from crypto_signals.domain.schemas import FactRejectedSignal, OrderSide
+from crypto_signals.domain.schemas import AssetClassFee, FactRejectedSignal, OrderSide
 from crypto_signals.market.data_provider import MarketDataProvider
 from crypto_signals.pipelines.base import BigQueryPipelineBase
-
-# Asset-class-aware fee structure
-TAKER_FEE_PCT_BY_ASSET_CLASS = {
-    "CRYPTO": 0.0025,  # Alpaca crypto taker fee (Tier 0)
-    "EQUITY": 0.0,  # Alpaca commission-free US equities
-}
 
 # Validity window for signals (7 days)
 VALIDITY_WINDOW_DAYS = 7
@@ -238,13 +232,17 @@ class RejectedSignalArchival(BigQueryPipelineBase):
                             pnl_gross = (entry_price - exit_price) * qty
 
                         # Calculate fees (asset-class-aware)
-                        fee_pct = TAKER_FEE_PCT_BY_ASSET_CLASS.get(asset_class)
-                        if fee_pct is None:
+                        # Lookup enum by name (e.g., AssetClassFee.CRYPTO)
+                        fee_enum = getattr(AssetClassFee, asset_class, None)
+                        if fee_enum is None:
                             logger.warning(
                                 f"No fee percentage found for asset class '{asset_class}'. "
                                 f"Defaulting to 0.0 for signal {signal.get('signal_id')}."
                             )
                             fee_pct = 0.0
+                        else:
+                            fee_pct = fee_enum.value
+
                         entry_fee = entry_price * qty * fee_pct
                         exit_fee = exit_price * qty * fee_pct
                         total_fees = entry_fee + exit_fee
