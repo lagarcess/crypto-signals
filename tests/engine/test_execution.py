@@ -1883,11 +1883,7 @@ class TestAssetAwareCaps:
         self, execution_engine, mock_settings, asset_class, expected_cap
     ):
         """Verify default caps are applied correctly based on asset class."""
-        # Arrange: Setup settings with defaults (already in mock_settings but being explicit)
-        mock_settings.MAX_CRYPTO_POSITION_QTY = 1_000_000.0
-        mock_settings.MAX_EQUITY_POSITION_QTY = 10_000.0
-        mock_settings.RISK_PER_TRADE = 100.0
-
+        # Arrange: The mock_settings fixture provides the necessary default values.
         # Create a signal that would result in an extremely large qty
         # risk_per_share = 0.00000001
         # qty = 100 / 0.00000001 = 10,000,000,000
