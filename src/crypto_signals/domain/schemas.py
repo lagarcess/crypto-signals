@@ -65,6 +65,63 @@ class AssetClass(str, Enum):
     EQUITY = "EQUITY"
 
 
+class AssetClassFee(Enum):
+    """
+    Taker fee percentage lookup by asset class.
+    Mirrors the structure of AssetClass for easy mapping.
+    """
+
+    CRYPTO = 0.0025  # Standard crypto taker fee (e.g., Tier 0)
+    EQUITY = 0.00  # Standard US equity commissions are generally $0
+
+
+class QualityGateThresholds(BaseModel):
+    """
+    Quality gate thresholds used by the SignalGenerator to filter and score signals.
+    Empirically tuned differently across separate asset classes due to volatility differences.
+    """
+
+    base_volume_threshold: float = Field(
+        ..., description="Standard minimum volume ratio vs moving average"
+    )
+    relaxed_volume_threshold: float = Field(
+        ..., description="Relaxed volume ratio used when secondary conditions are met"
+    )
+    base_adx_threshold: float = Field(
+        ..., description="Standard ADX value for trend confirmation"
+    )
+    relaxed_adx_threshold: float = Field(
+        ..., description="Lower ADX threshold for high-conviction trend signals"
+    )
+    base_rr_threshold: float = Field(
+        ..., description="Standard minimum Risk:Reward ratio"
+    )
+    relaxed_rr_threshold: float = Field(
+        ..., description="Lower R:R minimum for highly convicted structural setups"
+    )
+
+
+# Default Tunings per Asset Class (Ref: Issue #376 - Quality Gate Threshold Audit)
+QUALITY_GATE_THRESHOLDS_BY_ASSET_CLASS = {
+    AssetClass.CRYPTO: QualityGateThresholds(
+        base_volume_threshold=1.5,
+        relaxed_volume_threshold=1.2,
+        base_adx_threshold=20.0,
+        relaxed_adx_threshold=15.0,
+        base_rr_threshold=1.5,
+        relaxed_rr_threshold=1.2,
+    ),
+    AssetClass.EQUITY: QualityGateThresholds(
+        base_volume_threshold=1.5,  # Phase 1: Matches crypto until further empirical tuning
+        relaxed_volume_threshold=1.2,
+        base_adx_threshold=20.0,
+        relaxed_adx_threshold=15.0,
+        base_rr_threshold=1.5,
+        relaxed_rr_threshold=1.2,
+    ),
+}
+
+
 class SignalStatus(str, Enum):
     """Lifecycle status of a trading signal."""
 
@@ -1235,110 +1292,6 @@ class StagingAccount(BaseModel):
 
 
 # =============================================================================
-# BIGQUERY: STRATEGY PERFORMANCE
-# (Tables: summary_strategy_performance, stg_performance_import)
-# =============================================================================
-
-
-class StrategyPerformance(BaseModel):
-    """
-    Strategy performance metrics for BigQuery analytics.
-
-    Stored in the summary_strategy_performance table, partitioned by ds (date).
-    Aggregated daily performance metrics per strategy.
-    """
-
-    ds: date = Field(
-        ...,
-        description="Partition key - performance date",
-    )
-    strategy_id: str = Field(
-        ...,
-        description="Strategy identifier",
-    )
-    total_trades: int = Field(
-        ...,
-        description="Total number of trades executed",
-    )
-    win_rate: float = Field(
-        ...,
-        description="Percentage of winning trades",
-    )
-    profit_factor: float = Field(
-        ...,
-        description="Gross profit / gross loss ratio",
-    )
-    sharpe_ratio: float = Field(
-        ...,
-        description="Risk-adjusted return (Sharpe)",
-    )
-    sortino_ratio: float = Field(
-        ...,
-        description="Downside risk-adjusted return (Sortino)",
-    )
-    max_drawdown_pct: float = Field(
-        ...,
-        description="Maximum drawdown percentage",
-    )
-    alpha: float = Field(
-        ...,
-        description="Excess return vs benchmark",
-    )
-    beta: float = Field(
-        ...,
-        description="Sensitivity to market movements",
-    )
-
-
-class StagingPerformance(BaseModel):
-    """
-    Staging model for strategy performance to BigQuery.
-
-    Exact mirror of StrategyPerformance. Validates payloads before loading into the
-    stg_performance_import table.
-    """
-
-    ds: date = Field(
-        ...,
-        description="Partition key - performance date",
-    )
-    strategy_id: str = Field(
-        ...,
-        description="Strategy identifier",
-    )
-    total_trades: int = Field(
-        ...,
-        description="Total number of trades executed",
-    )
-    win_rate: float = Field(
-        ...,
-        description="Percentage of winning trades",
-    )
-    profit_factor: float = Field(
-        ...,
-        description="Gross profit / gross loss ratio",
-    )
-    sharpe_ratio: float = Field(
-        ...,
-        description="Risk-adjusted return (Sharpe)",
-    )
-    sortino_ratio: float = Field(
-        ...,
-        description="Downside risk-adjusted return (Sortino)",
-    )
-    max_drawdown_pct: float = Field(
-        ...,
-        description="Maximum drawdown percentage",
-    )
-    alpha: float = Field(
-        ...,
-        description="Excess return vs benchmark",
-    )
-    beta: float = Field(
-        ...,
-        description="Sensitivity to market movements",
-    )
-
 
 # =============================================================================
 # BIGQUERY: STRATEGY SCD TYPE 2 (Tables: dim_strategies, stg_strategies_import)
@@ -1401,56 +1354,3 @@ class StagingStrategy(BaseModel):
         default=True,
         description="SCD2: Flag for current record",
     )
-
-
-# =============================================================================
-# BIGQUERY: AGG STRATEGY DAILY (Tables: agg_strategy_daily, stg_agg_strategy_daily)
-# =============================================================================
-
-
-class AggStrategyDaily(BaseModel):
-    """
-    Daily aggregated strategy performance metrics.
-
-    Stored in the agg_strategy_daily table.
-    Groups trades by strategy, symbol, and date to provide fast dashboard metrics.
-    """
-
-    ds: date = Field(
-        ...,
-        description="Partition key - aggregation date",
-    )
-    agg_id: str = Field(
-        ...,
-        description="Unique identifier for the aggregation record (ds|strategy_id|symbol)",
-    )
-    strategy_id: str = Field(
-        ...,
-        description="Strategy identifier",
-    )
-    symbol: str = Field(
-        ...,
-        description="Asset symbol",
-    )
-    total_pnl: float = Field(
-        ...,
-        description="Total Profit/Loss in USD for the day",
-    )
-    win_rate: float = Field(
-        ...,
-        description="Win rate for the day (0.0 to 1.0)",
-    )
-    trade_count: int = Field(
-        ...,
-        description="Number of trades included in this aggregation",
-    )
-
-
-class StagingAggStrategyDaily(AggStrategyDaily):
-    """
-    Staging model for daily strategy aggregation.
-
-    Exact mirror of AggStrategyDaily.
-    """
-
-    pass

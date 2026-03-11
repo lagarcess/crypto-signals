@@ -64,6 +64,7 @@ from crypto_signals.repository.firestore import (
     PositionRepository,
     RejectedSignalRepository,
     SignalRepository,
+    StrategyRepository,
 )
 from crypto_signals.secrets_manager import init_secrets
 from crypto_signals.utils.metadata import get_git_hash, get_job_context
@@ -299,7 +300,14 @@ def main(
             stock_client = get_stock_data_client()
             crypto_client = get_crypto_data_client()
             market_provider = MarketDataProvider(stock_client, crypto_client)
-            generator = SignalGenerator(market_provider=market_provider)
+
+            # Load strategies for injection into SignalGenerator
+            strategy_repo = StrategyRepository()
+            strategy_configs = strategy_repo.get_all_strategies()
+
+            generator = SignalGenerator(
+                market_provider=market_provider, strategy_configs=strategy_configs
+            )
             repo = SignalRepository()
             position_repo = PositionRepository()
             discord = DiscordClient()

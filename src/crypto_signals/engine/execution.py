@@ -77,9 +77,6 @@ class ExecutionEngine:
         close_position_emergency: Cancel legs and exit at market
     """
 
-    # Alpaca limit for fractional crypto (safeguard for micro-caps)
-    MAX_CRYPTO_POSITION_QTY = 1_000_000.0
-
     def __init__(
         self,
         trading_client: Optional[TradingClient] = None,
@@ -571,19 +568,27 @@ class ExecutionEngine:
         #
         # Cap qty at reasonable limit to prevent Alpaca rejections.
         # =====================================================================
-        if qty > self.MAX_CRYPTO_POSITION_QTY:
+        max_qty = (
+            settings.MAX_CRYPTO_POSITION_QTY
+            if signal.asset_class == AssetClass.CRYPTO
+            else settings.MAX_EQUITY_POSITION_QTY
+        )
+
+        if qty > max_qty:
             logger.warning(
-                f"Position size {qty:.2f} exceeds MAX ({self.MAX_CRYPTO_POSITION_QTY}) for {signal.symbol}. "
+                f"Position size {qty:.2f} exceeds MAX ({max_qty}) for {signal.symbol}. "
                 f"Possible micro-cap edge case (tight stop-loss). Capping at max.",
                 extra={
                     "symbol": signal.symbol,
                     "qty": qty,
+                    "max_qty": max_qty,
+                    "asset_class": signal.asset_class.value,
                     "risk_per_share": risk_per_share,
                     "entry_price": signal.entry_price,
                     "suggested_stop": signal.suggested_stop,
                 },
             )
-            qty = self.MAX_CRYPTO_POSITION_QTY
+            qty = max_qty
 
         # Round based on asset class
         if signal.asset_class == AssetClass.CRYPTO:
