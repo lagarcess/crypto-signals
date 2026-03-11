@@ -1020,6 +1020,17 @@ class ExecutionEngine:
                 )
                 position.status = TradeStatus.CLOSED
 
+            elif order_status in ("accepted", "pending_new", "new"):
+                logger.info(
+                    f"Position {position.position_id} order still queued "
+                    f"(status: {order_status}). Will sync on next cycle after fill.",
+                    extra={
+                        "symbol": position.symbol,
+                        "order_status": order_status,
+                        "position_id": position.position_id,
+                    },
+                )
+
             # Check if TP or SL was filled (position closed externally)
             # Only check if leg IDs were successfully extracted to avoid unnecessary API calls
             if position.tp_order_id:
