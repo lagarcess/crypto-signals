@@ -2,14 +2,15 @@
 Deploy BigQuery Views.
 
 Executes the SQL DDL files in scripts/bq/ against the configured GCP project.
-Supports environment-based table suffixes (PROD vs DEV/TEST).
+Supports environment-based table suffixes via --env flag (PROD vs DEV/TEST).
 
 Usage:
-    poetry run python scripts/deploy_bq_views.py
-    poetry run python scripts/deploy_bq_views.py --dry-run
+    poetry run python scripts/deploy_bq_views.py --env PROD
+    poetry run python scripts/deploy_bq_views.py --env DEV --dry-run
 """
 
 import argparse
+import re
 import sys
 from pathlib import Path
 
@@ -22,16 +23,52 @@ SQL_FILES = [
     "vw_summary_strategy_performance.sql",
 ]
 
+# Strict validation pattern for GCP project IDs
+_PROJECT_ID_PATTERN = re.compile(r"^[a-z][a-z0-9-]{4,28}[a-z0-9]$")
 
-def deploy_views(project_id: str, dry_run: bool = False) -> None:
+
+def _validate_project_id(project_id: str) -> None:
+    """Validate project_id to prevent SQL injection.
+
+    GCP project IDs must be 6-30 chars, lowercase letters, digits, and hyphens.
+
+    Raises:
+        ValueError: If project_id doesn't match GCP naming rules.
+    """
+    if not _PROJECT_ID_PATTERN.match(project_id):
+        raise ValueError(
+            f"Invalid GCP project ID: '{project_id}'. "
+            "Must be 6-30 chars, lowercase alphanumeric and hyphens only."
+        )
+
+
+def _resolve_env_suffix(env: str) -> str:
+    """Return table suffix based on environment.
+
+    Args:
+        env: Environment name (PROD, DEV, TEST).
+
+    Returns:
+        Empty string for PROD, '_test' for DEV/TEST.
+    """
+    return "" if env.upper() == "PROD" else "_test"
+
+
+def deploy_views(project_id: str, env: str, dry_run: bool = False) -> None:
     """Deploy all BQ views/materialized views.
 
     Args:
-        project_id: GCP project ID.
+        project_id: GCP project ID (validated against naming rules).
+        env: Environment name (PROD, DEV, TEST).
         dry_run: If True, only validate SQL without executing.
     """
+    _validate_project_id(project_id)
+    env_suffix = _resolve_env_suffix(env)
+
     bq_dir = Path(__file__).parent / "bq"
     client = bigquery.Client(project=project_id)
+
+    logger.info(f"Deploying to project={project_id}, env={env}, suffix='{env_suffix}'")
 
     for sql_file in SQL_FILES:
         sql_path = bq_dir / sql_file
@@ -39,8 +76,11 @@ def deploy_views(project_id: str, dry_run: bool = False) -> None:
             logger.error(f"SQL file not found: {sql_path}")
             sys.exit(1)
 
-        # Read and inject project_id
-        sql = sql_path.read_text().format(project_id=project_id)
+        # Read and inject project_id and env_suffix
+        sql = sql_path.read_text().format(
+            project_id=project_id,
+            env_suffix=env_suffix,
+        )
 
         logger.info(f"{'[DRY-RUN] ' if dry_run else ''}Deploying {sql_file}...")
 
@@ -81,6 +121,13 @@ def main() -> None:
         default=None,
         help="GCP project ID. Defaults to GOOGLE_CLOUD_PROJECT env var.",
     )
+    parser.add_argument(
+        "--env",
+        type=str,
+        default="PROD",
+        choices=["PROD", "DEV", "TEST"],
+        help="Target environment. DEV/TEST appends '_test' suffix to table names.",
+    )
     args = parser.parse_args()
 
     # Resolve project ID
@@ -93,7 +140,7 @@ def main() -> None:
         logger.error("No project ID. Set --project-id or GOOGLE_CLOUD_PROJECT env var.")
         sys.exit(1)
 
-    deploy_views(project_id, dry_run=args.dry_run)
+    deploy_views(project_id, args.env, dry_run=args.dry_run)
 
 
 if __name__ == "__main__":

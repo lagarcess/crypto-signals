@@ -5,12 +5,11 @@
 -- This view aggregates fact_trades by (ds, strategy_id, symbol) to produce
 -- daily strategy performance metrics. Refreshes every 24 hours automatically.
 --
--- NOTE: BigQuery Materialized Views have restrictions:
---   - Must reference a single base table
---   - Cannot use CONCAT in MV definition; agg_id computed in SELECT
---   - Incremental refresh only works with aggregate functions
+-- Placeholders (injected by deploy_bq_views.py):
+--   {project_id}  — GCP project ID
+--   {env_suffix}   — '_test' for DEV/TEST, '' for PROD
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS `{project_id}.crypto_analytics.agg_strategy_daily`
+CREATE MATERIALIZED VIEW IF NOT EXISTS `{project_id}.crypto_analytics.agg_strategy_daily{env_suffix}`
 OPTIONS (
     enable_refresh = true,
     refresh_interval_minutes = 1440,
@@ -25,5 +24,5 @@ SELECT
     SUM(pnl_usd) AS total_pnl,
     SAFE_DIVIDE(COUNTIF(pnl_usd > 0), COUNT(*)) AS win_rate,
     COUNT(*) AS trade_count
-FROM `{project_id}.crypto_analytics.fact_trades`
+FROM `{project_id}.crypto_analytics.fact_trades{env_suffix}`
 GROUP BY ds, strategy_id, symbol;

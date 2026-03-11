@@ -5,6 +5,10 @@
 -- Computes per-strategy performance metrics from the agg_strategy_daily
 -- materialized view. Uses PnL-only drawdown (no baseline_capital).
 --
+-- Placeholders (injected by deploy_bq_views.py):
+--   {project_id}  — GCP project ID
+--   {env_suffix}   — '_test' for DEV/TEST, '' for PROD
+--
 -- Metrics produced:
 --   - total_trades, win_rate, profit_factor
 --   - sharpe_ratio (annualized, 365-day)
@@ -12,7 +16,7 @@
 --   - max_drawdown_usd (peak-to-trough in dollar terms)
 --   - alpha, beta (stubbed to 0.0 pending benchmark index — TODO #315)
 
-CREATE OR REPLACE VIEW `{project_id}.crypto_analytics.summary_strategy_performance`
+CREATE OR REPLACE VIEW `{project_id}.crypto_analytics.summary_strategy_performance{env_suffix}`
 AS
 WITH daily_strategy_metrics AS (
     -- Aggregate across symbols per strategy per day
@@ -21,8 +25,10 @@ WITH daily_strategy_metrics AS (
         strategy_id,
         SUM(total_pnl) AS daily_pnl,
         SUM(trade_count) AS daily_trades,
-        SAFE_DIVIDE(SUM(win_rate * trade_count), SUM(trade_count)) AS daily_win_rate
-    FROM `{project_id}.crypto_analytics.agg_strategy_daily`
+        -- Explicitly compute daily winning trades for clarity.
+        -- (win_rate * trade_count) reconstructs COUNTIF(pnl_usd > 0) from the source MV.
+        SUM(win_rate * trade_count) AS daily_wins
+    FROM `{project_id}.crypto_analytics.agg_strategy_daily{env_suffix}`
     GROUP BY ds, strategy_id
 ),
 historical_metrics AS (
@@ -32,10 +38,10 @@ historical_metrics AS (
         strategy_id,
         daily_pnl,
         daily_trades,
-        daily_win_rate,
         SUM(daily_trades) OVER (PARTITION BY strategy_id ORDER BY ds) AS total_trades,
+        -- Cumulative win rate: total wins / total trades
         SAFE_DIVIDE(
-            SUM(daily_win_rate * daily_trades) OVER (PARTITION BY strategy_id ORDER BY ds),
+            SUM(daily_wins) OVER (PARTITION BY strategy_id ORDER BY ds),
             SUM(daily_trades) OVER (PARTITION BY strategy_id ORDER BY ds)
         ) AS win_rate,
         -- Profit Factor: SUM(Gain) / ABS(SUM(Loss))
