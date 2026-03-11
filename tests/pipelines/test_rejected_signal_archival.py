@@ -54,9 +54,7 @@ def pipeline(mock_firestore, mock_market_provider):
             "crypto_signals.pipelines.rejected_signal_archival.firestore.Client",
             return_value=mock_firestore,
         ),
-        patch(
-            "crypto_signals.pipelines.rejected_signal_archival.get_settings"
-        ) as mock_get_settings,
+        patch("crypto_signals.pipelines.base.get_settings") as mock_get_settings,
         patch(
             "crypto_signals.pipelines.rejected_signal_archival.MarketDataProvider",
             return_value=mock_market_provider,
@@ -375,15 +373,12 @@ def test_run_calls_schema_guardian(pipeline, mock_firestore, sample_fact_rejecte
     pipeline.transform = MagicMock(return_value=transformed_data)
     pipeline.cleanup = MagicMock()
 
-    # Configure the mock to return no errors
-    pipeline.bq_client.insert_rows_json.return_value = []
-
     # Run the pipeline
     pipeline.run()
 
     # Assert that SchemaGuardian.validate_schema was called
-    # Now called twice (fact and staging)
-    assert pipeline.guardian.validate_schema.call_count == 2
+    # Now called once for the fact table (temp table does not need validation)
+    assert pipeline.guardian.validate_schema.call_count == 1
 
 
 def test_extract_cutoff_date(pipeline, mock_firestore):

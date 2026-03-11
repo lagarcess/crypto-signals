@@ -10,7 +10,7 @@ def test_archival_fallback_for_theoretical_trades():
     (Fallback to Firestore data for Theoretical/Paper trades).
     """
     with (
-        patch("crypto_signals.pipelines.trade_archival.get_settings") as mock_settings,
+        patch("crypto_signals.pipelines.base.get_settings") as mock_settings,
         patch(
             "crypto_signals.pipelines.trade_archival.get_trading_client"
         ) as mock_alpaca,
