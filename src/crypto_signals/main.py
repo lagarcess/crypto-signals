@@ -839,7 +839,18 @@ def main(
                                             )
                                             continue  # Safe fail-closed
 
-                                    if execution_engine.close_position_emergency(pos):
+                                    # Determine exit reason for archival
+                                    # (Note: TP3 runner uses ExitReason.TP_HIT for pnl tracking consistency)
+                                    target_exit_reason = (
+                                        ExitReason.TP_HIT
+                                        if exited.status == SignalStatus.TP3_HIT
+                                        else exited.exit_reason
+                                        or ExitReason.STRUCTURAL_INVALIDATION
+                                    )
+
+                                    if execution_engine.close_position_emergency(
+                                        pos, exit_reason=target_exit_reason
+                                    ):
                                         pos.status = TradeStatus.CLOSED
                                         reason = (
                                             "TP3 Runner"

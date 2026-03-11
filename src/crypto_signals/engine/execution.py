@@ -1490,7 +1490,9 @@ class ExecutionEngine:
 
         return (round(pnl_usd, 2), round(pnl_pct, 4))
 
-    def close_position_emergency(self, position: Position) -> bool:
+    def close_position_emergency(
+        self, position: Position, exit_reason: Optional[ExitReason] = None
+    ) -> bool:
         """
         Emergency close: Cancel all open orders and exit at market.
 
@@ -1503,6 +1505,7 @@ class ExecutionEngine:
 
         Args:
             position: The Position to close.
+            exit_reason: Optional reason for the exit (e.g., Structural Invalidation).
 
         Returns:
             True if market order was submitted successfully, False otherwise.
@@ -1520,7 +1523,9 @@ class ExecutionEngine:
 
         if is_theoretical:
             position.status = TradeStatus.CLOSED
-            position.exit_reason = ExitReason.MANUAL_EXIT
+            position.exit_reason = exit_reason or ExitReason.MANUAL_EXIT
+            # ISSUE FIX: Capture dummy exit_order_id for theoretical consistency
+            position.exit_order_id = f"theo-exit-{position.position_id[:8]}"
             if not position.exit_fill_price:
                 # Estimate exit at current stop if not provided (safe fallback) or handle via caller
                 pass
@@ -1622,6 +1627,8 @@ class ExecutionEngine:
             )
 
             position.status = TradeStatus.CLOSED
+            if exit_reason:
+                position.exit_reason = exit_reason
             return True
 
         except Exception as e:
