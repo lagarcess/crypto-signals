@@ -32,10 +32,10 @@ from loguru import logger
 # See GitHub Issue "Quality Gate Threshold Audit" for equity threshold audit.
 BASE_VOLUME_THRESHOLD = 1.5  # Crypto: high-vol markets. Equities may need lower.
 RELAXED_VOLUME_THRESHOLD = 1.2  # Crypto: relaxed gate. Equities may need tuning.
-BASE_ADX_THRESHOLD = 20  # Crypto: calibrated threshold.
-RELAXED_ADX_THRESHOLD = 15  # Crypto: relaxed gate.
-BASE_RR_THRESHOLD = 1.5  # Crypto: calibrated threshold.
-RELAXED_RR_THRESHOLD = 1.2  # Crypto: relaxed gate.
+BASE_ADX_THRESHOLD = 20  # Crypto: Standard ADX for trend confirmation.
+RELAXED_ADX_THRESHOLD = 15  # Crypto: Lower ADX for high-conviction trend signals.
+BASE_RR_THRESHOLD = 1.5  # Crypto: Standard minimum risk-reward ratio.
+RELAXED_RR_THRESHOLD = 1.2  # Crypto: Lower R:R for high-conviction setups.
 
 
 class SignalGenerator:
