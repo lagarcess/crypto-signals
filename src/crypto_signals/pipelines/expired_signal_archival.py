@@ -51,11 +51,11 @@ class ExpiredSignalArchivalPipeline(BigQueryPipelineBase):
         )
 
         env_suffix = "" if self.settings.ENVIRONMENT == "PROD" else "_test"
-        self.fact_table_id = (
-            f"{self.settings.GOOGLE_CLOUD_PROJECT}.crypto_analytics.fact_signals_expired{env_suffix}"
-        )
+        self.fact_table_id = f"{self.settings.GOOGLE_CLOUD_PROJECT}.crypto_analytics.fact_signals_expired{env_suffix}"
 
-        self.firestore_client = firestore.Client(project=self.settings.GOOGLE_CLOUD_PROJECT)
+        self.firestore_client = firestore.Client(
+            project=self.settings.GOOGLE_CLOUD_PROJECT
+        )
         self.source_collection = (
             "live_signals" if self.settings.ENVIRONMENT == "PROD" else "test_signals"
         )

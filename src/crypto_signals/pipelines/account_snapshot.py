@@ -38,9 +38,7 @@ class AccountSnapshotPipeline(BigQueryPipelineBase):
         )
 
         env_suffix = "" if self.settings.ENVIRONMENT == "PROD" else "_test"
-        self.fact_table_id = (
-            f"{self.settings.GOOGLE_CLOUD_PROJECT}.crypto_analytics.snapshot_accounts{env_suffix}"
-        )
+        self.fact_table_id = f"{self.settings.GOOGLE_CLOUD_PROJECT}.crypto_analytics.snapshot_accounts{env_suffix}"
 
         # Initialize Alpaca Client
         self.alpaca = get_trading_client()

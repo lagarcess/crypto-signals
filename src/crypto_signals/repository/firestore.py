@@ -866,3 +866,8 @@ class StrategyRepository:
         doc_ref = self.db.collection(self.collection_name).document(strategy.strategy_id)
         doc_ref.set(strategy.model_dump(mode="json"))
         logger.info(f"Saved strategy config: {strategy.strategy_id}")
+
+    def get_active_strategy_configs(self) -> list[StrategyConfig]:
+        """Returns only active=True strategies from Firestore."""
+        all_configs = self.get_all_strategies()
+        return [c for c in all_configs if c.active]

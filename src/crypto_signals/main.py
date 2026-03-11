@@ -303,10 +303,17 @@ def main(
 
             # Load strategies for injection into SignalGenerator
             strategy_repo = StrategyRepository()
-            strategy_configs = strategy_repo.get_all_strategies()
+            try:
+                active_configs = strategy_repo.get_active_strategy_configs()
+            except Exception as e:
+                logger.warning(
+                    "Failed to load strategy configs. UUID injection disabled.",
+                    extra={"error": str(e)},
+                )
+                active_configs = []
 
             generator = SignalGenerator(
-                market_provider=market_provider, strategy_configs=strategy_configs
+                market_provider=market_provider, strategy_configs=active_configs
             )
             repo = SignalRepository()
             position_repo = PositionRepository()
