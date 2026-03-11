@@ -71,7 +71,7 @@ class AssetClassFee(Enum):
     Mirrors the structure of AssetClass for easy mapping.
     """
 
-    CRYPTO = 0.25  # Standard crypto taker fee (e.g., Tier 0)
+    CRYPTO = 0.0025  # Standard crypto taker fee (e.g., Tier 0)
     EQUITY = 0.00  # Standard US equity commissions are generally $0
 
 

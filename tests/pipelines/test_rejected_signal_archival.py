@@ -119,7 +119,7 @@ def test_transform_long_tp_hit(pipeline, mock_market_provider):
         {
             "signal_id": "sig_1",
             "symbol": "BTC/USD",
-            "asset_class": AssetClass.EQUITY.value,
+            "asset_class": "CRYPTO",
             "entry_price": 50000.0,
             "suggested_stop": 48000.0,
             "take_profit_1": 55000.0,
@@ -158,7 +158,7 @@ def test_transform_open_position(pipeline, mock_market_provider):
         {
             "signal_id": "sig_open",
             "symbol": "ETH/USD",
-            "asset_class": AssetClass.EQUITY.value,
+            "asset_class": "CRYPTO",
             "entry_price": 2000.0,
             "suggested_stop": 1900.0,
             "take_profit_1": 2200.0,
