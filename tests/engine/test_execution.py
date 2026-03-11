@@ -959,11 +959,74 @@ class TestClosePositionEmergency:
         assert result is True, "close_position_emergency failed to return True"
         assert position.status == TradeStatus.CLOSED, "Position status should be CLOSED"
 
+    def test_emergency_close_captures_exit_order_id_and_reason(
+        self, execution_engine, mock_trading_client
+    ):
+        """Verify exit_order_id and exit_reason are captured during emergency close."""
+        from crypto_signals.domain.schemas import ExitReason, TradeStatus
+
+        # Arrange
+        mock_close_order = MagicMock()
+        mock_close_order.id = "close-order-uuid-999"
+        mock_close_order.filled_avg_price = "50000.0"
+        mock_trading_client.submit_order.return_value = mock_close_order
+
+        mock_parent_order = MagicMock()
+        mock_parent_order.symbol = "BTC/USD"
+        mock_trading_client.get_order_by_id.return_value = mock_parent_order
+
+        position = PositionFactory.build(
+            position_id="test-pos-exit-id",
+            signal_id="test-signal-exit-id",
+            alpaca_order_id="parent-id",
+            tp_order_id="tp-order-id",
+            sl_order_id="sl-order-id",
+            qty=0.05,
+        )
+
+        # Act
+        result = execution_engine.close_position_emergency(
+            position, exit_reason=ExitReason.STRUCTURAL_INVALIDATION
+        )
+
+        # Assert
+        assert result is True
+        assert position.status == TradeStatus.CLOSED
+        assert position.exit_order_id == "close-order-uuid-999"
+        assert position.exit_reason == ExitReason.STRUCTURAL_INVALIDATION
+
         cancel_calls = mock_trading_client.cancel_order_by_id.call_args_list
         canceled_ids = [call[0][0] for call in cancel_calls]
         assert "tp-order-id" in canceled_ids, "TP order was not canceled"
         assert "sl-order-id" in canceled_ids, "SL order was not canceled"
         mock_trading_client.submit_order.assert_called_once()
+
+    def test_emergency_close_theoretical_trade(self, execution_engine):
+        """Verify emergency close for theoretical trades."""
+        from crypto_signals.domain.schemas import (
+            ExitReason,
+            TradeStatus,
+            TradeType,
+        )
+
+        # Arrange
+        position = PositionFactory.build(
+            position_id="test-pos-theo",
+            signal_id="test-signal-theo",
+            trade_type=TradeType.THEORETICAL.value,
+            qty=0.05,
+        )
+
+        # Act
+        result = execution_engine.close_position_emergency(
+            position, exit_reason=ExitReason.STRUCTURAL_INVALIDATION
+        )
+
+        # Assert
+        assert result is True
+        assert position.status == TradeStatus.CLOSED
+        assert position.exit_reason == ExitReason.STRUCTURAL_INVALIDATION
+        assert position.exit_order_id.startswith("theo-exit-")
 
 
 class TestScaleOutPosition:
