@@ -15,6 +15,7 @@
 - [2026-01-31] **Workflow**: Root-level documentation indices (`docs/README.md`) should provide direct entry points to consolidated "Source of Truth" handbooks to prevent developers from relying on legacy or fragmented fragments.
 - [2026-01-20] **Testing Conventions**: `conftest.py` is a pytest plugin file for global fixtures, not a test module. Follow naming convention: test files are `test_*.py` or `*_test.py`. Adding conftest for one-off credential mocks violates this and confuses IDEs/linters.
 - [2026-01-25] **Simulation Safety**: Running production pipelines locally (e.g., `main.py` with `ENVIRONMENT=PROD`) carries side effects if state reconciliation is active. If the local environment (e.g., Paper) differs from the DB target (Prod), reconcilers may incorrectly flag live data as "Zombies" and destructively update the DB. Always use read-only diagnostic scripts for production checks.
+- [2026-03-11] **Testing**: When mocking trading pipelines (e.g., `trade_archival.py`), explicitly set the mocked `asset_class` (e.g., `AssetClass.EQUITY.value`) instead of relying on default `CRYPTO` strings to avoid massive nominal fee calculations breaking fixed PnL assertions, as Crypto fee estimations scale with volatile volume.
 
 ## APIs & Integrations
 ### Alpaca
