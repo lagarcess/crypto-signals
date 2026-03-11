@@ -65,11 +65,61 @@ class AssetClass(str, Enum):
     EQUITY = "EQUITY"
 
 
-class AssetClassFee(float, Enum):
-    """Base taker fee percentages by asset class."""
+class AssetClassFee(Enum):
+    """
+    Taker fee percentage lookup by asset class.
+    Mirrors the structure of AssetClass for easy mapping.
+    """
 
-    CRYPTO = 0.0025  # Alpaca crypto taker fee (Tier 0)
-    EQUITY = 0.0  # Alpaca commission-free US equities
+    CRYPTO = 0.0025  # Standard crypto taker fee (e.g., Tier 0)
+    EQUITY = 0.00  # Standard US equity commissions are generally $0
+
+
+class QualityGateThresholds(BaseModel):
+    """
+    Quality gate thresholds used by the SignalGenerator to filter and score signals.
+    Empirically tuned differently across separate asset classes due to volatility differences.
+    """
+
+    base_volume_threshold: float = Field(
+        ..., description="Standard minimum volume ratio vs moving average"
+    )
+    relaxed_volume_threshold: float = Field(
+        ..., description="Relaxed volume ratio used when secondary conditions are met"
+    )
+    base_adx_threshold: float = Field(
+        ..., description="Standard ADX value for trend confirmation"
+    )
+    relaxed_adx_threshold: float = Field(
+        ..., description="Lower ADX threshold for high-conviction trend signals"
+    )
+    base_rr_threshold: float = Field(
+        ..., description="Standard minimum Risk:Reward ratio"
+    )
+    relaxed_rr_threshold: float = Field(
+        ..., description="Lower R:R minimum for highly convicted structural setups"
+    )
+
+
+# Default Tunings per Asset Class (Ref: Issue #376 - Quality Gate Threshold Audit)
+QUALITY_GATE_THRESHOLDS_BY_ASSET_CLASS = {
+    AssetClass.CRYPTO: QualityGateThresholds(
+        base_volume_threshold=1.5,
+        relaxed_volume_threshold=1.2,
+        base_adx_threshold=20.0,
+        relaxed_adx_threshold=15.0,
+        base_rr_threshold=1.5,
+        relaxed_rr_threshold=1.2,
+    ),
+    AssetClass.EQUITY: QualityGateThresholds(
+        base_volume_threshold=1.5,  # Phase 1: Matches crypto until further empirical tuning
+        relaxed_volume_threshold=1.2,
+        base_adx_threshold=20.0,
+        relaxed_adx_threshold=15.0,
+        base_rr_threshold=1.5,
+        relaxed_rr_threshold=1.2,
+    ),
+}
 
 
 class SignalStatus(str, Enum):

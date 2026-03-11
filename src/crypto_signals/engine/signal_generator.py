@@ -15,6 +15,7 @@ from crypto_signals.analysis.indicators import TechnicalIndicators
 from crypto_signals.analysis.patterns import PatternAnalyzer
 from crypto_signals.config import get_settings
 from crypto_signals.domain.schemas import (
+    QUALITY_GATE_THRESHOLDS_BY_ASSET_CLASS,
     AssetClass,
     ExitReason,
     OrderSide,
@@ -26,14 +27,6 @@ from crypto_signals.domain.schemas import (
 from crypto_signals.engine.parameters import SignalParameterFactory
 from crypto_signals.market.data_provider import MarketDataProvider
 from loguru import logger
-
-# Conviction-Aware Quality Gate Thresholds
-BASE_VOLUME_THRESHOLD = 1.5
-RELAXED_VOLUME_THRESHOLD = 1.2
-BASE_ADX_THRESHOLD = 20
-RELAXED_ADX_THRESHOLD = 15
-BASE_RR_THRESHOLD = 1.5
-RELAXED_RR_THRESHOLD = 1.2
 
 
 class SignalGenerator:
@@ -259,6 +252,9 @@ class SignalGenerator:
         geometric_pattern_name = None
 
         # Check patterns in order of priority (Highest Historical Success First)
+        # NOTE: Priority rankings based on crypto historical win rates.
+        # Equity win rates may differ; reassess after backtest data is available.
+        # See GitHub Issue "Quality Gate Threshold Audit" for equity threshold audit.
         if latest.get("inverse_head_shoulders"):
             geometric_pattern_name = "INVERSE_HEAD_SHOULDERS"  # 89%
         elif latest.get("bullish_kicker"):
@@ -347,13 +343,11 @@ class SignalGenerator:
         sma_trend = "Above" if close_price > sma_200 and sma_200 > 0 else "Below"
 
         # Conviction-aware thresholds (Phase 2)
-        volume_threshold = (
-            RELAXED_VOLUME_THRESHOLD
-            if conviction_tier == "HIGH"
-            else BASE_VOLUME_THRESHOLD
-        )
+        thresholds = QUALITY_GATE_THRESHOLDS_BY_ASSET_CLASS[asset_class]
         adx_threshold = (
-            RELAXED_ADX_THRESHOLD if conviction_tier == "HIGH" else BASE_ADX_THRESHOLD
+            thresholds.relaxed_adx_threshold
+            if conviction_tier == "HIGH"
+            else thresholds.base_adx_threshold
         )
 
         # Define pattern categories for targeted validation
@@ -378,16 +372,33 @@ class SignalGenerator:
         )
 
         # 1. VOLUME CONFIRMATION FILTER (Breakout patterns only)
+        # Conviction-aware thresholds (Phase 2)
+        volume_threshold = (
+            thresholds.relaxed_volume_threshold
+            if conviction_tier == "HIGH"
+            else thresholds.base_volume_threshold
+        )
         if pattern_name in breakout_patterns and volume_ratio < volume_threshold:
             rejection_reasons.append(f"Volume {volume_ratio:.1f}x < {volume_threshold}x")
 
         # 2. RSI OVERBOUGHT FILTER (Bullish patterns)
         # Reject if RSI > 70 (overbought) - reduces chasing extended moves
+        # NOTE: RSI overbought levels are standard across asset classes (70).
+        # See GitHub Issue "Quality Gate Threshold Audit" for equity threshold audit.
         if rsi_value > 70:
             rejection_reasons.append(f"RSI {rsi_value:.0f} > 70 (Overbought)")
 
         # 3. ADX WEAK TREND FILTER (Trend-following patterns only)
+        # Conviction-aware thresholds (Phase 2)
+        adx_threshold = (
+            thresholds.relaxed_adx_threshold
+            if conviction_tier == "HIGH"
+            else thresholds.base_adx_threshold
+        )
         # Reject if ADX below threshold - trend is too weak for trend-following setups
+        # NOTE: ADX trend strength threshold (25) is also standard.
+        # Current thresholds (20/15) are calibrated for crypto.
+        # See GitHub Issue "Quality Gate Threshold Audit" for equity threshold audit.
         if pattern_name in trend_following_patterns and adx_value < adx_threshold:
             rejection_reasons.append(
                 f"ADX {adx_value:.0f} < {adx_threshold} (Weak Trend)"
@@ -469,6 +480,7 @@ class SignalGenerator:
         suggested_stop = params.get("suggested_stop")
         take_profit_1 = params.get("take_profit_1")
         entry_ref = params.get("entry_price")
+        asset_class = params.get("asset_class", AssetClass.CRYPTO)
 
         # 1. Negative Stop Loss
         if suggested_stop is None or suggested_stop <= 0:
@@ -494,10 +506,13 @@ class SignalGenerator:
                 if confluence_snapshot:
                     confluence_snapshot["rr_ratio"] = round(rr_ratio, 2)
 
+                # Load dynamic asset-class thresholds
+                thresholds = QUALITY_GATE_THRESHOLDS_BY_ASSET_CLASS[asset_class]
+
                 rr_threshold = (
-                    RELAXED_RR_THRESHOLD
+                    thresholds.relaxed_rr_threshold
                     if conviction_tier == "HIGH"
-                    else BASE_RR_THRESHOLD
+                    else thresholds.base_rr_threshold
                 )
                 if rr_ratio < rr_threshold:
                     rejection_reasons.append(f"R:R {rr_ratio:.1f} < {rr_threshold}")
