@@ -88,6 +88,13 @@ def test_calculate_hash(pipeline):
 
     assert hash1 != hash3
 
+    # Different pattern_name
+    config4 = config1.copy()
+    config4["pattern_name"] = "new_pattern"
+    hash4 = pipeline._calculate_hash(config4)
+
+    assert hash1 != hash4
+
 
 def test_extract_no_changes(pipeline, mock_bq, mock_repo):
     """Test extract when there are no changes."""
@@ -105,6 +112,7 @@ def test_extract_no_changes(pipeline, mock_bq, mock_repo):
         asset_class="CRYPTO",
         assets=["BTC/USD"],
         risk_params={"stop": 0.02},
+        pattern_name=None,
     )
     mock_repo.get_all_strategies.return_value = [strat_1]
 
@@ -128,6 +136,7 @@ def test_extract_new_strategy(pipeline, mock_bq, mock_repo):
         asset_class="CRYPTO",
         assets=["BTC/USD"],
         risk_params={"stop": 0.02},
+        pattern_name="bullish_engulfing",
     )
     mock_repo.get_all_strategies.return_value = [strat_new]
 
@@ -135,6 +144,7 @@ def test_extract_new_strategy(pipeline, mock_bq, mock_repo):
 
     assert len(result) == 1
     assert result[0]["strategy_id"] == "strat_new"
+    assert result[0]["pattern_name"] == "bullish_engulfing"
     assert result[0]["is_current"] is True
     assert result[0]["valid_to"] is None
 
@@ -155,6 +165,7 @@ def test_extract_changed_strategy(pipeline, mock_bq, mock_repo):
         asset_class="CRYPTO",
         assets=["BTC/USD"],
         risk_params={"stop": 0.05},  # Changed
+        pattern_name=None,
     )
     mock_repo.get_all_strategies.return_value = [strat_1]
 
@@ -186,4 +197,5 @@ def test_merge_via_temp_table(pipeline, mock_bq):
 
     assert "UPDATE `test-project.crypto_analytics.dim_strategies` AS T" in query
     assert "INSERT INTO `test-project.crypto_analytics.dim_strategies`" in query
+    assert "pattern_name" in query
     assert "FROM `_stg_strategy_sync_0` AS S" in query
