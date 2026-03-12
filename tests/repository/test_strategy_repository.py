@@ -88,7 +88,10 @@ def test_get_active_strategy_configs(repo, mock_firestore):
         "assets": ["AAPL"],
     }
 
-    mock_firestore.collection.return_value.stream.return_value = [doc1, doc2]
+    mock_query = MagicMock()
+    # Mocking the result of the `where` filter which would only return doc1
+    mock_query.stream.return_value = [doc1]
+    mock_firestore.collection.return_value.where.return_value = mock_query
 
     results = repo.get_active_strategy_configs()
 
