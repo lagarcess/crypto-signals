@@ -117,6 +117,7 @@ def test_trade_archival_orchestration_flow():
         job_config = last_call[1]["job_config"]
         json_data = job_config.query_parameters[0].value
         import json
+
         rows = json.loads(json_data)
         row = rows[0]
 

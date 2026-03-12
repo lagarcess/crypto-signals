@@ -15,9 +15,14 @@ from typing import Any, Callable, Optional, Protocol, cast
 
 import typer
 from alpaca.common.exceptions import APIError
-from google.api_core.exceptions import PermissionDenied, Unauthenticated
+from google.api_core.exceptions import (
+    GoogleAPICallError,
+    PermissionDenied,
+    Unauthenticated,
+)
 from google.auth.exceptions import DefaultCredentialsError
 from loguru import logger
+from pydantic import ValidationError
 
 from crypto_signals.analysis.structural import warmup_jit
 from crypto_signals.config import (
@@ -303,10 +308,17 @@ def main(
 
             # Load strategies for injection into SignalGenerator
             strategy_repo = StrategyRepository()
-            strategy_configs = strategy_repo.get_all_strategies()
+            try:
+                active_configs = strategy_repo.get_active_strategy_configs()
+            except (GoogleAPICallError, ValidationError) as e:
+                logger.warning(
+                    "Failed to load strategy configs. UUID injection disabled.",
+                    extra={"error": str(e)},
+                )
+                active_configs = []
 
             generator = SignalGenerator(
-                market_provider=market_provider, strategy_configs=strategy_configs
+                market_provider=market_provider, strategy_configs=active_configs
             )
             repo = SignalRepository()
             position_repo = PositionRepository()

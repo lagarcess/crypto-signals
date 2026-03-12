@@ -132,10 +132,12 @@ def test_merge_via_temp_table_executes_queries(pipeline, mock_bq_client):
     assert "_stg_test_pipeline_0" in called_sql
 
     # Check for structural SQL assertion as requested
-    assert "CREATE TEMP TABLE" in called_sql, \
-        f"Expected CREATE TEMP TABLE in SQL, got: {called_sql[:200]}"
-    assert "MERGE" in called_sql, \
-        f"Expected MERGE statement in SQL, got: {called_sql[:200]}"
+    assert (
+        "CREATE TEMP TABLE" in called_sql
+    ), f"Expected CREATE TEMP TABLE in SQL, got: {called_sql[:200]}"
+    assert (
+        "MERGE" in called_sql
+    ), f"Expected MERGE statement in SQL, got: {called_sql[:200]}"
 
 
 def test_run_orchestrates_flow(pipeline):

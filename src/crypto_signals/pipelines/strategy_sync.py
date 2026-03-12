@@ -46,7 +46,9 @@ class StrategySyncPipeline(BigQueryPipelineBase):
             partition_column="valid_from",  # Used for partitioning if applicable
             schema_model=StagingStrategy,
         )
-        self.fact_table_id = f"{self.settings.GOOGLE_CLOUD_PROJECT}.crypto_analytics.dim_strategies"
+        self.fact_table_id = (
+            f"{self.settings.GOOGLE_CLOUD_PROJECT}.crypto_analytics.dim_strategies"
+        )
         self.repository = StrategyRepository()
 
     def _calculate_hash(self, config_data: Dict[str, Any]) -> str:
