@@ -1,6 +1,6 @@
 """Unit tests for the ExecutionEngine module."""
 
-from datetime import date
+from datetime import date, datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -8,7 +8,10 @@ from alpaca.trading.enums import OrderClass
 from alpaca.trading.enums import OrderSide as AlpacaOrderSide
 from crypto_signals.domain.schemas import (
     AssetClass,
+    ExitReason,
     OrderSide,
+    TradeStatus,
+    TradeType,
 )
 from crypto_signals.engine.execution import ExecutionEngine
 
@@ -638,7 +641,6 @@ class TestSyncPositionStatus:
         mock_order.id = "parent-order-123"
         mock_order.status = "filled"
         # Use real datetime objects, not strings, as expected by calculation logic
-        from datetime import datetime, timezone
 
         mock_order.filled_at = datetime(2025, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
         mock_order.filled_avg_price = "50100.0"
@@ -666,7 +668,6 @@ class TestSyncPositionStatus:
         self, execution_engine, mock_trading_client
     ):
         """Verify position marked CLOSED when TP order is filled."""
-        from crypto_signals.domain.schemas import TradeStatus
 
         # Arrange
         mock_parent = MagicMock()
@@ -707,9 +708,6 @@ class TestSyncPositionStatus:
         self, execution_engine, mock_trading_client
     ):
         """Verify exit_fill_price is captured when TP order is filled."""
-        from datetime import datetime, timezone
-
-        from crypto_signals.domain.schemas import TradeStatus
 
         # Arrange
         mock_parent = MagicMock()
@@ -756,9 +754,6 @@ class TestSyncPositionStatus:
         self, execution_engine, mock_trading_client
     ):
         """Verify exit_fill_price is captured when SL order is filled."""
-        from datetime import datetime, timezone
-
-        from crypto_signals.domain.schemas import TradeStatus
 
         # Arrange
         mock_parent = MagicMock()
@@ -811,9 +806,6 @@ class TestSyncPositionStatus:
         self, execution_engine, mock_trading_client
     ):
         """Verify position marked CLOSED (Manual Exit) when not found on Alpaca."""
-        from datetime import datetime, timezone
-
-        from crypto_signals.domain.schemas import ExitReason, TradeStatus
 
         # Arrange
         mock_parent = MagicMock()
@@ -868,6 +860,66 @@ class TestSyncPositionStatus:
         ), "Exit time mismatch"
 
         mock_reconciler.handle_manual_exit_verification.assert_called_once_with(position)
+
+    @pytest.mark.parametrize(
+        "status",
+        [
+            pytest.param("accepted", id="queued_accepted"),
+            pytest.param("pending_new", id="queued_pending"),
+            pytest.param("new", id="queued_new"),
+        ],
+    )
+    def test_sync_handles_queued_statuses(
+        self, execution_engine, mock_trading_client, status
+    ):
+        """Verify that queued order statuses produce an INFO log and stay OPEN."""
+        # Arrange
+        mock_order = MagicMock()
+        mock_order.status = status
+        mock_order.id = "queued-order-id"
+        mock_trading_client.get_order_by_id.return_value = mock_order
+
+        # Position is initially OPEN with no fill data
+        position = PositionFactory.build(
+            position_id="queued-pos-123",
+            symbol="AAPL",
+            alpaca_order_id="queued-order-id",
+            status=TradeStatus.OPEN,
+            entry_fill_price=100.0,  # Pre-existing value
+            filled_at=None,
+            created_at=datetime(
+                2025, 1, 15, 12, 0, 0, tzinfo=timezone.utc
+            ),  # Fixed timestamp to skip manual exit check
+        )
+
+        # Mock get_open_position to return 404 (no position yet for queued order)
+        mock_trading_client.get_open_position.side_effect = Exception(
+            "position not found (404)"
+        )
+
+        # Act
+        with patch("crypto_signals.engine.execution.logger") as mock_logger:
+            updated = execution_engine.sync_position_status(position)
+
+        # Assert
+        assert (
+            updated.status == TradeStatus.OPEN
+        ), f"Expected OPEN for queued order status={status}, got {updated.status}"
+
+        # Ensure no fill data was updated (it should remain as it was)
+        assert updated.entry_fill_price == 100.0
+        assert updated.filled_at is None
+
+        # Verify informational log
+        mock_logger.info.assert_called_with(
+            f"Position {position.position_id} order still queued "
+            f"(status: {status}). Will sync on next cycle after fill.",
+            extra={
+                "symbol": position.symbol,
+                "order_status": status,
+                "position_id": position.position_id,
+            },
+        )
 
 
 class TestModifyStopLoss:
@@ -932,7 +984,6 @@ class TestClosePositionEmergency:
         self, execution_engine, mock_trading_client
     ):
         """Verify all legs are canceled and market close order submitted."""
-        from crypto_signals.domain.schemas import TradeStatus
 
         # Arrange
         mock_close_order = MagicMock()
@@ -963,7 +1014,6 @@ class TestClosePositionEmergency:
         self, execution_engine, mock_trading_client
     ):
         """Verify exit_order_id and exit_reason are captured during emergency close."""
-        from crypto_signals.domain.schemas import ExitReason, TradeStatus
 
         # Arrange
         mock_close_order = MagicMock()
@@ -1003,11 +1053,6 @@ class TestClosePositionEmergency:
 
     def test_emergency_close_theoretical_trade(self, execution_engine):
         """Verify emergency close for theoretical trades."""
-        from crypto_signals.domain.schemas import (
-            ExitReason,
-            TradeStatus,
-            TradeType,
-        )
 
         # Arrange
         position = PositionFactory.build(
