@@ -61,6 +61,9 @@ class _ActivityWrapper:
 # Age guard for manual exit verification to prevent race conditions on newly opened positions
 _MANUAL_EXIT_VERIFICATION_MIN_AGE_MINUTES = 5
 
+# Statuses indicating an order has been received by Alpaca but not yet filled/canceled
+_QUEUED_ORDER_STATUSES = {"accepted", "pending_new", "new"}
+
 
 class ExecutionEngine:
     """
@@ -1020,7 +1023,7 @@ class ExecutionEngine:
                 )
                 position.status = TradeStatus.CLOSED
 
-            elif order_status in ("accepted", "pending_new", "new"):
+            elif order_status in _QUEUED_ORDER_STATUSES:
                 logger.info(
                     f"Position {position.position_id} order still queued "
                     f"(status: {order_status}). Will sync on next cycle after fill.",
