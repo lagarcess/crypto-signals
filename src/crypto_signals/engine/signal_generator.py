@@ -54,7 +54,7 @@ class SignalGenerator:
         self.indicators = indicators or TechnicalIndicators()
         self.pattern_analyzer_cls = pattern_analyzer_cls
         self.parameter_factory = SignalParameterFactory()
-        self.strategy_configs = strategy_configs or []
+        self._strategy_configs = strategy_configs or []
 
         if signal_repo:
             self.signal_repo = signal_repo
@@ -87,7 +87,7 @@ class SignalGenerator:
         Returns:
             The unique active StrategyConfig for this asset, or None.
         """
-        for cfg in self.strategy_configs:
+        for cfg in self._strategy_configs:
             # 1. SCD constraint: Must be the 'current' active record
             if not cfg.active:
                 continue

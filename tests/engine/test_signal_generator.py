@@ -932,7 +932,7 @@ def test_resolve_strategy_config(signal_generator):
         asset_class=AssetClass.CRYPTO,
         assets=["BTC/USD", "ETH/USD"],
     )
-    signal_generator.strategy_configs = [inactive_cfg, active_cfg]
+    signal_generator._strategy_configs = [inactive_cfg, active_cfg]
 
     # 1. Active config found for matching asset
     resolved = signal_generator._resolve_strategy_config(
@@ -953,7 +953,7 @@ def test_resolve_strategy_config(signal_generator):
     assert resolved is None, f"Expected None for EQUITY, got {resolved}"
 
     # 4. No match when only inactive configs exist
-    signal_generator.strategy_configs = [inactive_cfg]
+    signal_generator._strategy_configs = [inactive_cfg]
     resolved = signal_generator._resolve_strategy_config(
         "BTC/USD", AssetClass.CRYPTO, "BULLISH_ENGULFING"
     )

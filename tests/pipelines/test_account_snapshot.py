@@ -250,6 +250,7 @@ def test_drawdown_zero_equity(pipeline):
 def test_pipeline_run_validates_schema(pipeline):
     """Test that run() calls validation and merge."""
     from datetime import date
+
     with (
         patch.object(pipeline, "extract") as mock_ext,
         patch.object(pipeline, "transform") as mock_trans,
@@ -260,14 +261,16 @@ def test_pipeline_run_validates_schema(pipeline):
     ):
         mock_ext.return_value = ["raw"]
         # Must return valid model dicts for base class run() validation
-        mock_trans.return_value = [{
-            "ds": date(2024, 1, 1),
-            "account_id": "acc_123",
-            "equity": 100.0,
-            "cash": 100.0,
-            "calmar_ratio": 1.0,
-            "drawdown_pct": 0.0
-        }]
+        mock_trans.return_value = [
+            {
+                "ds": date(2024, 1, 1),
+                "account_id": "acc_123",
+                "equity": 100.0,
+                "cash": 100.0,
+                "calmar_ratio": 1.0,
+                "drawdown_pct": 0.0,
+            }
+        ]
 
         pipeline.run()
 

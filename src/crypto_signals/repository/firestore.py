@@ -866,3 +866,21 @@ class StrategyRepository:
         doc_ref = self.db.collection(self.collection_name).document(strategy.strategy_id)
         doc_ref.set(strategy.model_dump(mode="json"))
         logger.info(f"Saved strategy config: {strategy.strategy_id}")
+
+    def get_active_strategy_configs(self) -> list[StrategyConfig]:
+        """Returns only active=True strategies from Firestore."""
+        logger.info(f"Fetching active strategies from {self.collection_name}")
+        query = self.db.collection(self.collection_name).where(
+            filter=FieldFilter("active", "==", True)
+        )
+        strategies = []
+        for doc in query.stream():
+            data = doc.to_dict()
+            if "strategy_id" not in data:
+                data["strategy_id"] = doc.id
+            try:
+                strategies.append(StrategyConfig(**data))
+            except ValidationError as e:
+                log_validation_error(doc.id, e)
+                logger.warning(f"Skipping invalid strategy config: {doc.id}")
+        return strategies
