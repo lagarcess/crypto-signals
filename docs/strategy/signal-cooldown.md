@@ -72,7 +72,7 @@ Collection: live_signals (and test_signals)
 Fields:
   - symbol (ASCENDING)
   - status (ASCENDING)
-  - timestamp (DESCENDING)
+  - exit_time (DESCENDING)
 ```
 
 ### Dependency Injection

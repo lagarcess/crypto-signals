@@ -506,6 +506,10 @@ class Signal(BaseModel):
         default=None,
         description="UTC timestamp when signal was created. Used for skip-on-creation cooldown in check_exits.",
     )
+    exit_time: Optional[datetime] = Field(
+        default=None,
+        description="UTC timestamp when signal reached a terminal state (TP3_HIT, INVALIDATED).",
+    )
     # === Trade Lifecycle Classification (Issue 107) ===
     trade_type: Optional[str] = Field(
         default="EXECUTED",

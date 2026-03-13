@@ -742,7 +742,9 @@ class SignalGenerator:
         signal.confluence_snapshot = confluence_snapshot
 
         # Rejected signals have shorter TTL (24 hours) - for operational audit only (Staff Review P4)
-        signal.delete_at = datetime.now(timezone.utc) + timedelta(hours=24)
+        now = datetime.now(timezone.utc)
+        signal.delete_at = now + timedelta(hours=24)
+        signal.exit_time = now
 
         return signal
 
@@ -950,6 +952,7 @@ class SignalGenerator:
                 else:
                     signal.status = SignalStatus.INVALIDATED
                     signal.exit_reason = ExitReason.STOP_LOSS
+
                 exit_triggered = True
 
             # 2. Check TP2
@@ -1032,6 +1035,9 @@ class SignalGenerator:
                 f"End of loop: exit_triggered={exit_triggered}, trail_updated={trail_updated}"
             )
             if exit_triggered:
+                # Set exit_time for cooldown tracking (Issue #117)
+                signal.exit_time = now_utc
+
                 # Log signal age at exit for Issue 99 debugging
                 if signal.created_at:
                     system_age_hours = (

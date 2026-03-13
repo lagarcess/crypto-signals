@@ -62,8 +62,6 @@ class JobLockRepository:
                 if expire_at:
                     if expire_at > now:
                         return False  # Lock still valid
-
-            # Create or overwrite lock
             new_expiry = now + timedelta(minutes=ttl_minutes)
             transaction.set(
                 doc_ref,
@@ -221,23 +219,20 @@ class SignalRepository:
             )
             return False
 
-    def cleanup_expired(self, retention_days: int = 7) -> int:
-        """Delete signals older than a specified number of days based on creation time.
-
-        Args:
-            retention_days: The number of days to keep signals for.
+    def cleanup_expired(self) -> int:
+        """Delete signals that have reached their physical expiration (delete_at).
 
         Returns:
             The number of deleted signals.
         """
-        cutoff_date = datetime.now(timezone.utc) - timedelta(days=retention_days)
+        now = datetime.now(timezone.utc)
 
         logger.info(
-            f"Cleaning up signals in '{self.collection_name}' created before {cutoff_date}"
+            f"Cleaning up signals in '{self.collection_name}' that expired before {now}"
         )
 
         query = self.db.collection(self.collection_name).where(
-            filter=FieldFilter("timestamp", "<", cutoff_date)
+            filter=FieldFilter("delete_at", "<", now)
         )
 
         # Batch delete for efficiency
@@ -249,7 +244,7 @@ class SignalRepository:
             count += 1
 
             # Firestore batch limit is 500 operations
-            if count >= 400:
+            if count % 400 == 0:
                 batch.commit()
                 batch = self.db.batch()
                 logger.info(f"Deleted {count} expired signals (batch)")
@@ -280,7 +275,7 @@ class SignalRepository:
             count += 1
 
             # Firestore batch limit is 500 operations
-            if count >= 400:
+            if count % 400 == 0:
                 batch.commit()
                 batch = self.db.batch()
                 logger.info(f"Flushed {count} signals (batch)")
@@ -335,8 +330,8 @@ class SignalRepository:
             self.db.collection(self.collection_name)
             .where(filter=FieldFilter("symbol", "==", symbol))
             .where(filter=FieldFilter("status", "in", [s.value for s in exit_statuses]))
-            .where(filter=FieldFilter("timestamp", ">=", cutoff_time))
-            .order_by("timestamp", direction=firestore.Query.DESCENDING)
+            .where(filter=FieldFilter("exit_time", ">=", cutoff_time))
+            .order_by("exit_time", direction=firestore.Query.DESCENDING)
             .limit(1)
         )
 
@@ -452,11 +447,11 @@ class RejectedSignalRepository:
 
         return stats
 
-    def cleanup_expired(self, retention_days: int = 7) -> int:
-        """Delete expired rejected signals. Returns count deleted."""
-        cutoff_date = datetime.now(timezone.utc) - timedelta(days=retention_days)
+    def cleanup_expired(self) -> int:
+        """Delete expired rejected signals based on delete_at. Returns count deleted."""
+        now = datetime.now(timezone.utc)
         query = self.db.collection(self.collection_name).where(
-            filter=FieldFilter("rejected_at", "<", cutoff_date)
+            filter=FieldFilter("delete_at", "<", now)
         )
 
         batch = self.db.batch()
@@ -466,7 +461,7 @@ class RejectedSignalRepository:
             batch.delete(doc.reference)
             count += 1
 
-            if count >= 400:
+            if count % 400 == 0:
                 batch.commit()
                 batch = self.db.batch()
 
@@ -495,7 +490,7 @@ class RejectedSignalRepository:
             batch.delete(doc.reference)
             count += 1
 
-            if count >= 400:
+            if count % 400 == 0:
                 batch.commit()
                 batch = self.db.batch()
 
@@ -709,13 +704,13 @@ class PositionRepository:
 
         return results
 
-    def cleanup_expired(self, retention_days: int = 30) -> int:
-        """Delete positions past their TTL. Returns count deleted."""
-        cutoff_date = datetime.now(timezone.utc) - timedelta(days=retention_days)
-        logger.info(f"Cleaning up positions with created_at before {cutoff_date}")
+    def cleanup_expired(self) -> int:
+        """Delete positions past their TTL (delete_at). Returns count deleted."""
+        now = datetime.now(timezone.utc)
+        logger.info(f"Cleaning up positions that expired before {now}")
 
         query = self.db.collection(self.collection_name).where(
-            filter=FieldFilter("created_at", "<", cutoff_date)
+            filter=FieldFilter("delete_at", "<", now)
         )
 
         batch = self.db.batch()
@@ -725,7 +720,7 @@ class PositionRepository:
             batch.delete(doc.reference)
             count += 1
 
-            if count >= 400:
+            if count % 400 == 0:
                 batch.commit()
                 batch = self.db.batch()
 
@@ -754,7 +749,7 @@ class PositionRepository:
             batch.delete(doc.reference)
             count += 1
 
-            if count >= 400:
+            if count % 400 == 0:
                 batch.commit()
                 batch = self.db.batch()
 

@@ -29,16 +29,17 @@ def test_cleanup_expired_signals(
     signal_repository: SignalRepository, mock_firestore_client: MagicMock
 ):
     """
-    Test that cleanup_expired correctly deletes signals older than the retention period.
+    Test that cleanup_expired correctly deletes signals that have passed their delete_at time.
     """
     # Arrange
     now = datetime.now(timezone.utc)
-    old_signal_timestamp = now - timedelta(days=10)
+    expired_date = now - timedelta(hours=1)
 
     class SignalFactory(ModelFactory[Signal]):
         __model__ = Signal
 
-    old_signal = SignalFactory.build(timestamp=old_signal_timestamp)
+    # Create a signal that is already expired
+    old_signal = SignalFactory.build(delete_at=expired_date)
 
     # Mock the query and stream results
     mock_query = MagicMock(spec=BaseQuery)
@@ -52,7 +53,7 @@ def test_cleanup_expired_signals(
     mock_query.stream.return_value = [mock_old_doc]
 
     # Act
-    deleted_count = signal_repository.cleanup_expired(retention_days=7)
+    deleted_count = signal_repository.cleanup_expired()
 
     # Assert
     assert deleted_count == 1
@@ -61,12 +62,12 @@ def test_cleanup_expired_signals(
     signal_repository.db.batch().delete.assert_called_with(mock_old_doc.reference)
     signal_repository.db.batch().commit.assert_called()
 
-    # Verify the query was made with the correct cutoff date
-    cutoff_date = now - timedelta(days=7)
+    # Verify the query was made with the correct cutoff date (now)
     mock_firestore_client.collection.return_value.where.assert_called_once()
-    # Get the actual call arguments to the 'where' method
     call_args = mock_firestore_client.collection.return_value.where.call_args
-    # Check that the cutoff date is approximately correct
     assert "filter" in call_args.kwargs
     firestore_filter = call_args.kwargs["filter"]
-    assert firestore_filter.value.date() == cutoff_date.date()
+    assert firestore_filter.field_path == "delete_at"
+    assert firestore_filter.op_string == "<"
+    # The value should be close to 'now'
+    assert abs((firestore_filter.value - now).total_seconds()) < 10
