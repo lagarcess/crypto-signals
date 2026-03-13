@@ -953,8 +953,6 @@ class SignalGenerator:
                     signal.status = SignalStatus.INVALIDATED
                     signal.exit_reason = ExitReason.STOP_LOSS
 
-                # Set exit_time for cooldown tracking (Issue #117)
-                signal.exit_time = datetime.now(timezone.utc)
                 exit_triggered = True
 
             # 2. Check TP2
