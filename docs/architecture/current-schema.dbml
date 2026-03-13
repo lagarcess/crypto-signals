@@ -52,6 +52,7 @@ Table live_signals [headercolor: #e06666] {
   structural_context varchar [note: 'Active harmonic/structural regime: ELLIOTT_WAVE...']
   conviction_tier varchar [note: 'Signal conviction: HIGH (tactical+structural), ...']
   created_at timestamp [note: 'UTC timestamp when signal was created. Used for...']
+  exit_time timestamp [note: 'UTC timestamp when signal reached a terminal st...']
   trade_type varchar [note: 'Trade classification: EXECUTED (broker order fi...']
   Note: 'Ephemeral opportunities.'
 }
