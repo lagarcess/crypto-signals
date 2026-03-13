@@ -584,17 +584,17 @@ class TestGetMostRecentExit:
         repo = SignalRepository()
         repo.get_most_recent_exit(symbol="BTC/USD", hours=24)
 
-        # Verify where was called with timestamp filter
-        called_with_timestamp = False
+        # Verify where was called with exit_time filter
+        called_with_exit_time = False
         for call in mock_query.where.call_args_list:
-            if len(call[0]) >= 2 and call[0][0] == "timestamp":
-                called_with_timestamp = True
+            if len(call[0]) >= 2 and call[0][0] == "exit_time":
+                called_with_exit_time = True
                 break
             # Check for FieldFilter
             if "filter" in call.kwargs:
                 field_filter = call.kwargs["filter"]
-                if getattr(field_filter, "field_path", "") == "timestamp":
-                    called_with_timestamp = True
+                if getattr(field_filter, "field_path", "") == "exit_time":
+                    called_with_exit_time = True
                     break
 
-        assert called_with_timestamp, "Query should filter by timestamp >= cutoff_time"
+        assert called_with_exit_time, "Query should filter by exit_time >= cutoff_time"
