@@ -34,6 +34,7 @@ class StrategySyncPipeline(BigQueryPipelineBase):
         "risk_params",
         "confluence_config",
         "pattern_overrides",
+        "pattern_name",
     ]
 
     def __init__(self):
@@ -141,6 +142,7 @@ class StrategySyncPipeline(BigQueryPipelineBase):
                         "pattern_overrides": json.dumps(
                             data.get("pattern_overrides", {}), sort_keys=True, default=str
                         ),
+                        "pattern_name": data.get("pattern_name"),
                         "config_hash": config_hash,
                         "valid_from": now,
                         "valid_to": None,
@@ -185,9 +187,9 @@ class StrategySyncPipeline(BigQueryPipelineBase):
         # 2. Insert new records
         insert_query = f"""
             INSERT INTO `{self.fact_table_id}`
-            (strategy_id, active, timeframe, asset_class, assets, risk_params, confluence_config, pattern_overrides, config_hash, valid_from, valid_to, is_current)
+            (strategy_id, active, timeframe, asset_class, assets, risk_params, confluence_config, pattern_overrides, pattern_name, config_hash, valid_from, valid_to, is_current)
             SELECT
-                strategy_id, active, timeframe, asset_class, assets, risk_params, confluence_config, pattern_overrides, config_hash, valid_from, valid_to, is_current
+                strategy_id, active, timeframe, asset_class, assets, risk_params, confluence_config, pattern_overrides, pattern_name, config_hash, valid_from, valid_to, is_current
             FROM `{source_table_id}`;
         """
 

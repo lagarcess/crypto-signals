@@ -221,3 +221,31 @@ Financial APIs guarantee latency on fills, but do not guarantee synchronicity on
 
 **Trade-offs:**
 - BigQuery analytic queries run at T+0 might show $0.00 fees until the T+1 patch successfully merges.
+
+---
+
+## 5. Backward-Compatible Strategy Normalization
+
+### 5.1. The strategy_id UUID Bridge (Issue #365)
+**Problem:**
+After the migration to UUID `strategy_id` values (Issues #363 and #364), historical rows in `fact_trades` (which use pattern-name strings like `"BULLISH_ENGULFING"`) will no longer match the new UUID-based `dim_strategies` in JOIN operations. This causes historical performance data to "vanish" from dashboards.
+
+**Solution:**
+Implement a backward-compatibility bridge via a BigQuery View, `vw_fact_trades`. This view uses a `COALESCE` logic to map legacy pattern-name `strategy_id` values to their corresponding UUIDs by looking up the newly added `pattern_name` column in `dim_strategies`.
+
+**Artifacts:**
+- **`dim_strategies.pattern_name`**: A new column in the dimension table storing the human-readable pattern name associated with the strategy.
+- **`vw_fact_trades`**: The primary analytical view for all trade-related dashboards.
+
+```sql
+-- Logic overview
+COALESCE(
+    d_direct.strategy_id, -- If strategy_id is already a UUID match, use it
+    d_by_name.strategy_id, -- Otherwise look up by pattern_name in dim_strategies
+    t.strategy_id -- Ultimate fallback: keep the raw value
+) AS strategy_id_normalized
+```
+
+**Benefits:**
+- Restores 100% of historical trend data immediately upon deployment of UUID strategies.
+- Transparent to downstream BI tools (Looker/Tableau); they simply query the view instead of the raw table.

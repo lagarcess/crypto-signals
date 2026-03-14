@@ -330,6 +330,10 @@ class StrategyConfig(BaseModel):
         default_factory=dict,
         description="Overrides for specific patterns (e.g. {bullish_engulfing: {priority: 1}})",
     )
+    pattern_name: Optional[str] = Field(
+        default=None,
+        description="Human-readable name of the primary pattern (for backward compatibility normalization)",
+    )
 
 
 # =============================================================================
@@ -1357,4 +1361,8 @@ class StagingStrategy(BaseModel):
     is_current: bool = Field(
         default=True,
         description="SCD2: Flag for current record",
+    )
+    pattern_name: Optional[str] = Field(
+        default=None,
+        description="Human-readable name of the primary pattern (for backward compatibility normalization)",
     )
