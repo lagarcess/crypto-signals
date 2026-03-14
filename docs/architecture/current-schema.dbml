@@ -16,6 +16,7 @@ Table dim_strategies [headercolor: #ff9900] {
   risk_params json [note: 'Risk management parameters (stop_loss_pct, take...']
   confluence_config varchar [note: 'Configuration for confluence factors (e.g. {rsi...']
   pattern_overrides json [note: 'Overrides for specific patterns (e.g. {bullish_...']
+  pattern_name varchar [note: 'Human-readable name of the primary pattern (for...']
   Note: 'Config table. Defines trading rules.'
 }
 // END_GENERATED
