@@ -18,6 +18,15 @@ from tests.factories import PositionFactory
 
 
 @pytest.fixture
+def mock_signal_repo():
+    """Fixture for mocking SignalRepository."""
+    mock = MagicMock()
+    # Default to returning None to avoid healing in basic tests
+    mock.get_by_id.return_value = None
+    return mock
+
+
+@pytest.fixture
 def mock_trading_client():
     """Fixture for mocking TradingClient."""
     return MagicMock()
@@ -69,7 +78,11 @@ def sample_alpaca_position():
 
 @pytest.fixture
 def reconciler(
-    mock_trading_client, mock_position_repo, mock_notification_service, mock_settings
+    mock_trading_client,
+    mock_position_repo,
+    mock_notification_service,
+    mock_settings,
+    mock_signal_repo,
 ):
     """Create a StateReconciler with injected mock dependencies."""
     return StateReconciler(
@@ -77,6 +90,7 @@ def reconciler(
         position_repo=mock_position_repo,
         notification_service=mock_notification_service,
         settings=mock_settings,
+        signal_repo=mock_signal_repo,
     )
 
 

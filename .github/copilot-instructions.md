@@ -144,7 +144,7 @@ Firestore fields configured with auto-delete policies:
 Always use atomic updates for state changes:
 
 ```python
-repo.update_signal_atomic(signal_id, {"status": SignalStatus.CONFIRMED})
+repo.update_signal_atomic(signal_id, {"status": SignalStatus.ACTIVE})
 ```
 
 ### Idempotency Guarantees
@@ -168,7 +168,7 @@ Patterns are enum-style (21 candlestick + 7 structural = 28 total):
 
 ### Signal Status Lifecycle
 
-`CREATED` → `WAITING` → `CONFIRMED` → (`TP1_HIT` | `TP2_HIT` | `TP3_HIT` | `INVALIDATED` | `EXPIRED`)
+`CREATED` → `WAITING` → `ACTIVE` → (`TP1_HIT` | `TP2_HIT` | `TP3_HIT` | `INVALIDATED` | `EXPIRED`)
 
 ### Position Status Lifecycle
 
