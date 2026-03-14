@@ -240,9 +240,9 @@ Implement a backward-compatibility bridge via a BigQuery View, `vw_fact_trades`.
 ```sql
 -- Logic overview
 COALESCE(
-    CASE WHEN d_direct.strategy_id IS NOT NULL THEN t.strategy_id ELSE NULL END,
-    d_by_name.strategy_id,
-    t.strategy_id
+    d_direct.strategy_id, -- If strategy_id is already a UUID match, use it
+    d_by_name.strategy_id, -- Otherwise look up by pattern_name in dim_strategies
+    t.strategy_id -- Ultimate fallback: keep the raw value
 ) AS strategy_id_normalized
 ```
 
