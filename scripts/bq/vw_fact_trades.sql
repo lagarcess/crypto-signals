@@ -8,7 +8,7 @@ SELECT
     t.*,
     COALESCE(
         -- If strategy_id is already a UUID match, use it
-        CASE WHEN d_direct.strategy_id IS NOT NULL THEN t.strategy_id ELSE NULL END,
+        d_direct.strategy_id,
         -- Otherwise look up by pattern_name in dim_strategies
         d_by_name.strategy_id,
         -- Ultimate fallback: keep the raw value
