@@ -38,6 +38,7 @@ from crypto_signals.domain.schemas import (
     NotificationPayload,
     SignalStatus,
     TradeStatus,
+    TradeType,
 )
 from crypto_signals.engine.execution import ExecutionEngine
 from crypto_signals.engine.reconciler import StateReconciler
@@ -330,6 +331,7 @@ def main(
                 position_repo=position_repo,
                 notification_service=ReconcilerNotificationService(discord),
                 settings=settings,
+                signal_repo=repo,
             )
             execution_engine = ExecutionEngine(
                 reconciler=reconciler, market_provider=market_provider
@@ -631,7 +633,25 @@ def main(
                             and sig.valid_until
                             and now_utc > sig.valid_until
                         ):
-                            expired_signals.append(sig)
+                            # TIER 3: Safety-First Reaper
+                            # Ignore WAITING signals if an OPEN position already exists
+                            # This prevents 24h expiration logic from killing active trades
+                            existing_pos = position_repo.get_position_by_signal(
+                                sig.signal_id
+                            )
+                            if existing_pos and existing_pos.status == TradeStatus.OPEN:
+                                logger.warning(
+                                    f"REAPER GUARD: Skipping expiration for {symbol} "
+                                    f"({sig.signal_id}) - OPEN position detected.",
+                                    extra={
+                                        "symbol": symbol,
+                                        "signal_id": sig.signal_id,
+                                        "position_id": existing_pos.position_id,
+                                    },
+                                )
+                                valid_active_signals.append(sig)
+                            else:
+                                expired_signals.append(sig)
                         else:
                             valid_active_signals.append(sig)
 
@@ -1316,6 +1336,22 @@ def main(
                         # CRITICAL: Persist position to Firestore for
                         # Position Sync Loop and TP Automation to work
                         position_repo.save(position)
+
+                        # TIER 1: Immediate ACTIVE transition
+                        # Stop the 24h reaper clock in real-time
+                        if position.trade_type == TradeType.EXECUTED:
+                            trade_signal.status = SignalStatus.ACTIVE
+                            repo.update_signal_atomic(
+                                trade_signal.signal_id,
+                                {"status": SignalStatus.ACTIVE.value},
+                            )
+                            logger.info(
+                                f"SIGNAL ACTIVE: {trade_signal.symbol}",
+                                extra={
+                                    "symbol": trade_signal.symbol,
+                                    "signal_id": trade_signal.signal_id,
+                                },
+                            )
 
                         # Log differentiation for Risk Blocked vs Executed
                         if position.trade_type == "RISK_BLOCKED":

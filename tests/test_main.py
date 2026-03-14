@@ -9,6 +9,7 @@ from crypto_signals.domain.schemas import (
     OrderSide,
     SignalStatus,
     TradeStatus,
+    TradeType,
 )
 from crypto_signals.main import main
 from loguru import logger
@@ -896,3 +897,115 @@ def test_main_expires_before_check_exits(mock_main_dependencies):
         if c[0][1].get("status") == SignalStatus.EXPIRED.value
     ]
     assert len(expired_calls) > 0, "Signal should have been updated to EXPIRED"
+
+
+# =============================================================================
+# REAPER ROBUSTNESS TESTS (Issue: Signals with Open Positions Marked as EXPIRED)
+# =============================================================================
+
+
+def test_reaper_ignores_waiting_signal_with_open_position(mock_main_dependencies):
+    """
+    TIER 3 REGRESSION: Verify that a WAITING signal past its valid_until time
+    is NOT expired if a corresponding OPEN position exists.
+    """
+    repo = mock_main_dependencies["repo"].return_value
+    pos_repo = mock_main_dependencies["position_repo"].return_value
+    generator = mock_main_dependencies["generator"].return_value
+
+    # 1. Setup a STALE WAITING signal
+    now_utc = datetime.now(timezone.utc)
+    signal_id = "live_trade_signal"
+    stale_signal = SignalFactory.build(
+        signal_id=signal_id,
+        symbol="BTC/USD",
+        status=SignalStatus.WAITING,
+        valid_until=now_utc - timedelta(hours=1),
+    )
+
+    # 2. Setup a corresponding OPEN position
+    open_position = PositionFactory.build(
+        signal_id=signal_id,
+        symbol="BTC/USD",
+        status=TradeStatus.OPEN,
+    )
+
+    # 3. Configure Mocks
+    repo.get_active_signals.return_value = [stale_signal]
+    repo.get_by_id.return_value = stale_signal
+    pos_repo.get_position_by_signal.return_value = open_position
+    generator.generate_signals.return_value = None
+
+    # 4. Execute Main
+    main(smoke_test=False)
+
+    # 5. Verification
+    # Ensure update_signal_atomic was NOT called with EXPIRED for this signal
+    for call in repo.update_signal_atomic.call_args_list:
+        args, kwargs = call
+        if args[0] == signal_id:
+            updates = args[1]
+            assert updates.get("status") != SignalStatus.EXPIRED.value, (
+                "Signal with OPEN position was incorrectly expired by reaper!"
+            )
+
+    # Ensure it remained in valid_active_signals and was passed to check_exits
+    # (The first argument to check_exits is the list of valid signals)
+    found_in_check_exits = False
+    for call in generator.check_exits.call_args_list:
+        signals_list = call[0][0]
+        if any(s.signal_id == signal_id for s in signals_list):
+            found_in_check_exits = True
+            break
+
+    assert (
+        found_in_check_exits
+    ), "Signal protected by reaper guard was not passed to check_exits!"
+
+
+def test_intra_run_active_transition(mock_main_dependencies):
+    """
+    TIER 1 REGRESSION: Verify that a signal transitions to ACTIVE immediately
+    after successful execution in the same run.
+    """
+    repo = mock_main_dependencies["repo"].return_value
+    generator = mock_main_dependencies["generator"].return_value
+    execution_engine = mock_main_dependencies["execution_engine"].return_value
+    settings = mock_main_dependencies["settings"].return_value
+
+    # 0. Enable execution
+    settings.ENABLE_EXECUTION = True
+
+    # 1. Setup a new signal
+    new_signal = SignalFactory.build(
+        signal_id="new_signal_id",
+        symbol="BTC/USD",
+        status=SignalStatus.WAITING,
+    )
+    generator.generate_signals.return_value = new_signal
+
+    # Mock repo.get_by_id to return None first (new signal), then the signal
+    # This simulates the idempotency check in main.py
+    repo.get_by_id.return_value = None
+
+    # 2. Setup successful execution
+    executed_position = PositionFactory.build(
+        signal_id="new_signal_id",
+        symbol="BTC/USD",
+        trade_type=TradeType.EXECUTED,
+        status=TradeStatus.OPEN,
+    )
+    execution_engine.execute_signal.return_value = executed_position
+
+    # Mock Alpaca return None (no existing position) for pre-execution check
+    execution_engine.alpaca.get_open_position.return_value = None
+
+    # 3. Execute Main
+    main(smoke_test=False)
+
+    # 4. Verification
+    # Ensure signal was updated to ACTIVE
+    repo.update_signal_atomic.assert_any_call(
+        "new_signal_id", {"status": SignalStatus.ACTIVE.value}
+    )
+    assert new_signal.status == SignalStatus.ACTIVE

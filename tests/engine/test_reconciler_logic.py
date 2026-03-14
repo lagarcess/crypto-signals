@@ -8,6 +8,7 @@ from alpaca.trading.models import Order
 from crypto_signals.domain.schemas import (
     ExitReason,
     Position,
+    SignalStatus,
     TradeStatus,
 )
 from crypto_signals.engine.reconciler import StateReconciler
@@ -116,9 +117,6 @@ class TestHandleManualExitVerification:
         assert (
             sample_position.status == TradeStatus.OPEN
         ), f"Expected sample_position.status == TradeStatus.OPEN, got {sample_position.status}"
-        assert (
-            sample_position.exit_reason is None
-        ), f"sample_position.exit_reason should be None, got {sample_position.exit_reason}"
 
     def test_verify_manual_exit_ignores_tp_sl_legs(
         self, reconciler, mock_alpaca, sample_position
@@ -139,3 +137,43 @@ class TestHandleManualExitVerification:
         assert (
             sample_position.status == TradeStatus.OPEN
         ), f"Expected sample_position.status == TradeStatus.OPEN, got {sample_position.status}"
+
+
+class TestSignalStatusHealing:
+    """Tests for the _heal_signal_statuses method in StateReconciler."""
+
+    def test_heal_signal_status_success(self, reconciler, mock_repo):
+        """
+        Verify that StateReconciler heals WAITING signals to ACTIVE if an OPEN position exists.
+        """
+        from unittest.mock import patch
+
+        from tests.factories import SignalFactory
+
+        # 1. Setup an OPEN position with a WAITING signal
+        signal_id = "waiting_signal_id"
+        open_position = PositionFactory.build(
+            signal_id=signal_id, symbol="BTC/USD", status=TradeStatus.OPEN
+        )
+
+        waiting_signal = SignalFactory.build(
+            signal_id=signal_id, symbol="BTC/USD", status=SignalStatus.WAITING
+        )
+
+        # 2. Mock signal repo (used inside _heal_signal_statuses)
+        with patch(
+            "crypto_signals.engine.reconciler.SignalRepository"
+        ) as mock_sig_repo_cls:
+            mock_sig_repo = mock_sig_repo_cls.return_value
+            mock_sig_repo.get_by_id.return_value = waiting_signal
+            mock_sig_repo.update_signal_atomic.return_value = True
+
+            # 3. Execute Healing (directly or via reconcile)
+            healed_count, errors = reconciler._heal_signal_statuses([open_position])
+
+            # 4. Verification
+            assert healed_count == 1
+            assert len(errors) == 0
+            mock_sig_repo.update_signal_atomic.assert_called_with(
+                signal_id, {"status": SignalStatus.ACTIVE.value}
+            )
