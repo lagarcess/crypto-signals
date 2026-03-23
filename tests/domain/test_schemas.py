@@ -13,7 +13,6 @@ import pytest
 from crypto_signals.domain.schemas import (
     AssetClass,
     ConfluenceConfig,
-    DrawdownMetrics,
     ExitReason,
     FactTheoreticalSignal,
     OrderSide,
@@ -21,6 +20,7 @@ from crypto_signals.domain.schemas import (
     Signal,
     SignalStatus,
     StrategyConfig,
+    StructuralAnchor,
     TradeExecution,
     TradeStatus,
     get_deterministic_id,
@@ -464,6 +464,8 @@ class TestFactTheoreticalSignal:
 
     def test_bq_serialization_of_nested_fields(self):
         """Ensure nested fields serialize properly to BQ-compatible primitives via model_dump."""
+        import json
+
         signal = FactTheoreticalSignal(
             doc_id="test_doc",
             ds=date(2024, 1, 15),
@@ -477,25 +479,39 @@ class TestFactTheoreticalSignal:
             valid_until=datetime(2024, 1, 16, tzinfo=timezone.utc),
             status=SignalStatus.EXPIRED,
             created_at=datetime(2024, 1, 15, tzinfo=timezone.utc),
-            confluence_factors={"RSI_14": 30.5, "MACD_hist": -1.2},
-            exit_reasons=["TP1_HIT", "TRAILING_STOP_HIT"],
-            drawdown_metrics=DrawdownMetrics(max_dd_pct=-5.2, duration_hours=12),
+            confluence_snapshot={"rsi": 30.5, "adx": 25.0},
+            harmonic_metadata={"B_ratio": 0.618},
+            structural_anchors=[
+                StructuralAnchor(
+                    price=49000.0,
+                    pivot_type="swing_low",
+                    index=1,
+                    timestamp=datetime(2024, 1, 14, tzinfo=timezone.utc),
+                )
+            ],
+            rejection_metadata={"reason": "volume_too_low"},
         )
 
         serialized = signal.model_dump(mode="json")
 
-        # JSON mapping check
-        assert serialized["confluence_factors"]["RSI_14"] == 30.5
-        assert serialized["confluence_factors"]["MACD_hist"] == -1.2
+        # STRING (JSON Blob) mapping tests
+        assert isinstance(serialized["confluence_snapshot"], str)
+        deserialized_confluence = json.loads(serialized["confluence_snapshot"])
+        assert deserialized_confluence["rsi"] == 30.5
 
-        # REPEATED STRING mapping check
-        assert isinstance(serialized["exit_reasons"], list)
-        assert "TP1_HIT" in serialized["exit_reasons"]
+        assert isinstance(serialized["harmonic_metadata"], str)
+        deserialized_harmonic = json.loads(serialized["harmonic_metadata"])
+        assert deserialized_harmonic["B_ratio"] == 0.618
 
-        # RECORD mapping check
-        assert isinstance(serialized["drawdown_metrics"], dict)
-        assert serialized["drawdown_metrics"]["max_dd_pct"] == -5.2
-        assert serialized["drawdown_metrics"]["duration_hours"] == 12
+        assert isinstance(serialized["rejection_metadata"], str)
+        deserialized_rejection = json.loads(serialized["rejection_metadata"])
+        assert deserialized_rejection["reason"] == "volume_too_low"
+
+        # REPEATED RECORD mapping check
+        assert isinstance(serialized["structural_anchors"], list)
+        assert len(serialized["structural_anchors"]) == 1
+        assert serialized["structural_anchors"][0]["price"] == 49000.0
+        assert serialized["structural_anchors"][0]["pivot_type"] == "swing_low"
 
     def test_bq_serialization_empty_defaults(self):
         """Ensure defaults play nicely with BigQuery missing/empty constraints."""
@@ -514,6 +530,7 @@ class TestFactTheoreticalSignal:
         )
 
         serialized = signal.model_dump(mode="json")
-        assert serialized["confluence_factors"] == {}
-        assert serialized["exit_reasons"] == []
-        assert serialized["drawdown_metrics"] is None
+        assert serialized.get("confluence_snapshot") is None
+        assert serialized.get("harmonic_metadata") is None
+        assert serialized.get("structural_anchors") is None
+        assert serialized.get("rejection_metadata") is None

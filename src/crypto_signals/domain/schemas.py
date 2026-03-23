@@ -17,7 +17,7 @@ from datetime import date, datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, ClassVar, Dict, List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
 
 # =============================================================================
 # CONSTANTS
@@ -1006,13 +1006,15 @@ class TradeExecution(BaseModel):
         return data
 
 
-class DrawdownMetrics(BaseModel):
-    """Metrics reflecting the maximum adverse excursion of a trade."""
+class StructuralAnchor(BaseModel):
+    """A struct mapping to BigQuery REPEATED RECORD for structural pivots."""
 
-    max_dd_pct: float = Field(..., description="Maximum drawdown percentage from entry")
-    duration_hours: int = Field(
-        ..., description="Duration in hours of the drawdown period"
+    price: float = Field(..., description="Price level of the structural pivot")
+    pivot_type: str = Field(
+        ..., description="Type of pivot (e.g., swing_high, swing_low)"
     )
+    index: int = Field(..., description="Sequential index of the pivot in the pattern")
+    timestamp: datetime = Field(..., description="Timestamp when the pivot occurred")
 
 
 class FactTheoreticalSignal(BaseModel):
@@ -1039,17 +1041,35 @@ class FactTheoreticalSignal(BaseModel):
     )
 
     # Nested fields mapped explicitly for BigQuery
-    confluence_factors: Dict[str, float] = Field(
-        default_factory=dict,
-        description="JSON mapping of technical indicators (e.g., {'RSI_14': 30.5})",
+    confluence_snapshot: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="JSON blob of indicator values at rejection",
     )
-    exit_reasons: List[str] = Field(
-        default_factory=list,
-        description="REPEATED STRING mapping for exit triggers (e.g., ['TP1_HIT'])",
+    harmonic_metadata: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="JSON blob of Harmonic pattern ratios",
     )
-    drawdown_metrics: Optional[DrawdownMetrics] = Field(
-        default=None, description="RECORD mapping for maximum DD observed"
+    structural_anchors: Optional[List[StructuralAnchor]] = Field(
+        default=None,
+        description="REPEATED RECORD mapping for list of structural pivots",
     )
+    rejection_metadata: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="JSON blob for validation forensic failures",
+    )
+
+    @field_serializer(
+        "confluence_snapshot",
+        "harmonic_metadata",
+        "rejection_metadata",
+        when_used="json",
+    )
+    def serialize_json_blobs(self, v: Optional[Dict[str, Any]]) -> Optional[str]:
+        if v is None:
+            return None
+        import json
+
+        return json.dumps(v)
 
     created_at: datetime = Field(..., description="When the signal was first created")
 
