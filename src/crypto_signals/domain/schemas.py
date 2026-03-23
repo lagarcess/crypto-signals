@@ -1006,6 +1006,54 @@ class TradeExecution(BaseModel):
         return data
 
 
+class DrawdownMetrics(BaseModel):
+    """Metrics reflecting the maximum adverse excursion of a trade."""
+
+    max_dd_pct: float = Field(..., description="Maximum drawdown percentage from entry")
+    duration_hours: int = Field(
+        ..., description="Duration in hours of the drawdown period"
+    )
+
+
+class FactTheoreticalSignal(BaseModel):
+    """
+    Unified backtesting super-table schema for all theoretical signals.
+
+    Replaces ExpiredSignal, RejectedSignal, and captures invalidations.
+    """
+
+    doc_id: Optional[str] = Field(None, description="Firestore document ID")
+    ds: date = Field(..., description="Partition key - date signal was generated")
+    signal_id: str = Field(..., description="Unique identifier for the signal")
+    strategy_id: str = Field(..., description="Strategy that generated the signal")
+    symbol: str = Field(..., description="Asset symbol")
+    asset_class: AssetClass = Field(..., description="Asset class (CRYPTO or EQUITY)")
+    side: OrderSide = Field(..., description="Signal side (buy or sell)")
+    entry_price: float = Field(..., description="Target entry price of the signal")
+    suggested_stop: float = Field(..., description="Suggested stop-loss for the signal")
+    valid_until: datetime = Field(
+        ..., description="When the signal expired or was executed"
+    )
+    status: SignalStatus = Field(
+        ..., description="Final status (e.g., EXPIRED, REJECTED_BY_FILTER, EXECUTED)"
+    )
+
+    # Nested fields mapped explicitly for BigQuery
+    confluence_factors: Dict[str, float] = Field(
+        default_factory=dict,
+        description="JSON mapping of technical indicators (e.g., {'RSI_14': 30.5})",
+    )
+    exit_reasons: List[str] = Field(
+        default_factory=list,
+        description="REPEATED STRING mapping for exit triggers (e.g., ['TP1_HIT'])",
+    )
+    drawdown_metrics: Optional[DrawdownMetrics] = Field(
+        default=None, description="RECORD mapping for maximum DD observed"
+    )
+
+    created_at: datetime = Field(..., description="When the signal was first created")
+
+
 class ExpiredSignal(BaseModel):
     """
     Archived expired signal for BigQuery analytics.

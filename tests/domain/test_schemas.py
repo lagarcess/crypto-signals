@@ -13,7 +13,9 @@ import pytest
 from crypto_signals.domain.schemas import (
     AssetClass,
     ConfluenceConfig,
+    DrawdownMetrics,
     ExitReason,
+    FactTheoreticalSignal,
     OrderSide,
     Position,
     Signal,
@@ -450,3 +452,68 @@ class TestStrategyConfigDefaults:
         )
         assert "pattern_overrides" in serialized
         assert serialized["pattern_overrides"] == {}
+
+
+# =============================================================================
+# FACT THEORETICAL SIGNAL (BQ NESTED FIELDS)
+# =============================================================================
+
+
+class TestFactTheoreticalSignal:
+    """Tests for BigQuery schema serialization of FactTheoreticalSignal."""
+
+    def test_bq_serialization_of_nested_fields(self):
+        """Ensure nested fields serialize properly to BQ-compatible primitives via model_dump."""
+        signal = FactTheoreticalSignal(
+            doc_id="test_doc",
+            ds=date(2024, 1, 15),
+            signal_id="sig_123",
+            strategy_id="strat_abc",
+            symbol="BTC/USD",
+            asset_class=AssetClass.CRYPTO,
+            side=OrderSide.BUY,
+            entry_price=50000.0,
+            suggested_stop=48000.0,
+            valid_until=datetime(2024, 1, 16, tzinfo=timezone.utc),
+            status=SignalStatus.EXPIRED,
+            created_at=datetime(2024, 1, 15, tzinfo=timezone.utc),
+            confluence_factors={"RSI_14": 30.5, "MACD_hist": -1.2},
+            exit_reasons=["TP1_HIT", "TRAILING_STOP_HIT"],
+            drawdown_metrics=DrawdownMetrics(max_dd_pct=-5.2, duration_hours=12),
+        )
+
+        serialized = signal.model_dump(mode="json")
+
+        # JSON mapping check
+        assert serialized["confluence_factors"]["RSI_14"] == 30.5
+        assert serialized["confluence_factors"]["MACD_hist"] == -1.2
+
+        # REPEATED STRING mapping check
+        assert isinstance(serialized["exit_reasons"], list)
+        assert "TP1_HIT" in serialized["exit_reasons"]
+
+        # RECORD mapping check
+        assert isinstance(serialized["drawdown_metrics"], dict)
+        assert serialized["drawdown_metrics"]["max_dd_pct"] == -5.2
+        assert serialized["drawdown_metrics"]["duration_hours"] == 12
+
+    def test_bq_serialization_empty_defaults(self):
+        """Ensure defaults play nicely with BigQuery missing/empty constraints."""
+        signal = FactTheoreticalSignal(
+            ds=date(2024, 1, 15),
+            signal_id="sig_123",
+            strategy_id="strat_abc",
+            symbol="BTC/USD",
+            asset_class=AssetClass.CRYPTO,
+            side=OrderSide.BUY,
+            entry_price=50000.0,
+            suggested_stop=48000.0,
+            valid_until=datetime(2024, 1, 16, tzinfo=timezone.utc),
+            status=SignalStatus.EXPIRED,
+            created_at=datetime(2024, 1, 15, tzinfo=timezone.utc),
+        )
+
+        serialized = signal.model_dump(mode="json")
+        assert serialized["confluence_factors"] == {}
+        assert serialized["exit_reasons"] == []
+        assert serialized["drawdown_metrics"] is None
