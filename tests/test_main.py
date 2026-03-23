@@ -945,9 +945,9 @@ def test_reaper_ignores_waiting_signal_with_open_position(mock_main_dependencies
         args, kwargs = update_call
         if args[0] == signal_id:
             updates = args[1]
-            assert updates.get("status") != SignalStatus.EXPIRED.value, (
-                "Signal with OPEN position was incorrectly expired by reaper!"
-            )
+            assert (
+                updates.get("status") != SignalStatus.EXPIRED.value
+            ), "Signal with OPEN position was incorrectly expired by reaper!"
 
     # Ensure it remained in valid_active_signals and was passed to check_exits
     # (The first argument to check_exits is the list of valid signals)
