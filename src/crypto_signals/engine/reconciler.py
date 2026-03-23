@@ -37,8 +37,8 @@ from crypto_signals.domain.schemas import (
     TradeStatus,
     TradeType,
 )
-from crypto_signals.repository.firestore import PositionRepository, SignalRepository
 from crypto_signals.engine.reconciler_notifications import ReconcilerNotificationService
+from crypto_signals.repository.firestore import PositionRepository, SignalRepository
 from crypto_signals.utils.symbols import normalize_alpaca_symbol
 from loguru import logger
 

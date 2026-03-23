@@ -941,8 +941,8 @@ def test_reaper_ignores_waiting_signal_with_open_position(mock_main_dependencies
 
     # 5. Verification
     # Ensure update_signal_atomic was NOT called with EXPIRED for this signal
-    for call in repo.update_signal_atomic.call_args_list:
-        args, kwargs = call
+    for update_call in repo.update_signal_atomic.call_args_list:
+        args, kwargs = update_call
         if args[0] == signal_id:
             updates = args[1]
             assert updates.get("status") != SignalStatus.EXPIRED.value, (
@@ -952,8 +952,8 @@ def test_reaper_ignores_waiting_signal_with_open_position(mock_main_dependencies
     # Ensure it remained in valid_active_signals and was passed to check_exits
     # (The first argument to check_exits is the list of valid signals)
     found_in_check_exits = False
-    for call in generator.check_exits.call_args_list:
-        signals_list = call[0][0]
+    for check_call in generator.check_exits.call_args_list:
+        signals_list = check_call[0][0]
         if any(s.signal_id == signal_id for s in signals_list):
             found_in_check_exits = True
             break

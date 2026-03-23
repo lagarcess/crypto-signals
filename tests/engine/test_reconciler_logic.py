@@ -38,12 +38,17 @@ def mock_notification_service(mock_discord):
 
 
 @pytest.fixture
-def reconciler(mock_alpaca, mock_repo, mock_notification_service):
+def mock_signal_repo():
+    return MagicMock()
+
+
+@pytest.fixture
+def reconciler(mock_alpaca, mock_repo, mock_notification_service, mock_signal_repo):
     return StateReconciler(
         alpaca_client=mock_alpaca,
         position_repo=mock_repo,
         notification_service=mock_notification_service,
-        signal_repo=MagicMock(),
+        signal_repo=mock_signal_repo,
     )
 
 
@@ -143,11 +148,10 @@ class TestHandleManualExitVerification:
 class TestSignalStatusHealing:
     """Tests for the _heal_signal_statuses method in StateReconciler."""
 
-    def test_heal_signal_status_success(self, reconciler, mock_repo):
+    def test_heal_signal_status_success(self, reconciler, mock_signal_repo):
         """
         Verify that StateReconciler heals WAITING signals to ACTIVE if an OPEN position exists.
         """
-
         from tests.factories import SignalFactory
 
         # 1. Setup an OPEN position with a WAITING signal
@@ -160,10 +164,9 @@ class TestSignalStatusHealing:
             signal_id=signal_id, symbol="BTC/USD", status=SignalStatus.WAITING
         )
 
-        # 2. Mock signal repo (used inside _heal_signal_statuses)
-        # Configure the injected mock
-        reconciler.signal_repo.get_by_id.return_value = waiting_signal
-        reconciler.signal_repo.update_signal_atomic.return_value = True
+        # 2. Configure mock signal repo
+        mock_signal_repo.get_by_id.return_value = waiting_signal
+        mock_signal_repo.update_signal_atomic.return_value = True
 
         # 3. Execute Healing (directly or via reconcile)
         healed_count, errors = reconciler._heal_signal_statuses([open_position])
@@ -171,6 +174,6 @@ class TestSignalStatusHealing:
         # 4. Verification
         assert healed_count == 1
         assert len(errors) == 0
-        reconciler.signal_repo.update_signal_atomic.assert_called_with(
+        mock_signal_repo.update_signal_atomic.assert_called_with(
             signal_id, {"status": SignalStatus.ACTIVE.value}
         )
