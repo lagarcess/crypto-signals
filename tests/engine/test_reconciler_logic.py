@@ -43,6 +43,7 @@ def reconciler(mock_alpaca, mock_repo, mock_notification_service):
         alpaca_client=mock_alpaca,
         position_repo=mock_repo,
         notification_service=mock_notification_service,
+        signal_repo=MagicMock(),
     )
 
 
@@ -146,7 +147,6 @@ class TestSignalStatusHealing:
         """
         Verify that StateReconciler heals WAITING signals to ACTIVE if an OPEN position exists.
         """
-        from unittest.mock import patch
 
         from tests.factories import SignalFactory
 
@@ -161,19 +161,16 @@ class TestSignalStatusHealing:
         )
 
         # 2. Mock signal repo (used inside _heal_signal_statuses)
-        with patch(
-            "crypto_signals.engine.reconciler.SignalRepository"
-        ) as mock_sig_repo_cls:
-            mock_sig_repo = mock_sig_repo_cls.return_value
-            mock_sig_repo.get_by_id.return_value = waiting_signal
-            mock_sig_repo.update_signal_atomic.return_value = True
+        # Configure the injected mock
+        reconciler.signal_repo.get_by_id.return_value = waiting_signal
+        reconciler.signal_repo.update_signal_atomic.return_value = True
 
-            # 3. Execute Healing (directly or via reconcile)
-            healed_count, errors = reconciler._heal_signal_statuses([open_position])
+        # 3. Execute Healing (directly or via reconcile)
+        healed_count, errors = reconciler._heal_signal_statuses([open_position])
 
-            # 4. Verification
-            assert healed_count == 1
-            assert len(errors) == 0
-            mock_sig_repo.update_signal_atomic.assert_called_with(
-                signal_id, {"status": SignalStatus.ACTIVE.value}
-            )
+        # 4. Verification
+        assert healed_count == 1
+        assert len(errors) == 0
+        reconciler.signal_repo.update_signal_atomic.assert_called_with(
+            signal_id, {"status": SignalStatus.ACTIVE.value}
+        )

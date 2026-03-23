@@ -116,6 +116,7 @@ class TestStateReconcilerInitialization:
             position_repo=mock_position_repo,
             notification_service=mock_notification_service,
             settings=mock_settings,
+            signal_repo=MagicMock(),
         )
 
         # Assert
@@ -158,6 +159,7 @@ class TestDetectZombies:
             position_repo=mock_position_repo,
             notification_service=mock_notification_service,
             settings=mock_settings,
+            signal_repo=MagicMock(),
         )
 
         # Act
@@ -228,6 +230,7 @@ class TestDetectZombies:
             position_repo=mock_position_repo,
             notification_service=mock_notification_service,
             settings=mock_settings,
+            signal_repo=MagicMock(),
         )
 
         # Act
@@ -269,6 +272,7 @@ class TestDetectOrphans:
             position_repo=mock_position_repo,
             notification_service=mock_notification_service,
             settings=mock_settings,
+            signal_repo=MagicMock(),
         )
 
         # Act
@@ -306,6 +310,7 @@ class TestDetectOrphans:
             position_repo=mock_position_repo,
             notification_service=mock_notification_service,
             settings=mock_settings,
+            signal_repo=MagicMock(),
         )
 
         # Act
@@ -340,6 +345,7 @@ class TestDetectOrphans:
             position_repo=mock_position_repo,
             notification_service=mock_notification_service,
             settings=mock_settings,
+            signal_repo=MagicMock(),
         )
 
         # Act
@@ -376,6 +382,7 @@ class TestHealingAndAlerts:
             position_repo=mock_position_repo,
             notification_service=mock_notification_service,
             settings=mock_settings,
+            signal_repo=MagicMock(),
         )
 
         # Act
@@ -421,6 +428,7 @@ class TestHealingAndAlerts:
             position_repo=mock_position_repo,
             notification_service=mock_notification_service,
             settings=mock_settings,
+            signal_repo=MagicMock(),
         )
 
         # Act
@@ -515,6 +523,7 @@ class TestReconciliationBehavior:
             position_repo=mock_position_repo,
             notification_service=mock_notification_service,
             settings=mock_settings,
+            signal_repo=MagicMock(),
         )
 
         # Act
@@ -556,6 +565,7 @@ class TestReconciliationBehavior:
             position_repo=mock_position_repo,
             notification_service=mock_notification_service,
             settings=mock_settings,
+            signal_repo=MagicMock(),
         )
 
         # Act
@@ -587,6 +597,7 @@ class TestReconciliationBehavior:
             position_repo=mock_position_repo,
             notification_service=mock_notification_service,
             settings=mock_settings,
+            signal_repo=MagicMock(),
         )
 
         # Act
@@ -622,6 +633,7 @@ class TestEnvironmentGating:
             position_repo=mock_position_repo,
             notification_service=mock_notification_service,
             settings=mock_settings,
+            signal_repo=MagicMock(),
         )
 
         # Act
@@ -651,6 +663,7 @@ class TestErrorHandling:
             position_repo=mock_position_repo,
             notification_service=mock_notification_service,
             settings=mock_settings,
+            signal_repo=MagicMock(),
         )
 
         # Act
@@ -679,6 +692,7 @@ class TestErrorHandling:
             position_repo=mock_position_repo,
             notification_service=mock_notification_service,
             settings=mock_settings,
+            signal_repo=MagicMock(),
         )
 
         # Act
@@ -711,6 +725,7 @@ class TestReconcilerEdgeCases:
             position_repo=mock_position_repo,
             notification_service=mock_notification_service,
             settings=mock_settings,
+            signal_repo=MagicMock(),
         )
 
         # Act
@@ -748,6 +763,7 @@ class TestReconcilerEdgeCases:
             position_repo=mock_position_repo,
             notification_service=mock_notification_service,
             settings=mock_settings,
+            signal_repo=MagicMock(),
         )
 
         # Act
@@ -784,6 +800,7 @@ class TestReconcilerEdgeCases:
             position_repo=mock_position_repo,
             notification_service=service,
             settings=mock_settings,
+            signal_repo=MagicMock(),
         )
 
         # Act
@@ -818,6 +835,7 @@ class TestReconcilerEdgeCases:
             position_repo=mock_position_repo,
             notification_service=mock_notification_service,
             settings=mock_settings,
+            signal_repo=MagicMock(),
         )
 
         # Act
@@ -852,6 +870,7 @@ class TestReconcilerEdgeCases:
             position_repo=mock_position_repo,
             notification_service=mock_notification_service,
             settings=mock_settings,
+            signal_repo=MagicMock(),
         )
 
         # Act
@@ -889,6 +908,7 @@ class TestReconcilerEdgeCases:
             position_repo=mock_position_repo,
             notification_service=mock_notification_service,
             settings=mock_settings,
+            signal_repo=MagicMock(),
         )
 
         # Act
@@ -995,6 +1015,7 @@ class TestSafetyMechanisms:
             position_repo=mock_position_repo,
             notification_service=mock_notification_service,
             settings=mock_settings,
+            signal_repo=MagicMock(),
         )
 
         # Act
@@ -1036,6 +1057,7 @@ class TestSafetyMechanisms:
             position_repo=mock_position_repo,
             notification_service=mock_notification_service,
             settings=mock_settings,
+            signal_repo=MagicMock(),
         )
 
         # Act
@@ -1095,6 +1117,7 @@ class TestReconcilerRaceConditions:
             position_repo=mock_position_repo,
             notification_service=mock_notification_service,
             settings=mock_settings,
+            signal_repo=MagicMock(),
         )
 
         # Act
@@ -1137,6 +1160,7 @@ class TestReconcilerRaceConditions:
             position_repo=mock_position_repo,
             notification_service=mock_notification_service,
             settings=mock_settings,
+            signal_repo=MagicMock(),
         )
 
         # Act
@@ -1186,6 +1210,7 @@ class TestTheoreticalPositions:
             position_repo=mock_position_repo,
             notification_service=mock_notification_service,
             settings=mock_settings,
+            signal_repo=MagicMock(),
         )
 
         # Act
@@ -1241,6 +1266,7 @@ class TestTheoreticalPositions:
             position_repo=mock_position_repo,
             notification_service=mock_notification_service,
             settings=mock_settings,
+            signal_repo=MagicMock(),
         )
 
         # Act
