@@ -18,6 +18,7 @@ from datetime import date, datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, ClassVar, Dict, List, Optional
 
+from loguru import logger
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
 
 # =============================================================================
@@ -1020,11 +1021,16 @@ class StructuralAnchor(BaseModel):
 
 class FactTheoreticalSignal(BaseModel):
     """
-    Unified backtesting super-table schema for all theoretical signals.
+    Unified backtesting record for BigQuery fact_theoretical_signals table.
 
-    Replaces ExpiredSignal, RejectedSignal, and captures invalidations.
+    Captures ALL signal outcomes: REJECTED_BY_FILTER, EXPIRED, INVALIDATED,
+    and the parent live_signal of EXECUTED trades (for ML indicator preservation).
+
+    Partitioned by: ds | Clustered by: status, strategy_id, symbol
+    FK to fact_trades: linked_trade_id (EXECUTED signals only)
     """
 
+    # === Core Identity ===
     doc_id: Optional[str] = Field(None, description="Firestore document ID")
     ds: date = Field(..., description="Partition key - date signal was generated")
     signal_id: str = Field(..., description="Unique identifier for the signal")
@@ -1032,16 +1038,71 @@ class FactTheoreticalSignal(BaseModel):
     symbol: str = Field(..., description="Asset symbol")
     asset_class: AssetClass = Field(..., description="Asset class (CRYPTO or EQUITY)")
     side: OrderSide = Field(..., description="Signal side (buy or sell)")
+
+    # === Outcome Classification ===
+    status: SignalStatus = Field(
+        ...,
+        description="Final status (e.g., EXPIRED, REJECTED_BY_FILTER, INVALIDATED, EXECUTED)",
+    )
+    trade_type: str = Field(
+        ...,
+        description="Trade classification: EXECUTED, FILTERED, THEORETICAL, RISK_BLOCKED",
+    )
+    exit_reason: Optional[ExitReason] = Field(
+        default=None, description="Reason for trade exit"
+    )
+    rejection_reason: Optional[str] = Field(
+        default=None,
+        description="Reason for rejection if status is REJECTED_BY_FILTER",
+    )
+
+    # === Signal Parameters ===
     entry_price: float = Field(..., description="Target entry price of the signal")
+    pattern_name: str = Field(
+        ..., description="Name of the pattern detected (e.g., 'bullish_engulfing')"
+    )
     suggested_stop: float = Field(..., description="Suggested stop-loss for the signal")
+    take_profit_1: Optional[float] = Field(
+        default=None, description="First profit target (Conservative)"
+    )
+    take_profit_2: Optional[float] = Field(
+        default=None, description="Second profit target (Structural)"
+    )
+    take_profit_3: Optional[float] = Field(
+        default=None, description="Third profit target / trailing stop"
+    )
     valid_until: datetime = Field(
         ..., description="When the signal expired or was executed"
     )
-    status: SignalStatus = Field(
-        ..., description="Final status (e.g., EXPIRED, REJECTED_BY_FILTER, EXECUTED)"
+    created_at: datetime = Field(..., description="When the signal was first created")
+
+    # === Structural Metadata ===
+    pattern_classification: Optional[str] = Field(
+        default=None,
+        description="Pattern scale: 'STANDARD_PATTERN' or 'MACRO_PATTERN'",
+    )
+    pattern_duration_days: Optional[int] = Field(
+        default=None,
+        description="Duration in days from first pivot to signal",
+    )
+    pattern_span_days: Optional[int] = Field(
+        default=None,
+        description="Time span from first to last structural pivot",
+    )
+    conviction_tier: Optional[str] = Field(
+        default=None,
+        description="Signal conviction: 'HIGH' or 'STANDARD'",
+    )
+    structural_context: Optional[str] = Field(
+        default=None,
+        description="Active harmonic/structural regime",
     )
 
-    # Nested fields mapped explicitly for BigQuery
+    # === Nested Fields — types per ADR #359 ===
+    confluence_factors: List[str] = Field(
+        default_factory=list,
+        description="List of triggers/patterns (e.g., 'RSI_DIV', 'VCP_COMPRESSION')",
+    )
     confluence_snapshot: Optional[Dict[str, Any]] = Field(
         default=None,
         description="JSON blob of indicator values at rejection",
@@ -1050,16 +1111,82 @@ class FactTheoreticalSignal(BaseModel):
         default=None,
         description="JSON blob of Harmonic pattern ratios",
     )
-    structural_anchors: Optional[List[StructuralAnchor]] = Field(
-        default=None,
-        description="REPEATED RECORD mapping for list of structural pivots",
-    )
     rejection_metadata: Optional[Dict[str, Any]] = Field(
         default=None,
         description="JSON blob for validation forensic failures",
     )
+    structural_anchors: Optional[List[StructuralAnchor]] = Field(
+        default=None,
+        description="REPEATED RECORD mapping for list of structural pivots",
+    )
 
-    created_at: datetime = Field(..., description="When the signal was first created")
+    # === Theoretical P&L ===
+    theoretical_exit_price: Optional[float] = Field(
+        default=None, description="Simulated exit price"
+    )
+    theoretical_exit_reason: Optional[str] = Field(
+        default=None, description="Simulated exit reason"
+    )
+    theoretical_exit_time: Optional[datetime] = Field(
+        default=None, description="Simulated exit timestamp"
+    )
+    theoretical_pnl_usd: Optional[float] = Field(
+        default=None, description="Simulated P&L in USD"
+    )
+    theoretical_pnl_pct: Optional[float] = Field(
+        default=None, description="Simulated P&L as percentage"
+    )
+    theoretical_fees_usd: Optional[float] = Field(
+        default=None, description="Simulated fees in USD"
+    )
+
+    # === Near-Miss ===
+    distance_to_trigger_pct: Optional[float] = Field(
+        default=None,
+        description="Percentage distance from entry to trigger for expired signals",
+    )
+
+    # === FK to fact_trades (EXECUTED signals only) ===
+    linked_trade_id: Optional[str] = Field(
+        default=None,
+        description="Foreign key to fact_trades for EXECUTED signals",
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def coerce_json_blob_fields(cls, data: Any) -> Any:
+        """Parse JSON string fields into dictionaries before validation.
+
+        This `before` validator allows callers to initialize the model with
+        pre-serialized JSON strings for `confluence_snapshot`,
+        `harmonic_metadata`, and `rejection_metadata`. It attempts to parse
+        these strings into Python dictionaries, enabling convenient attribute
+        access on the model instance.
+
+        If a string is not valid JSON, it is left as-is, and Pydantic's
+        standard validation will likely raise an error for the type mismatch.
+
+        The reverse operation (dict -> JSON string for BigQuery) is handled by
+        the `@field_serializer` for these fields.
+        """
+        if isinstance(data, dict):
+            for field_name in (
+                "confluence_snapshot",
+                "harmonic_metadata",
+                "rejection_metadata",
+            ):
+                value = data.get(field_name)
+                if isinstance(value, str):
+                    # Parse JSON string back to dict for Python-side access
+                    try:
+                        data[field_name] = json.loads(value)
+                    except (json.JSONDecodeError, TypeError):
+                        logger.warning(
+                            "Failed to decode JSON string for field "
+                            f"'{field_name}'. The value will be passed "
+                            "to validation as a string."
+                        )
+        return data
 
     @field_serializer(
         "confluence_snapshot",
@@ -1075,10 +1202,12 @@ class FactTheoreticalSignal(BaseModel):
 
 class ExpiredSignal(BaseModel):
     """
-    Archived expired signal for BigQuery analytics.
+    DEPRECATED: Superseded by FactTheoreticalSignal (Issue #360).
+    Will be removed after BacktestArchivalPipeline (Issue #361) is validated in prod.
+    Do not add new fields. See GitHub #360.
 
-    Stored in the fact_signals_expired table. Used for analyzing signal
-    sensitivity and "near misses".
+    Archived expired signal for BigQuery analytics.
+    Stored in the fact_signals_expired table.
     """
 
     doc_id: Optional[str] = Field(None, description="Firestore document ID")
@@ -1103,8 +1232,11 @@ class ExpiredSignal(BaseModel):
 
 class FactRejectedSignal(BaseModel):
     """
-    Schema for rejected signals archival (Fact Table).
+    DEPRECATED: Superseded by FactTheoreticalSignal (Issue #360).
+    Will be removed after BacktestArchivalPipeline (Issue #361) is validated in prod.
+    Do not add new fields. See GitHub #360.
 
+    Schema for rejected signals archival (Fact Table).
     This matches the `fact_rejected_signals` BigQuery table.
     """
 

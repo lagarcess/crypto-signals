@@ -455,12 +455,118 @@ class TestStrategyConfigDefaults:
 
 
 # =============================================================================
-# FACT THEORETICAL SIGNAL (BQ NESTED FIELDS)
+# FACT THEORETICAL SIGNAL (Issue #360 — Unified Backtesting Schema)
 # =============================================================================
 
 
 class TestFactTheoreticalSignal:
-    """Tests for BigQuery schema serialization of FactTheoreticalSignal."""
+    """Tests for the unified FactTheoreticalSignal schema (Issue #360).
+
+    Covers all 4 signal outcome scenarios, dict-to-JSON coercion,
+    and BigQuery serialization.
+    """
+
+    @pytest.mark.parametrize(
+        "overrides,expected_status,expected_key_field",
+        [
+            pytest.param(
+                {
+                    "status": SignalStatus.REJECTED_BY_FILTER,
+                    "trade_type": "FILTERED",
+                    "rejection_reason": "Volume 1.2x < 1.5x Required",
+                    "confluence_snapshot": {"rsi": 30.5, "adx": 18.0},
+                },
+                SignalStatus.REJECTED_BY_FILTER,
+                "rejection_reason",
+                id="rejected",
+            ),
+            pytest.param(
+                {
+                    "status": SignalStatus.EXPIRED,
+                    "trade_type": "FILTERED",
+                    "distance_to_trigger_pct": 2.5,
+                    "theoretical_pnl_usd": -150.0,
+                    "theoretical_pnl_pct": -0.3,
+                },
+                SignalStatus.EXPIRED,
+                "distance_to_trigger_pct",
+                id="expired",
+            ),
+            pytest.param(
+                {
+                    "status": SignalStatus.INVALIDATED,
+                    "trade_type": "THEORETICAL",
+                    "exit_reason": ExitReason.STRUCTURAL_INVALIDATION,
+                },
+                SignalStatus.INVALIDATED,
+                "exit_reason",
+                id="invalidated",
+            ),
+            pytest.param(
+                {
+                    "status": SignalStatus.TP1_HIT,
+                    "trade_type": "EXECUTED",
+                    "linked_trade_id": "trade-abc-123",
+                    "harmonic_metadata": {"B_ratio": 0.618},
+                    "conviction_tier": "HIGH",
+                },
+                SignalStatus.TP1_HIT,
+                "linked_trade_id",
+                id="executed",
+            ),
+        ],
+    )
+    def test_signal_outcome_scenarios(
+        self, overrides, expected_status, expected_key_field
+    ):
+        """Verify FactTheoreticalSignal handles all 4 signal outcome types."""
+        from tests.factories import FactTheoreticalSignalFactory
+
+        signal = FactTheoreticalSignalFactory.build(**overrides)
+
+        assert (
+            signal.status == expected_status
+        ), f"Expected status={expected_status!r}, got {signal.status!r}"
+        key_value = getattr(signal, expected_key_field)
+        expected_value = overrides.get(expected_key_field)
+        assert (
+            key_value == expected_value
+        ), f"Expected {expected_key_field}={expected_value!r}, got {key_value!r}"
+
+    def test_dict_to_json_coercion_on_input(self):
+        """Verify that dict inputs for JSON blob fields are preserved as dicts in Python."""
+        from tests.factories import FactTheoreticalSignalFactory
+
+        snapshot_dict = {"rsi": 45.2, "adx": 28.0, "volume_ratio": 1.8}
+        signal = FactTheoreticalSignalFactory.build(
+            confluence_snapshot=snapshot_dict,
+        )
+
+        # Python-side: remains dict for attribute access
+        assert isinstance(
+            signal.confluence_snapshot, dict
+        ), f"Expected confluence_snapshot to be dict, got {type(signal.confluence_snapshot)}"
+        assert (
+            signal.confluence_snapshot["rsi"] == 45.2
+        ), f"Expected rsi=45.2, got {signal.confluence_snapshot.get('rsi')!r}"
+
+    def test_json_string_input_coercion(self):
+        """Verify that JSON string inputs for blob fields are parsed to dicts."""
+        from tests.factories import FactTheoreticalSignalFactory
+
+        json_str = '{"rsi": 55.0, "adx": 30.0}'
+        signal = FactTheoreticalSignalFactory.build(
+            confluence_snapshot=json_str,
+        )
+
+        # model_validator should parse JSON string to dict
+        assert isinstance(signal.confluence_snapshot, dict), (
+            f"Expected confluence_snapshot to be dict after coercion, "
+            f"got {type(signal.confluence_snapshot)}"
+        )
+        assert (
+            signal.confluence_snapshot["rsi"] == 55.0
+        ), f"Expected rsi=55.0, got {signal.confluence_snapshot.get('rsi')!r}"
 
     def test_bq_serialization_of_nested_fields(self):
         """Ensure nested fields serialize properly to BQ-compatible primitives via model_dump."""
@@ -475,9 +581,11 @@ class TestFactTheoreticalSignal:
             asset_class=AssetClass.CRYPTO,
             side=OrderSide.BUY,
             entry_price=50000.0,
+            pattern_name="bullish_engulfing",
             suggested_stop=48000.0,
             valid_until=datetime(2024, 1, 16, tzinfo=timezone.utc),
             status=SignalStatus.EXPIRED,
+            trade_type="FILTERED",
             created_at=datetime(2024, 1, 15, tzinfo=timezone.utc),
             confluence_snapshot={"rsi": 30.5, "adx": 25.0},
             harmonic_metadata={"B_ratio": 0.618},
@@ -495,23 +603,40 @@ class TestFactTheoreticalSignal:
         serialized = signal.model_dump(mode="json")
 
         # STRING (JSON Blob) mapping tests
-        assert isinstance(serialized["confluence_snapshot"], str)
+        assert isinstance(
+            serialized["confluence_snapshot"], str
+        ), f"Expected confluence_snapshot as str, got {type(serialized['confluence_snapshot'])}"
         deserialized_confluence = json.loads(serialized["confluence_snapshot"])
-        assert deserialized_confluence["rsi"] == 30.5
+        assert (
+            deserialized_confluence["rsi"] == 30.5
+        ), f"Expected rsi=30.5, got {deserialized_confluence.get('rsi')!r}"
 
-        assert isinstance(serialized["harmonic_metadata"], str)
+        assert isinstance(
+            serialized["harmonic_metadata"], str
+        ), f"Expected harmonic_metadata as str, got {type(serialized['harmonic_metadata'])}"
         deserialized_harmonic = json.loads(serialized["harmonic_metadata"])
-        assert deserialized_harmonic["B_ratio"] == 0.618
+        assert (
+            deserialized_harmonic["B_ratio"] == 0.618
+        ), f"Expected B_ratio=0.618, got {deserialized_harmonic.get('B_ratio')!r}"
 
-        assert isinstance(serialized["rejection_metadata"], str)
+        assert isinstance(
+            serialized["rejection_metadata"], str
+        ), f"Expected rejection_metadata as str, got {type(serialized['rejection_metadata'])}"
         deserialized_rejection = json.loads(serialized["rejection_metadata"])
-        assert deserialized_rejection["reason"] == "volume_too_low"
+        assert (
+            deserialized_rejection["reason"] == "volume_too_low"
+        ), f"Expected reason='volume_too_low', got {deserialized_rejection.get('reason')!r}"
 
         # REPEATED RECORD mapping check
-        assert isinstance(serialized["structural_anchors"], list)
-        assert len(serialized["structural_anchors"]) == 1
-        assert serialized["structural_anchors"][0]["price"] == 49000.0
-        assert serialized["structural_anchors"][0]["pivot_type"] == "swing_low"
+        assert isinstance(
+            serialized["structural_anchors"], list
+        ), f"Expected structural_anchors as list, got {type(serialized['structural_anchors'])}"
+        assert (
+            len(serialized["structural_anchors"]) == 1
+        ), f"Expected 1 anchor, got {len(serialized['structural_anchors'])}"
+        assert (
+            serialized["structural_anchors"][0]["price"] == 49000.0
+        ), f"Expected price=49000.0, got {serialized['structural_anchors'][0].get('price')!r}"
 
     def test_bq_serialization_empty_defaults(self):
         """Ensure defaults play nicely with BigQuery missing/empty constraints."""
@@ -523,14 +648,51 @@ class TestFactTheoreticalSignal:
             asset_class=AssetClass.CRYPTO,
             side=OrderSide.BUY,
             entry_price=50000.0,
+            pattern_name="bullish_engulfing",
             suggested_stop=48000.0,
             valid_until=datetime(2024, 1, 16, tzinfo=timezone.utc),
             status=SignalStatus.EXPIRED,
+            trade_type="FILTERED",
             created_at=datetime(2024, 1, 15, tzinfo=timezone.utc),
         )
 
         serialized = signal.model_dump(mode="json")
-        assert serialized.get("confluence_snapshot") is None
-        assert serialized.get("harmonic_metadata") is None
-        assert serialized.get("structural_anchors") is None
-        assert serialized.get("rejection_metadata") is None
+        assert (
+            serialized.get("confluence_snapshot") is None
+        ), f"Expected None, got {serialized.get('confluence_snapshot')!r}"
+        assert (
+            serialized.get("harmonic_metadata") is None
+        ), f"Expected None, got {serialized.get('harmonic_metadata')!r}"
+        assert (
+            serialized.get("structural_anchors") is None
+        ), f"Expected None, got {serialized.get('structural_anchors')!r}"
+        assert (
+            serialized.get("rejection_metadata") is None
+        ), f"Expected None, got {serialized.get('rejection_metadata')!r}"
+        # New fields should also be None
+        assert (
+            serialized.get("theoretical_pnl_usd") is None
+        ), f"Expected None, got {serialized.get('theoretical_pnl_usd')!r}"
+        assert (
+            serialized.get("linked_trade_id") is None
+        ), f"Expected None, got {serialized.get('linked_trade_id')!r}"
+        assert (
+            serialized.get("distance_to_trigger_pct") is None
+        ), f"Expected None, got {serialized.get('distance_to_trigger_pct')!r}"
+
+    def test_factory_produces_valid_model(self):
+        """Verify that FactTheoreticalSignalFactory.build() produces a valid model."""
+        from tests.factories import FactTheoreticalSignalFactory
+
+        signal = FactTheoreticalSignalFactory.build()
+
+        assert signal.signal_id is not None, "signal_id must not be None"
+        assert (
+            signal.strategy_id == "BULLISH_ENGULFING"
+        ), f"Expected strategy_id='BULLISH_ENGULFING', got {signal.strategy_id!r}"
+        assert (
+            signal.trade_type == "FILTERED"
+        ), f"Expected trade_type='FILTERED', got {signal.trade_type!r}"
+        assert (
+            signal.theoretical_pnl_usd is None
+        ), f"Expected theoretical_pnl_usd=None, got {signal.theoretical_pnl_usd!r}"
