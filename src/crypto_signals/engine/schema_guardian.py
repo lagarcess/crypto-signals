@@ -125,14 +125,21 @@ class SchemaGuardian:
             # Detect Nullable (Optional[T] or Union[T, None])
             is_nullable = False
             origin = typing.get_origin(python_type)
+            inner_type = python_type
+
             if origin is typing.Union:
                 args = typing.get_args(python_type)
                 if type(None) in args:
                     is_nullable = True
+                for arg in args:
+                    if arg is not type(None):
+                        inner_type = arg
+                        break
 
             # Detect Repeated (List[T])
             is_repeated = False
-            if origin is list or origin is List:
+            inner_origin = typing.get_origin(inner_type)
+            if inner_origin is list or inner_origin is List:
                 is_repeated = True
 
             # Unwrap to get the core type for BQ mapping

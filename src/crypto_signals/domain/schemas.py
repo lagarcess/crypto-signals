@@ -12,12 +12,13 @@ Architecture Overview (Environment Isolated):
 - BigQuery Analytics: fact_trades, fact_trades_test
 """
 
+import json
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, ClassVar, Dict, List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
 
 # =============================================================================
 # CONSTANTS
@@ -1004,6 +1005,72 @@ class TradeExecution(BaseModel):
                 data["pnl_pct"] = round((pnl_net / (entry_price * total_qty)) * 100, 4)
 
         return data
+
+
+class StructuralAnchor(BaseModel):
+    """A struct mapping to BigQuery REPEATED RECORD for structural pivots."""
+
+    price: float = Field(..., description="Price level of the structural pivot")
+    pivot_type: str = Field(
+        ..., description="Type of pivot (e.g., swing_high, swing_low)"
+    )
+    index: int = Field(..., description="Sequential index of the pivot in the pattern")
+    timestamp: datetime = Field(..., description="Timestamp when the pivot occurred")
+
+
+class FactTheoreticalSignal(BaseModel):
+    """
+    Unified backtesting super-table schema for all theoretical signals.
+
+    Replaces ExpiredSignal, RejectedSignal, and captures invalidations.
+    """
+
+    doc_id: Optional[str] = Field(None, description="Firestore document ID")
+    ds: date = Field(..., description="Partition key - date signal was generated")
+    signal_id: str = Field(..., description="Unique identifier for the signal")
+    strategy_id: str = Field(..., description="Strategy that generated the signal")
+    symbol: str = Field(..., description="Asset symbol")
+    asset_class: AssetClass = Field(..., description="Asset class (CRYPTO or EQUITY)")
+    side: OrderSide = Field(..., description="Signal side (buy or sell)")
+    entry_price: float = Field(..., description="Target entry price of the signal")
+    suggested_stop: float = Field(..., description="Suggested stop-loss for the signal")
+    valid_until: datetime = Field(
+        ..., description="When the signal expired or was executed"
+    )
+    status: SignalStatus = Field(
+        ..., description="Final status (e.g., EXPIRED, REJECTED_BY_FILTER, EXECUTED)"
+    )
+
+    # Nested fields mapped explicitly for BigQuery
+    confluence_snapshot: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="JSON blob of indicator values at rejection",
+    )
+    harmonic_metadata: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="JSON blob of Harmonic pattern ratios",
+    )
+    structural_anchors: Optional[List[StructuralAnchor]] = Field(
+        default=None,
+        description="REPEATED RECORD mapping for list of structural pivots",
+    )
+    rejection_metadata: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="JSON blob for validation forensic failures",
+    )
+
+    created_at: datetime = Field(..., description="When the signal was first created")
+
+    @field_serializer(
+        "confluence_snapshot",
+        "harmonic_metadata",
+        "rejection_metadata",
+        when_used="json",
+    )
+    def serialize_json_blobs(self, v: Optional[Dict[str, Any]]) -> Optional[str]:
+        if v is None:
+            return None
+        return json.dumps(v)
 
 
 class ExpiredSignal(BaseModel):

@@ -14,11 +14,13 @@ from crypto_signals.domain.schemas import (
     AssetClass,
     ConfluenceConfig,
     ExitReason,
+    FactTheoreticalSignal,
     OrderSide,
     Position,
     Signal,
     SignalStatus,
     StrategyConfig,
+    StructuralAnchor,
     TradeExecution,
     TradeStatus,
     get_deterministic_id,
@@ -450,3 +452,85 @@ class TestStrategyConfigDefaults:
         )
         assert "pattern_overrides" in serialized
         assert serialized["pattern_overrides"] == {}
+
+
+# =============================================================================
+# FACT THEORETICAL SIGNAL (BQ NESTED FIELDS)
+# =============================================================================
+
+
+class TestFactTheoreticalSignal:
+    """Tests for BigQuery schema serialization of FactTheoreticalSignal."""
+
+    def test_bq_serialization_of_nested_fields(self):
+        """Ensure nested fields serialize properly to BQ-compatible primitives via model_dump."""
+        import json
+
+        signal = FactTheoreticalSignal(
+            doc_id="test_doc",
+            ds=date(2024, 1, 15),
+            signal_id="sig_123",
+            strategy_id="strat_abc",
+            symbol="BTC/USD",
+            asset_class=AssetClass.CRYPTO,
+            side=OrderSide.BUY,
+            entry_price=50000.0,
+            suggested_stop=48000.0,
+            valid_until=datetime(2024, 1, 16, tzinfo=timezone.utc),
+            status=SignalStatus.EXPIRED,
+            created_at=datetime(2024, 1, 15, tzinfo=timezone.utc),
+            confluence_snapshot={"rsi": 30.5, "adx": 25.0},
+            harmonic_metadata={"B_ratio": 0.618},
+            structural_anchors=[
+                StructuralAnchor(
+                    price=49000.0,
+                    pivot_type="swing_low",
+                    index=1,
+                    timestamp=datetime(2024, 1, 14, tzinfo=timezone.utc),
+                )
+            ],
+            rejection_metadata={"reason": "volume_too_low"},
+        )
+
+        serialized = signal.model_dump(mode="json")
+
+        # STRING (JSON Blob) mapping tests
+        assert isinstance(serialized["confluence_snapshot"], str)
+        deserialized_confluence = json.loads(serialized["confluence_snapshot"])
+        assert deserialized_confluence["rsi"] == 30.5
+
+        assert isinstance(serialized["harmonic_metadata"], str)
+        deserialized_harmonic = json.loads(serialized["harmonic_metadata"])
+        assert deserialized_harmonic["B_ratio"] == 0.618
+
+        assert isinstance(serialized["rejection_metadata"], str)
+        deserialized_rejection = json.loads(serialized["rejection_metadata"])
+        assert deserialized_rejection["reason"] == "volume_too_low"
+
+        # REPEATED RECORD mapping check
+        assert isinstance(serialized["structural_anchors"], list)
+        assert len(serialized["structural_anchors"]) == 1
+        assert serialized["structural_anchors"][0]["price"] == 49000.0
+        assert serialized["structural_anchors"][0]["pivot_type"] == "swing_low"
+
+    def test_bq_serialization_empty_defaults(self):
+        """Ensure defaults play nicely with BigQuery missing/empty constraints."""
+        signal = FactTheoreticalSignal(
+            ds=date(2024, 1, 15),
+            signal_id="sig_123",
+            strategy_id="strat_abc",
+            symbol="BTC/USD",
+            asset_class=AssetClass.CRYPTO,
+            side=OrderSide.BUY,
+            entry_price=50000.0,
+            suggested_stop=48000.0,
+            valid_until=datetime(2024, 1, 16, tzinfo=timezone.utc),
+            status=SignalStatus.EXPIRED,
+            created_at=datetime(2024, 1, 15, tzinfo=timezone.utc),
+        )
+
+        serialized = signal.model_dump(mode="json")
+        assert serialized.get("confluence_snapshot") is None
+        assert serialized.get("harmonic_metadata") is None
+        assert serialized.get("structural_anchors") is None
+        assert serialized.get("rejection_metadata") is None
