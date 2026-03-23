@@ -53,15 +53,14 @@ class TechnicalIndicators:
         # Optimization: Vectorize Pandas operations to eliminate Python-level loops
         # and Pandas indexing overhead using NumPy arrays. O(N) complexity.
         # This reduces calculation time from ~2.35ms to ~847us for 1000 rows.
-        import numpy as np
 
-        tp_vals = tp.values
+        tp_vals = tp.to_numpy()
         tp_prev_vals = np.roll(tp_vals, 1)
         # Match pandas shift(1) behavior for the first element
         if len(tp_prev_vals) > 0:
             tp_prev_vals[0] = np.nan
 
-        rmf_vals = rmf.values
+        rmf_vals = rmf.to_numpy()
 
         # Fill flows based on price direction using fast np.where
         pos_flow_vals = np.where(tp_vals > tp_prev_vals, rmf_vals, 0.0)
