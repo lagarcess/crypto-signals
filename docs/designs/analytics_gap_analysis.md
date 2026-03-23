@@ -49,6 +49,46 @@ Instead of sharding signals into four tables (`rejected`, `expired`, `executed`,
 	- Every `REJECTED`, `EXPIRED`, `INVALIDATED`, and **`EXECUTED/CLOSED`** signal will be archived here.
 	- This creates a massive, singular dataset for analysts to query true market history without survivorship bias or multi-table `UNION` joins. Reconciling financial performance with technical indicators is a simple `JOIN` between `fact_trades.trade_id` and `fact_theoretical_signals.signal_id`.
 
+	**Consolidated Field List** (Pydantic: `FactTheoreticalSignal`, Issue #360):
+
+	| Section | Field | Type | Required | Notes |
+	|---|---|---|---|---|
+	| Core Identity | `doc_id` | `str` | No | Firestore document ID |
+	| | `ds` | `date` | **Yes** | Partition key |
+	| | `signal_id` | `str` | **Yes** | Deterministic UUID5 |
+	| | `strategy_id` | `str` | **Yes** | FK to dim_strategies |
+	| | `symbol` | `str` | **Yes** | e.g., `BTC/USD` |
+	| | `asset_class` | `AssetClass` | **Yes** | CRYPTO / EQUITY |
+	| | `side` | `OrderSide` | **Yes** | BUY / SELL |
+	| Outcome | `status` | `SignalStatus` | **Yes** | EXPIRED, REJECTED_BY_FILTER, etc. |
+	| | `trade_type` | `str` | **Yes** | EXECUTED, FILTERED, THEORETICAL, RISK_BLOCKED |
+	| | `exit_reason` | `ExitReason` | No | TP1, STOP_LOSS, etc. |
+	| | `rejection_reason` | `str` | No | Quality gate failure description |
+	| Signal Params | `entry_price` | `float` | **Yes** | Target entry price |
+	| | `pattern_name` | `str` | **Yes** | e.g., `bullish_engulfing` |
+	| | `suggested_stop` | `float` | **Yes** | Stop-loss price |
+	| | `take_profit_1/2/3` | `float` | No | Profit targets |
+	| | `valid_until` | `datetime` | **Yes** | Signal expiration |
+	| | `created_at` | `datetime` | **Yes** | Signal creation time |
+	| Structural | `pattern_classification` | `str` | No | STANDARD / MACRO |
+	| | `pattern_duration_days` | `int` | No | First pivot → signal |
+	| | `pattern_span_days` | `int` | No | First → last pivot |
+	| | `conviction_tier` | `str` | No | HIGH / STANDARD |
+	| | `structural_context` | `str` | No | Harmonic regime |
+	| Nested (ADR #359) | `confluence_factors` | `List[str]` | No (default `[]`) | Triggers list |
+	| | `confluence_snapshot` | `STRING` (JSON) | No | Indicator values |
+	| | `harmonic_metadata` | `STRING` (JSON) | No | Fibonacci ratios |
+	| | `rejection_metadata` | `STRING` (JSON) | No | Forensic audit data |
+	| | `structural_anchors` | `REPEATED RECORD` | No | Pivot geometry |
+	| Theoretical P&L | `theoretical_exit_price` | `float` | No | Simulated exit |
+	| | `theoretical_exit_reason` | `str` | No | Simulated exit reason |
+	| | `theoretical_exit_time` | `datetime` | No | Simulated exit time |
+	| | `theoretical_pnl_usd` | `float` | No | Simulated P&L ($) |
+	| | `theoretical_pnl_pct` | `float` | No | Simulated P&L (%) |
+	| | `theoretical_fees_usd` | `float` | No | Simulated fees |
+	| Near-Miss | `distance_to_trigger_pct` | `float` | No | Entry proximity |
+	| FK | `linked_trade_id` | `str` | No | FK to fact_trades (EXECUTED only) |
+
 ### 2. Radical Virtualization (Temp Tables)
 We will eradicate the 14+ persistent `stg_` tables currently cluttering BigQuery.
 - The base `BigQueryPipelineBase` Python framework will be refactored. Instead of using `client.load_table_from_json()` targeting a persistent `dataset.stg_table`, the pipeline will build a `CREATE TEMP TABLE stg_temp AS ...` SQL injection payload dynamically.

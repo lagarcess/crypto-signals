@@ -3,6 +3,7 @@ from typing import Any, Dict, List
 
 from crypto_signals.domain.schemas import (
     AssetClass,
+    FactTheoreticalSignal,
     OrderSide,
     Position,
     Signal,
@@ -134,3 +135,58 @@ class PositionFactory(ModelFactory[Position]):
     realized_pnl_usd = 0.0
     realized_pnl_pct = 0.0
     delete_at = None
+
+
+class FactTheoreticalSignalFactory(ModelFactory[FactTheoreticalSignal]):
+    __model__ = FactTheoreticalSignal
+
+    @classmethod
+    def ds(cls) -> date:
+        return date(2025, 1, 15)
+
+    strategy_id = "BULLISH_ENGULFING"
+    symbol = "BTC/USD"
+    asset_class = AssetClass.CRYPTO
+    side = OrderSide.BUY
+    status = SignalStatus.WAITING
+    trade_type = "FILTERED"
+    entry_price = 50000.0
+    pattern_name = "BULLISH_ENGULFING"
+    suggested_stop = 48000.0
+
+    @classmethod
+    def valid_until(cls) -> datetime:
+        return datetime(2025, 1, 16, 12, 0, tzinfo=timezone.utc)
+
+    @classmethod
+    def created_at(cls) -> datetime:
+        return datetime(2025, 1, 15, 12, 0, tzinfo=timezone.utc)
+
+    @classmethod
+    def confluence_factors(cls) -> List[str]:
+        return []
+
+    # ALL optional fields = None (prevents polyfactory random values)
+    doc_id = None
+    take_profit_1 = None
+    take_profit_2 = None
+    take_profit_3 = None
+    exit_reason = None
+    rejection_reason = None
+    pattern_classification = None
+    pattern_duration_days = None
+    pattern_span_days = None
+    conviction_tier = None
+    structural_context = None
+    confluence_snapshot = None
+    harmonic_metadata = None
+    rejection_metadata = None
+    structural_anchors = None
+    theoretical_exit_price = None
+    theoretical_exit_reason = None
+    theoretical_exit_time = None
+    theoretical_pnl_usd = None
+    theoretical_pnl_pct = None
+    theoretical_fees_usd = None
+    distance_to_trigger_pct = None
+    linked_trade_id = None
