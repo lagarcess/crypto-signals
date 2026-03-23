@@ -14,7 +14,7 @@ The `fact_theoretical_signals` table consolidates all signal outcomes into a sin
 We adopt a hybrid mapping strategy:
 
 1. **`confluence_snapshot`** -> `STRING` (JSON blob)
-   - Reason: Content has variables keys natively queried via `JSON_VALUE(..., '$.rsi')`.
+   - Reason: Content has variable keys natively queried via `JSON_VALUE(..., '$.rsi')`.
 
 2. **`harmonic_metadata`** -> `STRING` (JSON blob)
    - Reason: Ratio sets vary wildly by pattern type (e.g. Gartley vs Elliott). A rigid RECORD would force dozens of nullable columns.

@@ -12,6 +12,7 @@ Architecture Overview (Environment Isolated):
 - BigQuery Analytics: fact_trades, fact_trades_test
 """
 
+import json
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from enum import Enum
@@ -1058,6 +1059,8 @@ class FactTheoreticalSignal(BaseModel):
         description="JSON blob for validation forensic failures",
     )
 
+    created_at: datetime = Field(..., description="When the signal was first created")
+
     @field_serializer(
         "confluence_snapshot",
         "harmonic_metadata",
@@ -1067,11 +1070,7 @@ class FactTheoreticalSignal(BaseModel):
     def serialize_json_blobs(self, v: Optional[Dict[str, Any]]) -> Optional[str]:
         if v is None:
             return None
-        import json
-
         return json.dumps(v)
-
-    created_at: datetime = Field(..., description="When the signal was first created")
 
 
 class ExpiredSignal(BaseModel):
