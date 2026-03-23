@@ -37,6 +37,7 @@ You are explicitly responsible for the following workflows:
 
 ## Fixtures & Parametrization
 *   **Fixtures**: Use `@pytest.fixture` for reusable setup/teardown and shared data to avoid duplication.
+*   **Zero-I/O Boundaries (Autouse)**: When testing classes that construct external network dependencies inherently (e.g. `Firestore` clients), always inject file-level `@pytest.fixture(autouse=True)` with `monkeypatch` to force strict fake overrides. Do not rely on external `patch()` imports, as mock leaks in full-suites routinely mask real timeout deadlocks (e.g. 15-minute hanging tests).
 *   **Parametrization**: Parametrize heavily with `@pytest.mark.parametrize` to cover edge cases, boundaries, and variations using a single test structure.
 *   **Object Generation**: Do not hand-write large nested dictionary mocks for Pydantic schemas. Utilize `polyfactory` or established factories in `tests/factories.py` to generate typed, valid mock data dynamically.
 *   **Assertion Helpers**: Utilize helper functions in `tests/assertion_helpers.py` when validating multiple complex state changes to keep test bodies readable.

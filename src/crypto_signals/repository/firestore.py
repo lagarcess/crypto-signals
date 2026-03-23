@@ -119,11 +119,12 @@ class SignalRepository:
         """
         Get all ACTIVE signals for a given symbol.
 
-        Active statuses: WAITING, TP1_HIT, TP2_HIT.
+        Active statuses: WAITING, ACTIVE, TP1_HIT, TP2_HIT.
         """
         # Firestore 'in' query allows up to 10 values
         active_statuses = [
             SignalStatus.WAITING.value,
+            SignalStatus.ACTIVE.value,
             SignalStatus.TP1_HIT.value,
             SignalStatus.TP2_HIT.value,
         ]
