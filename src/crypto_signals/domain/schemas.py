@@ -127,7 +127,7 @@ class SignalStatus(str, Enum):
 
     CREATED = "CREATED"  # Persisted but not yet notified
     WAITING = "WAITING"
-    CONFIRMED = "CONFIRMED"
+    ACTIVE = "ACTIVE"
     INVALIDATED = "INVALIDATED"
     EXPIRED = "EXPIRED"
     TP1_HIT = "TP1_HIT"

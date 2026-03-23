@@ -234,3 +234,4 @@
 - [2026-03-13] Firestore: Prefer 'delete_at' TTL fields over relative retention logic to avoid redundant waiting buffers.
 - [2026-03-13] Pydantic: Ensure all Firestore fields are explicitly defined in Pydantic models to prevent 'Model Drift' where untracked fields are wiped during document updates.
 - [2026-03-13] Trading: Cooldown queries must use terminal state timestamps ('exit_time') instead of creation time ('created_at') to properly measure the gap between trades.
+- [2026-03-23] **Pytest Mock Leaks**: Targeted test runs (e.g. `pytest tests/engine/test_x.py`) may deadlock on real WAN logic (like GCP retry loops) because dependencies aren't mocked. However, running the *full suite* can silently mask these deadlocks if prior tests in other files leak global `patch()` states. To prevent this, use file-scoped `@pytest.fixture(autouse=True)` with `monkeypatch.setattr(...)` to erect strict, zero-I/O boundaries across the entire test module.

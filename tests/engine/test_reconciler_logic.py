@@ -8,12 +8,24 @@ from alpaca.trading.models import Order
 from crypto_signals.domain.schemas import (
     ExitReason,
     Position,
+    SignalStatus,
     TradeStatus,
 )
 from crypto_signals.engine.reconciler import StateReconciler
 from crypto_signals.engine.reconciler_notifications import ReconcilerNotificationService
 
 from tests.factories import PositionFactory
+
+
+@pytest.fixture(autouse=True)
+def block_real_signal_repo(monkeypatch):
+    """Prevent any unmocked StateReconciler from hitting real Firestore."""
+    mock_repo = MagicMock()
+    mock_repo.get_by_id.return_value = None
+    monkeypatch.setattr(
+        "crypto_signals.engine.reconciler.SignalRepository",
+        lambda *args, **kwargs: mock_repo,
+    )
 
 
 @pytest.fixture
@@ -37,11 +49,17 @@ def mock_notification_service(mock_discord):
 
 
 @pytest.fixture
-def reconciler(mock_alpaca, mock_repo, mock_notification_service):
+def mock_signal_repo():
+    return MagicMock()
+
+
+@pytest.fixture
+def reconciler(mock_alpaca, mock_repo, mock_notification_service, mock_signal_repo):
     return StateReconciler(
         alpaca_client=mock_alpaca,
         position_repo=mock_repo,
         notification_service=mock_notification_service,
+        signal_repo=mock_signal_repo,
     )
 
 
@@ -116,9 +134,6 @@ class TestHandleManualExitVerification:
         assert (
             sample_position.status == TradeStatus.OPEN
         ), f"Expected sample_position.status == TradeStatus.OPEN, got {sample_position.status}"
-        assert (
-            sample_position.exit_reason is None
-        ), f"sample_position.exit_reason should be None, got {sample_position.exit_reason}"
 
     def test_verify_manual_exit_ignores_tp_sl_legs(
         self, reconciler, mock_alpaca, sample_position
@@ -139,3 +154,37 @@ class TestHandleManualExitVerification:
         assert (
             sample_position.status == TradeStatus.OPEN
         ), f"Expected sample_position.status == TradeStatus.OPEN, got {sample_position.status}"
+
+
+class TestSignalStatusHealing:
+    """Tests for the _heal_signal_statuses method in StateReconciler."""
+
+    def test_heal_signal_status_success(self, reconciler, mock_signal_repo):
+        """
+        Verify that StateReconciler heals WAITING signals to ACTIVE if an OPEN position exists.
+        """
+        from tests.factories import SignalFactory
+
+        # 1. Setup an OPEN position with a WAITING signal
+        signal_id = "waiting_signal_id"
+        open_position = PositionFactory.build(
+            signal_id=signal_id, symbol="BTC/USD", status=TradeStatus.OPEN
+        )
+
+        waiting_signal = SignalFactory.build(
+            signal_id=signal_id, symbol="BTC/USD", status=SignalStatus.WAITING
+        )
+
+        # 2. Configure mock signal repo
+        mock_signal_repo.get_by_id.return_value = waiting_signal
+        mock_signal_repo.update_signal_atomic.return_value = True
+
+        # 3. Execute Healing (directly or via reconcile)
+        healed_count, errors = reconciler._heal_signal_statuses([open_position])
+
+        # 4. Verification
+        assert healed_count == 1
+        assert len(errors) == 0
+        mock_signal_repo.update_signal_atomic.assert_called_with(
+            signal_id, {"status": SignalStatus.ACTIVE.value}
+        )

@@ -976,14 +976,14 @@ class SignalGenerator:
                     exit_triggered = True
 
             # 3. Check TP1
-            # Guard: Only trigger if WAITING.
+            # Guard: Only trigger if WAITING or ACTIVE.
             # If already TP1_HIT, we want to skip this and check TP2 (handled above).
             # Long: price rises above TP1 (high >= target)
             # Short: price falls below TP1 (low <= target)
             if (
                 not exit_triggered
                 and signal.take_profit_1
-                and signal.status == SignalStatus.WAITING
+                and signal.status in (SignalStatus.WAITING, SignalStatus.ACTIVE)
             ):
                 tp1_hit = False
                 if is_long and current_high >= signal.take_profit_1:
@@ -1063,7 +1063,7 @@ class SignalGenerator:
 
                 # Detect Status Jump (e.g., WAITING -> TP2_HIT)
                 if (
-                    original_status == SignalStatus.WAITING
+                    original_status in (SignalStatus.WAITING, SignalStatus.ACTIVE)
                     and signal.status == SignalStatus.TP2_HIT
                 ):
                     logger.info(

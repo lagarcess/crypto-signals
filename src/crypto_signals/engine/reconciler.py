@@ -33,11 +33,12 @@ from crypto_signals.domain.schemas import (
     ExitReason,
     Position,
     ReconciliationReport,
+    SignalStatus,
     TradeStatus,
     TradeType,
 )
 from crypto_signals.engine.reconciler_notifications import ReconcilerNotificationService
-from crypto_signals.repository.firestore import PositionRepository
+from crypto_signals.repository.firestore import PositionRepository, SignalRepository
 from crypto_signals.utils.symbols import normalize_alpaca_symbol
 from loguru import logger
 
@@ -54,6 +55,7 @@ class StateReconciler:
         position_repo: PositionRepository,
         notification_service: ReconcilerNotificationService,
         settings: Optional[Settings] = None,
+        signal_repo: Optional[SignalRepository] = None,
     ):
         """
         Initialize the StateReconciler.
@@ -63,11 +65,13 @@ class StateReconciler:
             position_repo: PositionRepository for database operations.
             notification_service: ReconcilerNotificationService for alerts.
             settings: Settings object (defaults to get_settings()).
+            signal_repo: SignalRepository for database operations (optional).
         """
         self.alpaca = alpaca_client
         self.position_repo = position_repo
         self.notifications = notification_service
         self.settings: Settings = settings or get_settings()
+        self.signal_repo = signal_repo or SignalRepository()
 
         logger.info(
             "StateReconciler initialized",
@@ -135,6 +139,14 @@ class StateReconciler:
             # 5. Check Reverse Orphans
             reverse_orphan_errors = self._check_reverse_orphans()
             critical_issues.extend(reverse_orphan_errors)
+
+            # 6. TIER 2: Signal Status Healing (Auto-Healing)
+            # Close the circuit between positions and signals
+            signal_healing_count, signal_healing_errors = self._heal_signal_statuses(
+                firestore_pos
+            )
+            reconciled_count += signal_healing_count
+            critical_issues.extend(signal_healing_errors)
 
         except Exception as e:
             error_msg = f"Reconciliation execution failed: {e}"
@@ -450,6 +462,50 @@ class StateReconciler:
             errors.append(ReconciliationErrors.ORPHAN_POSITION.format(symbol=symbol))
 
         return orphans, errors
+
+    def _heal_signal_statuses(
+        self, firestore_positions: list[Position]
+    ) -> tuple[int, list[str]]:
+        """
+        Heal WAITING signals to ACTIVE if an OPEN position exists.
+        Protects against crashes during the 'Gap of Silence' between execution and persistence.
+        """
+        healed_count = 0
+        errors = []
+
+        logger.info(f"Checking {len(firestore_positions)} signals for status healing...")
+
+        for pos in firestore_positions:
+            if pos.status != TradeStatus.OPEN:
+                continue
+
+            try:
+                sig = self.signal_repo.get_by_id(pos.signal_id)
+                if sig and sig.status == SignalStatus.WAITING:
+                    logger.warning(
+                        f"TIER 2 HEAL: Signal {sig.signal_id} ({sig.symbol}) is WAITING "
+                        "but an OPEN position exists. Healing to ACTIVE.",
+                        extra={
+                            "symbol": sig.symbol,
+                            "signal_id": sig.signal_id,
+                            "position_id": pos.position_id,
+                        },
+                    )
+                    success = self.signal_repo.update_signal_atomic(
+                        sig.signal_id, {"status": SignalStatus.ACTIVE.value}
+                    )
+                    if success:
+                        healed_count += 1
+                    else:
+                        errors.append(
+                            f"Failed atomic heal for signal {sig.signal_id} ({sig.symbol})"
+                        )
+            except Exception as e:
+                error_msg = f"Error healing signal status for {pos.symbol}: {e}"
+                logger.error(error_msg)
+                errors.append(error_msg)
+
+        return healed_count, errors
 
     def _check_reverse_orphans(self) -> list[str]:
         """Check if recently closed positions in DB are still open in Alpaca."""
