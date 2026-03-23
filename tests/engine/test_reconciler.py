@@ -17,6 +17,17 @@ from crypto_signals.repository.firestore import PositionRepository
 from tests.factories import PositionFactory
 
 
+@pytest.fixture(autouse=True)
+def block_real_signal_repo(monkeypatch):
+    """Prevent any unmocked StateReconciler from hitting real Firestore."""
+    mock_repo = MagicMock()
+    mock_repo.get_by_id.return_value = None
+    monkeypatch.setattr(
+        "crypto_signals.engine.reconciler.SignalRepository",
+        lambda *args, **kwargs: mock_repo,
+    )
+
+
 @pytest.fixture
 def mock_signal_repo():
     """Fixture for mocking SignalRepository."""
