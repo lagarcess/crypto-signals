@@ -103,6 +103,9 @@ def mock_main_dependencies():
         strategy_sync = stack.enter_context(
             patch("crypto_signals.main.StrategySyncPipeline")
         )
+        backtest_archival = stack.enter_context(
+            patch("crypto_signals.main.BacktestArchivalPipeline")
+        )
 
         job_metadata_repo.return_value.get_last_run_date.return_value = None
         mock_settings.return_value.CRYPTO_SYMBOLS = ["BTC/USD", "ETH/USD", "XRP/USD"]
@@ -139,6 +142,7 @@ def mock_main_dependencies():
         expired_archival.return_value.run.return_value = 0
         account_snapshot.return_value.run.return_value = 0
         strategy_sync.return_value.run.return_value = 0
+        backtest_archival.return_value.run.return_value = 0
 
         yield {
             "stock_client": stock_client,
@@ -165,4 +169,5 @@ def mock_main_dependencies():
             "account_snapshot": account_snapshot,
             "strategy_sync": strategy_sync,
             "strategy_repo": strategy_repo,
+            "backtest_archival": backtest_archival,
         }
