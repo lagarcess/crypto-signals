@@ -254,14 +254,6 @@ class BacktestArchivalPipeline(BigQueryPipelineBase):
         collections: Dict[str, List[str]] = {}
 
         for item in data:
-            raw_status = getattr(item, "status", None)
-            # Normalize: SignalStatus enum → str via .value
-            status_val = (
-                getattr(raw_status, "value", str(raw_status))
-                if raw_status is not None
-                else ""
-            )
-
             doc_id = getattr(item, "doc_id", None) or getattr(item, "signal_id", None)
             collection = getattr(item, "source_collection", None)
 
