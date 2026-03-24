@@ -58,6 +58,7 @@ from crypto_signals.observability import (
     setup_gcp_logging,
 )
 from crypto_signals.pipelines.account_snapshot import AccountSnapshotPipeline
+from crypto_signals.pipelines.backtest_archival import BacktestArchivalPipeline
 from crypto_signals.pipelines.expired_signal_archival import ExpiredSignalArchivalPipeline
 from crypto_signals.pipelines.fee_patch import FeePatchPipeline
 from crypto_signals.pipelines.price_patch import PricePatchPipeline
@@ -347,6 +348,7 @@ def main(
             fee_patch = FeePatchPipeline(execution_engine=execution_engine)
             price_patch = PricePatchPipeline(execution_engine=execution_engine)
             account_snapshot = AccountSnapshotPipeline()
+            backtest_archival = BacktestArchivalPipeline()
             strategy_sync = StrategySyncPipeline()
 
         # Job Locking
@@ -407,6 +409,18 @@ def main(
             "expired_archival",
             lambda count: _log_pipeline_result(
                 "Expired signal archival", count, "signals", "archived"
+            ),
+            metrics_collector=metrics,
+        )
+
+        # === BACKTEST ARCHIVAL (Issue #361) ===
+        # Unified pipeline: archives ALL terminal signals to fact_theoretical_signals
+        # Runs in parallel with legacy pipelines during 30-day validation (Issue #368)
+        _run_pipeline(
+            backtest_archival,
+            "backtest_archival",
+            lambda count: _log_pipeline_result(
+                "Backtest archival", count, "signals", "archived"
             ),
             metrics_collector=metrics,
         )

@@ -1032,6 +1032,9 @@ class FactTheoreticalSignal(BaseModel):
 
     # === Core Identity ===
     doc_id: Optional[str] = Field(None, description="Firestore document ID")
+    source_collection: Optional[str] = Field(
+        None, exclude=True, description="Internal routing tag for cleanup"
+    )
     ds: date = Field(..., description="Partition key - date signal was generated")
     signal_id: str = Field(..., description="Unique identifier for the signal")
     strategy_id: str = Field(..., description="Strategy that generated the signal")
