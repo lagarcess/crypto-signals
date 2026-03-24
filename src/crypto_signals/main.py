@@ -392,38 +392,27 @@ def main(
         # === REJECTED SIGNAL ARCHIVAL (Issue #183) ===
         # Archive "Ghost Trades" to BigQuery for analysis
         # MUST run before daily cleanup deletes the source data
-        _run_pipeline(
-            rejected_archival,
-            "rejected_archival",
-            lambda count: _log_pipeline_result(
-                "Rejected signal archival", count, "signals", "archived"
-            ),
-            metrics_collector=metrics,
-        )
+        if settings.USE_LEGACY_ARCHIVAL:
+            _run_pipeline(
+                rejected_archival,
+                "rejected_archival",
+                lambda count: _log_pipeline_result(
+                    "Rejected signal archival", count, "signals", "archived"
+                ),
+                metrics_collector=metrics,
+            )
 
-        # === EXPIRED SIGNAL ARCHIVAL (Issue #183) ===
-        # Archive "Noise" to BigQuery for analysis
-        # MUST run before daily cleanup deletes the source data
-        _run_pipeline(
-            expired_archival,
-            "expired_archival",
-            lambda count: _log_pipeline_result(
-                "Expired signal archival", count, "signals", "archived"
-            ),
-            metrics_collector=metrics,
-        )
-
-        # === BACKTEST ARCHIVAL (Issue #361) ===
-        # Unified pipeline: archives ALL terminal signals to fact_theoretical_signals
-        # Runs in parallel with legacy pipelines during 30-day validation (Issue #368)
-        _run_pipeline(
-            backtest_archival,
-            "backtest_archival",
-            lambda count: _log_pipeline_result(
-                "Backtest archival", count, "signals", "archived"
-            ),
-            metrics_collector=metrics,
-        )
+            # === EXPIRED SIGNAL ARCHIVAL (Issue #183) ===
+            # Archive "Noise" to BigQuery for analysis
+            # MUST run before daily cleanup deletes the source data
+            _run_pipeline(
+                expired_archival,
+                "expired_archival",
+                lambda count: _log_pipeline_result(
+                    "Expired signal archival", count, "signals", "archived"
+                ),
+                metrics_collector=metrics,
+            )
 
         # === DAILY CLEANUP ===
         last_cleanup_date = job_metadata_repo.get_last_run_date("daily_cleanup")
@@ -490,6 +479,18 @@ def main(
                     f"✅ Trade archival complete: {count} trades archived"
                     if count > 0
                     else "✅ Trade archival complete: No closed trades to archive"
+                ),
+                metrics_collector=metrics,
+            )
+
+            # === BACKTEST ARCHIVAL (Issue #361) ===
+            # Unified pipeline: archives ALL terminal signals to fact_theoretical_signals
+            # Must run AFTER Trade Archival (Issue #368) so linked_trade_id FKs exist
+            _run_pipeline(
+                backtest_archival,
+                "backtest_archival",
+                lambda count: _log_pipeline_result(
+                    "Backtest archival", count, "signals", "archived"
                 ),
                 metrics_collector=metrics,
             )

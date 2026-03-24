@@ -96,6 +96,9 @@ def test_main_execution_flow(mock_main_dependencies):
         mock_main_dependencies["expired_archival"].return_value.run, "expired_archive"
     )
     pipeline_manager.attach_mock(
+        mock_main_dependencies["backtest_archival"].return_value.run, "backtest_archive"
+    )
+    pipeline_manager.attach_mock(
         mock_main_dependencies["fee_patch"].return_value.run, "fee_patch"
     )
 
@@ -158,6 +161,74 @@ def test_main_execution_flow(mock_main_dependencies):
         "expired_archive",
         "reconcile",
         "archive",
+        "backtest_archive",
+        "fee_patch",
+    ], f"Actual calls mismatch: {actual_calls}"
+
+
+def test_main_legacy_archival_disabled(mock_main_dependencies):
+    """Test that legacy archival pipelines are skipped when disabled."""
+    # Setup mocks
+    mock_gen_instance = mock_main_dependencies["generator"].return_value
+    mock_discord_instance = mock_main_dependencies["discord"].return_value
+
+    mock_signal = MagicMock()
+    mock_signal.symbol = "BTC/USD"
+    mock_signal.signal_id = "test_signal_btc_main"
+    mock_signal.pattern_name = "bullish_engulfing"
+    mock_signal.suggested_stop = 90000.0
+    mock_signal.discord_thread_id = None
+
+    mock_discord_instance.find_thread_by_signal_id.return_value = None
+
+    def side_effect(symbol, asset_class, **kwargs):
+        if symbol == "BTC/USD":
+            return mock_signal
+        return None
+
+    mock_gen_instance.generate_signals.side_effect = side_effect
+
+    # Define Settings flag False
+    mock_main_dependencies["settings"].return_value.USE_LEGACY_ARCHIVAL = False
+
+    # Detach return value to prevent attribute access logs (critical_issues, etc.)
+    mock_report = MagicMock()
+    mock_report.critical_issues = []
+    mock_report.zombies = []
+    mock_report.orphans = []
+    mock_report.reconciled_count = 0
+    mock_main_dependencies["reconciler"].return_value.reconcile.return_value = mock_report
+
+    # Create a manager to track call order across pipelines
+    pipeline_manager = Mock()
+    pipeline_manager.attach_mock(
+        mock_main_dependencies["reconciler"].return_value.reconcile, "reconcile"
+    )
+    pipeline_manager.attach_mock(
+        mock_main_dependencies["trade_archival"].return_value.run, "archive"
+    )
+    pipeline_manager.attach_mock(
+        mock_main_dependencies["rejected_archival"].return_value.run, "rejected_archive"
+    )
+    pipeline_manager.attach_mock(
+        mock_main_dependencies["expired_archival"].return_value.run, "expired_archive"
+    )
+    pipeline_manager.attach_mock(
+        mock_main_dependencies["backtest_archival"].return_value.run, "backtest_archive"
+    )
+    pipeline_manager.attach_mock(
+        mock_main_dependencies["fee_patch"].return_value.run, "fee_patch"
+    )
+
+    # Execute
+    main(smoke_test=False)
+
+    # Verify explicit call order skips legacy
+    actual_calls = [c[0] for c in pipeline_manager.mock_calls]
+    assert actual_calls == [
+        "reconcile",
+        "archive",
+        "backtest_archive",
         "fee_patch",
     ], f"Actual calls mismatch: {actual_calls}"
 
