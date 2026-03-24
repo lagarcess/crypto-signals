@@ -46,7 +46,7 @@ Table live_signals [headercolor: #e06666] {
   pattern_span_days int [note: 'Time span from first to last structural pivot i...']
   pattern_classification varchar [note: 'Pattern scale: STANDARD_PATTERN (5-90 days) or ...']
   structural_anchors list [note: 'List of structural pivots defining pattern geom...']
-  rejection_reason varchar [note: 'Reason for rejection if status is REJECTED_BY_F...']
+  rejection_reason varchar [note: 'Reason for rejection (e.g., Volume 1.2x < 1.5x ...']
   rejection_metadata json [note: 'Forensic data for validation failures (e.g., ra...']
   confluence_snapshot json [note: 'Snapshot of indicator values at rejection: {rsi...']
   harmonic_metadata json [note: 'Harmonic pattern ratios for Fibonacci-based pat...']
