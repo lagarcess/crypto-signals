@@ -204,7 +204,8 @@ Cloud Scheduler (daily 00:01 UTC)
    - **State Reconciliation** (new): At startup, detects and heals sync gaps between Alpaca and Firestore
      - Heals **Zombies**: Positions marked OPEN in DB but closed in Alpaca → marks `CLOSED_EXTERNALLY`
      - Alerts **Orphans**: Positions open in Alpaca but missing from DB → sends Discord alert
-10. **Notifications** → Success/failure sent to Discord
+10. **Nightly Archival** → Archives closed trades and theoretical signals to BigQuery
+11. **Notifications** → Success/failure sent to Discord
 
 ### CI/CD Features
 

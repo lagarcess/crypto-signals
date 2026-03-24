@@ -236,6 +236,11 @@ class Settings(BaseSettings):
         description="Automatically add missing columns to BigQuery tables.",
     )
 
+    USE_LEGACY_ARCHIVAL: bool = Field(
+        default=True,
+        description="Enable older archival pipelines alongside unified backtest archival.",
+    )
+
     # === Saturation Filtering (Issue #290) ===
     SIGNAL_SATURATION_THRESHOLD_PCT: float = Field(
         default=0.5,

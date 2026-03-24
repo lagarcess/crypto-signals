@@ -513,19 +513,21 @@ class TestCleanup:
         assert mock_batch.delete.called, "Expected batch.delete to be called"
         assert mock_batch.commit.called, "Expected batch.commit to be called"
 
-    def test_cleanup_skips_executed_signals(self, pipeline, mock_firestore):
-        """TP*_HIT signals must NOT be deleted from Firestore."""
+    def test_cleanup_deletes_executed_signals(self, pipeline, mock_firestore):
+        """TP*_HIT signals MUST be deleted from Firestore."""
         executed = FactTheoreticalSignalFactory.build(
             doc_id="tp1_1",
             signal_id="tp1_1",
             status=SignalStatus.TP1_HIT,
+            source_collection="live_signals",
         )
 
         mock_batch = mock_firestore.batch.return_value
         pipeline.cleanup([executed])
 
-        # batch.delete should NOT have been called for executed signals
-        mock_batch.delete.assert_not_called()
+        # batch.delete SHOULD be called for executed signals
+        assert mock_batch.delete.called, "Expected batch.delete to be called"
+        assert mock_batch.commit.called, "Expected batch.commit to be called"
 
     def test_cleanup_empty_data(self, pipeline, mock_firestore):
         """Cleanup with no data is a no-op."""
@@ -533,7 +535,7 @@ class TestCleanup:
         mock_firestore.batch.assert_not_called()
 
     def test_cleanup_mixed_statuses(self, pipeline, mock_firestore):
-        """Mixed batch: deletes non-executed, skips executed."""
+        """Mixed batch: deletes all terminal signals."""
         rejected = FactTheoreticalSignalFactory.build(
             doc_id="rej_2",
             signal_id="rej_2",
@@ -556,10 +558,10 @@ class TestCleanup:
         mock_batch = mock_firestore.batch.return_value
         pipeline.cleanup([rejected, tp2, invalidated])
 
-        # 2 deletes (rejected + invalidated), not 3
+        # 3 deletes
         assert (
-            mock_batch.delete.call_count == 2
-        ), f"Expected 2 deletes, got {mock_batch.delete.call_count}"
+            mock_batch.delete.call_count == 3
+        ), f"Expected 3 deletes, got {mock_batch.delete.call_count}"
 
     def test_cleanup_skips_missing_source_collection(self, pipeline, mock_firestore):
         """Cleanup skips records missing source_collection."""
