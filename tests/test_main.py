@@ -31,14 +31,13 @@ def caplog(caplog):
     logger.remove(handler_id)
 
 
-def test_main_execution_flow(mock_main_dependencies):
-    """Test the normal execution flow of the main function."""
-    # Setup mocks
+@pytest.fixture
+def main_test_setup(mock_main_dependencies):
+    """Shared setup fixture for main execution tests."""
     mock_gen_instance = mock_main_dependencies["generator"].return_value
     mock_repo_instance = mock_main_dependencies["repo"].return_value
     mock_discord_instance = mock_main_dependencies["discord"].return_value
 
-    # Mock signal generation to return a signal for BTC/USD only
     mock_signal = MagicMock()
     mock_signal.symbol = "BTC/USD"
     mock_signal.signal_id = "test_signal_btc_main"
@@ -46,7 +45,6 @@ def test_main_execution_flow(mock_main_dependencies):
     mock_signal.suggested_stop = 90000.0
     mock_signal.discord_thread_id = None
 
-    # Ensure find_thread returns None by default (simulate not found)
     mock_discord_instance.find_thread_by_signal_id.return_value = None
 
     def side_effect(symbol, asset_class, **kwargs):
@@ -55,17 +53,7 @@ def test_main_execution_flow(mock_main_dependencies):
         return None
 
     mock_gen_instance.generate_signals.side_effect = side_effect
-
-    # Mock send_signal to return a thread_id
     mock_discord_instance.send_signal.return_value = "thread_123456"
-
-    # Create a manager to track call order across mocks
-    manager = Mock()
-    manager.attach_mock(mock_repo_instance.save, "save")
-    manager.attach_mock(mock_discord_instance.send_signal, "send_signal")
-    manager.attach_mock(mock_repo_instance.update_signal, "update_signal")
-
-    # === PIPELINE TRACKING (Issue #149) ===
 
     # Detach return value to prevent attribute access logs (critical_issues, etc.)
     mock_report = MagicMock()
@@ -75,13 +63,14 @@ def test_main_execution_flow(mock_main_dependencies):
     mock_report.reconciled_count = 0
     mock_main_dependencies["reconciler"].return_value.reconcile.return_value = mock_report
 
-    # Configure pipeline return values to prevent logging interaction (str/repr calls)
+    # Configure pipeline return values to prevent logging interaction
     mock_main_dependencies["trade_archival"].return_value.run.return_value = 5
     mock_main_dependencies["fee_patch"].return_value.run.return_value = 2
     mock_main_dependencies["rejected_archival"].return_value.run.return_value = 3
     mock_main_dependencies["expired_archival"].return_value.run.return_value = 4
+    mock_main_dependencies["backtest_archival"].return_value.run.return_value = 0
 
-    # Setup tracking for Reconcile -> Archive -> Fee Patch Sequence
+    # Setup tracking for Reconcile -> Archive -> Archival Pipelines -> Fee Patch Sequence
     pipeline_manager = Mock()
     pipeline_manager.attach_mock(
         mock_main_dependencies["reconciler"].return_value.reconcile, "reconcile"
@@ -96,8 +85,35 @@ def test_main_execution_flow(mock_main_dependencies):
         mock_main_dependencies["expired_archival"].return_value.run, "expired_archive"
     )
     pipeline_manager.attach_mock(
+        mock_main_dependencies["backtest_archival"].return_value.run, "backtest_archive"
+    )
+    pipeline_manager.attach_mock(
         mock_main_dependencies["fee_patch"].return_value.run, "fee_patch"
     )
+
+    return {
+        "generator": mock_gen_instance,
+        "repo": mock_repo_instance,
+        "discord": mock_discord_instance,
+        "signal": mock_signal,
+        "pipeline_manager": pipeline_manager,
+    }
+
+
+def test_main_execution_flow(mock_main_dependencies, main_test_setup):
+    """Test the normal execution flow of the main function."""
+    setup = main_test_setup
+    mock_gen_instance = setup["generator"]
+    mock_repo_instance = setup["repo"]
+    mock_discord_instance = setup["discord"]
+    mock_signal = setup["signal"]
+    pipeline_manager = setup["pipeline_manager"]
+
+    # Create a manager to track call order across the initial generation loop mocks
+    manager = Mock()
+    manager.attach_mock(mock_repo_instance.save, "save")
+    manager.attach_mock(mock_discord_instance.send_signal, "send_signal")
+    manager.attach_mock(mock_repo_instance.update_signal, "update_signal")
 
     # Execute
     main(smoke_test=False)
@@ -123,10 +139,8 @@ def test_main_execution_flow(mock_main_dependencies):
     mock_gen_instance.generate_signals.assert_has_calls(expected_calls, any_order=True)
 
     # Verify Signal Handling (Save FIRST with CREATED, then Discord, then Update to WAITING)
-    # Should be called once for BTC/USD
     mock_repo_instance.save.assert_called_once_with(mock_signal)
     mock_discord_instance.send_signal.assert_called_once()
-    # Verify the NotificationPayload wrapper contains the expected signal
     actual_payload = mock_discord_instance.send_signal.call_args[0][0]
     assert actual_payload.signal is mock_signal
     assert actual_payload.is_saturated is False
@@ -136,14 +150,10 @@ def test_main_execution_flow(mock_main_dependencies):
     assert mock_signal.discord_thread_id == "thread_123456"
 
     # Verify explicit call order: Save -> Discord -> Update (two-phase commit)
-    # update_signal_atomic args: signal_id, updates dict
     expected_updates = {
         "discord_thread_id": "thread_123456",
         "status": SignalStatus.WAITING.value,
     }
-
-    # We can't easily check dictionary equality inside assert_has_calls with objects unless we use ANY for specific fields
-    # But usually atomic update is called instead of legacy update_signal
     mock_repo_instance.update_signal_atomic.assert_called_with(
         mock_signal.signal_id, expected_updates
     )
@@ -151,13 +161,33 @@ def test_main_execution_flow(mock_main_dependencies):
     # Legacy update should NOT be called
     mock_repo_instance.update_signal.assert_not_called()
 
-    # Verify precise call order (Names only to avoid fragile call object comparison)
+    # Verify precise call order for Pipelines
     actual_calls = [c[0] for c in pipeline_manager.mock_calls]
     assert actual_calls == [
         "rejected_archive",
         "expired_archive",
         "reconcile",
         "archive",
+        "backtest_archive",
+        "fee_patch",
+    ], f"Actual calls mismatch: {actual_calls}"
+
+
+def test_main_legacy_archival_disabled(mock_main_dependencies, main_test_setup):
+    """Test that legacy archival pipelines are skipped when disabled."""
+    # Define Settings flag False
+    mock_main_dependencies["settings"].return_value.USE_LEGACY_ARCHIVAL = False
+
+    # Execute
+    main(smoke_test=False)
+
+    # Verify explicit call order skips legacy
+    pipeline_manager = main_test_setup["pipeline_manager"]
+    actual_calls = [c[0] for c in pipeline_manager.mock_calls]
+    assert actual_calls == [
+        "reconcile",
+        "archive",
+        "backtest_archive",
         "fee_patch",
     ], f"Actual calls mismatch: {actual_calls}"
 

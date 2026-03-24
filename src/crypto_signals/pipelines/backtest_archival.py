@@ -239,8 +239,8 @@ class BacktestArchivalPipeline(BigQueryPipelineBase):
         Delete archived signals from Firestore after successful BQ load.
 
         Routes deletes to the correct source collection.
-        SKIPS cleanup for TP*_HIT signals — trade_archival.py still needs
-        the parent live_signal for position reference (Issue #368).
+        Deletes all terminal signals, including parent live_signals of
+        EXECUTED trades (now safe since it runs after trade_archival).
         """
         if not data:
             return
@@ -252,20 +252,8 @@ class BacktestArchivalPipeline(BigQueryPipelineBase):
 
         # Group by source collection for efficient batching
         collections: Dict[str, List[str]] = {}
-        skipped = 0
 
         for item in data:
-            raw_status = getattr(item, "status", None)
-            # Normalize: SignalStatus enum → str via .value
-            status_val = (
-                getattr(raw_status, "value", str(raw_status))
-                if raw_status is not None
-                else ""
-            )
-            if status_val in _EXECUTED_STATUSES:
-                skipped += 1
-                continue
-
             doc_id = getattr(item, "doc_id", None) or getattr(item, "signal_id", None)
             collection = getattr(item, "source_collection", None)
 
@@ -295,12 +283,6 @@ class BacktestArchivalPipeline(BigQueryPipelineBase):
 
             if count > 0:
                 batch.commit()
-
-        if skipped > 0:
-            logger.info(
-                "Skipped cleanup for executed parent signals",
-                extra={"job": self.job_name, "skipped": skipped},
-            )
 
         logger.info(
             "Cleanup complete",
