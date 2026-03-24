@@ -105,7 +105,7 @@ def _make_raw_signal(
 
     data = {
         "_doc_id": signal_id,
-        "_source_collection": source_collection,
+        "source_collection": source_collection,
         "signal_id": signal_id,
         "symbol": symbol,
         "asset_class": asset_class,
@@ -187,8 +187,8 @@ class TestExtract:
         assert (
             raw_data[0]["_doc_id"] == "rej_1"
         ), f"Expected _doc_id='rej_1', got {raw_data[0]['_doc_id']!r}"
-        # Verify _source_collection tagging
-        assert raw_data[0]["_source_collection"] == "rejected_signals"
+        # Verify source_collection tagging
+        assert raw_data[0]["source_collection"] == "rejected_signals"
 
     def test_extract_empty_collections(self, pipeline, mock_firestore):
         """Extract returns empty list when no terminal signals exist."""
@@ -498,11 +498,13 @@ class TestCleanup:
             doc_id="rej_1",
             signal_id="rej_1",
             status=SignalStatus.REJECTED_BY_FILTER,
+            source_collection="rejected_signals",
         )
         expired = FactTheoreticalSignalFactory.build(
             doc_id="exp_1",
             signal_id="exp_1",
             status=SignalStatus.EXPIRED,
+            source_collection="live_signals",
         )
 
         mock_batch = mock_firestore.batch.return_value
@@ -523,10 +525,7 @@ class TestCleanup:
         pipeline.cleanup([executed])
 
         # batch.delete should NOT have been called for executed signals
-        (
-            mock_batch.delete.assert_not_called(),
-            ("Expected no deletion for TP*_HIT signals"),
-        )
+        mock_batch.delete.assert_not_called()
 
     def test_cleanup_empty_data(self, pipeline, mock_firestore):
         """Cleanup with no data is a no-op."""
@@ -539,16 +538,19 @@ class TestCleanup:
             doc_id="rej_2",
             signal_id="rej_2",
             status=SignalStatus.REJECTED_BY_FILTER,
+            source_collection="rejected_signals",
         )
         tp2 = FactTheoreticalSignalFactory.build(
             doc_id="tp2_1",
             signal_id="tp2_1",
             status=SignalStatus.TP2_HIT,
+            source_collection="live_signals",
         )
         invalidated = FactTheoreticalSignalFactory.build(
             doc_id="inv_1",
             signal_id="inv_1",
             status=SignalStatus.INVALIDATED,
+            source_collection="live_signals",
         )
 
         mock_batch = mock_firestore.batch.return_value
@@ -558,6 +560,20 @@ class TestCleanup:
         assert (
             mock_batch.delete.call_count == 2
         ), f"Expected 2 deletes, got {mock_batch.delete.call_count}"
+
+    def test_cleanup_skips_missing_source_collection(self, pipeline, mock_firestore):
+        """Cleanup skips records missing source_collection."""
+        missing = FactTheoreticalSignalFactory.build(
+            doc_id="mis_1",
+            signal_id="mis_1",
+            status=SignalStatus.REJECTED_BY_FILTER,
+            source_collection=None,  # Explicitly set to None
+        )
+
+        mock_batch = mock_firestore.batch.return_value
+        pipeline.cleanup([missing])
+
+        mock_batch.delete.assert_not_called()
 
 
 # =====================================================================

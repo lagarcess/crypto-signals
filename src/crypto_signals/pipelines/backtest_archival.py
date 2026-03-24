@@ -40,6 +40,9 @@ from crypto_signals.pipelines.base import BigQueryPipelineBase
 # Validity window — only archive rejected signals older than 7 days
 VALIDITY_WINDOW_DAYS = 7
 
+# Maximum number of documents to extract per collection/status per run
+EXTRACTION_BATCH_LIMIT = 100
+
 # Terminal statuses to extract from live_signals
 _TERMINAL_LIVE_STATUSES = [
     SignalStatus.EXPIRED.value,
@@ -133,7 +136,7 @@ class BacktestArchivalPipeline(BigQueryPipelineBase):
         rejected_docs = (
             self.firestore_client.collection(self.rejected_collection)
             .where(filter=FieldFilter("created_at", "<", cutoff))
-            .limit(100)
+            .limit(EXTRACTION_BATCH_LIMIT)
             .stream()
         )
 
@@ -141,7 +144,7 @@ class BacktestArchivalPipeline(BigQueryPipelineBase):
             data = doc.to_dict()
             if data:
                 data["_doc_id"] = doc.id
-                data["_source_collection"] = self.rejected_collection
+                data["source_collection"] = self.rejected_collection
                 raw_data.append(data)
 
         rejected_count = len(raw_data)
@@ -151,14 +154,14 @@ class BacktestArchivalPipeline(BigQueryPipelineBase):
             live_docs = (
                 self.firestore_client.collection(self.live_collection)
                 .where(filter=FieldFilter("status", "==", status))
-                .limit(100)
+                .limit(EXTRACTION_BATCH_LIMIT)
                 .stream()
             )
             for doc in live_docs:
                 data = doc.to_dict()
                 if data:
                     data["_doc_id"] = doc.id
-                    data["_source_collection"] = self.live_collection
+                    data["source_collection"] = self.live_collection
                     raw_data.append(data)
 
         live_count = len(raw_data) - rejected_count
@@ -264,14 +267,14 @@ class BacktestArchivalPipeline(BigQueryPipelineBase):
                 continue
 
             doc_id = getattr(item, "doc_id", None) or getattr(item, "signal_id", None)
-            if not doc_id:
-                continue
+            collection = getattr(item, "source_collection", None)
 
-            # Determine target collection based on status
-            if status_val == SignalStatus.REJECTED_BY_FILTER.value:
-                collection = self.rejected_collection
-            else:
-                collection = self.live_collection
+            if not doc_id or not collection:
+                logger.warning(
+                    "Skipping cleanup for item missing doc_id or source_collection",
+                    extra={"job": self.job_name, "doc_id": doc_id},
+                )
+                continue
 
             collections.setdefault(collection, []).append(str(doc_id))
 
@@ -314,8 +317,8 @@ class BacktestArchivalPipeline(BigQueryPipelineBase):
         created_at = signal.get("created_at")
         symbol = signal.get("symbol")
         asset_class = signal.get("asset_class", "CRYPTO")
-        entry_price = float(signal.get("entry_price", 0))
-        stop_loss = float(signal.get("suggested_stop", 0))
+        entry_price = float(signal.get("entry_price") or 0)
+        stop_loss = float(signal.get("suggested_stop") or 0)
         take_profit_1 = float(signal.get("take_profit_1") or 0)
         side = signal.get("side", OrderSide.BUY.value)
 
@@ -579,9 +582,9 @@ class BacktestArchivalPipeline(BigQueryPipelineBase):
             "side": signal.get("side", OrderSide.BUY.value),
             "status": status,
             "trade_type": "ERROR",
-            "entry_price": float(signal.get("entry_price", 0) or 0),
+            "entry_price": float(signal.get("entry_price") or 0),
             "pattern_name": signal.get("pattern_name", "UNKNOWN"),
-            "suggested_stop": float(signal.get("suggested_stop", 0) or 0),
+            "suggested_stop": float(signal.get("suggested_stop") or 0),
             "valid_until": signal.get("valid_until", created_at),
             "created_at": created_at,
             "theoretical_exit_reason": f"TRANSFORM_ERROR: {error}",
