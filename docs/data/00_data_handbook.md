@@ -153,8 +153,8 @@ Optimized for aggregation, backtesting, and performance reporting.
 | `pattern_span_days` | `int` | Time span from first to last structural pivot in the pattern (geometric extent) |
 | `pattern_classification` | `str` | Pattern scale: 'STANDARD_PATTERN' (5-90 days) or 'MACRO_PATTERN' (>90 days) |
 | `structural_anchors` | `List[Dict]` | List of structural pivots defining pattern geometry: [{price, timestamp, pivot_type}] |
-| `rejection_reason` | `str` | Reason for rejection if status is REJECTED_BY_FILTER (e.g., 'Volume 1.2x < 1.5x Required') |
-| `rejection_metadata` | `Dict` | Forensic data for validation failures (e.g., raw invalid stops for audit) |
+| `rejection_reason` | `str` | Reason for rejection (e.g., 'Volume 1.2x < 1.5x Required'). Applies only to signals with status REJECTED_BY_FILTER; remains null for live signals. |
+| `rejection_metadata` | `Dict` | Forensic data for validation failures (e.g., raw invalid stops for audit). Applies only to rejected signals; remains null for live signals. |
 | `confluence_snapshot` | `Dict` | Snapshot of indicator values at rejection: {rsi, adx, sma_trend, volume_ratio, rr_ratio} |
 | `harmonic_metadata` | `Dict` | Harmonic pattern ratios for Fibonacci-based patterns: {B_ratio, D_ratio, wave3_to_wave1_ratio, etc.} |
 | `structural_context` | `str` | Active harmonic/structural regime: 'ELLIOTT_WAVE_135', 'GARTLEY', etc. Context only, not the primary signal. |
