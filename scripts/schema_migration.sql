@@ -175,3 +175,53 @@ LIKE `{{PROJECT_ID}}.crypto_analytics.fact_rejected_signals`;
 -- TEST ENVIRONMENT (Schema Mirroring)
 -- =========================================================================================
 -- (Optional: Can be derived from above, strictly focusing on PROD for now)
+
+-- =========================================================================================
+-- 7. Fact Theoretical Signals (Unified Backtesting Ledger)
+-- =========================================================================================
+CREATE TABLE IF NOT EXISTS `{{PROJECT_ID}}.crypto_analytics.fact_theoretical_signals` (
+    ds DATE,
+    signal_id STRING,
+    strategy_id STRING,
+    symbol STRING,
+    asset_class STRING,
+    side STRING,
+    status STRING,
+    trade_type STRING,
+    exit_reason STRING,
+    rejection_reason STRING,
+    entry_price FLOAT64,
+    pattern_name STRING,
+    suggested_stop FLOAT64,
+    take_profit_1 FLOAT64,
+    take_profit_2 FLOAT64,
+    take_profit_3 FLOAT64,
+    valid_until TIMESTAMP,
+    created_at TIMESTAMP,
+    pattern_classification STRING,
+    pattern_duration_days INT64,
+    pattern_span_days INT64,
+    conviction_tier STRING,
+    structural_context STRING,
+    confluence_factors ARRAY<STRING>,
+    confluence_snapshot STRING,
+    harmonic_metadata STRING,
+    rejection_metadata STRING,
+    structural_anchors ARRAY<STRUCT<price FLOAT64, pivot_type STRING, `index` INT64, timestamp TIMESTAMP>>,
+    theoretical_exit_price FLOAT64,
+    theoretical_exit_reason STRING,
+    theoretical_exit_time TIMESTAMP,
+    theoretical_pnl_usd FLOAT64,
+    theoretical_pnl_pct FLOAT64,
+    theoretical_fees_usd FLOAT64,
+    distance_to_trigger_pct FLOAT64,
+    linked_trade_id STRING,
+    doc_id STRING
+)
+PARTITION BY ds
+CLUSTER BY status, strategy_id, symbol;
+
+-- Staging for Theoretical Signals
+DROP TABLE IF EXISTS `{{PROJECT_ID}}.crypto_analytics.stg_theoretical_signals_import`;
+CREATE TABLE `{{PROJECT_ID}}.crypto_analytics.stg_theoretical_signals_import`
+LIKE `{{PROJECT_ID}}.crypto_analytics.fact_theoretical_signals`;

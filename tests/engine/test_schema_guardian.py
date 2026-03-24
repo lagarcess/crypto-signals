@@ -1,4 +1,5 @@
-from typing import Optional
+from datetime import date
+from typing import List, Optional
 from unittest.mock import MagicMock
 
 import pytest
@@ -339,3 +340,31 @@ def test_validate_schema_ignores_excluded_fields(guardian, mock_bq_client):
 
     # This should NOT raise SchemaMismatchError
     guardian.validate_schema("project.dataset.table", ExcludeModel)
+
+
+def test_create_table_with_clustering(guardian, mock_bq_client):
+    """Test that _create_table correctly sets clustering_fields."""
+
+    class ClusterModel(BaseModel):
+        ds: date
+        status: str
+        strategy_id: str
+        symbol: str
+
+    clustering_fields = ["status", "strategy_id", "symbol"]
+    table_id = "project.dataset.table"
+
+    # Should not raise
+    guardian._create_table(
+        table_id,
+        ClusterModel,
+        partition_column="ds",
+        clustering_fields=clustering_fields,
+    )
+
+    # Verify create_table was called with a table object having correct clustering
+    mock_bq_client.create_table.assert_called_once()
+    table_arg = mock_bq_client.create_table.call_args[0][0]
+    assert isinstance(table_arg, bigquery.Table)
+    assert table_arg.clustering_fields == clustering_fields
+    assert table_arg.time_partitioning.field == "ds"

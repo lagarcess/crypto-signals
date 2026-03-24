@@ -167,6 +167,7 @@ class SchemaGuardian:
         table_id: str,
         model: Type[BaseModel],
         partition_column: Optional[str] = None,
+        clustering_fields: Optional[List[str]] = None,
     ) -> None:
         """
         Alters the BigQuery table to add missing columns.
@@ -176,13 +177,14 @@ class SchemaGuardian:
             table_id: Full table ID (project.dataset.table)
             model: Pydantic model class
             partition_column: Optional column to use for TimePartitioning (Day)
+            clustering_fields: Optional list of columns for clustering
         """
         try:
             table = self.client.get_table(table_id)
         except (NotFound, GoogleAPICallError) as e:
             if isinstance(e, NotFound):
                 logger.info(f"Table {table_id} not found. Creating it...")
-                self._create_table(table_id, model, partition_column)
+                self._create_table(table_id, model, partition_column, clustering_fields)
                 return
             else:
                 logger.error(
@@ -247,8 +249,16 @@ class SchemaGuardian:
         table_id: str,
         model: Type[BaseModel],
         partition_column: Optional[str] = None,
+        clustering_fields: Optional[List[str]] = None,
     ) -> None:
-        """Helper to create a new table from Pydantic model."""
+        """Helper to create a new table from Pydantic model.
+
+        Args:
+            table_id: Full table ID (project.dataset.table)
+            model: Pydantic model class
+            partition_column: Optional column to use for TimePartitioning (Day)
+            clustering_fields: Optional list of columns for clustering
+        """
         schema = self.generate_schema(model)
         table = bigquery.Table(table_id, schema=schema)
 
@@ -260,6 +270,10 @@ class SchemaGuardian:
                 field=partition_column,
                 type_=bigquery.TimePartitioningType.DAY,
             )
+
+        if clustering_fields:
+            logger.info(f"Configuring Clustering for {table_id} on {clustering_fields}")
+            table.clustering_fields = clustering_fields
 
         try:
             self.client.create_table(table)
