@@ -229,19 +229,33 @@ class SchemaGuardian:
                     if self.strict_mode:
                         raise SchemaMismatchError(error_msg)
 
-        if not new_fields:
-            logger.info(f"No new fields to add to {table_id}.")
+        update_fields = []
+
+        if new_fields:
+            updated_schema = table.schema[:]
+            updated_schema.extend(new_fields)
+            table.schema = updated_schema
+            update_fields.append("schema")
+            logger.info(
+                f"Migrating schema for {table_id}: Adding {len(new_fields)} columns..."
+            )
+
+        if clustering_fields is not None:
+            current_clustering = (
+                list(table.clustering_fields) if table.clustering_fields else []
+            )
+            if current_clustering != clustering_fields:
+                table.clustering_fields = clustering_fields
+                update_fields.append("clustering_fields")
+                logger.info(
+                    f"Migrating clustering for {table_id}: Changing to {clustering_fields}"
+                )
+
+        if not update_fields:
+            logger.info(f"No new fields or clustering updates needed for {table_id}.")
             return
 
-        # Append new fields to the existing schema
-        updated_schema = table.schema[:]
-        updated_schema.extend(new_fields)
-        table.schema = updated_schema
-
-        logger.info(
-            f"Migrating schema for {table_id}: Adding {len(new_fields)} columns..."
-        )
-        self.client.update_table(table, ["schema"])
+        self.client.update_table(table, update_fields)
         logger.info(f"Schema migration successful for {table_id}.")
 
     def _create_table(
