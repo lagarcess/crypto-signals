@@ -413,7 +413,12 @@ class PatternAnalyzer:
             upper_wick=h - np.maximum(c, o),
             lower_wick=np.minimum(c, o) - l,
             total_range=total_range,
-            body_pct=body_size / total_range,
+            body_pct=np.divide(
+                body_size,
+                total_range,
+                out=np.full(body_size.shape, np.nan),
+                where=total_range != 0,
+            ),
             is_green=c > o,
             is_red=c < o,
             open_1=o1,
