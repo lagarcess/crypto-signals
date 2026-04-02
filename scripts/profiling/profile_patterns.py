@@ -45,7 +45,7 @@ def main():
 
     profiler = cProfile.Profile()
     profiler.enable()
-    res = analyzer.check_patterns()
+    _ = analyzer.check_patterns()
     profiler.disable()
 
     stats = pstats.Stats(profiler).sort_stats("cumtime")

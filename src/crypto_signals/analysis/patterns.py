@@ -384,11 +384,11 @@ class PatternAnalyzer:
         # Extract underlying numpy arrays for zero-overhead arithmetic
         o = self.df["open"].to_numpy()
         h = self.df["high"].to_numpy()
-        l = self.df["low"].to_numpy()
+        lows = self.df["low"].to_numpy()
         c = self.df["close"].to_numpy()
 
         body_size = np.abs(c - o)
-        total_range = h - l
+        total_range = h - lows
 
         # Calculate shifted arrays manually using np.roll, padding with NaNs
         # to match pandas shift() behavior precisely.
@@ -398,7 +398,7 @@ class PatternAnalyzer:
         c1[0] = np.nan
         h1 = np.roll(h, 1)
         h1[0] = np.nan
-        l1 = np.roll(l, 1)
+        l1 = np.roll(lows, 1)
         l1[0] = np.nan
 
         o2 = np.roll(o, 2)
@@ -411,7 +411,7 @@ class PatternAnalyzer:
         self.df = self.df.assign(
             body_size=body_size,
             upper_wick=h - np.maximum(c, o),
-            lower_wick=np.minimum(c, o) - l,
+            lower_wick=np.minimum(c, o) - lows,
             total_range=total_range,
             body_pct=np.divide(
                 body_size,
