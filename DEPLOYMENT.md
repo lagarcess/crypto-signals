@@ -41,7 +41,7 @@ gcloud services enable run.googleapis.com secretmanager.googleapis.com \
 gcloud artifacts repositories create crypto-signals \
     --repository-format=docker --location=us-central1
 gcloud firestore databases create --location=nam5 --type=firestore-native
-bq mk --dataset --location=US ${GCP_PROJECT}:crypto_signals
+bq mk --dataset --location=US ${GCP_PROJECT}:crypto_analytics
 
 # 4. Create service account
 gcloud iam service-accounts create crypto-bot-admin \
