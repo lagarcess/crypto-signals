@@ -1,5 +1,5 @@
 from datetime import date
-from typing import List, Optional
+from typing import Optional
 from unittest.mock import MagicMock
 
 import pytest
