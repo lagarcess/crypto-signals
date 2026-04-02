@@ -202,4 +202,5 @@ def test_run_ensures_fact_table_exists(pipeline, mock_bq_client):
             pipeline.fact_table_id,
             pipeline.schema_model,
             partition_column=pipeline.partition_column,
+            clustering_fields=pipeline.clustering_fields,
         )

@@ -377,6 +377,7 @@ class BigQueryPipelineBase(ABC):
                         self.fact_table_id,
                         self.schema_model,
                         partition_column=self.partition_column,
+                        clustering_fields=self.clustering_fields,
                     )
 
                     # Retry validation to ensure compliance

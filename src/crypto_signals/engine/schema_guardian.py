@@ -167,6 +167,7 @@ class SchemaGuardian:
         table_id: str,
         model: Type[BaseModel],
         partition_column: Optional[str] = None,
+        clustering_fields: Optional[List[str]] = None,
     ) -> None:
         """
         Alters the BigQuery table to add missing columns.
@@ -176,13 +177,14 @@ class SchemaGuardian:
             table_id: Full table ID (project.dataset.table)
             model: Pydantic model class
             partition_column: Optional column to use for TimePartitioning (Day)
+            clustering_fields: Optional list of columns for clustering
         """
         try:
             table = self.client.get_table(table_id)
         except (NotFound, GoogleAPICallError) as e:
             if isinstance(e, NotFound):
                 logger.info(f"Table {table_id} not found. Creating it...")
-                self._create_table(table_id, model, partition_column)
+                self._create_table(table_id, model, partition_column, clustering_fields)
                 return
             else:
                 logger.error(
@@ -227,19 +229,33 @@ class SchemaGuardian:
                     if self.strict_mode:
                         raise SchemaMismatchError(error_msg)
 
-        if not new_fields:
-            logger.info(f"No new fields to add to {table_id}.")
+        update_fields = []
+
+        if new_fields:
+            updated_schema = table.schema[:]
+            updated_schema.extend(new_fields)
+            table.schema = updated_schema
+            update_fields.append("schema")
+            logger.info(
+                f"Migrating schema for {table_id}: Adding {len(new_fields)} columns..."
+            )
+
+        if clustering_fields is not None:
+            current_clustering = (
+                list(table.clustering_fields) if table.clustering_fields else []
+            )
+            if current_clustering != clustering_fields:
+                table.clustering_fields = clustering_fields
+                update_fields.append("clustering_fields")
+                logger.info(
+                    f"Migrating clustering for {table_id}: Changing to {clustering_fields}"
+                )
+
+        if not update_fields:
+            logger.info(f"No new fields or clustering updates needed for {table_id}.")
             return
 
-        # Append new fields to the existing schema
-        updated_schema = table.schema[:]
-        updated_schema.extend(new_fields)
-        table.schema = updated_schema
-
-        logger.info(
-            f"Migrating schema for {table_id}: Adding {len(new_fields)} columns..."
-        )
-        self.client.update_table(table, ["schema"])
+        self.client.update_table(table, update_fields)
         logger.info(f"Schema migration successful for {table_id}.")
 
     def _create_table(
@@ -247,8 +263,16 @@ class SchemaGuardian:
         table_id: str,
         model: Type[BaseModel],
         partition_column: Optional[str] = None,
+        clustering_fields: Optional[List[str]] = None,
     ) -> None:
-        """Helper to create a new table from Pydantic model."""
+        """Helper to create a new table from Pydantic model.
+
+        Args:
+            table_id: Full table ID (project.dataset.table)
+            model: Pydantic model class
+            partition_column: Optional column to use for TimePartitioning (Day)
+            clustering_fields: Optional list of columns for clustering
+        """
         schema = self.generate_schema(model)
         table = bigquery.Table(table_id, schema=schema)
 
@@ -260,6 +284,10 @@ class SchemaGuardian:
                 field=partition_column,
                 type_=bigquery.TimePartitioningType.DAY,
             )
+
+        if clustering_fields:
+            logger.info(f"Configuring Clustering for {table_id} on {clustering_fields}")
+            table.clustering_fields = clustering_fields
 
         try:
             self.client.create_table(table)
