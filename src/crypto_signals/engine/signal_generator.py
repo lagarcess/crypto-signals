@@ -321,7 +321,9 @@ class SignalGenerator:
         # CONVICTION TIER (Phase 2: Multi-Layer Architecture)
         # ============================================================
         # Derive conviction tier BEFORE quality gates to allow threshold relaxation
-        conviction_tier = "HIGH" if harmonic_pattern and geometric_pattern_name else "STANDARD"
+        conviction_tier = (
+            "HIGH" if harmonic_pattern and geometric_pattern_name else "STANDARD"
+        )
 
         # ============================================================
         # SIGNAL QUALITY FILTERS (Confluence Validation)
