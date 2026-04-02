@@ -211,9 +211,9 @@ CREATE TABLE IF NOT EXISTS `{{PROJECT_ID}}.crypto_analytics.fact_theoretical_sig
     theoretical_exit_price FLOAT64,
     theoretical_exit_reason STRING,
     theoretical_exit_time TIMESTAMP,
-    theoretical_pnl_usd FLOAT64,
-    theoretical_pnl_pct FLOAT64,
-    theoretical_fees_usd FLOAT64,
+    theoretical_pnl_usd NUMERIC,
+    theoretical_pnl_pct NUMERIC,
+    theoretical_fees_usd NUMERIC,
     distance_to_trigger_pct FLOAT64,
     linked_trade_id STRING,
     doc_id STRING
