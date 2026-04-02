@@ -193,7 +193,7 @@ class SignalParameterFactory:
         # Harmonic Metadata & Multi-Layer Architecture
         harmonic_metadata = None
         structural_context = None
-        conviction_tier = None
+        conviction_tier = "STANDARD"
         if harmonic_pattern:
             # Multi-Layer: harmonic is context, not primary strategy
             # strategy_id stays as geometric pattern_name

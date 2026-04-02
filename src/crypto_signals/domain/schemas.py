@@ -483,11 +483,11 @@ class Signal(BaseModel):
     )
     rejection_reason: Optional[str] = Field(
         default=None,
-        description="Reason for rejection if status is REJECTED_BY_FILTER (e.g., 'Volume 1.2x < 1.5x Required')",
+        description="Reason for rejection (e.g., 'Volume 1.2x < 1.5x Required'). Applies only to signals with status REJECTED_BY_FILTER; remains null for live signals.",
     )
     rejection_metadata: Optional[Dict[str, Any]] = Field(
         default=None,
-        description="Forensic data for validation failures (e.g., raw invalid stops for audit)",
+        description="Forensic data for validation failures (e.g., raw invalid stops for audit). Applies only to rejected signals; remains null for live signals.",
     )
     confluence_snapshot: Optional[Dict[str, Any]] = Field(
         default=None,
