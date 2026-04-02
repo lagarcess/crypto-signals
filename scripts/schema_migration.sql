@@ -57,9 +57,9 @@ CREATE TABLE IF NOT EXISTS `{{PROJECT_ID}}.crypto_analytics.fact_trades` (
     exit_time TIMESTAMP,
     exit_reason STRING,
     max_favorable_excursion FLOAT64,
-    pnl_pct FLOAT64,
-    pnl_usd FLOAT64,
-    fees_usd FLOAT64,
+    pnl_pct NUMERIC,
+    pnl_usd NUMERIC,
+    fees_usd NUMERIC,
     slippage_pct FLOAT64,
     trade_duration INT64,
     discord_thread_id STRING,
@@ -139,7 +139,7 @@ CREATE TABLE IF NOT EXISTS `{{PROJECT_ID}}.crypto_analytics.agg_strategy_daily` 
     agg_id STRING,
     strategy_id STRING,
     symbol STRING,
-    total_pnl FLOAT64,
+    total_pnl NUMERIC,
     win_rate FLOAT64,
     trade_count INT64
 )
@@ -158,9 +158,9 @@ CREATE TABLE IF NOT EXISTS `{{PROJECT_ID}}.crypto_analytics.fact_rejected_signal
     ds DATE,
     signal_id STRING,
     rejection_reason STRING,
-    theoretical_pnl_usd FLOAT64,
-    theoretical_pnl_pct FLOAT64,
-    theoretical_fees_usd FLOAT64,
+    theoretical_pnl_usd NUMERIC,
+    theoretical_pnl_pct NUMERIC,
+    theoretical_fees_usd NUMERIC,
     created_at TIMESTAMP
 )
 PARTITION BY ds;
