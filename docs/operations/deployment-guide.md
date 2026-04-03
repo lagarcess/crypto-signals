@@ -15,6 +15,8 @@ This guide documents the complete production deployment process for Crypto Senti
   - [1.3. Initialize Firestore](#13-initialize-firestore)
   - [1.4. Configure Firestore Indexes](#14-configure-firestore-indexes)
   - [1.5. Initialize BigQuery](#15-initialize-bigquery)
+   - [1.6. Initialize Supabase (Auth & Users)](#16-initialize-supabase-auth--users)
+   - [1.7. Phase 1 Authentication (OAuth & Supabase)](#17-phase-1-authentication-oauth--supabase)
 - [2. Service Account Configuration](#2-service-account-configuration)
   - [2.1. Create Custom Service Account (Recommended)](#21-create-custom-service-account-recommended)
   - [2.2. Grant Required Permissions](#22-grant-required-permissions)
@@ -335,7 +337,32 @@ bq ls
 
 ---
 
-### 1.6. Phase 1 Authentication (OAuth & Supabase)
+### 1.6. Initialize Supabase (Auth & Users)
+
+The React frontend requires Supabase for user authentication and profile management.
+
+**1. Create user_profiles schema:**
+Run the following SQL in the Supabase SQL Editor:
+
+```sql
+-- Migration Script for Supabase Auth & user_profiles schema
+-- Located at: scripts/supabase_schema.sql
+
+-- Creates the user_profiles table and automated triggers
+-- (Copy and paste the content of scripts/supabase_schema.sql)
+```
+
+**2. Configure Auth Providers:**
+Follow the steps in [Section 1.7 Phase 1 Authentication](#17-phase-1-authentication-oauth--supabase) to enable Google and GitHub OAuth.
+
+**3. Configure Environment Variables:**
+Add the following to your `.env` or Secret Manager:
+- `NEXT_PUBLIC_SUPABASE_URL`: Found in **Project Settings > API > Project URL**
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Found in **Project Settings > API > API Keys (anon public)**
+
+---
+
+### 1.7. Phase 1 Authentication (OAuth & Supabase)
 
 Required for the Stitch React Frontend. Because Google and GitHub forbid automated API registration via third-party agents, these steps must be performed manually.
 
