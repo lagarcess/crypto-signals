@@ -66,6 +66,7 @@ def main_test_setup(mock_main_dependencies):
     # Configure pipeline return values to prevent logging interaction
     mock_main_dependencies["trade_archival"].return_value.run.return_value = 5
     mock_main_dependencies["fee_patch"].return_value.run.return_value = 2
+    mock_main_dependencies["price_patch"].return_value.run.return_value = 1
     mock_main_dependencies["rejected_archival"].return_value.run.return_value = 3
     mock_main_dependencies["expired_archival"].return_value.run.return_value = 4
     mock_main_dependencies["backtest_archival"].return_value.run.return_value = 0
@@ -89,6 +90,9 @@ def main_test_setup(mock_main_dependencies):
     )
     pipeline_manager.attach_mock(
         mock_main_dependencies["fee_patch"].return_value.run, "fee_patch"
+    )
+    pipeline_manager.attach_mock(
+        mock_main_dependencies["price_patch"].return_value.run, "price_patch"
     )
 
     return {
@@ -170,6 +174,7 @@ def test_main_execution_flow(mock_main_dependencies, main_test_setup):
         "archive",
         "backtest_archive",
         "fee_patch",
+        "price_patch",
     ], f"Actual calls mismatch: {actual_calls}"
 
 
@@ -189,6 +194,7 @@ def test_main_legacy_archival_disabled(mock_main_dependencies, main_test_setup):
         "archive",
         "backtest_archive",
         "fee_patch",
+        "price_patch",
     ], f"Actual calls mismatch: {actual_calls}"
 
 
