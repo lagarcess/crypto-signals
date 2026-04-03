@@ -6,7 +6,7 @@ authors = ["Admin <admin@example.com>"]
 packages = [{include = "crypto_signals", from = "src"}]
 
 [tool.poetry.dependencies]
-python = "^3.9"
+python = "^3.10"
 # Configuration Management
 pydantic-settings = "^2.7.0"
 python-dotenv = "^1.0.0"
@@ -30,6 +30,8 @@ rich = "^13.0.0"
 typer = "^0.20.1"
 numba = {version = ">=0.60.0", python = ">=3.10"}
 joblib = "^1.5.3"
+supabase = "^2.28.3"
+pyarrow = "^23.0.1"
 
 [build-system]
 requires = ["poetry-core"]

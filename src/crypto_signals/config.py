@@ -221,6 +221,20 @@ class Settings(BaseSettings):
         description="Enable disk caching for market data. Useful for backtesting/dev.",
     )
 
+    # Supabase Storage Configuration
+    SUPABASE_URL: str | None = Field(
+        default=None,
+        description="Supabase Project URL",
+    )
+    SUPABASE_SERVICE_ROLE_KEY: SecretStr | None = Field(
+        default=None,
+        description="Supabase Service Role Key for administrative access",
+    )
+    SUPABASE_MARKET_DATA_BUCKET: str = Field(
+        default="market_data",
+        description="Bucket name for historical market data Parquet files",
+    )
+
     CLEANUP_ON_FAILURE: bool = Field(
         default=True,
         description="Auto-delete documents from Firestore if they fail Pydantic validation",
