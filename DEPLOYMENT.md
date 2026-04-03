@@ -24,6 +24,18 @@ For users already familiar with GCP and have the prerequisites ready.
 - ✅ Discord webhook URLs
 - ✅ GitHub repository admin access
 
+### Phase 1 Foundation (Frontend Auth)
+
+If you are deploying the **Stitch Frontend**, the following manual steps are REQUIRED as modern OAuth providers forbid automated API registration:
+
+1.  **Google OAuth**: Create a Web OAuth Client ID in your GCP Console.
+    *   *Redirect URI*: `https://<SUPABASE_ID>.supabase.co/auth/v1/callback`
+2.  **GitHub OAuth**: Create a new OAuth App in GitHub Developer Settings.
+    *   *Homepage*: `http://localhost:3000`
+    *   *Callback*: `https://<SUPABASE_ID>.supabase.co/auth/v1/callback`
+3.  **Supabase**: Enable Google and GitHub providers in your Supabase Auth dashboard using the keys from steps 1 & 2.
+4.  **Local Env**: Add `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` to your `.env` file.
+
 ### Fast-Track Commands
 
 ```bash

@@ -16,7 +16,7 @@ Pattern: Extract → Transform → Load → Cleanup
 """
 
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 import pandas as pd
 from google.cloud import firestore
@@ -297,6 +297,8 @@ class BacktestArchivalPipeline(BigQueryPipelineBase):
         """Map a Firestore signal doc to FactTheoreticalSignal fields."""
         status = signal.get("status", SignalStatus.REJECTED_BY_FILTER.value)
         created_at = signal.get("created_at")
+        if created_at is None:
+            created_at = datetime.now(timezone.utc)
         symbol = signal.get("symbol")
         asset_class = signal.get("asset_class", "CRYPTO")
         entry_price = float(signal.get("entry_price") or 0)
@@ -537,11 +539,11 @@ class BacktestArchivalPipeline(BigQueryPipelineBase):
         if side == OrderSide.BUY.value:
             highest_high = bars_df["high"].max()
             if pd.notna(highest_high):
-                return (entry_price - highest_high) / entry_price * 100
+                return cast(float, (entry_price - highest_high) / entry_price * 100)
         else:
             lowest_low = bars_df["low"].min()
             if pd.notna(lowest_low):
-                return (lowest_low - entry_price) / entry_price * 100
+                return cast(float, (lowest_low - entry_price) / entry_price * 100)
 
         return None
 

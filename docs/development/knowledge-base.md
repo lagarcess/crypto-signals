@@ -1,4 +1,7 @@
 # Engineering Knowledge Base
+- [2026-04-03] **Infrastructure**: OAuth integration between Google Cloud and Supabase remains a manual mandatory prerequisite due to modern provider security policies.
+- [2026-04-03] **Supabase UI**: The OAuth Redirect URI (Callback URL) is found under Authentication > Configuration > Providers > [Provider Name].
+- [2026-04-03] **Google OAuth**: "Authorized JavaScript origins" require the domain only (no path), while "Authorized redirect URIs" require the full callback path.
 *Central repository of lessons learned, API quirks, and architectural gotchas.*
 
 ## General
