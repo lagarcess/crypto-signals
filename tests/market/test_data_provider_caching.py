@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from unittest.mock import Mock, patch
 
+import pandas as pd
 import pytest
 from crypto_signals.config import Settings
 from crypto_signals.domain.schemas import AssetClass
@@ -42,8 +43,8 @@ def test_routing_disabled_by_default(mock_clients):
         assert kwargs["cache_key"] == "no-cache"
 
 
-def test_routing_enabled_and_cache_key(mock_clients):
-    """Test that requests route to _fetch_bars_cached with correct key when enabled."""
+def test_routing_enabled_uses_cache(mock_clients):
+    """Test that requests use MarketDataCache when enabled."""
     stock_client, crypto_client = mock_clients
 
     # Enable caching setting
@@ -53,21 +54,20 @@ def test_routing_enabled_and_cache_key(mock_clients):
 
         with (
             patch("crypto_signals.market.data_provider._fetch_bars_core") as mock_core,
-            patch(
-                "crypto_signals.market.data_provider._fetch_bars_cached"
-            ) as mock_cached,
-            patch("crypto_signals.market.data_provider.datetime") as mock_datetime,
+            patch("crypto_signals.market.data_provider.datetime", wraps=datetime) as mock_datetime,
         ):
             # Mock time for stable cache key
             fixed_now = datetime(2023, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
             mock_datetime.now.return_value = fixed_now
+            mock_datetime.strptime.side_effect = datetime.strptime
 
-            provider.get_daily_bars("BTC/USD", AssetClass.CRYPTO, lookback_days=5)
+            # Mock cache return value
+            # Ensure index is DatetimeIndex
+            mock_df = pd.DataFrame({"close": [100]}, index=pd.to_datetime([fixed_now]))
+            provider.cache.get_monthly_bars = Mock(return_value=mock_df)
 
-            mock_cached.assert_called_once()
-            mock_core.assert_not_called()
+            res = provider.get_daily_bars("BTC/USD", AssetClass.CRYPTO, lookback_days=5)
 
-            # Verify cache key format (YYYY-MM-DD from mock time)
-            args, kwargs = mock_cached.call_args
-            assert kwargs["symbol"] == "BTC/USD"
-            assert kwargs["cache_key"] == "2023-01-01"
+            assert res is not None
+            assert not res.empty
+            provider.cache.get_monthly_bars.assert_called()

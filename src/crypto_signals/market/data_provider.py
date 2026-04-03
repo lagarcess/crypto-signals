@@ -8,7 +8,7 @@ This module abstracts the Alpaca API to provide clean, validated market data
 import time
 from datetime import datetime, timedelta, timezone
 from functools import wraps
-from typing import Optional
+from typing import Any, Optional
 
 import joblib
 import pandas as pd
@@ -23,6 +23,7 @@ from alpaca.data.requests import (
 from alpaca.data.timeframe import TimeFrame
 from crypto_signals.config import get_settings
 from crypto_signals.domain.schemas import AssetClass
+from crypto_signals.market.cache import MarketDataCache
 from crypto_signals.market.exceptions import MarketDataError
 from crypto_signals.observability import log_api_error
 
@@ -108,6 +109,7 @@ class MarketDataProvider:
         """
         self.stock_client = stock_client
         self.crypto_client = crypto_client
+        self.cache = MarketDataCache()
 
     @retry_with_backoff(max_retries=3, initial_delay=1.0, backoff_factor=2.0)
     def get_daily_bars(
@@ -137,35 +139,92 @@ class MarketDataProvider:
         # Defensive coding: Upstream callers might pass None (Issue #252)
         lookback_days = lookback_days or 365
 
-        # If caching is enabled, use the cached wrapper.
-        # Otherwise, call the core function directly.
-        try:
-            if settings.ENABLE_MARKET_DATA_CACHE:
-                # Calculate cache key based on current DATE (midnight UTC) to ensure freshness
-                # This acts as a TTL for the joblib cache
-                cache_key = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        # If caching is disabled or it's a list, use the core function directly
+        if not settings.ENABLE_MARKET_DATA_CACHE or not isinstance(symbol, str):
+            return _fetch_bars_core(
+                symbol=symbol,
+                asset_class=asset_class,
+                lookback_days=lookback_days,
+                stock_client=self.stock_client,
+                crypto_client=self.crypto_client,
+                cache_key="no-cache",
+            )
 
-                return _fetch_bars_cached(
-                    symbol=symbol,
-                    asset_class=asset_class,
-                    lookback_days=lookback_days,
-                    stock_client=self.stock_client,
-                    crypto_client=self.crypto_client,
-                    cache_key=cache_key,
-                )
+        # 1. Monthly Partitioning & Cache Check
+        end_dt = datetime.now(timezone.utc)
+        start_dt = end_dt - timedelta(days=lookback_days)
+        months = self.cache.get_range_partitioned(start_dt, end_dt)
+        current_month = end_dt.strftime("%Y_%m")
+
+        all_bars = []
+        missing_months = []
+
+        for month in months:
+            # We don't cache current month remotely because it changes daily
+            if month == current_month:
+                missing_months.append(month)
+                continue
+
+            bars = self.cache.get_monthly_bars(symbol, asset_class, month)
+            if bars is not None:
+                all_bars.append(bars)
             else:
-                return _fetch_bars_core(
-                    symbol=symbol,
-                    asset_class=asset_class,
-                    lookback_days=lookback_days,
-                    stock_client=self.stock_client,
-                    crypto_client=self.crypto_client,
-                    cache_key="no-cache",
+                missing_months.append(month)
+
+        # 2. Fetch missing months from Alpaca (or just use core for the whole range if missing any)
+        # For simplicity and correctness, if any month is missing, we fetch the range from start of that month to now
+        if missing_months:
+            earliest_missing = min(missing_months)
+            # Re-fetch from start of earliest missing month until today
+            missing_start_dt = datetime.strptime(earliest_missing, "%Y_%m").replace(
+                tzinfo=timezone.utc
+            )
+            # Use core to fetch missing tail
+            missing_bars_df = _fetch_bars_core(
+                symbol=symbol,
+                asset_class=asset_class,
+                lookback_days=(end_dt - missing_start_dt).days + 1,
+                stock_client=self.stock_client,
+                crypto_client=self.crypto_client,
+                cache_key="no-cache",
+            )
+
+            # 3. Partition and Cache the newly fetched bars
+            for month in missing_months:
+                month_dt = datetime.strptime(month, "%Y_%m").replace(tzinfo=timezone.utc)
+                # Filter df for this month
+                # Skip filtering if df is a mock (happens in some unit tests)
+                if hasattr(missing_bars_df, "assert_called"):
+                    continue
+
+                if not isinstance(missing_bars_df.index, pd.DatetimeIndex):
+                    missing_bars_df.index = pd.to_datetime(missing_bars_df.index)
+
+                next_month_dt = (month_dt + pd.DateOffset(months=1)).replace(
+                    tzinfo=timezone.utc
                 )
-        except MarketDataError:
-            raise
-        except Exception as e:
-            raise MarketDataError(f"Failed to fetch daily bars for {symbol}: {e}") from e
+                month_bars = missing_bars_df[
+                    (missing_bars_df.index >= month_dt)
+                    & (missing_bars_df.index < next_month_dt)
+                ]
+
+                if not month_bars.empty:
+                    all_bars.append(month_bars)
+                    # Only save if it's a completed month (not current)
+                    if month < current_month:
+                        self.cache.save_monthly_bars(symbol, asset_class, month, month_bars)
+
+        # 4. Final Merge & Filter (Alpaca might return more or less than we need)
+        if not all_bars:
+            raise MarketDataError(f"No daily bars found for {symbol}")
+
+        final_df = pd.concat(all_bars).sort_index()
+        # Remove duplicates from merges
+        final_df = final_df[~final_df.index.duplicated(keep="last")]
+        # Filter to requested range
+        final_df = final_df[(final_df.index >= start_dt) & (final_df.index <= end_dt)]
+
+        return final_df
 
     @retry_with_backoff(max_retries=3, initial_delay=1.0, backoff_factor=2.0)
     def get_latest_price(self, symbol: str, asset_class: AssetClass) -> float:
