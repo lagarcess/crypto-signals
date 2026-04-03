@@ -16,7 +16,7 @@ Pattern: Extract → Transform → Load → Cleanup
 """
 
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 import pandas as pd
 from google.cloud import firestore
@@ -181,9 +181,14 @@ class BacktestArchivalPipeline(BigQueryPipelineBase):
     # Transform
     # ------------------------------------------------------------------
 
-    def transform(self, raw_data: List[Any]) -> List[Dict[str, Any]]:
+    def transform(
+        self, raw_data: List[Any], now: Optional[datetime] = None
+    ) -> List[Dict[str, Any]]:
         """
         Map each Firestore doc to a FactTheoreticalSignal record.
+
+        Use 'now' to ensure all records share a consistent timestamp for ds/created_at
+        if original timestamps are missing (determinism for testing).
 
         ETL Zombie Prevention (KB [2026-03-02]): NEVER use ``continue`` to
         silently drop a record.  If market data is missing or validation
@@ -195,11 +200,14 @@ class BacktestArchivalPipeline(BigQueryPipelineBase):
             extra={"job": self.job_name, "count": len(raw_data)},
         )
 
+        if now is None:
+            now = datetime.now(timezone.utc)
+
         transformed: List[Dict[str, Any]] = []
 
         for signal in raw_data:
             try:
-                record = self._map_to_theoretical(signal)
+                record = self._map_to_theoretical(signal, now=now)
                 model = FactTheoreticalSignal.model_validate(record)
                 transformed.append(model.model_dump(mode="json"))
             except Exception as e:
@@ -211,7 +219,7 @@ class BacktestArchivalPipeline(BigQueryPipelineBase):
                     },
                 )
                 try:
-                    placeholder = self._make_placeholder(signal, error=str(e))
+                    placeholder = self._make_placeholder(signal, error=str(e), now=now)
                     model = FactTheoreticalSignal.model_validate(placeholder)
                     transformed.append(model.model_dump(mode="json"))
                 except Exception as e2:
@@ -293,10 +301,14 @@ class BacktestArchivalPipeline(BigQueryPipelineBase):
     # Private Helpers
     # ------------------------------------------------------------------
 
-    def _map_to_theoretical(self, signal: Dict[str, Any]) -> Dict[str, Any]:
+    def _map_to_theoretical(
+        self, signal: Dict[str, Any], *, now: datetime
+    ) -> Dict[str, Any]:
         """Map a Firestore signal doc to FactTheoreticalSignal fields."""
         status = signal.get("status", SignalStatus.REJECTED_BY_FILTER.value)
         created_at = signal.get("created_at")
+        if created_at is None:
+            created_at = now
         symbol = signal.get("symbol")
         asset_class = signal.get("asset_class", "CRYPTO")
         entry_price = float(signal.get("entry_price") or 0)
@@ -537,22 +549,24 @@ class BacktestArchivalPipeline(BigQueryPipelineBase):
         if side == OrderSide.BUY.value:
             highest_high = bars_df["high"].max()
             if pd.notna(highest_high):
-                return (entry_price - highest_high) / entry_price * 100
+                return cast(float, (entry_price - highest_high) / entry_price * 100)
         else:
             lowest_low = bars_df["low"].min()
             if pd.notna(lowest_low):
-                return (lowest_low - entry_price) / entry_price * 100
+                return cast(float, (lowest_low - entry_price) / entry_price * 100)
 
         return None
 
-    def _make_placeholder(self, signal: Dict[str, Any], *, error: str) -> Dict[str, Any]:
+    def _make_placeholder(
+        self, signal: Dict[str, Any], *, error: str, now: datetime
+    ) -> Dict[str, Any]:
         """
         Build a minimal FactTheoreticalSignal record for a broken signal.
 
         Ensures the record passes through to cleanup() so the source doc
         is still deleted from Firestore (ETL Zombie Prevention).
         """
-        created_at = signal.get("created_at", datetime.now(timezone.utc))
+        created_at = signal.get("created_at", now)
         status = signal.get("status", SignalStatus.REJECTED_BY_FILTER.value)
         return {
             "doc_id": signal.get("_doc_id"),

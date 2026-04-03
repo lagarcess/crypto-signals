@@ -335,6 +335,33 @@ bq ls
 
 ---
 
+### 1.6. Phase 1 Authentication (OAuth & Supabase)
+
+Required for the Stitch React Frontend. Because Google and GitHub forbid automated API registration via third-party agents, these steps must be performed manually.
+
+#### 1.6.1. Google OAuth Registration
+1. Go to **APIs & Services** > **Credentials**.
+2. Click **Create Credentials** > **OAuth client ID**.
+3. **Application Type**: Web application.
+4. **Authorized Redirect URIs**: `https://[SUPABASE_ID].supabase.co/auth/v1/callback`
+5. Save the generated **Client ID** and **Client Secret**.
+
+#### 1.6.2. GitHub OAuth Registration
+1. Go to [GitHub Developer Settings](https://github.com/settings/developers) > **OAuth Apps**.
+2. **Homepage URL**: `http://localhost:3000` (for local development).
+3. **Authorization callback URL**: `https://[SUPABASE_ID].supabase.co/auth/v1/callback`
+4. Generate a **Client Secret** and save it alongside the **Client ID**.
+
+#### 1.6.3. Supabase Provider Linkage
+1. Open your project in the [Supabase Dashboard](https://supabase.com/dashboard).
+2. Go to **Authentication** > **Providers**.
+3. Enable **Google** and **GitHub** toggles.
+4. Paste the respective Client IDs and Secrets from Google and GitHub.
+
+---
+
+---
+
 ## 2. Service Account Configuration
 
 ### 2.1. Create Custom Service Account (Recommended)
